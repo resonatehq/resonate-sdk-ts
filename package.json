@@ -1,6 +1,6 @@
 {
     "name": "@resonatehq/sdk",
-    "version": "0.0.1-alpha",
+    "version": "0.0.1-alpha.0",
     "repository": {
         "type": "git",
         "url": "https://github.com/resonatehq/resonate-sdk-ts.git"
