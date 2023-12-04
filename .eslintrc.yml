@@ -26,3 +26,7 @@ rules:
 
 parserOptions:
   project: "./tsconfig.json"
+
+ignorePatterns:
+  - "dist/"
+  - "examples/"

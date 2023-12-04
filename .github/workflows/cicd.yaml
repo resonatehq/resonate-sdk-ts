@@ -29,6 +29,8 @@ jobs:
         run: npm run lint
       - name: Run tests
         run: npm test
+      - name: Build
+        run: npm run build
 
   cd:
     # clif: github.event_name == 'push' && github.ref == 'refs/heads/main'
