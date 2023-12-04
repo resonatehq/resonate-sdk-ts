@@ -30,6 +30,8 @@ jobs:
         run: npm run lint
       - name: Run tests
         run: npm test
+      - name: Build
+        run: npm run build
       - run: npm install -g npm
       - run: npm ci
       - run: npm publish --provenance --access public
