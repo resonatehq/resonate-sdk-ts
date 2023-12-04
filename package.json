@@ -1,5 +1,5 @@
 {
-    "name": "resonate-sdk-ts",
+    "name": "@resonatehq/sdk",
     "scripts": {
         "test": "jest",
         "lint": "prettier . --check && eslint .",
