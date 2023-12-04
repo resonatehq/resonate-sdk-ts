@@ -13,7 +13,7 @@ permissions:
   id-token: write
 
 jobs:
-  ci:
+  cicd:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,21 +31,11 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
-
-  cd:
-    # clif: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    needs: ci
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: "18.x"
-          registry-url: "https://registry.npmjs.org"
-      - name: Build
-        run: npm run build
-      - run: npm install -g npm
-      - run: npm ci
-      - run: npm publish --provenance --access public
+      - name: Publish
+        # if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm install -g npm
+          npm ci
+          npm publish --provenance --access public
