@@ -42,6 +42,8 @@ jobs:
         with:
           node-version: "18.x"
           registry-url: "https://registry.npmjs.org"
+      - name: Build
+        run: npm run build
       - run: npm install -g npm
       - run: npm ci
       - run: npm publish --provenance --access public
