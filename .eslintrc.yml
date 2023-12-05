@@ -31,4 +31,3 @@ ignorePatterns:
   - jest.config.js
   - "dist/"
   - "examples/"
-  - "test/" # TODO: reenable linting tests

@@ -14,7 +14,7 @@
     },
     "scripts": {
         "test": "jest",
-        "build": "tsc --build",
+        "build": "tsc --build tsconfig.build.json",
         "lint": "prettier . --check && eslint .",
         "prettier": "prettier . --write",
         "debug": "node --inspect-brk ./node_modules/.bin/jest -i"
