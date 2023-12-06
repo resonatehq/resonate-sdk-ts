@@ -6,6 +6,8 @@ export enum ErrorCodes {
   NOT_FOUND = 4,
   ALREADY_EXISTS = 5,
   ENCODER = 6,
+  DECODER = 7,
+  DATABASE = 8,
 }
 
 export class ResonateError extends Error {
