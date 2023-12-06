@@ -15,7 +15,7 @@ import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
 
-export class LocalSdk implements IPromiseStore {
+export class LocalPromiseStore implements IPromiseStore {
   private readonly dbName = "resonateDB";
   private readonly storeName = "promises";
   private db: IDBDatabase | null = null;
