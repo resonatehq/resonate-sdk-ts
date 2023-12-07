@@ -38,8 +38,13 @@ export class LocalPromiseStore implements IPromiseStore {
       };
 
       request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        db.createObjectStore(this.storeName, { keyPath: "id" });
+        try {
+          const db = (event.target as IDBOpenDBRequest).result;
+          db.createObjectStore(this.storeName, { keyPath: "id" });
+          resolve();
+        } catch (e: unknown) {
+          reject(e);
+        }
       };
     });
   }
@@ -64,6 +69,12 @@ export class LocalPromiseStore implements IPromiseStore {
   ): Promise<PendingPromise | ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     const tick = Date.now();
     this.transition(tick);
+
+    const transaction = this.db?.transaction(this.storeName, 'readwrite');
+
+    if (!transaction) {
+      throw new ResonateError('Database transaction not available', ErrorCodes.DATABASE);
+    }
 
     const objectStore = await this.getObjectStore();
     const storedPromise: DurablePromise | undefined = await this.getPromiseById(objectStore, id);
@@ -109,6 +120,12 @@ export class LocalPromiseStore implements IPromiseStore {
   ): Promise<ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     const tick = Date.now();
     this.transition(tick);
+
+    const transaction = this.db?.transaction(this.storeName, 'readwrite');
+
+    if (!transaction) {
+      throw new ResonateError('Database transaction not available', ErrorCodes.DATABASE);
+    }
 
     const objectStore = await this.getObjectStore();
     const storedPromise: DurablePromise | undefined = await this.getPromiseById(objectStore, id);
@@ -164,6 +181,12 @@ export class LocalPromiseStore implements IPromiseStore {
     const tick = Date.now();
     this.transition(tick);
 
+    const transaction = this.db?.transaction(this.storeName, 'readwrite');
+
+    if (!transaction) {
+      throw new ResonateError('Database transaction not available', ErrorCodes.DATABASE);
+    }
+
     const objectStore = await this.getObjectStore();
     const storedPromise: DurablePromise | undefined = await this.getPromiseById(objectStore, id);
 
@@ -217,6 +240,12 @@ export class LocalPromiseStore implements IPromiseStore {
   ): Promise<ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     const tick = Date.now();
     this.transition(tick);
+
+    const transaction = this.db?.transaction(this.storeName, 'readwrite');
+
+    if (!transaction) {
+      throw new ResonateError('Database transaction not available', ErrorCodes.DATABASE);
+    }
 
     const objectStore = await this.getObjectStore();
     const storedPromise: DurablePromise | undefined = await this.getPromiseById(objectStore, id);
