@@ -70,10 +70,10 @@ export class LocalPromiseStore implements IPromiseStore {
     const tick = Date.now();
     this.transition(tick);
 
-    const transaction = this.db?.transaction(this.storeName, 'readwrite');
+    const transaction = this.db?.transaction(this.storeName, "readwrite");
 
     if (!transaction) {
-      throw new ResonateError('Database transaction not available', ErrorCodes.DATABASE);
+      throw new ResonateError("Database transaction not available", ErrorCodes.DATABASE);
     }
 
     const objectStore = await this.getObjectStore();
@@ -121,10 +121,10 @@ export class LocalPromiseStore implements IPromiseStore {
     const tick = Date.now();
     this.transition(tick);
 
-    const transaction = this.db?.transaction(this.storeName, 'readwrite');
+    const transaction = this.db?.transaction(this.storeName, "readwrite");
 
     if (!transaction) {
-      throw new ResonateError('Database transaction not available', ErrorCodes.DATABASE);
+      throw new ResonateError("Database transaction not available", ErrorCodes.DATABASE);
     }
 
     const objectStore = await this.getObjectStore();
@@ -181,10 +181,10 @@ export class LocalPromiseStore implements IPromiseStore {
     const tick = Date.now();
     this.transition(tick);
 
-    const transaction = this.db?.transaction(this.storeName, 'readwrite');
+    const transaction = this.db?.transaction(this.storeName, "readwrite");
 
     if (!transaction) {
-      throw new ResonateError('Database transaction not available', ErrorCodes.DATABASE);
+      throw new ResonateError("Database transaction not available", ErrorCodes.DATABASE);
     }
 
     const objectStore = await this.getObjectStore();
@@ -241,10 +241,10 @@ export class LocalPromiseStore implements IPromiseStore {
     const tick = Date.now();
     this.transition(tick);
 
-    const transaction = this.db?.transaction(this.storeName, 'readwrite');
+    const transaction = this.db?.transaction(this.storeName, "readwrite");
 
     if (!transaction) {
-      throw new ResonateError('Database transaction not available', ErrorCodes.DATABASE);
+      throw new ResonateError("Database transaction not available", ErrorCodes.DATABASE);
     }
 
     const objectStore = await this.getObjectStore();
