@@ -1,7 +1,7 @@
 import { jest, describe, test, expect, beforeEach } from "@jest/globals";
-import { Resonate, Context } from "../lib/resonate";
-import { IRetry } from "../lib/retry";
-import { Retry } from "../lib/retries/retry";
+import { Resonate, Context } from "../src/resonate";
+import { IRetry } from "../src/lib/retry";
+import { Retry } from "../src/lib/retries/retry";
 
 // Set a larger timeout for hooks (e.g., 10 seconds)
 jest.setTimeout(10000);

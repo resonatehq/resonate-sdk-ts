@@ -1,7 +1,7 @@
 import { jest, describe, test, expect } from "@jest/globals";
 
-import { DurablePromiseStore } from "../lib/stores/durable";
-import { VolatilePromiseStore } from "../lib/stores/volatile";
+import { DurablePromiseStore } from "../src/lib/stores/durable";
+import { VolatilePromiseStore } from "../src/lib/stores/volatile";
 
 // Set a larger timeout for hooks (e.g., 10 seconds)
 jest.setTimeout(10000);
