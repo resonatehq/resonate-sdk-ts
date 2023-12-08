@@ -1,8 +1,8 @@
 // TEST=true npm test -- test/trace.test.ts
 
 import { jest, describe, test, expect } from "@jest/globals";
-import { Resonate, Context } from "../src/resonate";
-import { TestLogger } from "../src/lib/loggers/test";
+import { Resonate, Context } from "../lib/resonate";
+import { TestLogger } from "../lib/core/loggers/test";
 
 jest.setTimeout(100000); // 100 seconds
 

@@ -1,5 +1,5 @@
-import { Opts, isPartialOpts } from "./lib/opts";
-import { IPromiseStore } from "./lib/store";
+import { Opts, isPartialOpts } from "./core/opts";
+import { IPromiseStore } from "./core/store";
 import {
   DurablePromise,
   isCanceledPromise,
@@ -7,19 +7,19 @@ import {
   isRejectedPromise,
   isResolvedPromise,
   isTimedoutPromise,
-} from "./lib/promise";
-import { IRetry } from "./lib/retry";
-import { Retry } from "./lib/retries/retry";
-import { IBucket } from "./lib/bucket";
-import { Bucket } from "./lib/buckets/bucket";
-import { VolatilePromiseStore } from "./lib/stores/volatile";
-import { DurablePromiseStore } from "./lib/stores/durable";
-import { ILogger, ITrace } from "./lib/logger";
-import { Logger } from "./lib/loggers/logger";
-import { IEncoder } from "./lib/encoder";
-import { JSONEncoder } from "./lib/encoders/json";
-import { ErrorEncoder } from "./lib/encoders/error";
-import { ErrorCodes, ResonateError } from "./lib/error";
+} from "./core/promise";
+import { IRetry } from "./core/retry";
+import { Retry } from "./core/retries/retry";
+import { IBucket } from "./core/bucket";
+import { Bucket } from "./core/buckets/bucket";
+import { VolatilePromiseStore } from "./core/stores/volatile";
+import { DurablePromiseStore } from "./core/stores/durable";
+import { ILogger, ITrace } from "./core/logger";
+import { Logger } from "./core/loggers/logger";
+import { IEncoder } from "./core/encoder";
+import { JSONEncoder } from "./core/encoders/json";
+import { ErrorEncoder } from "./core/encoders/error";
+import { ErrorCodes, ResonateError } from "./core/error";
 
 // Types
 

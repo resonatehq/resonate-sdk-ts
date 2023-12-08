@@ -26,26 +26,26 @@ export class Logger implements ILogger {
     return new Trace(this, id, attrs);
   }
 
-  private log(level: number, ...args: any[]): void {
+  private log(level: number, args: any[]): void {
     if (this._level <= level) {
       console.log(...args);
     }
   }
 
   debug(...args: any[]): void {
-    this.log(0, ...args);
+    this.log(0, args);
   }
 
   info(...args: any[]): void {
-    this.log(1, ...args);
+    this.log(1, args);
   }
 
   warn(...args: any[]): void {
-    this.log(2, ...args);
+    this.log(2, args);
   }
 
   error(...args: any[]): void {
-    this.log(3, ...args);
+    this.log(3, args);
   }
 }
 
