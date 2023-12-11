@@ -19,7 +19,10 @@ export class LocalPromiseStore implements IPromiseStore {
   private readonly storeName = "promises";
   private db: IDBDatabase;
 
-  private constructor(db: IDBDatabase, private encoder: IEncoder<string, string> = new Base64Encoder()) {
+  private constructor(
+    db: IDBDatabase,
+    private encoder: IEncoder<string, string> = new Base64Encoder(),
+  ) {
     this.db = db;
   }
 
@@ -42,7 +45,7 @@ export class LocalPromiseStore implements IPromiseStore {
       };
     });
   }
-  
+
   private async getObjectStore(): Promise<IDBObjectStore> {
     if (!this.db) {
       throw new ResonateError("Database not initialized", ErrorCodes.DATABASE);
@@ -109,8 +112,6 @@ export class LocalPromiseStore implements IPromiseStore {
     const tick = Date.now();
     this.transition(tick);
 
-    
-
     const objectStore = await this.getObjectStore();
     const storedPromise: DurablePromise | undefined = await this.getPromiseById(objectStore, id);
 
@@ -165,8 +166,6 @@ export class LocalPromiseStore implements IPromiseStore {
     const tick = Date.now();
     this.transition(tick);
 
-    
-
     const objectStore = await this.getObjectStore();
     const storedPromise: DurablePromise | undefined = await this.getPromiseById(objectStore, id);
 
@@ -220,8 +219,6 @@ export class LocalPromiseStore implements IPromiseStore {
   ): Promise<ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     const tick = Date.now();
     this.transition(tick);
-
-    
 
     const objectStore = await this.getObjectStore();
     const storedPromise: DurablePromise | undefined = await this.getPromiseById(objectStore, id);
