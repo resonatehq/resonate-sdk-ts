@@ -16,39 +16,33 @@ import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
 
 export class LocalPromiseStore implements IPromiseStore {
-  private readonly dbName = "resonateDB";
   private readonly storeName = "promises";
-  private db: IDBDatabase | null = null;
+  private db: IDBDatabase;
 
-  constructor(private encoder: IEncoder<string, string> = new Base64Encoder()) {
-    this.initializeDb();
+  private constructor(db: IDBDatabase, private encoder: IEncoder<string, string> = new Base64Encoder()) {
+    this.db = db;
   }
 
-  private async initializeDb() {
-    return new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 1);
+  static async getInstance(encoder?: IEncoder<string, string>): Promise<LocalPromiseStore> {
+    return new Promise<LocalPromiseStore>((resolve, reject) => {
+      const request = indexedDB.open("resonateDB", 1);
 
       request.onerror = () => {
         reject(request.error);
       };
 
       request.onsuccess = () => {
-        this.db = request.result;
-        resolve();
+        const db = request.result;
+        resolve(new LocalPromiseStore(db, encoder));
       };
 
       request.onupgradeneeded = (event) => {
-        try {
-          const db = (event.target as IDBOpenDBRequest).result;
-          db.createObjectStore(this.storeName, { keyPath: "id" });
-          resolve();
-        } catch (e: unknown) {
-          reject(e);
-        }
+        const db = (event.target as IDBOpenDBRequest).result;
+        db.createObjectStore("promises", { keyPath: "id" });
       };
     });
   }
-
+  
   private async getObjectStore(): Promise<IDBObjectStore> {
     if (!this.db) {
       throw new ResonateError("Database not initialized", ErrorCodes.DATABASE);
