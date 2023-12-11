@@ -47,10 +47,6 @@ export class LocalPromiseStore implements IPromiseStore {
   }
 
   private async getObjectStore(): Promise<IDBObjectStore> {
-    if (!this.db) {
-      throw new ResonateError("Database not initialized", ErrorCodes.DATABASE);
-    }
-
     const transaction = this.db.transaction(this.storeName, "readwrite");
     return transaction.objectStore(this.storeName);
   }
