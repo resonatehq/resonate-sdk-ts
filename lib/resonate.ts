@@ -172,13 +172,13 @@ export class Resonate {
   register<A extends any[], R>(
     name: string,
     func: DurableFunction<A, R>,
-  ): (id: string, ...args: WithOpts<A>) => Promise<R> {
+  ): (id: string, ...args: WithOpts<A>) => Promise<R | void> {
     if (name in this.functions) {
       throw new Error(`Function ${name} already registered`);
     }
 
     this.functions[name] = func;
-    return (id: string, ...args: WithOpts<A>): Promise<R> => {
+    return (id: string, ...args: WithOpts<A>): Promise<R | void> => {
       return this.run(name, id, ...args);
     };
   }
@@ -202,7 +202,7 @@ export class Resonate {
    * @param args arguments to pass to the function, optionally followed by Resonate {@link Opts}
    * @returns a promise that resolves to the return value of the function
    */
-  run<R>(name: string, id: string, ...argsWithOpts: WithOpts<any[]>): Promise<R> {
+  run<R>(name: string, id: string, ...argsWithOpts: WithOpts<any[]>): Promise<R | void> {
     if (!(name in this.functions)) {
       throw new Error(`Function ${name} not registered`);
     }
@@ -294,7 +294,7 @@ export interface Context {
    * @param args arguments to pass to the function, optionally followed by Resonate {@link Opts}
    * @returns a promise that resolves to the return value of the function
    */
-  run<A extends any[], R>(func: DurableFunction<A, R>, ...args: WithOpts<A>): Promise<R>;
+  run<A extends any[], R>(func: DurableFunction<A, R>, ...args: WithOpts<A>): Promise<R | void>;
 }
 
 class ResonateContext implements Context {
@@ -338,7 +338,7 @@ class ResonateContext implements Context {
     this.children.push(context);
   }
 
-  run<A extends any[], R>(func: DurableFunction<A, R>, ...argsWithOpts: WithOpts<A>): Promise<R> {
+  run<A extends any[], R>(func: DurableFunction<A, R>, ...argsWithOpts: WithOpts<A>): Promise<R | void> {
     const id = `${this.opts.id}.${this.counter++}`;
     const [args, opts] = splitArgs(argsWithOpts);
 
@@ -358,7 +358,7 @@ class ResonateContext implements Context {
     return context.execute(func, args);
   }
 
-  execute<A extends any[], R>(func: DurableFunction<A, R>, args: A): Promise<R> {
+  execute<A extends any[], R>(func: DurableFunction<A, R>, args: A): Promise<R | void> {
     return new Promise(async (resolve, reject) => {
       // set reject for kill/cancel
       this.reject = reject;
@@ -408,18 +408,20 @@ class ResonateContext implements Context {
               const p = await store.resolve(this.id, this.idempotencyKey, false, headers, value);
 
               if (isResolvedPromise(p)) {
-                resolve(
-                  this.decode<R>(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.valueEncoders),
-                );
+                if (p.value.data) {
+                  resolve(
+                    this.decode<R>(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.valueEncoders),
+                  );
+                } else {
+                  resolve();
+                }
                 return;
-              } else if (isRejectedPromise(p)) {
-                reject(this.decode(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.errorEncoders));
-                return;
-              } else if (isCanceledPromise(p)) {
-                reject(this.decode(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.errorEncoders));
-                return;
-              } else if (isTimedoutPromise(p)) {
-                reject();
+              } else if (isRejectedPromise(p) || isCanceledPromise(p) || isTimedoutPromise(p)) {
+                if (p.value?.data) {
+                  reject(this.decode(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.errorEncoders));
+                } else {
+                  reject();
+                }
                 return;
               }
             } catch (e: unknown) {
@@ -440,18 +442,20 @@ class ResonateContext implements Context {
               const p = await store.reject(this.id, this.idempotencyKey, false, headers, value);
 
               if (isResolvedPromise(p)) {
-                resolve(
-                  this.decode<R>(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.valueEncoders),
-                );
+                if (p.value.data) {
+                  resolve(
+                    this.decode<R>(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.valueEncoders),
+                  );
+                } else {
+                  resolve();
+                }
                 return;
-              } else if (isRejectedPromise(p)) {
-                reject(this.decode(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.errorEncoders));
-                return;
-              } else if (isCanceledPromise(p)) {
-                reject(this.decode(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.errorEncoders));
-                return;
-              } else if (isTimedoutPromise(p)) {
-                reject();
+              } else if (isRejectedPromise(p) || isCanceledPromise(p) || isTimedoutPromise(p)) {
+                if (p.value?.data) {
+                  reject(this.decode(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.errorEncoders));
+                } else {
+                  reject();
+                }
                 return;
               }
             } catch (e: unknown) {
@@ -460,16 +464,18 @@ class ResonateContext implements Context {
             }
           }
         } else if (isResolvedPromise(p)) {
-          resolve(this.decode<R>(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.valueEncoders));
+          if (p.value.data) {
+            resolve(this.decode<R>(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.valueEncoders));
+          } else {
+            resolve();
+          }
           return;
-        } else if (isRejectedPromise(p)) {
-          reject(this.decode(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.errorEncoders));
-          return;
-        } else if (isCanceledPromise(p)) {
-          reject(this.decode(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.errorEncoders));
-          return;
-        } else if (isTimedoutPromise(p)) {
-          reject();
+        } else if (isRejectedPromise(p) || isCanceledPromise(p) || isTimedoutPromise(p)) {
+          if (p.value?.data) {
+            reject(this.decode(p.value.data, p.value.headers?.["Content-Encoding"], this.resonate.errorEncoders));
+          } else {
+            reject();
+          }
           return;
         }
       } catch (e: unknown) {
