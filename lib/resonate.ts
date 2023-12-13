@@ -40,6 +40,8 @@ function isG<A extends any[], R>(g: unknown): g is G<A, R> {
 
 type ResonateOpts = {
   url: string;
+  // take db as an argument
+  db: IDBDatabase;
   logger: ILogger;
   timeout: number;
   retry: () => IRetry;
