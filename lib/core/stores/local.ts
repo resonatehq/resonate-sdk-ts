@@ -56,7 +56,10 @@ export class LocalPromiseStore implements IPromiseStore {
             headers: headers,
             data: data,
           },
-          value: undefined,
+          value: {
+            headers: undefined,
+            data: undefined,
+          },
           createdOn: Date.now(),
           completedOn: undefined,
           idempotencyKeyForCreate: ikey,

@@ -9,13 +9,16 @@ export class WithTimeout implements IStorage {
 
   rmw<P extends DurablePromise | undefined>(id: string, f: (promise: DurablePromise | undefined) => P): Promise<P> {
     return this.storage.rmw(id, (promise) => {
-      if (promise && isPendingPromise(promise) && promise.timeout > Date.now()) {
+      if (promise && isPendingPromise(promise) && Date.now() >= promise.timeout) {
         promise = {
           state: "REJECTED_TIMEDOUT",
           id: promise.id,
           timeout: promise.timeout,
           param: promise.param,
-          value: undefined,
+          value: {
+            headers: undefined,
+            data: undefined,
+          },
           createdOn: promise.createdOn,
           completedOn: promise.timeout,
           idempotencyKeyForCreate: promise.idempotencyKeyForCreate,

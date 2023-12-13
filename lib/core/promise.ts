@@ -8,7 +8,10 @@ export type PendingPromise = {
     headers: Record<string, string> | undefined;
     data: string | undefined;
   };
-  value: undefined;
+  value: {
+    headers: undefined;
+    data: undefined;
+  };
   createdOn: number;
   completedOn: undefined;
   idempotencyKeyForCreate?: string;
@@ -81,7 +84,10 @@ export type TimedoutPromise = {
     headers: Record<string, string> | undefined;
     data: string | undefined;
   };
-  value: undefined;
+  value: {
+    headers: undefined;
+    data: undefined;
+  };
   createdOn: number;
   completedOn: number;
   idempotencyKeyForCreate?: string;
