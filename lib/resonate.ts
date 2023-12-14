@@ -60,9 +60,9 @@ export class Resonate {
 
   readonly defaultRetry: () => IRetry;
 
-  readonly valueEncoder: DataEncoder;
-
   readonly paramEncoder: DataEncoder;
+
+  readonly valueEncoder: DataEncoder;
 
   readonly errorEncoder: DataEncoder;
 
@@ -87,8 +87,8 @@ export class Resonate {
     this.logger = logger;
     this.defaultRetry = retry;
 
-    this.valueEncoder = new DataEncoder(encoder);
     this.paramEncoder = new DataEncoder(encoder);
+    this.valueEncoder = new DataEncoder(encoder);
     this.errorEncoder = new DataEncoder(encoder, new ErrorEncoder());
 
     this.addStore("default", url ? new RemotePromiseStore(url) : new LocalPromiseStore());
@@ -484,8 +484,6 @@ class LInvocation<A extends any[], R> {
       } catch (e: unknown) {
         context.kill(ResonateError.fromError(e));
         return;
-      } finally {
-        trace.end();
       }
     });
   }
