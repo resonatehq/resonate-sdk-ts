@@ -2,7 +2,7 @@ import { Opts, isPartialOpts } from "./core/opts";
 import { IPromiseStore } from "./core/store";
 import { DurablePromise, isPendingPromise, isResolvedPromise } from "./core/promise";
 import { IRetry } from "./core/retry";
-import { Retry } from "./core/retries/retry";
+import { ExponentialRetry } from "./core/retries/exponential";
 import { IBucket } from "./core/bucket";
 import { Bucket } from "./core/buckets/bucket";
 import { LocalPromiseStore } from "./core/stores/local";
@@ -80,7 +80,7 @@ export class Resonate {
     url,
     logger = new Logger(),
     timeout = 10000,
-    retry = () => Retry.atLeastOnce(),
+    retry = () => ExponentialRetry.atLeastOnce(),
     bucket = new Bucket(),
     encoder = new JSONEncoder(),
   }: Partial<ResonateOpts> = {}) {
@@ -91,7 +91,7 @@ export class Resonate {
     this.valueEncoder = new DataEncoder(encoder);
     this.errorEncoder = new DataEncoder(encoder, new ErrorEncoder());
 
-    this.addStore("default", url ? new RemotePromiseStore(url) : new LocalPromiseStore());
+    this.addStore("default", url ? new RemotePromiseStore(url, logger) : new LocalPromiseStore());
     this.addBucket("default", bucket);
 
     this.defaults = {
@@ -327,7 +327,7 @@ class ResonateContext implements Context {
   }
 
   get timeout(): number {
-    return this.created + this.opts.timeout;
+    return Math.min(this.created + this.opts.timeout, this.parent?.timeout ?? Infinity);
   }
 
   private addChild(context: ResonateContext) {
@@ -365,7 +365,7 @@ class ResonateContext implements Context {
 
       let invocation: Invocation<A, R>;
       if (typeof func === "string") {
-        invocation = new RInvocation(func, args, store);
+        invocation = new RInvocation(func, args, store, this.opts.retry);
       } else if (isF<A, R>(func)) {
         invocation = new LInvocation(store, new AInvocation(func, args, bucket, this.opts.retry));
       } else if (isG<A, R>(func)) {
@@ -381,9 +381,9 @@ class ResonateContext implements Context {
         resolve(await invocation.invoke(this, trace));
       } catch (e: unknown) {
         reject(e);
+      } finally {
+        trace.end();
       }
-
-      trace.end();
     });
   }
 
@@ -494,6 +494,7 @@ class RInvocation<A extends any[], R> {
     private id: string,
     private args: A,
     private store: IPromiseStore,
+    private retry: IRetry,
   ) {}
 
   async invoke(context: ResonateContext, trace: ITrace): Promise<R> {
@@ -512,19 +513,31 @@ class RInvocation<A extends any[], R> {
           undefined,
         );
 
-        while (isPendingPromise(p)) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+        let r = this.retry.next(context);
+
+        while (!r.done && isPendingPromise(p)) {
+          await new Promise((resolve) => setTimeout(resolve, r.delay));
+
+          const t = trace.start(`${context.id}:${context.attempt}`);
+          context.attempt++;
+
           p = await this.store.get(this.id);
+          r = this.retry.next(context);
+
+          t.end();
         }
 
-        if (isResolvedPromise(p)) {
+        if (isPendingPromise(p)) {
+          context.kill(new ResonateError(ErrorCodes.INVALID_STATE, "Promise not completed"));
+          return;
+        } else if (isResolvedPromise(p)) {
           resolve(decode(p.value, context.resonate.valueEncoder));
           return;
         } else {
           reject(decode(p.value, context.resonate.errorEncoder));
           return;
         }
-      } catch (e: unknown) {
+      } catch (e: any) {
         context.kill(ResonateError.fromError(e));
         return;
       }
@@ -556,6 +569,7 @@ class AInvocation<A extends any[], R> {
           resolve(await this.bucket.schedule(thunk, r.delay));
           return;
         } catch (e: unknown) {
+          context.counter = 0;
           context.attempt++;
           r = this.retry.next(context);
 
@@ -619,6 +633,7 @@ class GInvocation<A extends any[], R> {
           resolve(await g.value);
           return;
         } catch (e: unknown) {
+          context.counter = 0;
           context.attempt++;
           r = this.retry.next(context);
 
@@ -644,7 +659,7 @@ function encode<T>(
   try {
     return encoder.encode(value);
   } catch (e: unknown) {
-    throw new ResonateError("Encode error", ErrorCodes.ENCODER, e);
+    throw new ResonateError(ErrorCodes.ENCODER, "Encode error", e);
   }
 }
 
@@ -656,7 +671,7 @@ function decode<T>(
   try {
     return encoder.decode(value);
   } catch (e: unknown) {
-    throw new ResonateError("Decode error", ErrorCodes.ENCODER, e);
+    throw new ResonateError(ErrorCodes.ENCODER, "Decode error", e);
   }
 }
 
