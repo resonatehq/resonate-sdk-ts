@@ -136,7 +136,7 @@ export class RemotePromiseStore implements IPromiseStore {
       method: "PATCH",
       headers: reqHeaders,
       body: JSON.stringify({
-        state: "REJECTED_CANCELED", 
+        state: "REJECTED_CANCELED",
         value: {
           headers: headers,
           data: data ? this.encode(data) : undefined,
@@ -168,7 +168,7 @@ export class RemotePromiseStore implements IPromiseStore {
       method: "PATCH",
       headers: reqHeaders,
       body: JSON.stringify({
-        state: "RESOLVED", 
+        state: "RESOLVED",
         value: {
           headers: headers,
           data: data ? this.encode(data) : undefined,
@@ -200,7 +200,7 @@ export class RemotePromiseStore implements IPromiseStore {
       method: "PATCH",
       headers: reqHeaders,
       body: JSON.stringify({
-        state: "REJECTED", 
+        state: "REJECTED",
         value: {
           headers: headers,
           data: data ? this.encode(data) : undefined,
