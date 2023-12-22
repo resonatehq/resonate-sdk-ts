@@ -12,10 +12,12 @@ import { IPromiseStore } from "../store";
 import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
+import { ILogger } from "../logger";
 
 export class RemotePromiseStore implements IPromiseStore {
   constructor(
     private url: string,
+    private logger: ILogger,
     private encoder: IEncoder<string, string> = new Base64Encoder(),
   ) {}
 
@@ -32,23 +34,36 @@ export class RemotePromiseStore implements IPromiseStore {
         const r = await fetch(url, options);
         const body: unknown = await r.json();
 
+        this.logger.debug("store", {
+          req: {
+            method: options.method,
+            url: url,
+            headers: options.headers,
+            body: options.body,
+          },
+          res: {
+            status: r.status,
+            body: body,
+          },
+        });
+
         if (!r.ok) {
           switch (r.status) {
             case 400:
-              throw new ResonateError("Invalid request", ErrorCodes.PAYLOAD, body);
+              throw new ResonateError(ErrorCodes.PAYLOAD, "Invalid request", body);
             case 403:
-              throw new ResonateError("Forbidden request", ErrorCodes.FORBIDDEN, body);
+              throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request", body);
             case 404:
-              throw new ResonateError("Not found", ErrorCodes.NOT_FOUND, body);
+              throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found", body);
             case 409:
-              throw new ResonateError("Already exists", ErrorCodes.ALREADY_EXISTS, body);
+              throw new ResonateError(ErrorCodes.ALREADY_EXISTS, "Already exists", body);
             default:
-              throw new ResonateError("Server error", ErrorCodes.SERVER, body, true);
+              throw new ResonateError(ErrorCodes.SERVER, "Server error", body, true);
           }
         }
 
         if (!guard(body)) {
-          throw new ResonateError("Invalid response", ErrorCodes.PAYLOAD, body);
+          throw new ResonateError(ErrorCodes.PAYLOAD, "Invalid response", body);
         }
 
         return body;
@@ -83,10 +98,11 @@ export class RemotePromiseStore implements IPromiseStore {
       reqHeaders["Idempotency-Key"] = ikey;
     }
 
-    const promise = await this.call(`${this.url}/promises/${id}/create`, isDurablePromise, {
+    const promise = await this.call(`${this.url}/promises`, isDurablePromise, {
       method: "POST",
       headers: reqHeaders,
       body: JSON.stringify({
+        id: id,
         param: {
           headers: headers,
           data: data ? this.encode(data) : undefined,
@@ -116,10 +132,11 @@ export class RemotePromiseStore implements IPromiseStore {
       reqHeaders["Idempotency-Key"] = ikey;
     }
 
-    const promise = await this.call(`${this.url}/promises/${id}/cancel`, isCompletedPromise, {
-      method: "POST",
+    const promise = await this.call(`${this.url}/promises/${id}`, isCompletedPromise, {
+      method: "PATCH",
       headers: reqHeaders,
       body: JSON.stringify({
+        state: "REJECTED_CANCELED",
         value: {
           headers: headers,
           data: data ? this.encode(data) : undefined,
@@ -147,10 +164,11 @@ export class RemotePromiseStore implements IPromiseStore {
       reqHeaders["Idempotency-Key"] = ikey;
     }
 
-    const promise = await this.call(`${this.url}/promises/${id}/resolve`, isCompletedPromise, {
-      method: "POST",
+    const promise = await this.call(`${this.url}/promises/${id}`, isCompletedPromise, {
+      method: "PATCH",
       headers: reqHeaders,
       body: JSON.stringify({
+        state: "RESOLVED",
         value: {
           headers: headers,
           data: data ? this.encode(data) : undefined,
@@ -178,10 +196,11 @@ export class RemotePromiseStore implements IPromiseStore {
       reqHeaders["Idempotency-Key"] = ikey;
     }
 
-    const promise = await this.call(`${this.url}/promises/${id}/reject`, isCompletedPromise, {
-      method: "POST",
+    const promise = await this.call(`${this.url}/promises/${id}`, isCompletedPromise, {
+      method: "PATCH",
       headers: reqHeaders,
       body: JSON.stringify({
+        state: "REJECTED",
         value: {
           headers: headers,
           data: data ? this.encode(data) : undefined,
@@ -208,7 +227,7 @@ export class RemotePromiseStore implements IPromiseStore {
     try {
       return this.encoder.encode(value);
     } catch (e: unknown) {
-      throw new ResonateError("Encode error", ErrorCodes.ENCODER, e);
+      throw new ResonateError(ErrorCodes.ENCODER, "Encode error", e);
     }
   }
 
@@ -224,7 +243,7 @@ export class RemotePromiseStore implements IPromiseStore {
 
       return promise;
     } catch (e: unknown) {
-      throw new ResonateError("Decode error", ErrorCodes.ENCODER, e);
+      throw new ResonateError(ErrorCodes.ENCODER, "Decode error", e);
     }
   }
 }

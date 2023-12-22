@@ -60,7 +60,7 @@ export class IndexedDbStorage implements IStorage {
 
       request.onsuccess = () => {
         if (!isDurablePromise(request.result)) {
-          throw new ResonateError("Invalid response", ErrorCodes.PAYLOAD, request.result);
+          throw new ResonateError(ErrorCodes.INVALID_STATE, "Invalid promise");
         }
         const db = request.result;
         resolve(db);
