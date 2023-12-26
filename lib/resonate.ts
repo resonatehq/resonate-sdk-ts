@@ -41,8 +41,8 @@ function isG<A extends any[], R>(g: unknown): g is G<A, R> {
 
 type ResonateOpts = {
   url: string;
-  promiseStore: IPromiseStore;  
-  storage: IStorage;  
+  promiseStore: IPromiseStore;
+  storage: IStorage;
   logger: ILogger;
   timeout: number;
   retry: () => IRetry;
@@ -114,7 +114,7 @@ export class Resonate {
     } else {
       defaultStore = url ? new RemotePromiseStore(url, logger) : new LocalPromiseStore();
     }
-    
+
     this.addStore("default", defaultStore);
   }
 
