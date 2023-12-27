@@ -200,4 +200,11 @@ export class LocalPromiseStore implements IPromiseStore {
 
     throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
   }
+
+  async *search(
+    id: string,
+    state: string | undefined,
+    tags: Record<string, string> | undefined,
+    limit: number | undefined,
+  ): AsyncGenerator<DurablePromise[], void> {}
 }

@@ -40,6 +40,8 @@ function isG<A extends any[], R>(g: unknown): g is G<A, R> {
 
 type ResonateOpts = {
   url: string;
+  namespace: string;
+  seperator: string;
   logger: ILogger;
   timeout: number;
   retry: () => IRetry;
@@ -66,6 +68,17 @@ export class Resonate {
 
   readonly errorEncoder: DataEncoder;
 
+  readonly namespace: string;
+
+  readonly seperator: string;
+
+  // Dominik Temp
+
+  readonly locks : Record<string, boolean> = {};
+
+  // processes : { promise : Promise<>, Context }
+
+
   /**
    * Instantiate a new Resonate instance.
    *
@@ -78,12 +91,17 @@ export class Resonate {
    */
   constructor({
     url,
+    namespace = "",
+    seperator = "",
     logger = new Logger(),
     timeout = 10000,
     retry = () => ExponentialRetry.atLeastOnce(),
     bucket = new Bucket(),
     encoder = new JSONEncoder(),
   }: Partial<ResonateOpts> = {}) {
+    this.namespace = namespace;
+    this.seperator = seperator;
+
     this.logger = logger;
     this.defaultRetry = retry;
 
@@ -204,10 +222,16 @@ export class Resonate {
       throw new Error(`Function ${name} not registered`);
     }
 
+    const _id = this.createId(id);
+
+    if (!this.acquireLock(_id)) {
+      throw new Error(`Function ${name} already running with id ${id}`);
+    }
+
     const [args, opts] = splitArgs(argsWithOpts);
 
     const context = new ResonateContext(this, {
-      id: id,
+      id: _id,
       idempotencyKey: id,
       timeout: 10000,
       store: "default",
@@ -217,7 +241,10 @@ export class Resonate {
       ...opts,
     });
 
-    return context.execute(this.functions[name], args);
+    const run = context.execute(this.functions[name], args);
+    run.finally(() => { this.releaseLock(_id); });
+
+    return run;
   }
 
   /**
@@ -228,6 +255,46 @@ export class Resonate {
    */
   get(id: string, store: string = "default"): Promise<DurablePromise> {
     return this.store(store).get(id);
+  }
+
+  async start(store: string = "default") {
+    setTimeout(() => this.start(store), 1000);
+
+    const search = this.store(store).search(this.createId("*"), "pending", {
+      "resonate:invocation": "true"
+    });
+
+    for await(const promises of search) {
+      for(const promise of promises) {
+        const { func, args } = decode<{func: string, args: any[]}>(promise.param, this.paramEncoder);
+        this.run(func, promise.id, ...args, {
+          idempotencyKey: promise.idempotencyKeyForCreate,
+        });
+      }
+    }
+  }
+
+  private createId(id: string): string {
+    const parts = [id];
+
+    if (this.namespace !== "") {
+      parts.unshift(this.namespace);
+    }
+
+    return parts.join(this.seperator);
+  }
+
+  private acquireLock(id: string): boolean {
+    if (this.locks[id]) {
+      return false;
+    }
+
+    this.locks[id] = true;
+    return true;
+  }
+
+  private releaseLock(id: string) {
+    this.locks[id] = false;
   }
 }
 
@@ -284,6 +351,7 @@ export interface Context {
    */
   readonly children: Context[];
 
+
   /**
    * Invoke a function durably.
    *
@@ -333,6 +401,10 @@ class ResonateContext implements Context {
   private addChild(context: ResonateContext) {
     context.parent = this;
     this.children.push(context);
+  }
+
+  private get isRoot(): boolean {
+    return this.parent === undefined;
   }
 
   run<A extends any[], R>(func: DurableFunction<A, R> | string, ...argsWithOpts: WithOpts<A>): Promise<R> {
