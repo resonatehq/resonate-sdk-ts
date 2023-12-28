@@ -2,6 +2,12 @@ import { DurablePromise, isPendingPromise } from "./promise";
 
 export interface IStorage {
   rmw<P extends DurablePromise | undefined>(id: string, f: (promise: DurablePromise | undefined) => P): Promise<P>;
+  search(
+    id: string,
+    state: string | undefined,
+    tags: Record<string, string> | undefined,
+    limit: number | undefined,
+  ): AsyncGenerator<DurablePromise[], void>;
 }
 
 export class WithTimeout implements IStorage {
@@ -29,5 +35,15 @@ export class WithTimeout implements IStorage {
 
       return f(promise);
     });
+  }
+
+  // TODO
+  search(
+    id: string,
+    state: string | undefined,
+    tags: Record<string, string> | undefined,
+    limit: number | undefined,
+  ): AsyncGenerator<DurablePromise[], void, unknown> {
+    return this.storage.search(id, state, tags, limit);
   }
 }

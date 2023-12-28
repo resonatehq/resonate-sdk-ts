@@ -5,7 +5,7 @@ import {
   RejectedPromise,
   CanceledPromise,
   TimedoutPromise,
-  isDurablePromise
+  isDurablePromise,
 } from "./promise";
 
 export interface SearchPromiseParams {
@@ -21,11 +21,14 @@ export interface SearchPromiseResult {
 }
 
 export function isSearchPromiseResult(obj: any): obj is SearchPromiseResult {
-  return (obj !== undefined &&
+  return (
+    obj !== undefined &&
     obj.cursor !== undefined &&
     (obj.cursor === null || typeof obj.cursor === "string") &&
     obj.promises !== undefined &&
-    (Array.isArray(obj.promises) && obj.promises.every(isDurablePromise)));
+    Array.isArray(obj.promises) &&
+    obj.promises.every(isDurablePromise)
+  );
 }
 
 /**
@@ -123,5 +126,10 @@ export interface IPromiseStore {
    * @param tags Tags to match.
    * @returns A list of Durable Promises.
    */
-  search(id: string, state?: string, tags?: Record<string, string>, limit?: number): AsyncGenerator<DurablePromise[], void>;
+  search(
+    id: string,
+    state?: string,
+    tags?: Record<string, string>,
+    limit?: number,
+  ): AsyncGenerator<DurablePromise[], void>;
 }

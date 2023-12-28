@@ -232,7 +232,7 @@ export class RemotePromiseStore implements IPromiseStore {
     let cursor: string | null | undefined = undefined;
 
     while (cursor !== null) {
-      const params = new URLSearchParams({id});
+      const params = new URLSearchParams({ id });
 
       if (state !== undefined) {
         params.append("state", state);
@@ -262,7 +262,7 @@ export class RemotePromiseStore implements IPromiseStore {
       });
 
       cursor = res.cursor;
-      yield res.promises.map(p => this.decode(p));
+      yield res.promises.map((p) => this.decode(p));
     }
   }
 
