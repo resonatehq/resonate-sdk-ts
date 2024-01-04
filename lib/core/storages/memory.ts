@@ -24,22 +24,8 @@ export class MemoryStorage implements IStorage {
     tags: Record<string, string> | undefined,
     limit: number | undefined,
   ): AsyncGenerator<DurablePromise[], void> {
-    const regex = new RegExp(id.replaceAll("*", ".*"));
-
-    yield Object.values(this.promises).filter((p) => {
-      if (!regex.test(p.id)) {
-        return false;
-      }
-
-      if (state && p.state != state) {
-        return false;
-      }
-
-      if (tags) {
-        Object.entries(tags).every(([k, v]) => p.tags?.[k] == v);
-      }
-
-      return true;
-    });
+    // for now WithTimeout will implement
+    // search logic
+    yield Object.values(this.promises);
   }
 }
