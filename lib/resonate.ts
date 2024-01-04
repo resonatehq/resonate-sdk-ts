@@ -158,6 +158,15 @@ export class Resonate {
   }
 
   /**
+   * Add a param encoder. Param encoders are used to encode and decode params pass to Resonate functions.
+   *
+   * @param encoder
+   */
+  addParamEncoder(encoder: IEncoder<any, string>) {
+    this.paramEncoder.add(encoder);
+  }
+
+  /**
    * Add a value encoder. Value encoders are used to encode and decode values returned from Resonate functions.
    *
    * @param encoder
@@ -223,7 +232,7 @@ export class Resonate {
     const _id = this.createId(this.namespace, name, id);
 
     if (!this.acquireLock(_id)) {
-      throw new Error(`Function ${name} already running with id ${id}`);
+      throw new Error(`Function ${name} already running with id ${_id}`);
     }
 
     const [args, opts] = splitArgs(argsWithOpts);
@@ -273,7 +282,7 @@ export class Resonate {
             idempotencyKey: promise.idempotencyKeyForCreate,
           });
         } catch (e: unknown) {
-          // TODO
+          this.logger.warn(`Function ${func} with id ${promise.id} failed on the recovery path`, e);
         }
       }
     }
@@ -500,6 +509,9 @@ class LInvocation<A extends any[], R> {
         let data: string | undefined;
         let tags: Record<string, string> | undefined;
 
+        // encode the function and arguments if root context
+        // this information will be used to recover the invocation
+        // on the recovery path
         if (context.isRoot) {
           ({ headers, data } = encode({ func: this.func, args: this.args }, context.resonate.paramEncoder));
           tags = {
@@ -519,6 +531,14 @@ class LInvocation<A extends any[], R> {
 
         if (isPendingPromise(p)) {
           try {
+            // TODO
+            // decode the arguments from the promise
+            // if root context, this normalizes the information across
+            // the initial invocation and the recovery path
+            // if (context.isRoot) {
+            //   const { args } = decode<{ func: string; args: any[] }>(p.param, context.resonate.paramEncoder);
+            // }
+
             // invoke function
             const r = await this.invocation.invoke(context, trace);
 
