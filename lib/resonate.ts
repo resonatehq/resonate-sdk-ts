@@ -14,6 +14,7 @@ import { DataEncoder } from "./core/encoders/data";
 import { JSONEncoder } from "./core/encoders/json";
 import { ErrorEncoder } from "./core/encoders/error";
 import { ErrorCodes, ResonateError } from "./core/error";
+import { IStorage } from "./core/storage";
 
 // Types
 
@@ -42,6 +43,8 @@ type ResonateOpts = {
   url: string;
   namespace: string;
   seperator: string;
+  store: IPromiseStore;
+  storage: IStorage;
   logger: ILogger;
   timeout: number;
   retry: () => IRetry;
@@ -91,6 +94,8 @@ export class Resonate {
     url,
     namespace = "",
     seperator = "/",
+    store,
+    storage,
     logger = new Logger(),
     timeout = 10000,
     retry = () => ExponentialRetry.atLeastOnce(),
@@ -115,6 +120,18 @@ export class Resonate {
       store: "default",
       bucket: "default",
     };
+
+    // store
+    let defaultStore: IPromiseStore;
+    if (store) {
+      defaultStore = store;
+    } else if (storage) {
+      defaultStore = new LocalPromiseStore(storage);
+    } else {
+      defaultStore = url ? new RemotePromiseStore(url, logger) : new LocalPromiseStore();
+    }
+
+    this.addStore("default", defaultStore);
   }
 
   /**
