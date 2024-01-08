@@ -1,4 +1,4 @@
-import { jest, describe, beforeAll, afterAll, test } from "@jest/globals";
+import { jest, describe, beforeAll, afterAll } from "@jest/globals";
 import { Browser, launch, Page } from "puppeteer";
 
 let browser: Browser;
