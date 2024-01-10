@@ -32,14 +32,12 @@ export class LocalPromiseStore implements IPromiseStore {
   }
 
   private async handleSchedules() {
-    const now = Date.now();
-
     for (const schedule of this.schedules) {
-      const delay = Math.max(0, schedule.nextRunTime ? -Date.now() : 0);
+      const delay = Math.max(0, schedule.nextRunTime ? - Date.now() : 0);
 
       setTimeout(async () => {
         try {
-          const promise = await this.createPromiseFromSchedule(schedule);
+          await this.createPromiseFromSchedule(schedule);
           // Log or handle the created promise as needed
         } catch (error) {
           console.error("Error creating promise:", error);
