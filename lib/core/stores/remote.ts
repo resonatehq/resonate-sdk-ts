@@ -308,19 +308,15 @@ export class RemotePromiseStore implements IPromiseStore {
   }
 
   async getSchedule(id: string): Promise<Schedule> {
-    try {
-      const schedule = this.call(`${this.url}/schedules/${id}`, this.isSchedule, {
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        method: "GET",
-      });
+    const schedule = this.call(`${this.url}/schedules/${id}`, this.isSchedule, {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      method: "GET",
+    });
 
-      return schedule;
-    } catch (error) {
-      throw error;
-    }
+    return schedule;
   }
 
   async deleteSchedule(id: string): Promise<boolean> {
