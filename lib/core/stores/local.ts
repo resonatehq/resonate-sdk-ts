@@ -33,7 +33,7 @@ export class LocalPromiseStore implements IPromiseStore {
 
   private async handleSchedules() {
     for (const schedule of this.schedules) {
-      const delay = Math.max(0, schedule.nextRunTime ? - Date.now() : 0);
+      const delay = Math.max(0, schedule.nextRunTime ? -Date.now() : 0);
 
       setTimeout(async () => {
         try {
