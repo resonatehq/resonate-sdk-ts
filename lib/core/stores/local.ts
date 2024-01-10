@@ -10,6 +10,7 @@ import {
   isRejectedPromise,
   isCanceledPromise,
 } from "../promise";
+import { Schedule } from "../schedule";
 import { IPromiseStore } from "../store";
 import { ErrorCodes, ResonateError } from "../error";
 import { IStorage, WithTimeout } from "../storage";
@@ -17,9 +18,64 @@ import { MemoryStorage } from "../storages/memory";
 
 export class LocalPromiseStore implements IPromiseStore {
   private storage: IStorage;
+  private schedules: Schedule[] = [];
 
   constructor(storage: IStorage = new MemoryStorage()) {
     this.storage = new WithTimeout(storage);
+    this.startControlLoop();
+  }
+
+  private startControlLoop() {
+    setInterval(() => {
+      this.handleSchedules();
+    }, 1000); // Adjust the interval as needed
+  }
+
+  private async handleSchedules() {
+    const now = Date.now();
+
+    for (const schedule of this.schedules) {
+      const delay = Math.max(0, schedule.nextRunTime ? -Date.now() : 0);
+
+      setTimeout(async () => {
+        try {
+          const promise = await this.createPromiseFromSchedule(schedule);
+          // Log or handle the created promise as needed
+        } catch (error) {
+          console.error("Error creating promise:", error);
+        }
+      }, delay);
+    }
+  }
+
+  private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
+    return this.storage.rmw(schedule.id, (promise): DurablePromise | undefined => {
+      if (promise) {
+        // Handle existing promise based on schedule
+        // Update lastRunTime and nextRunTime in a transaction
+      } else {
+        // Create a new promise based on the schedule
+        const newPromise: DurablePromise = {
+          state: "PENDING",
+          id: schedule.promiseId,
+          timeout: schedule.promiseTimeout,
+          param: {
+            headers: schedule.promiseParam?.headers,
+            data: schedule.promiseParam?.data,
+          },
+          value: {
+            headers: undefined,
+            data: undefined,
+          },
+          createdOn: Date.now(),
+          completedOn: undefined,
+          idempotencyKeyForCreate: undefined,
+          idempotencyKeyForComplete: undefined,
+          tags: schedule.promiseTags,
+        };
+        return newPromise;
+      }
+    });
   }
 
   async create(
@@ -208,5 +264,92 @@ export class LocalPromiseStore implements IPromiseStore {
     limit: number | undefined,
   ): AsyncGenerator<DurablePromise[], void> {
     return this.storage.search(id, state, tags, limit);
+  }
+
+  async createSchedule(
+    id: string,
+    ikey: string | undefined,
+    description: string | undefined,
+    cron: string,
+    tags: Record<string, string> | undefined,
+    promiseId: string,
+    promiseTimeout: number,
+    promiseHeaders: Record<string, string>,
+    promiseData: string | undefined,
+    promiseTags: Record<string, string> | undefined,
+  ): Promise<Schedule> {
+    const schedule = {
+      id,
+      description,
+      cron,
+      tags,
+      promiseId,
+      promiseTimeout,
+      promiseParam: {
+        headers: promiseHeaders,
+        data: promiseData,
+      },
+      promiseTags,
+      lastRunTime: undefined,
+      nextRunTime: undefined,
+      idempotencyKey: ikey,
+      createdOn: Date.now(),
+    };
+
+    this.schedules.push(schedule);
+
+    return schedule;
+  }
+
+  async deleteSchedule(id: string): Promise<boolean> {
+    const index = this.schedules.findIndex((schedule) => schedule.id === id);
+
+    if (index !== -1) {
+      this.schedules.splice(index, 1);
+    }
+
+    return true;
+  }
+
+  async getSchedule(id: string): Promise<Schedule> {
+    const schedule = this.schedules.find((schedule) => schedule.id === id);
+
+    if (schedule) {
+      return schedule;
+    }
+
+    throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
+  }
+  async searchSchedules(
+    id: string,
+    tags?: Record<string, string>,
+    limit?: number,
+    cursor?: string | undefined,
+  ): Promise<{ cursor: string; schedules: Schedule[] }> {
+    let filteredSchedules = this.schedules.filter((schedule) => schedule.id === id);
+
+    if (tags) {
+      filteredSchedules = filteredSchedules.filter((schedule) =>
+        Object.entries(tags).every(([key, value]) => schedule.tags && schedule.tags[key] === value),
+      );
+    }
+
+    if (cursor !== undefined) {
+      const cursorIndex = filteredSchedules.findIndex((schedule) => schedule.id === cursor);
+      if (cursorIndex !== -1) {
+        filteredSchedules = filteredSchedules.slice(cursorIndex + 1);
+      }
+    }
+
+    if (limit !== undefined) {
+      filteredSchedules = filteredSchedules.slice(0, limit);
+    }
+
+    const nextCursor = filteredSchedules.length > 0 ? filteredSchedules[filteredSchedules.length - 1].id : null;
+
+    return {
+      cursor: nextCursor ?? "",
+      schedules: filteredSchedules,
+    };
   }
 }
