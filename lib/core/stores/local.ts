@@ -49,7 +49,7 @@ export class LocalPromiseStore implements IPromiseStore {
   private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
     return this.storage.rmw(schedule.id, (promise): DurablePromise | undefined => {
       if (promise) {
-        // Handle existing promise based on schedule
+        // TODO: Handle existing promise based on schedule
         // Update lastRunTime and nextRunTime in a transaction
       } else {
         // Create a new promise based on the schedule
