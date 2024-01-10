@@ -8,6 +8,8 @@ import {
   isDurablePromise,
 } from "./promise";
 
+import { Schedule } from "./schedule";
+
 export interface SearchPromiseParams {
   id: string;
   state?: string;
@@ -132,4 +134,61 @@ export interface IPromiseStore {
     tags?: Record<string, string>,
     limit?: number,
   ): AsyncGenerator<DurablePromise[], void>;
+
+  /**
+   * Creates a new schedule.
+   *
+   * @param id Unique identifier for the schedule.
+   * @param ikey Idempotency key associated with the create operation.
+   * @param description Description of the schedule.
+   * @param cron CRON expression defining the schedule's execution time.
+   * @param tags Key-value pairs associated with the schedule.
+   * @param promiseId Unique identifier for the associated promise.
+   * @param promiseTimeout Timeout for the associated promise in milliseconds.
+   * @param promiseHeaders Headers associated with the promise data.
+   * @param promiseData Encoded data for the promise of type string.
+   * @param promiseTags Key-value pairs associated with the promise.
+   * @returns A Promise resolving to the created schedule.
+   */
+  createSchedule(
+    id: string,
+    ikey: string | undefined,
+    description: string | undefined,
+    cron: string,
+    tags: Record<string, string> | undefined,
+    promiseId: string,
+    promiseTimeout: number,
+    promiseHeaders: Record<string, string> | undefined,
+    promiseData: string | undefined,
+    promiseTags: Record<string, string> | undefined,
+  ): Promise<Schedule>;
+
+  /**
+   * Retrieves a schedule based on its id.
+   *
+   * @param id Unique identifier for the promise to be retrieved.
+   * @returns A promise schedule that is pending, canceled, resolved, or rejected.
+   */
+  getSchedule(id: string): Promise<Schedule>;
+
+  /**
+   * Deletes a schedule based on its id.
+   * @param id Unique identifier for the promise to be deleted.
+   * @returns A promise schedule that is pending, canceled, resolved, or rejected.
+   */
+  deleteSchedule(id: string): Promise<boolean>;
+
+  /**
+   * Search for schedules.
+   *
+   * @param id Ids to match, can include wildcards.
+   * @param tags Tags to match.
+   * @returns A list of promise schedules.
+   */
+  searchSchedules(
+    id: string,
+    tags?: Record<string, string>,
+    limit?: number,
+    cursor?: string | undefined,
+  ): Promise<{ cursor: string; schedules: Schedule[] }>;
 }

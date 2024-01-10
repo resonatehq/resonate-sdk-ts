@@ -13,6 +13,7 @@ import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
 import { ILogger } from "../logger";
+import { Schedule } from "../schedule";
 
 export class RemotePromiseStore implements IPromiseStore {
   constructor(
@@ -266,6 +267,120 @@ export class RemotePromiseStore implements IPromiseStore {
     }
   }
 
+  async createSchedule(
+    id: string,
+    ikey: string | undefined,
+    description: string | undefined,
+    cron: string,
+    tags: Record<string, string> | undefined,
+    promiseId: string,
+    promiseTimeout: number,
+    promiseHeaders: Record<string, string> | undefined,
+    promiseData: string | undefined,
+    promiseTags: Record<string, string> | undefined,
+  ): Promise<Schedule> {
+    const reqHeaders: Record<string, string> = {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    };
+
+    if (ikey !== undefined) {
+      reqHeaders["Idempotency-Key"] = ikey;
+    }
+
+    const schedule = this.call(`${this.url}/schedules`, this.isSchedule, {
+      method: "POST",
+      headers: reqHeaders,
+      body: JSON.stringify({
+        id,
+        description,
+        cron,
+        tags,
+        promiseId,
+        promiseTimeout,
+        promiseHeaders,
+        promiseData: promiseData ? this.encode(promiseData) : undefined,
+        promiseTags,
+      }),
+    });
+
+    return schedule;
+  }
+
+  async getSchedule(id: string): Promise<Schedule> {
+    try {
+      const schedule = this.call(`${this.url}/schedules/${id}`, this.isSchedule, {
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        method: "GET",
+      });
+
+      return schedule;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async deleteSchedule(id: string): Promise<boolean> {
+    try {
+      await this.call(`${this.url}/schedules/${id}`, this.isDeletedResponse, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof ResonateError) {
+        // Schedule not found, consider it as successfully "deleted"
+        return true;
+      }
+      return false;
+    }
+  }
+
+  async searchSchedules(
+    id: string,
+    tags?: Record<string, string>,
+    limit?: number,
+    cursor?: string | undefined,
+  ): Promise<{ cursor: string; schedules: Schedule[] }> {
+    const params = new URLSearchParams({ id });
+
+    if (tags) {
+      for (const [k, v] of Object.entries(tags)) {
+        params.append(`tags[${k}]`, v);
+      }
+    }
+
+    if (limit !== undefined) {
+      params.append("limit", limit.toString());
+    }
+
+    if (cursor !== undefined) {
+      params.append("cursor", cursor);
+    }
+
+    const url = new URL(`${this.url}/schedules`);
+    url.search = params.toString();
+
+    const result = await this.call(url.toString(), this.isSearchSchedulesResp, {
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      method: "GET",
+    });
+
+    return {
+      cursor: result.cursor,
+      schedules: result.schedules.map((schedule: Schedule) => schedule),
+    };
+  }
+
   private encode(value: string): string {
     try {
       return this.encoder.encode(value);
@@ -288,5 +403,32 @@ export class RemotePromiseStore implements IPromiseStore {
     } catch (e: unknown) {
       throw new ResonateError(ErrorCodes.ENCODER, "Decode error", e);
     }
+  }
+
+  private isDeletedResponse(obj: any): obj is { deleted: boolean } {
+    return obj !== undefined && obj.deleted === true;
+  }
+
+  // Function to check if the response matches the Schedule type
+  private isSchedule(obj: any): obj is Schedule {
+    // You may need to adjust this based on the actual structure of your Schedule type
+    return (
+      obj !== undefined &&
+      typeof obj.id === "string" &&
+      typeof obj.cron === "string" &&
+      typeof obj.promiseId === "string" &&
+      typeof obj.promiseTimeout === "number"
+    );
+  }
+
+  private isSearchSchedulesResp(obj: any): obj is { cursor: string; schedules: Schedule[] } {
+    return (
+      obj !== undefined &&
+      obj.cursor !== undefined &&
+      (obj.cursor === null || typeof obj.cursor === "string") &&
+      obj.schedules !== undefined &&
+      Array.isArray(obj.schedules) &&
+      obj.schedules.every(this.isSchedule)
+    );
   }
 }
