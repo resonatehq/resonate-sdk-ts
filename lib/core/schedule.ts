@@ -5,15 +5,13 @@ export type Schedule = {
   tags?: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam?: PromiseValue;
+  promiseParam?: {
+    data?: string;
+    headers: Record<string, string>;
+  };
   promiseTags?: Record<string, string>;
   lastRunTime?: number;
   nextRunTime?: number;
   idempotencyKey?: string;
   createdOn?: number;
-};
-
-export type PromiseValue = {
-  data?: string;
-  headers: Record<string, string>;
 };
