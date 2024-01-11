@@ -1,3 +1,4 @@
+import * as cronParser from "cron-parser";
 import {
   DurablePromise,
   PendingPromise,
@@ -19,6 +20,7 @@ import { MemoryStorage } from "../storages/memory";
 export class LocalPromiseStore implements IPromiseStore {
   private storage: IStorage;
   private schedules: Schedule[] = [];
+  // schedules as IStorage
 
   constructor(storage: IStorage = new MemoryStorage()) {
     this.storage = new WithTimeout(storage);
@@ -289,7 +291,7 @@ export class LocalPromiseStore implements IPromiseStore {
       },
       promiseTags,
       lastRunTime: undefined,
-      nextRunTime: undefined,
+      nextRunTime: this.calculateNextRunTime(cron),
       idempotencyKey: ikey,
       createdOn: Date.now(),
     };
@@ -349,5 +351,15 @@ export class LocalPromiseStore implements IPromiseStore {
       cursor: nextCursor ?? "",
       schedules: filteredSchedules,
     };
+  }
+
+  private calculateNextRunTime(cron: string): number | undefined {
+    try {
+      const nextRunDate = cronParser.parseExpression(cron).next();
+      return nextRunDate.getTime();
+    } catch (error) {
+      console.error("Error calculating next run time:", error);
+      return undefined;
+    }
   }
 }
