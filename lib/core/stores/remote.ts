@@ -393,7 +393,8 @@ export class RemotePromiseStore implements IPromiseStore {
     }
   }
 
-  private isDeletedResponse(obj: any): obj is { deleted: boolean } {
-    return obj !== undefined && obj.deleted === true;
+  // any response from delete is true
+  private isDeletedResponse(_: any): _ is true {
+    return true;
   }
 }
