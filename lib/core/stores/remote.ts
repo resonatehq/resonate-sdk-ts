@@ -13,7 +13,7 @@ import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
 import { ILogger } from "../logger";
-import { Schedule } from "../schedule";
+import { Schedule, isSchedule } from "../schedule";
 
 export class RemotePromiseStore implements IPromiseStore {
   constructor(
@@ -288,7 +288,7 @@ export class RemotePromiseStore implements IPromiseStore {
       reqHeaders["Idempotency-Key"] = ikey;
     }
 
-    const schedule = this.call(`${this.url}/schedules`, this.isSchedule, {
+    const schedule = this.call(`${this.url}/schedules`, isSchedule, {
       method: "POST",
       headers: reqHeaders,
       body: JSON.stringify({
@@ -308,7 +308,7 @@ export class RemotePromiseStore implements IPromiseStore {
   }
 
   async getSchedule(id: string): Promise<Schedule> {
-    const schedule = this.call(`${this.url}/schedules/${id}`, this.isSchedule, {
+    const schedule = this.call(`${this.url}/schedules/${id}`, isSchedule, {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -397,18 +397,6 @@ export class RemotePromiseStore implements IPromiseStore {
     return obj !== undefined && obj.deleted === true;
   }
 
-  // Function to check if the response matches the Schedule type
-  private isSchedule(obj: any): obj is Schedule {
-    // You may need to adjust this based on the actual structure of your Schedule type
-    return (
-      obj !== undefined &&
-      typeof obj.id === "string" &&
-      typeof obj.cron === "string" &&
-      typeof obj.promiseId === "string" &&
-      typeof obj.promiseTimeout === "number"
-    );
-  }
-
   private isSearchSchedulesResp(obj: any): obj is { cursor: string; schedules: Schedule[] } {
     return (
       obj !== undefined &&
@@ -416,7 +404,7 @@ export class RemotePromiseStore implements IPromiseStore {
       (obj.cursor === null || typeof obj.cursor === "string") &&
       obj.schedules !== undefined &&
       Array.isArray(obj.schedules) &&
-      obj.schedules.every(this.isSchedule)
+      obj.schedules.every(isSchedule)
     );
   }
 }
