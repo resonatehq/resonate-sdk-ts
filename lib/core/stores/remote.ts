@@ -320,22 +320,14 @@ export class RemotePromiseStore implements IPromiseStore {
   }
 
   async deleteSchedule(id: string): Promise<boolean> {
-    try {
-      await this.call(`${this.url}/schedules/${id}`, this.isDeletedResponse, {
-        method: "DELETE",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-      });
-      return true;
-    } catch (error) {
-      if (error instanceof ResonateError) {
-        // Schedule not found, consider it as successfully "deleted"
-        return true;
-      }
-      return false;
-    }
+    await this.call(`${this.url}/schedules/${id}`, this.isDeletedResponse, {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+    });
+    return true;
   }
 
   async searchSchedules(
