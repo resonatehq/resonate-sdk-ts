@@ -8,7 +8,7 @@ import {
   isDurablePromise,
 } from "./promise";
 
-import { Schedule } from "./schedule";
+import { Schedule, isSchedule } from "./schedule";
 
 export interface SearchPromiseParams {
   id: string;
@@ -30,6 +30,17 @@ export function isSearchPromiseResult(obj: any): obj is SearchPromiseResult {
     obj.promises !== undefined &&
     Array.isArray(obj.promises) &&
     obj.promises.every(isDurablePromise)
+  );
+}
+
+export function isSearchSchedulesResp(obj: any): obj is { cursor: string; schedules: Schedule[] } {
+  return (
+    obj !== undefined &&
+    obj.cursor !== undefined &&
+    (obj.cursor === null || typeof obj.cursor === "string") &&
+    obj.schedules !== undefined &&
+    Array.isArray(obj.schedules) &&
+    obj.schedules.every(isSchedule)
   );
 }
 

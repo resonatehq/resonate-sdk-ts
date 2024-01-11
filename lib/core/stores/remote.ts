@@ -8,7 +8,7 @@ import {
   isDurablePromise,
   isCompletedPromise,
 } from "../promise";
-import { IPromiseStore, isSearchPromiseResult } from "../store";
+import { IPromiseStore, isSearchPromiseResult, isSearchSchedulesResp } from "../store";
 import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
@@ -355,7 +355,7 @@ export class RemotePromiseStore implements IPromiseStore {
     const url = new URL(`${this.url}/schedules`);
     url.search = params.toString();
 
-    const result = await this.call(url.toString(), this.isSearchSchedulesResp, {
+    const result = await this.call(url.toString(), isSearchSchedulesResp, {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -395,16 +395,5 @@ export class RemotePromiseStore implements IPromiseStore {
 
   private isDeletedResponse(obj: any): obj is { deleted: boolean } {
     return obj !== undefined && obj.deleted === true;
-  }
-
-  private isSearchSchedulesResp(obj: any): obj is { cursor: string; schedules: Schedule[] } {
-    return (
-      obj !== undefined &&
-      obj.cursor !== undefined &&
-      (obj.cursor === null || typeof obj.cursor === "string") &&
-      obj.schedules !== undefined &&
-      Array.isArray(obj.schedules) &&
-      obj.schedules.every(isSchedule)
-    );
   }
 }
