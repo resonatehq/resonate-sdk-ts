@@ -353,12 +353,28 @@ export class LocalPromiseStore implements IPromiseStore {
     };
   }
 
+  private parseCronExpression(cron: string): Date {
+    try {
+      return cronParser.parseExpression(cron).next().toDate();
+    } catch (error) {
+      throw new Error(`Error parsing cron expression: ${error}`);
+    }
+  }
+
+  private validateNextRunTime(nextRunDate: Date): number {
+    const nextRunTime = nextRunDate.getTime();
+    if (isNaN(nextRunTime)) {
+      throw new Error("Invalid next run time");
+    }
+    return nextRunTime;
+  }
+
   private calculateNextRunTime(cron: string): number | undefined {
     try {
-      const nextRunDate = cronParser.parseExpression(cron).next();
-      return nextRunDate.getTime();
+      const nextRunDate = this.parseCronExpression(cron);
+      return this.validateNextRunTime(nextRunDate);
     } catch (error) {
-      console.error("Error calculating next run time:", error);
+      console.error(error);
       return undefined;
     }
   }
