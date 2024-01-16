@@ -16,7 +16,7 @@ export class LinearRetry extends IterableRetry implements IRetry {
 
     return {
       done: false,
-      delay: this.delay,
+      delay: ctx.attempt === 0 ? 0 : this.delay,
     };
   }
 }
