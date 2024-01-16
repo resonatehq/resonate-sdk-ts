@@ -1,4 +1,4 @@
-import { ILock } from '../lock';
+import { ILock } from "../lock";
 
 export class LocalLock implements ILock {
   private locks: Record<string, { pid: string }> = {};

@@ -21,13 +21,9 @@ import { Cache } from "./core/caches/cache";
 type F<A extends any[], R> = (c: Context, ...a: A) => R;
 type G<A extends any[], R> = (c: Context, ...a: A) => Generator<Promise<any>, R, any>;
 
-type DurableFunction<A extends any[], R> =
-  | G<A, R>
-  | F<A, R>;
+type DurableFunction<A extends any[], R> = G<A, R> | F<A, R>;
 
-type Invocation<A extends any[], R> =
-  | AInvocation<A, R>
-  | GInvocation<A, R>;
+type Invocation<A extends any[], R> = AInvocation<A, R> | GInvocation<A, R>;
 
 function isF<A extends any[], R>(f: unknown): f is F<A, R> {
   return (
@@ -54,7 +50,7 @@ type ResonateOpts = {
 };
 
 export class Resonate {
-  private functions: Record<string, { func: DurableFunction<any, any>, opts: Opts }> = {};
+  private functions: Record<string, { func: DurableFunction<any, any>; opts: Opts }> = {};
 
   private cache: ICache<Promise<any>> = new Cache();
 
@@ -243,11 +239,10 @@ export class Resonate {
 
     if (!this.cache.has(id)) {
       const promise = new Promise(async (resolve, reject) => {
-
         // lock
-        while(!lock.tryAcquire(id, this.pid)) {
+        while (!lock.tryAcquire(id, this.pid)) {
           // sleep
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, 1000));
         }
 
         const context = new ResonateContext(this, name, id, idempotencyKey, opts);
@@ -367,8 +362,8 @@ export interface Context {
    */
   run<A extends any[], R>(func: DurableFunction<A, R>, ...args: A): Promise<R>;
   run<A extends any[], R>(func: DurableFunction<A, R>, ...args: [...A, Partial<Opts>]): Promise<R>;
-  run<A extends any[], R>(func: string, args: any): Promise<R>;
-  run<A extends any[], R>(func: string, args: any, opts: Partial<Opts>): Promise<R>;
+  run<R>(func: string, args: any): Promise<R>;
+  run<R>(func: string, args: any, opts: Partial<Opts>): Promise<R>;
   run<A extends any[], R>(func: DurableFunction<A, R> | string, ...args: [...A, Partial<Opts>?]): Promise<R>;
 }
 
@@ -410,7 +405,7 @@ class ResonateContext implements Context {
     return Math.min(this.created + this.opts.timeout, this.parent?.timeout ?? Infinity);
   }
 
-  startTrace(id: string, i: number = this.traces.length-1): ITrace {
+  startTrace(id: string, i: number = this.traces.length - 1): ITrace {
     const trace = this.traces[i]?.start(id) ?? this.parent?.startTrace(id, 0) ?? this.resonate.logger.startTrace(id);
     this.traces.unshift(trace);
 
@@ -428,8 +423,8 @@ class ResonateContext implements Context {
 
   run<A extends any[], R>(func: DurableFunction<A, R>, ...args: A): Promise<R>;
   run<A extends any[], R>(func: DurableFunction<A, R>, ...args: [...A, Partial<Opts>]): Promise<R>;
-  run<A extends any[], R>(func: string, args: any): Promise<R>;
-  run<A extends any[], R>(func: string, args: any, opts: Partial<Opts>): Promise<R>;
+  run<R>(func: string, args: any): Promise<R>;
+  run<R>(func: string, args: any, opts: Partial<Opts>): Promise<R>;
   run<A extends any[], R>(func: DurableFunction<A, R> | string, ...argsAndOpts: [...A, Partial<Opts>?]): Promise<R> {
     const { args, opts } = split(func, argsAndOpts, this.opts);
 
@@ -491,20 +486,16 @@ class ResonateContext implements Context {
     });
   }
 
-  private async *localExecution<A extends any[], R>(func: string, args: A, invocation: Invocation<A, R>): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
+  private async *localExecution<A extends any[], R>(
+    func: string,
+    args: A,
+    invocation: Invocation<A, R>,
+  ): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
     const data = this.isRoot ? this.opts.encoder.encode({ func, args }) : undefined;
     const tags = this.isRoot ? { "resonate:invocation": "true" } : undefined;
 
     // create durable promise
-    const promise = yield this.store.create(
-      this.id,
-      this.idempotencyKey,
-      false,
-      undefined,
-      data,
-      this.timeout,
-      tags,
-    );;
+    const promise = yield this.store.create(this.id, this.idempotencyKey, false, undefined, data, this.timeout, tags);
 
     if (isPendingPromise(promise)) {
       try {
@@ -533,19 +524,14 @@ class ResonateContext implements Context {
     return promise;
   }
 
-  private async *remoteExecution(func: string, args: any): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
+  private async *remoteExecution(
+    func: string,
+    args: any,
+  ): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
     const data = this.opts.encoder.encode(args);
 
     // create durable promise
-    let promise = yield this.store.create(
-      func,
-      this.idempotencyKey,
-      false,
-      undefined,
-      data,
-      this.timeout,
-      undefined,
-    );
+    let promise = yield this.store.create(func, this.idempotencyKey, false, undefined, data, this.timeout, undefined);
 
     while (isPendingPromise(promise) && Date.now() < this.timeout) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -653,7 +639,11 @@ class GInvocation<A extends any[], R> {
 
 // Utils
 
-function split<A extends any[], R>(func: DurableFunction<A, R> | string, args: [...A, Partial<Opts>?], defaults: Opts): { args: A; opts: Opts; } {
+function split<A extends any[], R>(
+  func: DurableFunction<A, R> | string,
+  args: [...A, Partial<Opts>?],
+  defaults: Opts,
+): { args: A; opts: Opts } {
   const len = typeof func === "string" ? 1 : func.length - 1;
   const opts = args.length > len ? { ...defaults, ...args.pop() } : defaults;
 

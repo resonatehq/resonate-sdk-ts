@@ -1,17 +1,17 @@
 import { Context } from "../resonate";
 
 export interface IRetry {
-  next(ctx: Context): { done: boolean; delay?: number; };
+  next(ctx: Context): { done: boolean; delay?: number };
   iterator(ctx: Context): IterableIterator<number>;
 }
 
 export class IterableRetry implements IRetry {
-  next(ctx: Context): { done: boolean; delay?: number; } {
+  next(ctx: Context): { done: boolean; delay?: number } {
     throw new Error("Method not implemented");
   }
 
   iterator(ctx: Context): IterableIterator<number> {
-    let self = this;
+    const self = this; // eslint-disable-line @typescript-eslint/no-this-alias
 
     return {
       next() {
@@ -20,7 +20,7 @@ export class IterableRetry implements IRetry {
       },
       [Symbol.iterator]() {
         return this;
-      }
+      },
     };
   }
 }
