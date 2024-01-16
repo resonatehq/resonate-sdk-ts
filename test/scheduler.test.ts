@@ -1,5 +1,4 @@
 import { LocalPromiseStore } from "../lib/core/stores/local";
-import { Schedule } from "../lib/core/schedule";
 import { MemoryStorage } from "../lib/core/storages/memory";
 import { describe, beforeEach, test, expect } from "@jest/globals";
 
