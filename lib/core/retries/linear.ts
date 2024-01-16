@@ -1,14 +1,16 @@
 import { Context } from "../../resonate";
-import { IRetry } from "../retry";
+import { IRetry, IterableRetry } from "../retry";
 
-export class LinearRetry implements IRetry {
+export class LinearRetry extends IterableRetry implements IRetry {
   constructor(
     private delay: number,
     private maxAttempts: number = Infinity,
-  ) {}
+  ) {
+    super();
+  }
 
-  next(context: Context): { done: boolean; delay?: number } {
-    if (Date.now() >= context.timeout || context.attempt >= this.maxAttempts) {
+  next(ctx: Context): { done: boolean; delay?: number } {
+    if (Date.now() >= ctx.timeout || ctx.attempt >= this.maxAttempts) {
       return { done: true };
     }
 

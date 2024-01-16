@@ -1,4 +1,9 @@
-export type DurablePromise = PendingPromise | ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise;
+export type DurablePromise =
+  | PendingPromise
+  | ResolvedPromise
+  | RejectedPromise
+  | CanceledPromise
+  | TimedoutPromise;
 
 export type PendingPromise = {
   state: "PENDING";
