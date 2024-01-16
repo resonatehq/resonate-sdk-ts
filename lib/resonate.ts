@@ -240,7 +240,7 @@ export class Resonate {
     if (!this.cache.has(id)) {
       const promise = new Promise(async (resolve, reject) => {
         // lock
-        while (!lock.tryAcquire(id, this.pid)) {
+        while (!lock.tryAcquire(id, this.pid, name)) {
           // sleep
           await new Promise((r) => setTimeout(r, 1000));
         }
@@ -252,7 +252,7 @@ export class Resonate {
         } catch (e) {
           reject(e);
         } finally {
-          lock.release(id);
+          lock.release(id, name);
         }
       });
 

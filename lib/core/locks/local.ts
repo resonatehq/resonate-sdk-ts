@@ -1,12 +1,12 @@
 import { ILock } from "../lock";
 
 export class LocalLock implements ILock {
-  private locks: Record<string, { pid: string }> = {};
+  private locks: Record<string, { pid: string; eid: string }> = {};
 
-  tryAcquire(id: string, pid: string): boolean {
-    if (!this.locks[id]) {
+  tryAcquire(id: string, pid: string, eid: string): boolean {
+    if (!this.locks[id] || (this.locks[id] && this.locks[id].eid === eid)) {
       // Lock is available, acquire it
-      this.locks[id] = { pid };
+      this.locks[id] = { pid, eid };
       return true;
     } else {
       // Lock is already acquired
@@ -14,8 +14,8 @@ export class LocalLock implements ILock {
     }
   }
 
-  release(id: string): void {
-    if (this.locks[id]) {
+  release(id: string, eid: string): void {
+    if (this.locks[id] && this.locks[id].eid === eid) {
       // Release the lock
       delete this.locks[id];
     } else {
