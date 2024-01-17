@@ -39,4 +39,13 @@ export class MemoryStorage implements IStorage {
       throw new Error(`Invalid type ${type}`);
     }
   }
+
+  async deleteSchedule(id: string): Promise<boolean> {
+    try {
+      delete this.schedules[id];
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
 }

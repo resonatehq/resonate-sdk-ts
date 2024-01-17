@@ -13,6 +13,7 @@ export interface IStorage {
     tags: Record<string, string> | undefined,
     limit: number | undefined,
   ): AsyncGenerator<(DurablePromise | Schedule)[], void>;
+  deleteSchedule(id: string): Promise<boolean>;
 }
 
 export class WithTimeout implements IStorage {
@@ -58,6 +59,10 @@ export class WithTimeout implements IStorage {
           .filter((promise) => tagEntries.every(([k, v]) => promise.tags?.[k] == v));
       }
     }
+  }
+
+  deleteSchedule(id: string): Promise<boolean> {
+    return this.storage.deleteSchedule(id);
   }
 }
 

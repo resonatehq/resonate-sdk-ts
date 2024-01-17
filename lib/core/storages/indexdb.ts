@@ -67,6 +67,11 @@ export class IndexedDbStorage implements IStorage {
     yield this.getAllPromises(objectStore);
   }
 
+  async deleteSchedule(id: string): Promise<boolean> {
+    // TODO: To be implemented
+    return true;
+  }
+
   private async getDb(): Promise<IDBDatabase> {
     return new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(this.dbName, 1);

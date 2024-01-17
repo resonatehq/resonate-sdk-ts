@@ -313,7 +313,7 @@ export class LocalPromiseStore implements IPromiseStore {
   }
 
   async deleteSchedule(id: string): Promise<boolean> {
-    return true;
+    return this.storage.deleteSchedule(id);
   }
 
   async getSchedule(id: string): Promise<Schedule> {
