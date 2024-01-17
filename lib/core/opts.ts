@@ -41,4 +41,9 @@ export type Opts = {
    * Overrides the default encoder.
    */
   encoder: IEncoder<unknown, string | undefined>;
+
+  /**
+   * Overrides the default execution id.
+   */
+  eid: string;
 };

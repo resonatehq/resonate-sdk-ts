@@ -196,6 +196,7 @@ export class Resonate {
         lock: "default",
         retry: ExponentialRetry.atLeastOnce(),
         encoder: new JSONEncoder(),
+        eid: name,
         ...opts,
       },
     };
@@ -240,7 +241,7 @@ export class Resonate {
     if (!this.cache.has(id)) {
       const promise = new Promise(async (resolve, reject) => {
         // lock
-        while (!lock.tryAcquire(id, this.pid, name)) {
+        while (!lock.tryAcquire(id, this.pid, opts.eid)) {
           // sleep
           await new Promise((r) => setTimeout(r, 1000));
         }
@@ -252,7 +253,7 @@ export class Resonate {
         } catch (e) {
           reject(e);
         } finally {
-          lock.release(id, name);
+          lock.release(id, opts.eid);
         }
       });
 
@@ -275,13 +276,15 @@ export class Resonate {
   async start(store: string = "default") {
     setTimeout(() => this.start(store), 1000);
 
+    const encoder = new JSONEncoder();
+
     const search = this.store(store).search(this.id(this.namespace, "*"), "pending", {
       "resonate:invocation": "true",
     });
 
     for await (const promises of search) {
       for (const promise of promises) {
-        const { func, args } = JSON.parse(promise.param.data ?? "{}");
+        const { func, args } = encoder.decode(promise.value.data) as { func: string; args: any[] };
 
         try {
           this.run(func, promise.id, ...args, {
@@ -447,7 +450,7 @@ class ResonateContext implements Context {
       let generator: AsyncGenerator<DurablePromise, DurablePromise, DurablePromise>;
 
       if (typeof func === "string") {
-        generator = this.remoteExecution(func, args);
+        generator = this.remoteExecution(func, args[0]);
       } else if (isF<A, R>(func)) {
         generator = this.localExecution(this.name, args, new AInvocation(func, this.bucket));
       } else if (isG<A, R>(func)) {
@@ -533,7 +536,7 @@ class ResonateContext implements Context {
     // create durable promise
     let promise = yield this.store.create(func, this.idempotencyKey, false, undefined, data, this.timeout, undefined);
 
-    while (isPendingPromise(promise) && Date.now() < this.timeout) {
+    while (isPendingPromise(promise)) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       try {

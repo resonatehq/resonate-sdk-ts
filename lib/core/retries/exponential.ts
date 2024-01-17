@@ -25,15 +25,20 @@ export class ExponentialRetry extends IterableRetry implements IRetry {
   }
 
   next(ctx: Context): { done: boolean; delay?: number } {
-    if (Date.now() >= ctx.timeout || ctx.attempt >= this.maxAttempts) {
+    // attempt 0: 0ms delay
+    // attampt n: {initial * factor^(attempt-1)}ms delay (or max delay)
+    const delay = Math.min(
+      Math.min(ctx.attempt, 1) * this.initialDelay * Math.pow(this.backoffFactor, ctx.attempt - 1),
+      this.maxDelay,
+    );
+
+    if (Date.now() + delay >= ctx.timeout || ctx.attempt >= this.maxAttempts) {
       return { done: true };
     }
 
-    const delay = Math.min(ctx.attempt, 1) * this.initialDelay * Math.pow(this.backoffFactor, ctx.attempt - 1);
-
     return {
       done: false,
-      delay: Math.min(delay, this.maxDelay),
+      delay: delay,
     };
   }
 }
