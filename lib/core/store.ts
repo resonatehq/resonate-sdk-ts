@@ -33,7 +33,7 @@ export function isSearchPromiseResult(obj: any): obj is SearchPromiseResult {
   );
 }
 
-export function isSearchSchedulesResp(obj: any): obj is { cursor: string; schedules: Schedule[] } {
+export function isSearchSchedulesResult(obj: any): obj is { cursor: string; schedules: Schedule[] } {
   return (
     obj !== undefined &&
     obj.cursor !== undefined &&

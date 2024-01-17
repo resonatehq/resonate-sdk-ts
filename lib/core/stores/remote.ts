@@ -8,7 +8,7 @@ import {
   isDurablePromise,
   isCompletedPromise,
 } from "../promise";
-import { IPromiseStore, isSearchPromiseResult, isSearchSchedulesResp } from "../store";
+import { IPromiseStore, isSearchPromiseResult, isSearchSchedulesResult } from "../store";
 import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
@@ -355,7 +355,7 @@ export class RemotePromiseStore implements IPromiseStore {
     const url = new URL(`${this.url}/schedules`);
     url.search = params.toString();
 
-    const result = await this.call(url.toString(), isSearchSchedulesResp, {
+    const result = await this.call(url.toString(), isSearchSchedulesResult, {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -394,7 +394,7 @@ export class RemotePromiseStore implements IPromiseStore {
   }
 
   // any response from delete is true
-  private isDeletedResponse(_: any): _ is true {
+  private isDeletedResponse(_: any): _ is any {
     return true;
   }
 }
