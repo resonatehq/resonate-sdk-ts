@@ -25,7 +25,7 @@ describe("Lock", () => {
   r1.register("write", write);
   r2.register("write", write);
 
-  test("I have no idea", async () => {
+  test("Lock guards shared resource", async () => {
     r1.run("write", "id", "a", false, { eid: "a" });
     const p2 = r2.run("write", "id", "b", true, { eid: "b" });
 
