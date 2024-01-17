@@ -1,5 +1,5 @@
 import { IStorage } from "../storage";
-import { DurablePromise, isDurablePromise } from "../promise";
+import { DurablePromise } from "../promise";
 import { Schedule } from "../schedule";
 
 export class MemoryStorage implements IStorage {

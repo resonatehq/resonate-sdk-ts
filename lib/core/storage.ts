@@ -1,6 +1,5 @@
-import { ErrorCodes, ResonateError } from "./error";
 import { DurablePromise, TimedoutPromise, isDurablePromise, isPendingPromise } from "./promise";
-import { Schedule, isSchedule } from "./schedule";
+import { Schedule } from "./schedule";
 
 export interface IStorage {
   rmw<P extends DurablePromise | Schedule | undefined>(

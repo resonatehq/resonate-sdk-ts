@@ -74,7 +74,7 @@ describe("LocalPromiseStore", () => {
     expect(isDeleted).toBe(true);
 
     // search for the schedule again
-    const searchResults2 = await promiseStore.getSchedule(scheduleId);
+    // const searchResults2 = await promiseStore.getSchedule(scheduleId);
     // expect(searchResults2).toBeUndefined();
   });
 
