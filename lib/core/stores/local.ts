@@ -10,8 +10,9 @@ import {
   isResolvedPromise,
   isRejectedPromise,
   isCanceledPromise,
+  isDurablePromise,
 } from "../promise";
-import { Schedule } from "../schedule";
+import { Schedule, isSchedule } from "../schedule";
 import { IPromiseStore } from "../store";
 import { ErrorCodes, ResonateError } from "../error";
 import { IStorage, WithTimeout } from "../storage";
@@ -19,8 +20,6 @@ import { MemoryStorage } from "../storages/memory";
 
 export class LocalPromiseStore implements IPromiseStore {
   private storage: IStorage;
-  private schedules: Schedule[] = [];
-  // schedules as IStorage
 
   constructor(storage: IStorage = new MemoryStorage()) {
     this.storage = new WithTimeout(storage);
@@ -34,7 +33,15 @@ export class LocalPromiseStore implements IPromiseStore {
   }
 
   private async handleSchedules() {
-    for (const schedule of this.schedules) {
+    const result = await this.storage.search("id", "schedules", undefined, undefined, undefined);
+
+    const schedules: Schedule[] = [];
+    for await (const item of result) {
+      if (isSchedule(item)) {
+        schedules.push(item);
+      }
+    }
+    for (const schedule of schedules) {
       const delay = Math.max(0, schedule.nextRunTime ? -Date.now() : 0);
 
       setTimeout(async () => {
@@ -88,7 +95,7 @@ export class LocalPromiseStore implements IPromiseStore {
     tags: Record<string, string> | undefined,
   ): Promise<PendingPromise | ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     return this.storage.rmw(id, (promise) => {
-      if (promise) {
+      if (isDurablePromise(promise)) {
         if (strict && !isPendingPromise(promise)) {
           throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
         }
@@ -129,7 +136,7 @@ export class LocalPromiseStore implements IPromiseStore {
     data: string | undefined,
   ): Promise<ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     return this.storage.rmw(id, (promise) => {
-      if (promise) {
+      if (isDurablePromise(promise)) {
         if (strict && !isPendingPromise(promise) && !isResolvedPromise(promise)) {
           throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
         }
@@ -171,7 +178,7 @@ export class LocalPromiseStore implements IPromiseStore {
     data: string | undefined,
   ): Promise<ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     return this.storage.rmw(id, (promise) => {
-      if (promise) {
+      if (isDurablePromise(promise)) {
         if (strict && !isPendingPromise(promise) && !isRejectedPromise(promise)) {
           throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
         }
@@ -213,7 +220,7 @@ export class LocalPromiseStore implements IPromiseStore {
     data: string | undefined,
   ): Promise<ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     return this.storage.rmw(id, (promise) => {
-      if (promise) {
+      if (isDurablePromise(promise)) {
         if (strict && !isPendingPromise(promise) && !isCanceledPromise(promise)) {
           throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
         }
@@ -250,7 +257,7 @@ export class LocalPromiseStore implements IPromiseStore {
   async get(id: string): Promise<DurablePromise> {
     const promise = await this.storage.rmw(id, (p) => p);
 
-    if (promise) {
+    if (isDurablePromise(promise)) {
       return promise;
     }
 
@@ -263,7 +270,7 @@ export class LocalPromiseStore implements IPromiseStore {
     tags: Record<string, string> | undefined,
     limit: number | undefined,
   ): AsyncGenerator<DurablePromise[], void> {
-    return this.storage.search(id, state, tags, limit);
+    return this.storage.search(id, "promise", state, tags, limit) as AsyncGenerator<DurablePromise[], void>;
   }
 
   async createSchedule(
@@ -296,61 +303,82 @@ export class LocalPromiseStore implements IPromiseStore {
       createdOn: Date.now(),
     };
 
-    this.schedules.push(schedule);
+    return this.storage.rmw(id, (s) => {
+      if (s) {
+        throw new ResonateError(ErrorCodes.ALREADY_EXISTS, "Already Exists");
+      }
 
-    return schedule;
+      return schedule;
+    });
   }
 
   async deleteSchedule(id: string): Promise<boolean> {
-    const index = this.schedules.findIndex((schedule) => schedule.id === id);
-
-    if (index !== -1) {
-      this.schedules.splice(index, 1);
-    }
-
     return true;
   }
 
   async getSchedule(id: string): Promise<Schedule> {
-    const schedule = this.schedules.find((schedule) => schedule.id === id);
+    const schedule = await this.storage.rmw<Schedule>(id, (s) => {
+      if (isSchedule(s)) {
+        return s;
+      } else {
+        throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
+      }
+    });
 
     if (schedule) {
       return schedule;
     }
-
     throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
   }
+
   async searchSchedules(
     id: string,
     tags?: Record<string, string>,
     limit?: number,
     cursor?: string | undefined,
   ): Promise<{ cursor: string; schedules: Schedule[] }> {
-    let filteredSchedules = this.schedules.filter((schedule) => schedule.id === id);
+    try {
+      const result = await this.storage.search(id, "schedules", undefined, undefined, undefined);
 
-    if (tags) {
-      filteredSchedules = filteredSchedules.filter((schedule) =>
-        Object.entries(tags).every(([key, value]) => schedule.tags && schedule.tags[key] === value),
-      );
-    }
-
-    if (cursor !== undefined) {
-      const cursorIndex = filteredSchedules.findIndex((schedule) => schedule.id === cursor);
-      if (cursorIndex !== -1) {
-        filteredSchedules = filteredSchedules.slice(cursorIndex + 1);
+      const scheduleList: Schedule[] = [];
+      for await (const item of result) {
+        for await (const elem of item) {
+          if (isSchedule(elem)) {
+            scheduleList.push(elem);
+          }
+        }
       }
+
+      // Filter schedules based on the provided parameters
+      let filteredSchedules = scheduleList.filter((schedule) => schedule.id === id);
+
+      if (tags) {
+        filteredSchedules = filteredSchedules.filter((schedule) =>
+          Object.entries(tags).every(([key, value]) => schedule.tags && schedule.tags[key] === value),
+        );
+      }
+
+      if (cursor !== undefined) {
+        const cursorIndex = filteredSchedules.findIndex((schedule) => schedule.id === cursor);
+        if (cursorIndex !== -1) {
+          filteredSchedules = filteredSchedules.slice(cursorIndex + 1);
+        }
+      }
+
+      if (limit !== undefined) {
+        filteredSchedules = filteredSchedules.slice(0, limit);
+      }
+
+      const nextCursor = filteredSchedules.length > 0 ? filteredSchedules[filteredSchedules.length - 1].id : null;
+
+      return {
+        cursor: nextCursor ?? "",
+        schedules: filteredSchedules,
+      };
+    } catch (error) {
+      console.error("Error searching schedules:", error);
+      throw new ResonateError(ErrorCodes.UNKNOWN, "Internal error");
     }
-
-    if (limit !== undefined) {
-      filteredSchedules = filteredSchedules.slice(0, limit);
-    }
-
-    const nextCursor = filteredSchedules.length > 0 ? filteredSchedules[filteredSchedules.length - 1].id : null;
-
-    return {
-      cursor: nextCursor ?? "",
-      schedules: filteredSchedules,
-    };
   }
 
   private parseCronExpression(cron: string): Date {

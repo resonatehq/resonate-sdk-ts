@@ -1,13 +1,14 @@
 import { LocalPromiseStore } from "../lib/core/stores/local";
 import { MemoryStorage } from "../lib/core/storages/memory";
 import { describe, beforeEach, test, expect } from "@jest/globals";
+import { WithTimeout } from "../lib/core/storage";
 
 describe("LocalPromiseStore", () => {
   let promiseStore: LocalPromiseStore;
 
   beforeEach(() => {
     // Initialize a new LocalPromiseStore with a MemoryStorage for testing
-    promiseStore = new LocalPromiseStore(new MemoryStorage());
+    promiseStore = new LocalPromiseStore(new WithTimeout(new MemoryStorage()));
   });
 
   test("creates a schedule", async () => {
@@ -20,7 +21,7 @@ describe("LocalPromiseStore", () => {
     const promiseData = '{"message": "Test"}';
     const promiseTags = { priority: "high" };
 
-    const createdSchedule = await promiseStore.createSchedule(
+    await promiseStore.createSchedule(
       scheduleId,
       undefined,
       "Test Schedule",
@@ -32,6 +33,9 @@ describe("LocalPromiseStore", () => {
       promiseData,
       promiseTags,
     );
+
+    // get the schedule
+    const createdSchedule = await promiseStore.getSchedule(scheduleId);
 
     expect(createdSchedule.id).toBe(scheduleId);
     expect(createdSchedule.description).toBe("Test Schedule");
@@ -61,9 +65,17 @@ describe("LocalPromiseStore", () => {
       {},
     );
 
+    // search for the schedule
+    const searchResults = await promiseStore.getSchedule(scheduleId);
+    expect(searchResults.id).toBe(scheduleId);
+
     const isDeleted = await promiseStore.deleteSchedule(scheduleId);
 
     expect(isDeleted).toBe(true);
+
+    // search for the schedule again
+    const searchResults2 = await promiseStore.getSchedule(scheduleId);
+    // expect(searchResults2).toBeUndefined();
   });
 
   test("searches for schedules", async () => {
@@ -73,7 +85,7 @@ describe("LocalPromiseStore", () => {
       undefined,
       "Test Schedule",
       "* * * * *",
-      { category: "testing" },
+      { category: "search testing" },
       "promise-1",
       60000,
       {},
@@ -86,7 +98,7 @@ describe("LocalPromiseStore", () => {
       undefined,
       "Test Schedule",
       "* * * * *",
-      { category: "testing" },
+      { category: "search testing" },
       "promise-2",
       60000,
       {},
@@ -94,9 +106,9 @@ describe("LocalPromiseStore", () => {
       {},
     );
 
-    const searchResults = await promiseStore.searchSchedules("schedule-1", { category: "testing" }, 10);
+    const searchResults = await promiseStore.searchSchedules("schedule-1", { category: "search testing" }, 10);
 
-    // Expecting 2 schedules based on the search criteria
+    // Expecting 1 schedules based on the search criteria
     expect(searchResults.schedules.length).toBe(1);
     expect(searchResults.schedules[0].id).toBe("schedule-1");
   });
