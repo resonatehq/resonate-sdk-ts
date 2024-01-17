@@ -40,6 +40,7 @@ function isG<A extends any[], R>(g: unknown): g is G<A, R> {
 
 type ResonateOpts = {
   url: string;
+  pid: string;
   namespace: string;
   seperator: string;
   store: IPromiseStore;
@@ -62,7 +63,7 @@ export class Resonate {
 
   readonly logger: ILogger;
 
-  readonly pid: string = "resonate";
+  readonly pid: string;
 
   readonly namespace: string;
 
@@ -80,6 +81,7 @@ export class Resonate {
    */
   constructor({
     url,
+    pid = randomId(),
     namespace = "",
     seperator = "/",
     store,
@@ -88,6 +90,7 @@ export class Resonate {
     bucket = new Bucket(),
     lock = new LocalLock(),
   }: Partial<ResonateOpts> = {}) {
+    this.pid = pid;
     this.namespace = namespace;
     this.seperator = seperator;
 
@@ -196,7 +199,7 @@ export class Resonate {
         lock: "default",
         retry: ExponentialRetry.atLeastOnce(),
         encoder: new JSONEncoder(),
-        eid: name,
+        eid: randomId(),
         ...opts,
       },
     };
@@ -651,4 +654,8 @@ function split<A extends any[], R>(
   const opts = args.length > len ? { ...defaults, ...args.pop() } : defaults;
 
   return { args: args as unknown as A, opts: opts };
+}
+
+function randomId(): string {
+  return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(16);
 }
