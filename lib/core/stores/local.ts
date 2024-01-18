@@ -13,7 +13,7 @@ import {
   isDurablePromise,
 } from "../promise";
 import { Schedule, isSchedule } from "../schedule";
-import { IPromiseStore, IScheduleStore, IStore } from "../store";
+import { IPromiseStore, IScheduleStore } from "../store";
 import { ErrorCodes, ResonateError } from "../error";
 import { IPromiseStorage, IScheduleStorage, WithTimeout } from "../storage";
 import { MemoryPromiseStorage, MemoryStorage } from "../storages/memory";

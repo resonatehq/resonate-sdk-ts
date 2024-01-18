@@ -1,11 +1,9 @@
-import { LocalPromiseStore, LocalScheduleStore, LocalStore } from "../lib/core/stores/local";
+import { LocalStore } from "../lib/core/stores/local";
 import { MemoryStorage } from "../lib/core/storages/memory";
 import { describe, beforeEach, test, expect } from "@jest/globals";
-import { WithTimeout } from "../lib/core/storage";
 
 describe("LocalPromiseStore", () => {
   let storage: MemoryStorage;
-  let scheduleStore: LocalScheduleStore;
   let store: LocalStore;
 
   beforeEach(() => {

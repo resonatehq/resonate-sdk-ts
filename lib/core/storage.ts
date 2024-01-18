@@ -1,5 +1,5 @@
 import { DurablePromise, TimedoutPromise, isDurablePromise, isPendingPromise } from "./promise";
-import { Schedule, isSchedule } from "./schedule";
+import { Schedule } from "./schedule";
 
 export interface IPromiseStorage {
   rmw<P extends DurablePromise | undefined>(id: string, f: (promise: DurablePromise | undefined) => P): Promise<P>;
@@ -74,9 +74,6 @@ export class WithTimeoutSchedules implements IScheduleStorage {
     tags: Record<string, string> | undefined,
     limit: number | undefined,
   ): AsyncGenerator<Schedule[], void, unknown> {
-    const regex = new RegExp(id.replaceAll("*", ".*"));
-    const tagEntries = Object.entries(tags ?? {});
-
     for await (const res of this.storage.search("*", undefined, undefined, undefined)) {
       yield res;
     }
