@@ -15,13 +15,13 @@ import {
 import { Schedule, isSchedule } from "../schedule";
 import { IPromiseStore, IScheduleStore, IStore } from "../store";
 import { ErrorCodes, ResonateError } from "../error";
-import { IStorage, WithTimeout } from "../storage";
-import { MemoryStorage } from "../storages/memory";
+import { IPromiseStorage, IScheduleStorage, WithTimeout } from "../storage";
+import { MemoryPromiseStorage, MemoryStorage } from "../storages/memory";
 
 export class LocalPromiseStore implements IPromiseStore {
-  private storage: IStorage;
+  private storage: IPromiseStorage;
 
-  constructor(storage: IStorage = new MemoryStorage()) {
+  constructor(storage: IPromiseStorage = new MemoryPromiseStorage()) {
     this.storage = new WithTimeout(storage);
   }
 
@@ -210,12 +210,18 @@ export class LocalPromiseStore implements IPromiseStore {
     tags: Record<string, string> | undefined,
     limit: number | undefined,
   ): AsyncGenerator<DurablePromise[], void> {
-    return this.storage.search(id, "promise", state, tags, limit) as AsyncGenerator<DurablePromise[], void>;
+    return this.storage.search(id, state, tags, limit) as AsyncGenerator<DurablePromise[], void>;
   }
 }
 
 export class LocalScheduleStore implements IScheduleStore {
-  constructor(private storage: IStorage = new MemoryStorage()) {
+  private promiseStorage: IPromiseStorage;
+  private storage: IScheduleStorage;
+
+  constructor(storage: MemoryStorage) {
+    this.promiseStorage = storage.promises;
+    this.storage = storage.schedules;
+
     this.startControlLoop();
   }
 
@@ -226,7 +232,7 @@ export class LocalScheduleStore implements IScheduleStore {
   }
 
   private async handleSchedules() {
-    const result = await this.storage.search("id", "schedules", undefined, undefined, undefined);
+    const result = await this.storage.search("id", undefined, undefined, undefined);
 
     const schedules: Schedule[] = [];
     for await (const item of result) {
@@ -249,7 +255,7 @@ export class LocalScheduleStore implements IScheduleStore {
   }
 
   private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
-    return this.storage.rmw(schedule.id, (promise): DurablePromise | undefined => {
+    return this.promiseStorage.rmw(schedule.id, (promise): DurablePromise | undefined => {
       if (promise) {
         // TODO: Handle existing promise based on schedule
         // Update lastRunTime and nextRunTime in a transaction
@@ -323,6 +329,7 @@ export class LocalScheduleStore implements IScheduleStore {
 
   async get(id: string): Promise<Schedule> {
     const schedule = await this.storage.rmw<Schedule>(id, (s) => {
+      console.log("schedule", s);
       if (isSchedule(s)) {
         return s;
       } else {
@@ -343,7 +350,7 @@ export class LocalScheduleStore implements IScheduleStore {
     cursor?: string | undefined,
   ): Promise<{ cursor: string; schedules: Schedule[] }> {
     try {
-      const result = await this.storage.search(id, "schedules", undefined, undefined, undefined);
+      const result = await this.storage.search(id, undefined, undefined, undefined);
 
       const scheduleList: Schedule[] = [];
       for await (const item of result) {
@@ -413,17 +420,19 @@ export class LocalScheduleStore implements IScheduleStore {
   }
 }
 
-export class LocalStore implements IStore {
-  constructor(
-    private promiseStore: IPromiseStore = new LocalPromiseStore(),
-    private scheduleStore: IScheduleStore = new LocalScheduleStore(),
-  ) {}
-
-  get promises(): IPromiseStore {
-    return this.promiseStore;
+export class LocalStore {
+  private localPromiseStore: LocalPromiseStore;
+  private localScheduleStore: LocalScheduleStore;
+  constructor(private memoryStorage: MemoryStorage) {
+    this.localPromiseStore = new LocalPromiseStore(memoryStorage.promises);
+    this.localScheduleStore = new LocalScheduleStore(memoryStorage);
   }
 
-  get schedules(): IScheduleStore {
-    return this.scheduleStore;
+  get promises(): LocalPromiseStore {
+    return this.localPromiseStore;
+  }
+
+  get schedules(): LocalScheduleStore {
+    return this.localScheduleStore;
   }
 }

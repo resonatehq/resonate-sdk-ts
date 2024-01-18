@@ -4,15 +4,14 @@ import { describe, beforeEach, test, expect } from "@jest/globals";
 import { WithTimeout } from "../lib/core/storage";
 
 describe("LocalPromiseStore", () => {
-  let promiseStore: LocalPromiseStore;
+  let storage: MemoryStorage;
   let scheduleStore: LocalScheduleStore;
   let store: LocalStore;
 
   beforeEach(() => {
-    promiseStore = new LocalPromiseStore(new WithTimeout(new MemoryStorage()));
-    scheduleStore = new LocalScheduleStore(new WithTimeout(new MemoryStorage()));
+    storage = new MemoryStorage();
     // Initialize a new LocalPromiseStore with a MemoryStorage for testing
-    store = new LocalStore(promiseStore, scheduleStore);
+    store = new LocalStore(storage);
   });
 
   test("creates a schedule", async () => {

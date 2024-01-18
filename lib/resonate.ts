@@ -14,7 +14,8 @@ import { DataEncoder } from "./core/encoders/data";
 import { JSONEncoder } from "./core/encoders/json";
 import { ErrorEncoder } from "./core/encoders/error";
 import { ErrorCodes, ResonateError } from "./core/error";
-import { IStorage } from "./core/storage";
+import { IPromiseStorage, IScheduleStorage } from "./core/storage";
+import { MemoryStorage } from "./core/storages/memory";
 
 // Types
 
@@ -44,7 +45,7 @@ type ResonateOpts = {
   namespace: string;
   seperator: string;
   store: IPromiseStore;
-  storage: IStorage;
+  storage: IPromiseStorage;
   logger: ILogger;
   timeout: number;
   retry: () => IRetry;

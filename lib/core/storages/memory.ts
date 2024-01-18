@@ -1,23 +1,16 @@
-import { IStorage } from "../storage";
+import { IPromiseStorage, IScheduleStorage } from "../storage";
 import { DurablePromise } from "../promise";
 import { Schedule } from "../schedule";
 
-export class MemoryStorage implements IStorage {
+export class MemoryPromiseStorage implements IPromiseStorage {
   private promises: Record<string, DurablePromise> = {};
-  private schedules: Record<string, Schedule> = {};
-
   constructor() {}
 
-  async rmw<P extends DurablePromise | Schedule | undefined>(
-    id: string,
-    f: (item: DurablePromise | Schedule | undefined) => P,
-  ): Promise<P> {
-    const item = f(this.promises[id] || this.schedules[id]);
+  async rmw<P extends DurablePromise | undefined>(id: string, f: (item: DurablePromise | undefined) => P): Promise<P> {
+    const item = f(this.promises[id]);
     if (item) {
       if ("state" in item) {
         this.promises[id] = item as DurablePromise;
-      } else {
-        this.schedules[id] = item as Schedule;
       }
     }
 
@@ -26,18 +19,35 @@ export class MemoryStorage implements IStorage {
 
   async *search(
     id: string,
-    type: string | undefined,
     state: string | undefined,
     tags: Record<string, string> | undefined,
     limit: number | undefined,
-  ): AsyncGenerator<(DurablePromise | Schedule)[], void> {
-    if (type === undefined || type.toLowerCase() === "schedules") {
-      yield Object.values(this.schedules);
-    } else if (type.toLowerCase() === "promises") {
-      yield Object.values(this.promises);
-    } else {
-      throw new Error(`Invalid type ${type}`);
+  ): AsyncGenerator<DurablePromise[], void> {
+    yield Object.values(this.promises);
+  }
+}
+
+export class MemoryScheduleStorage implements IScheduleStorage {
+  private schedules: Record<string, Schedule> = {};
+
+  constructor() {}
+
+  async rmw<P extends Schedule | undefined>(id: string, f: (item: Schedule | undefined) => P): Promise<P> {
+    const item = f(this.schedules[id]);
+    if (item) {
+      this.schedules[id] = item as Schedule;
     }
+
+    return item;
+  }
+
+  async *search(
+    id: string,
+    state: string | undefined,
+    tags: Record<string, string> | undefined,
+    limit: number | undefined,
+  ): AsyncGenerator<Schedule[], void> {
+    yield Object.values(this.schedules);
   }
 
   async deleteSchedule(id: string): Promise<boolean> {
@@ -47,5 +57,23 @@ export class MemoryStorage implements IStorage {
     } catch (e) {
       return false;
     }
+  }
+}
+
+export class MemoryStorage {
+  private promiseStorage: IPromiseStorage;
+  private scheduleStorage: IScheduleStorage;
+
+  constructor() {
+    this.promiseStorage = new MemoryPromiseStorage();
+    this.scheduleStorage = new MemoryScheduleStorage();
+  }
+
+  get promises(): IPromiseStorage {
+    return this.promiseStorage;
+  }
+
+  get schedules(): IScheduleStorage {
+    return this.scheduleStorage;
   }
 }

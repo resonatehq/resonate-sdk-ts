@@ -1,9 +1,9 @@
-import { IStorage } from "../storage";
+import { IPromiseStorage } from "../storage";
 import { DurablePromise, isDurablePromise } from "../promise";
 import { ResonateError, ErrorCodes } from "../error";
 import { Schedule } from "../schedule";
 
-export class IndexedDbStorage implements IStorage {
+export class IndexedDbStorage implements IPromiseStorage {
   private dbName = "resonateDB";
   private readonly storeName = "promises";
   private db: Promise<IDBDatabase>;
@@ -53,7 +53,6 @@ export class IndexedDbStorage implements IStorage {
 
   async *search(
     id: string,
-    type: string | undefined,
     state: string | undefined,
     tags: Record<string, string> | undefined,
     limit: number | undefined,
