@@ -329,7 +329,6 @@ export class LocalScheduleStore implements IScheduleStore {
 
   async get(id: string): Promise<Schedule> {
     const schedule = await this.storage.rmw<Schedule>(id, (s) => {
-      console.log("schedule", s);
       if (isSchedule(s)) {
         return s;
       } else {
