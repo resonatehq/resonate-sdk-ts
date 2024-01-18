@@ -1,14 +1,18 @@
-import { LocalPromiseStore } from "../lib/core/stores/local";
+import { LocalPromiseStore, LocalScheduleStore, LocalStore } from "../lib/core/stores/local";
 import { MemoryStorage } from "../lib/core/storages/memory";
 import { describe, beforeEach, test, expect } from "@jest/globals";
 import { WithTimeout } from "../lib/core/storage";
 
 describe("LocalPromiseStore", () => {
   let promiseStore: LocalPromiseStore;
+  let scheduleStore: LocalScheduleStore;
+  let store: LocalStore;
 
   beforeEach(() => {
-    // Initialize a new LocalPromiseStore with a MemoryStorage for testing
     promiseStore = new LocalPromiseStore(new WithTimeout(new MemoryStorage()));
+    scheduleStore = new LocalScheduleStore(new WithTimeout(new MemoryStorage()));
+    // Initialize a new LocalPromiseStore with a MemoryStorage for testing
+    store = new LocalStore(promiseStore, scheduleStore);
   });
 
   test("creates a schedule", async () => {
@@ -21,7 +25,7 @@ describe("LocalPromiseStore", () => {
     const promiseData = '{"message": "Test"}';
     const promiseTags = { priority: "high" };
 
-    await promiseStore.createSchedule(
+    await store.schedules.create(
       scheduleId,
       undefined,
       "Test Schedule",
@@ -35,7 +39,7 @@ describe("LocalPromiseStore", () => {
     );
 
     // get the schedule
-    const createdSchedule = await promiseStore.getSchedule(scheduleId);
+    const createdSchedule = await store.schedules.get(scheduleId);
 
     expect(createdSchedule.id).toBe(scheduleId);
     expect(createdSchedule.description).toBe("Test Schedule");
@@ -52,7 +56,7 @@ describe("LocalPromiseStore", () => {
     const scheduleId = "schedule-to-delete";
 
     // Create a schedule first
-    await promiseStore.createSchedule(
+    await store.schedules.create(
       scheduleId,
       undefined,
       "Test Schedule",
@@ -66,21 +70,21 @@ describe("LocalPromiseStore", () => {
     );
 
     // search for the schedule
-    const searchResults = await promiseStore.getSchedule(scheduleId);
+    const searchResults = await store.schedules.get(scheduleId);
     expect(searchResults.id).toBe(scheduleId);
 
-    const isDeleted = await promiseStore.deleteSchedule(scheduleId);
+    const isDeleted = await store.schedules.delete(scheduleId);
 
     expect(isDeleted).toBe(true);
 
     // search for the schedule again
-    const searchResultsAfterDelete = await promiseStore.searchSchedules(scheduleId);
+    const searchResultsAfterDelete = await store.schedules.search(scheduleId);
     expect(searchResultsAfterDelete.schedules.length).toBe(0);
   });
 
   test("searches for schedules", async () => {
     // Create multiple schedules for testing
-    await promiseStore.createSchedule(
+    await store.schedules.create(
       "schedule-1",
       undefined,
       "Test Schedule",
@@ -93,7 +97,7 @@ describe("LocalPromiseStore", () => {
       {},
     );
 
-    await promiseStore.createSchedule(
+    await store.schedules.create(
       "schedule-2",
       undefined,
       "Test Schedule",
@@ -106,7 +110,7 @@ describe("LocalPromiseStore", () => {
       {},
     );
 
-    const searchResults = await promiseStore.searchSchedules("schedule-1", { category: "search testing" }, 10);
+    const searchResults = await store.schedules.search("schedule-1", { category: "search testing" }, 10);
 
     // Expecting 1 schedules based on the search criteria
     expect(searchResults.schedules.length).toBe(1);

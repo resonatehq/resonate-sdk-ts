@@ -13,7 +13,7 @@ import {
   isDurablePromise,
 } from "../promise";
 import { Schedule, isSchedule } from "../schedule";
-import { IPromiseStore } from "../store";
+import { IPromiseStore, IScheduleStore, IStore } from "../store";
 import { ErrorCodes, ResonateError } from "../error";
 import { IStorage, WithTimeout } from "../storage";
 import { MemoryStorage } from "../storages/memory";
@@ -23,66 +23,6 @@ export class LocalPromiseStore implements IPromiseStore {
 
   constructor(storage: IStorage = new MemoryStorage()) {
     this.storage = new WithTimeout(storage);
-    this.startControlLoop();
-  }
-
-  private startControlLoop() {
-    setInterval(() => {
-      this.handleSchedules();
-    }, 1000); // Adjust the interval as needed
-  }
-
-  private async handleSchedules() {
-    const result = await this.storage.search("id", "schedules", undefined, undefined, undefined);
-
-    const schedules: Schedule[] = [];
-    for await (const item of result) {
-      if (isSchedule(item)) {
-        schedules.push(item);
-      }
-    }
-    for (const schedule of schedules) {
-      const delay = Math.max(0, schedule.nextRunTime ? -Date.now() : 0);
-
-      setTimeout(async () => {
-        try {
-          await this.createPromiseFromSchedule(schedule);
-          // Log or handle the created promise as needed
-        } catch (error) {
-          console.error("Error creating promise:", error);
-        }
-      }, delay);
-    }
-  }
-
-  private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
-    return this.storage.rmw(schedule.id, (promise): DurablePromise | undefined => {
-      if (promise) {
-        // TODO: Handle existing promise based on schedule
-        // Update lastRunTime and nextRunTime in a transaction
-      } else {
-        // Create a new promise based on the schedule
-        const newPromise: DurablePromise = {
-          state: "PENDING",
-          id: schedule.promiseId,
-          timeout: schedule.promiseTimeout,
-          param: {
-            headers: schedule.promiseParam?.headers,
-            data: schedule.promiseParam?.data,
-          },
-          value: {
-            headers: undefined,
-            data: undefined,
-          },
-          createdOn: Date.now(),
-          completedOn: undefined,
-          idempotencyKeyForCreate: undefined,
-          idempotencyKeyForComplete: undefined,
-          tags: schedule.promiseTags,
-        };
-        return newPromise;
-      }
-    });
   }
 
   async create(
@@ -272,8 +212,73 @@ export class LocalPromiseStore implements IPromiseStore {
   ): AsyncGenerator<DurablePromise[], void> {
     return this.storage.search(id, "promise", state, tags, limit) as AsyncGenerator<DurablePromise[], void>;
   }
+}
 
-  async createSchedule(
+export class LocalScheduleStore implements IScheduleStore {
+  constructor(private storage: IStorage = new MemoryStorage()) {
+    this.startControlLoop();
+  }
+
+  private startControlLoop() {
+    setInterval(() => {
+      this.handleSchedules();
+    }, 1000); // Adjust the interval as needed
+  }
+
+  private async handleSchedules() {
+    const result = await this.storage.search("id", "schedules", undefined, undefined, undefined);
+
+    const schedules: Schedule[] = [];
+    for await (const item of result) {
+      if (isSchedule(item)) {
+        schedules.push(item);
+      }
+    }
+    for (const schedule of schedules) {
+      const delay = Math.max(0, schedule.nextRunTime ? -Date.now() : 0);
+
+      setTimeout(async () => {
+        try {
+          await this.createPromiseFromSchedule(schedule);
+          // Log or handle the created promise as needed
+        } catch (error) {
+          console.error("Error creating promise:", error);
+        }
+      }, delay);
+    }
+  }
+
+  private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
+    return this.storage.rmw(schedule.id, (promise): DurablePromise | undefined => {
+      if (promise) {
+        // TODO: Handle existing promise based on schedule
+        // Update lastRunTime and nextRunTime in a transaction
+      } else {
+        // Create a new promise based on the schedule
+        const newPromise: DurablePromise = {
+          state: "PENDING",
+          id: schedule.promiseId,
+          timeout: schedule.promiseTimeout,
+          param: {
+            headers: schedule.promiseParam?.headers,
+            data: schedule.promiseParam?.data,
+          },
+          value: {
+            headers: undefined,
+            data: undefined,
+          },
+          createdOn: Date.now(),
+          completedOn: undefined,
+          idempotencyKeyForCreate: undefined,
+          idempotencyKeyForComplete: undefined,
+          tags: schedule.promiseTags,
+        };
+        return newPromise;
+      }
+    });
+  }
+
+  async create(
     id: string,
     ikey: string | undefined,
     description: string | undefined,
@@ -312,11 +317,11 @@ export class LocalPromiseStore implements IPromiseStore {
     });
   }
 
-  async deleteSchedule(id: string): Promise<boolean> {
+  async delete(id: string): Promise<boolean> {
     return this.storage.deleteSchedule(id);
   }
 
-  async getSchedule(id: string): Promise<Schedule> {
+  async get(id: string): Promise<Schedule> {
     const schedule = await this.storage.rmw<Schedule>(id, (s) => {
       if (isSchedule(s)) {
         return s;
@@ -331,7 +336,7 @@ export class LocalPromiseStore implements IPromiseStore {
     throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
   }
 
-  async searchSchedules(
+  async search(
     id: string,
     tags?: Record<string, string>,
     limit?: number,
@@ -406,4 +411,104 @@ export class LocalPromiseStore implements IPromiseStore {
       return undefined;
     }
   }
+}
+
+export class LocalStore implements IStore {
+  private promiseStore: IPromiseStore;
+  private scheduleStore: IScheduleStore;
+
+  constructor(promiseStore: IPromiseStore, scheduleStore: IScheduleStore) {
+    this.promiseStore = promiseStore;
+    this.scheduleStore = scheduleStore;
+  }
+
+  // Methods from IPromiseStore
+  promises: {
+    create: (
+      id: string,
+      ikey: string | undefined,
+      strict: boolean,
+      headers: Record<string, string> | undefined,
+      data: string | undefined,
+      timeout: number,
+      tags: Record<string, string> | undefined,
+    ) => Promise<DurablePromise>;
+    resolve: (
+      id: string,
+      ikey: string | undefined,
+      strict: boolean,
+      headers: Record<string, string> | undefined,
+      data: string | undefined,
+    ) => Promise<CanceledPromise | ResolvedPromise | RejectedPromise | TimedoutPromise>;
+    reject: (
+      id: string,
+      ikey: string | undefined,
+      strict: boolean,
+      headers: Record<string, string> | undefined,
+      data: string | undefined,
+    ) => Promise<CanceledPromise | ResolvedPromise | RejectedPromise | TimedoutPromise>;
+    cancel: (
+      id: string,
+      ikey: string | undefined,
+      strict: boolean,
+      headers: Record<string, string> | undefined,
+      data: string | undefined,
+    ) => Promise<CanceledPromise | ResolvedPromise | RejectedPromise | TimedoutPromise>;
+    get: (id: string) => Promise<DurablePromise>;
+    search: (
+      id: string,
+      state: string | undefined,
+      tags: Record<string, string> | undefined,
+      limit: number | undefined,
+    ) => AsyncGenerator<DurablePromise[], void>;
+  } = {
+    create: (id, ikey, strict, headers, data, timeout, tags) =>
+      this.promiseStore.create(id, ikey, strict, headers, data, timeout, tags),
+    resolve: (id, ikey, strict, headers, data) => this.promiseStore.resolve(id, ikey, strict, headers, data),
+    reject: (id, ikey, strict, headers, data) => this.promiseStore.reject(id, ikey, strict, headers, data),
+    cancel: (id, ikey, strict, headers, data) => this.promiseStore.cancel(id, ikey, strict, headers, data),
+    get: (id) => this.promiseStore.get(id),
+    search: (id, state, tags, limit) => this.promiseStore.search(id, state, tags, limit),
+  };
+
+  // Methods from IScheduleStore
+  schedules: {
+    create: (
+      id: string,
+      ikey: string | undefined,
+      description: string | undefined,
+      cron: string,
+      tags: Record<string, string> | undefined,
+      promiseId: string,
+      promiseTimeout: number,
+      promiseHeaders: Record<string, string>,
+      promiseData: string | undefined,
+      promiseTags: Record<string, string> | undefined,
+    ) => Promise<Schedule>;
+    delete: (id: string) => Promise<boolean>;
+    get: (id: string) => Promise<Schedule>;
+    search: (
+      id: string,
+      tags?: Record<string, string>,
+      limit?: number,
+      cursor?: string | undefined,
+    ) => Promise<{ cursor: string; schedules: Schedule[] }>;
+  } = {
+    create: (id, ikey, description, cron, tags, promiseId, promiseTimeout, promiseHeaders, promiseData, promiseTags) =>
+      this.scheduleStore.create(
+        id,
+        ikey,
+        description,
+        cron,
+        tags,
+        promiseId,
+        promiseTimeout,
+        promiseHeaders,
+        promiseData,
+        promiseTags,
+      ),
+    delete: (id) => this.scheduleStore.delete(id),
+    get: (id) => this.scheduleStore.get(id),
+    search: (id, tags, limit, cursor) => this.scheduleStore.search(id, tags, limit, cursor),
+  };
 }

@@ -145,7 +145,9 @@ export interface IPromiseStore {
     tags?: Record<string, string>,
     limit?: number,
   ): AsyncGenerator<DurablePromise[], void>;
+}
 
+export interface IScheduleStore {
   /**
    * Creates a new schedule.
    *
@@ -161,7 +163,7 @@ export interface IPromiseStore {
    * @param promiseTags Key-value pairs associated with the promise.
    * @returns A Promise resolving to the created schedule.
    */
-  createSchedule(
+  create(
     id: string,
     ikey: string | undefined,
     description: string | undefined,
@@ -180,14 +182,14 @@ export interface IPromiseStore {
    * @param id Unique identifier for the promise to be retrieved.
    * @returns A promise schedule that is pending, canceled, resolved, or rejected.
    */
-  getSchedule(id: string): Promise<Schedule>;
+  get(id: string): Promise<Schedule>;
 
   /**
    * Deletes a schedule based on its id.
    * @param id Unique identifier for the promise to be deleted.
    * @returns A promise schedule that is pending, canceled, resolved, or rejected.
    */
-  deleteSchedule(id: string): Promise<boolean>;
+  delete(id: string): Promise<boolean>;
 
   /**
    * Search for schedules.
@@ -196,10 +198,15 @@ export interface IPromiseStore {
    * @param tags Tags to match.
    * @returns A list of promise schedules.
    */
-  searchSchedules(
+  search(
     id: string,
     tags?: Record<string, string>,
     limit?: number,
     cursor?: string | undefined,
   ): Promise<{ cursor: string; schedules: Schedule[] }>;
+}
+
+export interface IStore {
+  promises: IPromiseStore;
+  schedules: IScheduleStore;
 }
