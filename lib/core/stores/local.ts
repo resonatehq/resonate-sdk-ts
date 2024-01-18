@@ -414,101 +414,16 @@ export class LocalScheduleStore implements IScheduleStore {
 }
 
 export class LocalStore implements IStore {
-  private promiseStore: IPromiseStore;
-  private scheduleStore: IScheduleStore;
+  constructor(
+    private promiseStore: IPromiseStore = new LocalPromiseStore(),
+    private scheduleStore: IScheduleStore = new LocalScheduleStore(),
+  ) {}
 
-  constructor(promiseStore: IPromiseStore, scheduleStore: IScheduleStore) {
-    this.promiseStore = promiseStore;
-    this.scheduleStore = scheduleStore;
+  get promises(): IPromiseStore {
+    return this.promiseStore;
   }
 
-  // Methods from IPromiseStore
-  promises: {
-    create: (
-      id: string,
-      ikey: string | undefined,
-      strict: boolean,
-      headers: Record<string, string> | undefined,
-      data: string | undefined,
-      timeout: number,
-      tags: Record<string, string> | undefined,
-    ) => Promise<DurablePromise>;
-    resolve: (
-      id: string,
-      ikey: string | undefined,
-      strict: boolean,
-      headers: Record<string, string> | undefined,
-      data: string | undefined,
-    ) => Promise<CanceledPromise | ResolvedPromise | RejectedPromise | TimedoutPromise>;
-    reject: (
-      id: string,
-      ikey: string | undefined,
-      strict: boolean,
-      headers: Record<string, string> | undefined,
-      data: string | undefined,
-    ) => Promise<CanceledPromise | ResolvedPromise | RejectedPromise | TimedoutPromise>;
-    cancel: (
-      id: string,
-      ikey: string | undefined,
-      strict: boolean,
-      headers: Record<string, string> | undefined,
-      data: string | undefined,
-    ) => Promise<CanceledPromise | ResolvedPromise | RejectedPromise | TimedoutPromise>;
-    get: (id: string) => Promise<DurablePromise>;
-    search: (
-      id: string,
-      state: string | undefined,
-      tags: Record<string, string> | undefined,
-      limit: number | undefined,
-    ) => AsyncGenerator<DurablePromise[], void>;
-  } = {
-    create: (id, ikey, strict, headers, data, timeout, tags) =>
-      this.promiseStore.create(id, ikey, strict, headers, data, timeout, tags),
-    resolve: (id, ikey, strict, headers, data) => this.promiseStore.resolve(id, ikey, strict, headers, data),
-    reject: (id, ikey, strict, headers, data) => this.promiseStore.reject(id, ikey, strict, headers, data),
-    cancel: (id, ikey, strict, headers, data) => this.promiseStore.cancel(id, ikey, strict, headers, data),
-    get: (id) => this.promiseStore.get(id),
-    search: (id, state, tags, limit) => this.promiseStore.search(id, state, tags, limit),
-  };
-
-  // Methods from IScheduleStore
-  schedules: {
-    create: (
-      id: string,
-      ikey: string | undefined,
-      description: string | undefined,
-      cron: string,
-      tags: Record<string, string> | undefined,
-      promiseId: string,
-      promiseTimeout: number,
-      promiseHeaders: Record<string, string>,
-      promiseData: string | undefined,
-      promiseTags: Record<string, string> | undefined,
-    ) => Promise<Schedule>;
-    delete: (id: string) => Promise<boolean>;
-    get: (id: string) => Promise<Schedule>;
-    search: (
-      id: string,
-      tags?: Record<string, string>,
-      limit?: number,
-      cursor?: string | undefined,
-    ) => Promise<{ cursor: string; schedules: Schedule[] }>;
-  } = {
-    create: (id, ikey, description, cron, tags, promiseId, promiseTimeout, promiseHeaders, promiseData, promiseTags) =>
-      this.scheduleStore.create(
-        id,
-        ikey,
-        description,
-        cron,
-        tags,
-        promiseId,
-        promiseTimeout,
-        promiseHeaders,
-        promiseData,
-        promiseTags,
-      ),
-    delete: (id) => this.scheduleStore.delete(id),
-    get: (id) => this.scheduleStore.get(id),
-    search: (id, tags, limit, cursor) => this.scheduleStore.search(id, tags, limit, cursor),
-  };
+  get schedules(): IScheduleStore {
+    return this.scheduleStore;
+  }
 }
