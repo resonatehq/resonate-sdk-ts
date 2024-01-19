@@ -330,14 +330,22 @@ export class LocalStore {
   }
 
   private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
+    const expandedPromiseId = this.expandPromiseIdTemplate(schedule.promiseId, schedule);
+
     return this.promises.create(
-      schedule.id,
-      schedule.idempotencyKey,
+      expandedPromiseId,
+      expandedPromiseId,
       false,
       schedule.promiseParam?.headers,
       schedule.promiseParam?.data,
       schedule.promiseTimeout,
       schedule.promiseTags,
     );
+  }
+
+  private expandPromiseIdTemplate(template: string, schedule: Schedule): string {
+    const expandedTemplate = template.replace("{{id}}", schedule.id).replace("{{timestamp}}", Date.now().toString());
+
+    return expandedTemplate;
   }
 }
