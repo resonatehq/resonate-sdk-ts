@@ -214,65 +214,10 @@ export class LocalPromiseStore implements IPromiseStore {
 }
 
 export class LocalScheduleStore implements IScheduleStore {
-  private promiseStorage: IPromiseStorage;
   private storage: IScheduleStorage;
 
-  constructor(storage: MemoryStorage) {
-    this.promiseStorage = storage.promises;
-    this.storage = storage.schedules;
-  }
-
-  async handleSchedules() {
-    const result = await this.storage.search("id", undefined, undefined, undefined);
-
-    const schedules: Schedule[] = [];
-    for await (const item of result) {
-      if (isSchedule(item)) {
-        schedules.push(item);
-      }
-    }
-    for (const schedule of schedules) {
-      const delay = Math.max(0, schedule.nextRunTime ? -Date.now() : 0);
-
-      setTimeout(async () => {
-        try {
-          await this.createPromiseFromSchedule(schedule);
-          // Log or handle the created promise as needed
-        } catch (error) {
-          console.error("Error creating promise:", error);
-        }
-      }, delay);
-    }
-  }
-
-  private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
-    return this.promiseStorage.rmw(schedule.id, (promise): DurablePromise | undefined => {
-      if (promise) {
-        // TODO: Handle existing promise based on schedule
-        // Update lastRunTime and nextRunTime in a transaction
-      } else {
-        // Create a new promise based on the schedule
-        const newPromise: DurablePromise = {
-          state: "PENDING",
-          id: schedule.promiseId,
-          timeout: schedule.promiseTimeout,
-          param: {
-            headers: schedule.promiseParam?.headers,
-            data: schedule.promiseParam?.data,
-          },
-          value: {
-            headers: undefined,
-            data: undefined,
-          },
-          createdOn: Date.now(),
-          completedOn: undefined,
-          idempotencyKeyForCreate: undefined,
-          idempotencyKeyForComplete: undefined,
-          tags: schedule.promiseTags,
-        };
-        return newPromise;
-      }
-    });
+  constructor(storage: IScheduleStorage) {
+    this.storage = storage;
   }
 
   async create(
@@ -416,15 +361,68 @@ export class LocalStore {
 
   constructor(private memoryStorage: MemoryStorage) {
     this.localPromiseStore = new LocalPromiseStore(memoryStorage.promises);
-    this.localScheduleStore = new LocalScheduleStore(memoryStorage);
+    this.localScheduleStore = new LocalScheduleStore(memoryStorage.schedules);
 
     this.startControlLoop();
   }
 
   private startControlLoop() {
     setInterval(() => {
-      this.localScheduleStore.handleSchedules();
+      this.handleSchedules();
     }, 1000);
+  }
+
+  private async handleSchedules() {
+    const result = await this.memoryStorage.schedules.search("id", undefined, undefined, undefined);
+
+    const schedules: Schedule[] = [];
+    for await (const item of result) {
+      if (isSchedule(item)) {
+        schedules.push(item);
+      }
+    }
+    for (const schedule of schedules) {
+      const delay = Math.max(0, schedule.nextRunTime ? -Date.now() : 0);
+
+      setTimeout(async () => {
+        try {
+          await this.createPromiseFromSchedule(schedule);
+          // Log or handle the created promise as needed
+        } catch (error) {
+          console.error("Error creating promise:", error);
+        }
+      }, delay);
+    }
+  }
+
+  private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
+    return this.memoryStorage.promises.rmw(schedule.id, (promise): DurablePromise | undefined => {
+      if (promise) {
+        // TODO: Handle existing promise based on schedule
+        // Update lastRunTime and nextRunTime in a transaction
+      } else {
+        // Create a new promise based on the schedule
+        const newPromise: DurablePromise = {
+          state: "PENDING",
+          id: schedule.promiseId,
+          timeout: schedule.promiseTimeout,
+          param: {
+            headers: schedule.promiseParam?.headers,
+            data: schedule.promiseParam?.data,
+          },
+          value: {
+            headers: undefined,
+            data: undefined,
+          },
+          createdOn: Date.now(),
+          completedOn: undefined,
+          idempotencyKeyForCreate: undefined,
+          idempotencyKeyForComplete: undefined,
+          tags: schedule.promiseTags,
+        };
+        return newPromise;
+      }
+    });
   }
 
   get promises(): LocalPromiseStore {
