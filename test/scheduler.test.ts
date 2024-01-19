@@ -6,8 +6,8 @@ describe("LocalPromiseStore", () => {
   let store: LocalStore;
 
   beforeEach(() => {
-    let promiseStorage = new MemoryPromiseStorage();
-    let scheduleStorage = new MemoryScheduleStorage();
+    const promiseStorage = new MemoryPromiseStorage();
+    const scheduleStorage = new MemoryScheduleStorage();
 
     // Initialize a new LocalPromiseStore with a MemoryStorage for testing
     store = new LocalStore(promiseStorage, scheduleStorage);
