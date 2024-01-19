@@ -20,7 +20,7 @@ export interface IScheduleStorage {
     limit: number | undefined,
   ): AsyncGenerator<Schedule[], void>;
 
-  deleteSchedule(id: string): Promise<boolean>;
+  delete(id: string): Promise<boolean>;
 }
 
 export class WithTimeout implements IPromiseStorage {
@@ -58,29 +58,6 @@ export class WithTimeout implements IPromiseStorage {
         .filter((promise) => regex.test(promise.id))
         .filter((promise) => tagEntries.every(([k, v]) => promise.tags?.[k] == v));
     }
-  }
-}
-
-export class WithTimeoutSchedules implements IScheduleStorage {
-  constructor(private storage: IScheduleStorage) {}
-
-  rmw<P extends Schedule | undefined>(id: string, f: (schedule: Schedule | undefined) => P): Promise<P> {
-    return this.storage.rmw(id, (schedule) => f(schedule));
-  }
-
-  async *search(
-    id: string,
-    state: string | undefined,
-    tags: Record<string, string> | undefined,
-    limit: number | undefined,
-  ): AsyncGenerator<Schedule[], void, unknown> {
-    for await (const res of this.storage.search("*", undefined, undefined, undefined)) {
-      yield res;
-    }
-  }
-
-  deleteSchedule(id: string): Promise<boolean> {
-    return this.storage.deleteSchedule(id);
   }
 }
 

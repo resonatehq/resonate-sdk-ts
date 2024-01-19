@@ -324,7 +324,7 @@ export class LocalScheduleStore implements IScheduleStore {
   }
 
   async delete(id: string): Promise<boolean> {
-    return this.storage.deleteSchedule(id);
+    return this.storage.delete(id);
   }
 
   async get(id: string): Promise<Schedule> {

@@ -50,7 +50,7 @@ export class MemoryScheduleStorage implements IScheduleStorage {
     yield Object.values(this.schedules);
   }
 
-  async deleteSchedule(id: string): Promise<boolean> {
+  async delete(id: string): Promise<boolean> {
     try {
       delete this.schedules[id];
       return true;
