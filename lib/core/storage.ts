@@ -1,4 +1,4 @@
-import { DurablePromise, TimedoutPromise, isDurablePromise, isPendingPromise, searchStates } from "./promise";
+import { DurablePromise } from "./promise";
 import { Schedule } from "./schedule";
 
 export interface IPromiseStorage {

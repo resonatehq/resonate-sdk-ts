@@ -1,4 +1,4 @@
-import { DurablePromise, TimedoutPromise, isDurablePromise, isPendingPromise, searchStates } from "../promise";
+import { DurablePromise, TimedoutPromise, isPendingPromise, searchStates } from "../promise";
 import { IPromiseStorage } from "../storage";
 
 export class WithTimeout implements IPromiseStorage {
