@@ -14,7 +14,6 @@ import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
 import { ILogger } from "../logger";
 import { Schedule, isSchedule } from "../schedule";
-import { IPromiseStorage } from "../storage";
 
 async function call<T>(
   url: string,
