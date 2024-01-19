@@ -10,7 +10,6 @@ import {
   isResolvedPromise,
   isRejectedPromise,
   isCanceledPromise,
-  isDurablePromise,
 } from "../promise";
 import { Schedule, isSchedule } from "../schedule";
 import { IPromiseStore, IScheduleStore } from "../store";
