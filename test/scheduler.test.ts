@@ -29,7 +29,7 @@ describe("LocalPromiseStore", () => {
 
     await store.schedules.create(
       scheduleId,
-      undefined,
+      scheduleId,
       "Test Schedule",
       cronExpression,
       tags,
@@ -60,7 +60,7 @@ describe("LocalPromiseStore", () => {
     // Create a schedule first
     await store.schedules.create(
       scheduleId,
-      undefined,
+      scheduleId,
       "Test Schedule",
       "* * * * *",
       {},
@@ -91,7 +91,7 @@ describe("LocalPromiseStore", () => {
     // Create multiple schedules for testing
     await store.schedules.create(
       "schedule-1",
-      undefined,
+      "schedule-1",
       "Test Schedule",
       "* * * * *",
       { category: "search testing" },
@@ -104,7 +104,7 @@ describe("LocalPromiseStore", () => {
 
     await store.schedules.create(
       "schedule-2",
-      undefined,
+      "schedule-2",
       "Test Schedule",
       "* * * * *",
       { category: "search testing" },

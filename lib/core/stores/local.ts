@@ -11,19 +11,15 @@ import {
   isRejectedPromise,
   isCanceledPromise,
 } from "../promise";
-import { Schedule, isSchedule } from "../schedule";
+import { Schedule } from "../schedule";
 import { IPromiseStore, IScheduleStore } from "../store";
 import { ErrorCodes, ResonateError } from "../error";
 import { IPromiseStorage, IScheduleStorage } from "../storage";
 import { WithTimeout } from "../storages/withTimeout";
-import { MemoryPromiseStorage } from "../storages/memory";
+import { MemoryPromiseStorage, MemoryScheduleStorage } from "../storages/memory";
 
 export class LocalPromiseStore implements IPromiseStore {
-  private storage: IPromiseStorage;
-
-  constructor(storage: IPromiseStorage = new MemoryPromiseStorage()) {
-    this.storage = new WithTimeout(storage);
-  }
+  constructor(private storage: IPromiseStorage = new WithTimeout(new MemoryPromiseStorage())) {}
 
   async create(
     id: string,
@@ -217,7 +213,7 @@ export class LocalPromiseStore implements IPromiseStore {
 export class LocalScheduleStore implements IScheduleStore {
   private storage: IScheduleStorage;
 
-  constructor(storage: IScheduleStorage) {
+  constructor(storage: IScheduleStorage = new MemoryScheduleStorage()) {
     this.storage = storage;
   }
 
@@ -233,28 +229,37 @@ export class LocalScheduleStore implements IScheduleStore {
     promiseData: string | undefined,
     promiseTags: Record<string, string> | undefined,
   ): Promise<Schedule> {
-    const schedule = {
-      id,
-      description,
-      cron,
-      tags,
-      promiseId,
-      promiseTimeout,
-      promiseParam: {
-        headers: promiseHeaders,
-        data: promiseData,
-      },
-      promiseTags,
-      lastRunTime: undefined,
-      nextRunTime: this.calculateNextRunTime(cron),
-      idempotencyKey: ikey,
-      createdOn: Date.now(),
-    };
-
     return this.storage.rmw(id, (s) => {
       if (s) {
-        throw new ResonateError(ErrorCodes.ALREADY_EXISTS, "Already Exists");
+        if (s.idempotencyKey === undefined || ikey != s.idempotencyKey) {
+          throw new ResonateError(ErrorCodes.ALREADY_EXISTS, "Already exists");
+        }
+        return s;
       }
+      let validateCron: Date;
+      try {
+        validateCron = this.parseCronExpression(cron);
+      } catch (error) {
+        throw new ResonateError(ErrorCodes.UNKNOWN, "Bad request");
+      }
+
+      const schedule = {
+        id,
+        description,
+        cron,
+        tags,
+        promiseId,
+        promiseTimeout,
+        promiseParam: {
+          headers: promiseHeaders,
+          data: promiseData,
+        },
+        promiseTags,
+        lastRunTime: undefined,
+        nextRunTime: validateCron.getTime(),
+        idempotencyKey: ikey,
+        createdOn: Date.now(),
+      };
 
       return schedule;
     });
@@ -265,18 +270,13 @@ export class LocalScheduleStore implements IScheduleStore {
   }
 
   async get(id: string): Promise<Schedule> {
-    const schedule = await this.storage.rmw<Schedule>(id, (s) => {
+    return await this.storage.rmw<Schedule>(id, (s) => {
       if (s) {
         return s;
       } else {
         throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
       }
     });
-
-    if (schedule) {
-      return schedule;
-    }
-    throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
   }
 
   search(id: string, tags?: Record<string, string>, limit?: number): AsyncGenerator<Schedule[], void> {
@@ -290,62 +290,38 @@ export class LocalScheduleStore implements IScheduleStore {
       throw new Error(`Error parsing cron expression: ${error}`);
     }
   }
-
-  private validateNextRunTime(nextRunDate: Date): number {
-    const nextRunTime = nextRunDate.getTime();
-    if (isNaN(nextRunTime)) {
-      throw new Error("Invalid next run time");
-    }
-    return nextRunTime;
-  }
-
-  private calculateNextRunTime(cron: string): number | undefined {
-    try {
-      const nextRunDate = this.parseCronExpression(cron);
-      return this.validateNextRunTime(nextRunDate);
-    } catch (error) {
-      console.error(error);
-      return undefined;
-    }
-  }
 }
 
 export class LocalStore {
-  private localPromiseStore: LocalPromiseStore;
-  private localScheduleStore: LocalScheduleStore;
-
+  private queuedSchedules: Schedule[] = [];
   constructor(
-    private promiseStore: IPromiseStore,
-    private scheduleStore: IScheduleStore,
+    public promises: LocalPromiseStore = new LocalPromiseStore(),
+    public schedules: LocalScheduleStore = new LocalScheduleStore(),
   ) {
-    this.localPromiseStore = promiseStore as LocalPromiseStore;
-    this.localScheduleStore = scheduleStore as LocalScheduleStore;
-
     this.startControlLoop();
   }
 
   private startControlLoop() {
+    // TODO: make this loop non-busy
     setInterval(() => {
-      this.handleSchedules();
+      this.controlLoopSchedules();
     }, 1000);
   }
 
-  private async handleSchedules() {
-    const result = await this.schedules.search("id", undefined, undefined);
-
-    const schedules: Schedule[] = [];
-    for await (const item of result) {
-      if (isSchedule(item)) {
-        schedules.push(item);
-      }
+  private async controlLoopSchedules() {
+    for await (const schedules of this.schedules.search("*", undefined, undefined)) {
+      this.queuedSchedules = this.queuedSchedules.concat(schedules);
     }
-    for (const schedule of schedules) {
-      const delay = Math.max(0, schedule.nextRunTime ? -Date.now() : 0);
+
+    this.queuedSchedules.sort((a, b) => (a.nextRunTime ?? 0) - (b.nextRunTime ?? 0));
+
+    const schedule = this.queuedSchedules.shift();
+    if (schedule) {
+      const delay = Math.max(0, schedule ? -Date.now() : 0);
 
       setTimeout(async () => {
         try {
           await this.createPromiseFromSchedule(schedule);
-          // Log or handle the created promise as needed
         } catch (error) {
           console.error("Error creating promise:", error);
         }
@@ -354,7 +330,7 @@ export class LocalStore {
   }
 
   private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
-    return this.localPromiseStore.create(
+    return this.promises.create(
       schedule.id,
       schedule.idempotencyKey,
       false,
@@ -363,13 +339,5 @@ export class LocalStore {
       schedule.promiseTimeout,
       schedule.promiseTags,
     );
-  }
-
-  get promises(): LocalPromiseStore {
-    return this.localPromiseStore;
-  }
-
-  get schedules(): LocalScheduleStore {
-    return this.localScheduleStore;
   }
 }

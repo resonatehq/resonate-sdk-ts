@@ -459,15 +459,7 @@ export class RemoteScheduleStore implements IScheduleStore {
 
 export class RemoteStore {
   constructor(
-    private promiseStore: IPromiseStore,
-    private scheduleStore: IScheduleStore,
+    public promises: IPromiseStore,
+    public schedules: IScheduleStore,
   ) {}
-
-  get promises(): IPromiseStore {
-    return this.promiseStore;
-  }
-
-  get schedules(): IScheduleStore {
-    return this.scheduleStore;
-  }
 }
