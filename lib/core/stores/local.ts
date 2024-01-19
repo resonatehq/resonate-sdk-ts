@@ -30,7 +30,7 @@ export class LocalStore implements IStore {
     scheduleStorage: IScheduleStorage = new MemoryScheduleStorage(),
   ) {
     this.promises = new LocalPromiseStore(promiseStorage);
-    this.schedules = new LocalScheduleStore(scheduleStorage, this);
+    this.schedules = new LocalScheduleStore(this, scheduleStorage);
   }
 
   // handler the schedule store can call
@@ -289,8 +289,8 @@ export class LocalPromiseStore implements IPromiseStore {
 
 export class LocalScheduleStore implements IScheduleStore {
   constructor(
-    private storage: IScheduleStorage = new MemoryScheduleStorage(),
     private store: LocalStore,
+    private storage: IScheduleStorage = new MemoryScheduleStorage(),
   ) {}
 
   async create(
