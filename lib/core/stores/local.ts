@@ -15,7 +15,7 @@ import { Schedule, isSchedule } from "../schedule";
 import { IPromiseStore, IScheduleStore } from "../store";
 import { ErrorCodes, ResonateError } from "../error";
 import { IPromiseStorage, IScheduleStorage, WithTimeout } from "../storage";
-import { MemoryPromiseStorage, MemoryStorage } from "../storages/memory";
+import { MemoryPromiseStorage } from "../storages/memory";
 
 export class LocalPromiseStore implements IPromiseStore {
   private storage: IPromiseStorage;
@@ -359,9 +359,12 @@ export class LocalStore {
   private localPromiseStore: LocalPromiseStore;
   private localScheduleStore: LocalScheduleStore;
 
-  constructor(private memoryStorage: MemoryStorage) {
-    this.localPromiseStore = new LocalPromiseStore(memoryStorage.promises);
-    this.localScheduleStore = new LocalScheduleStore(memoryStorage.schedules);
+  constructor(
+    private promiseStorage: IPromiseStorage,
+    private scheduleStorage: IScheduleStorage,
+  ) {
+    this.localPromiseStore = new LocalPromiseStore(promiseStorage);
+    this.localScheduleStore = new LocalScheduleStore(scheduleStorage);
 
     this.startControlLoop();
   }
@@ -373,7 +376,7 @@ export class LocalStore {
   }
 
   private async handleSchedules() {
-    const result = await this.memoryStorage.schedules.search("id", undefined, undefined, undefined);
+    const result = await this.scheduleStorage.search("id", undefined, undefined, undefined);
 
     const schedules: Schedule[] = [];
     for await (const item of result) {
@@ -396,7 +399,7 @@ export class LocalStore {
   }
 
   private async createPromiseFromSchedule(schedule: Schedule): Promise<DurablePromise | undefined> {
-    return this.memoryStorage.promises.rmw(schedule.id, (promise): DurablePromise | undefined => {
+    return this.promiseStorage.rmw(schedule.id, (promise): DurablePromise | undefined => {
       if (promise) {
         // TODO: Handle existing promise based on schedule
         // Update lastRunTime and nextRunTime in a transaction

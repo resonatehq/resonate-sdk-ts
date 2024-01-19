@@ -56,21 +56,3 @@ export class MemoryScheduleStorage implements IScheduleStorage {
     return false;
   }
 }
-
-export class MemoryStorage {
-  private promiseStorage: IPromiseStorage;
-  private scheduleStorage: IScheduleStorage;
-
-  constructor() {
-    this.promiseStorage = new MemoryPromiseStorage();
-    this.scheduleStorage = new MemoryScheduleStorage();
-  }
-
-  get promises(): IPromiseStorage {
-    return this.promiseStorage;
-  }
-
-  get schedules(): IScheduleStorage {
-    return this.scheduleStorage;
-  }
-}
