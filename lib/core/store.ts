@@ -205,8 +205,3 @@ export interface IScheduleStore {
     cursor?: string | undefined,
   ): Promise<{ cursor: string; schedules: Schedule[] }>;
 }
-
-export interface IStore {
-  promises: IPromiseStore;
-  schedules: IScheduleStore;
-}

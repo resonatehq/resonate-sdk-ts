@@ -8,12 +8,13 @@ import {
   isDurablePromise,
   isCompletedPromise,
 } from "../promise";
-import { IPromiseStore, IScheduleStore, IStore, isSearchPromiseResult, isSearchSchedulesResult } from "../store";
+import { IPromiseStore, IScheduleStore, isSearchPromiseResult, isSearchSchedulesResult } from "../store";
 import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
 import { ILogger } from "../logger";
 import { Schedule, isSchedule } from "../schedule";
+import { IPromiseStorage } from "../storage";
 
 async function call<T>(
   url: string,
@@ -458,18 +459,17 @@ export class RemoteScheduleStore implements IScheduleStore {
   }
 }
 
-export class RemoteStore implements IStore {
+export class RemoteStore {
   constructor(
-    private url: string,
-    private logger: ILogger,
-    private encoder: IEncoder<string, string> = new Base64Encoder(),
+    private promiseStore: IPromiseStore,
+    private scheduleStore: IScheduleStore,
   ) {}
 
   get promises(): IPromiseStore {
-    return new RemotePromiseStore(this.url, this.logger, this.encoder);
+    return this.promiseStore;
   }
 
   get schedules(): IScheduleStore {
-    return new RemoteScheduleStore(this.url, this.logger, this.encoder);
+    return this.scheduleStore;
   }
 }
