@@ -44,6 +44,11 @@ export function isSearchSchedulesResult(obj: any): obj is { cursor: string; sche
   );
 }
 
+export interface IStore {
+  readonly promises: IPromiseStore;
+  readonly schedules: IScheduleStore;
+}
+
 /**
  * Promise Store API
  */

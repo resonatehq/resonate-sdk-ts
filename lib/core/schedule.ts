@@ -11,9 +11,9 @@ export type Schedule = {
   };
   promiseTags?: Record<string, string>;
   lastRunTime?: number;
-  nextRunTime?: number;
+  nextRunTime: number;
   idempotencyKey?: string;
-  createdOn?: number;
+  createdOn: number;
 };
 
 // Function to check if the response matches the Schedule type
