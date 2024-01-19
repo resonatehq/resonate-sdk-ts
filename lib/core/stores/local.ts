@@ -205,11 +205,11 @@ export class LocalPromiseStore implements IPromiseStore {
 
   search(
     id: string,
-    state: string | undefined,
-    tags: Record<string, string> | undefined,
-    limit: number | undefined,
+    state?: string,
+    tags?: Record<string, string>,
+    limit?: number,
   ): AsyncGenerator<DurablePromise[], void> {
-    return this.storage.search(id, state, tags, limit) as AsyncGenerator<DurablePromise[], void>;
+    return this.storage.search(id, state, tags, limit);
   }
 }
 
@@ -278,54 +278,8 @@ export class LocalScheduleStore implements IScheduleStore {
     throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
   }
 
-  async search(
-    id: string,
-    tags?: Record<string, string>,
-    limit?: number,
-    cursor?: string | undefined,
-  ): Promise<{ cursor: string; schedules: Schedule[] }> {
-    try {
-      const result = await this.storage.search(id, undefined, undefined, undefined);
-
-      const scheduleList: Schedule[] = [];
-      for await (const item of result) {
-        for await (const elem of item) {
-          if (elem) {
-            scheduleList.push(elem);
-          }
-        }
-      }
-
-      // Filter schedules based on the provided parameters
-      let filteredSchedules = scheduleList.filter((schedule) => schedule.id === id);
-
-      if (tags) {
-        filteredSchedules = filteredSchedules.filter((schedule) =>
-          Object.entries(tags).every(([key, value]) => schedule.tags && schedule.tags[key] === value),
-        );
-      }
-
-      if (cursor !== undefined) {
-        const cursorIndex = filteredSchedules.findIndex((schedule) => schedule.id === cursor);
-        if (cursorIndex !== -1) {
-          filteredSchedules = filteredSchedules.slice(cursorIndex + 1);
-        }
-      }
-
-      if (limit !== undefined) {
-        filteredSchedules = filteredSchedules.slice(0, limit);
-      }
-
-      const nextCursor = filteredSchedules.length > 0 ? filteredSchedules[filteredSchedules.length - 1].id : null;
-
-      return {
-        cursor: nextCursor ?? "",
-        schedules: filteredSchedules,
-      };
-    } catch (error) {
-      console.error("Error searching schedules:", error);
-      throw new ResonateError(ErrorCodes.UNKNOWN, "Internal error");
-    }
+  search(id: string, tags?: Record<string, string>, limit?: number): AsyncGenerator<Schedule[], void> {
+    return this.storage.search(id, tags, limit);
   }
 
   private parseCronExpression(cron: string): Date {
@@ -376,7 +330,7 @@ export class LocalStore {
   }
 
   private async handleSchedules() {
-    const result = await this.promiseStore.search("id", undefined, undefined, undefined);
+    const result = await this.schedules.search("id", undefined, undefined);
 
     const schedules: Schedule[] = [];
     for await (const item of result) {

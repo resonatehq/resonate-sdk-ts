@@ -1,3 +1,4 @@
+import { Schedule } from "../lib/core/schedule";
 import { MemoryPromiseStorage, MemoryScheduleStorage } from "../lib/core/storages/memory";
 import { LocalPromiseStore, LocalScheduleStore, LocalStore } from "../lib/core/stores/local";
 import { describe, beforeEach, test, expect } from "@jest/globals";
@@ -79,8 +80,11 @@ describe("LocalPromiseStore", () => {
     expect(isDeleted).toBe(true);
 
     // search for the schedule again
-    const searchResultsAfterDelete = await store.schedules.search(scheduleId);
-    expect(searchResultsAfterDelete.schedules.length).toBe(0);
+    let schedules: Schedule[] = [];
+    for await (const searchResults of store.schedules.search(scheduleId)) {
+      schedules = schedules.concat(searchResults);
+    }
+    expect(schedules.length).toBe(0);
   });
 
   test("searches for schedules", async () => {
@@ -111,10 +115,11 @@ describe("LocalPromiseStore", () => {
       {},
     );
 
-    const searchResults = await store.schedules.search("schedule-1", { category: "search testing" }, 10);
-
     // Expecting 1 schedules based on the search criteria
-    expect(searchResults.schedules.length).toBe(1);
-    expect(searchResults.schedules[0].id).toBe("schedule-1");
+    let schedules: Schedule[] = [];
+    for await (const searchResults of store.schedules.search("schedule-1", { category: "search testing" })) {
+      schedules = schedules.concat(searchResults);
+    }
+    expect(schedules.length).toBe(1);
   });
 });

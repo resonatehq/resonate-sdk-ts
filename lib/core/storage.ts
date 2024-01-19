@@ -1,4 +1,4 @@
-import { DurablePromise, TimedoutPromise, isDurablePromise, isPendingPromise } from "./promise";
+import { DurablePromise, TimedoutPromise, isDurablePromise, isPendingPromise, searchStates } from "./promise";
 import { Schedule } from "./schedule";
 
 export interface IPromiseStorage {
@@ -12,10 +12,9 @@ export interface IPromiseStorage {
 }
 
 export interface IScheduleStorage {
-  rmw<P extends Schedule | undefined>(id: string, f: (schedule: Schedule | undefined) => P): Promise<P>;
+  rmw<S extends Schedule | undefined>(id: string, f: (schedule: Schedule | undefined) => S): Promise<S>;
   search(
     id: string,
-    state: string | undefined,
     tags: Record<string, string> | undefined,
     limit: number | undefined,
   ): AsyncGenerator<Schedule[], void>;
@@ -36,27 +35,17 @@ export class WithTimeout implements IPromiseStorage {
     tags: Record<string, string> | undefined,
     limit: number | undefined,
   ): AsyncGenerator<DurablePromise[], void, unknown> {
-    const regex = new RegExp(id.replaceAll("*", ".*"));
-    const tagEntries = Object.entries(tags ?? {});
+    // search promises against all provided criteria except state,
+    // then timeout any pending promises that have exceeded the
+    // timout, and finally apply the state filter
 
-    let states: string[] = [];
-    if (state?.toLowerCase() == "pending") {
-      states = ["PENDING"];
-    } else if (state?.toLowerCase() == "resolved") {
-      states = ["RESOLVED"];
-    } else if (state?.toLowerCase() == "rejected") {
-      states = ["REJECTED", "REJECTED_CANCELED", "REJECTED_TIMEDOUT"];
-    } else {
-      states = ["PENDING", "RESOLVED", "REJECTED", "REJECTED_CANCELED", "REJECTED_TIMEDOUT"];
-    }
+    const states = searchStates(state);
 
-    for await (const res of this.storage.search("*", undefined, undefined, limit)) {
-      yield res
+    for await (const promises of this.storage.search(id, undefined, tags, limit)) {
+      yield promises
         .map(timeout)
         .filter(isDurablePromise)
-        .filter((promise) => states.includes(promise.state))
-        .filter((promise) => regex.test(promise.id))
-        .filter((promise) => tagEntries.every(([k, v]) => promise.tags?.[k] == v));
+        .filter((promise) => states.includes(promise.state));
     }
   }
 }

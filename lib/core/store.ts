@@ -198,10 +198,5 @@ export interface IScheduleStore {
    * @param tags Tags to match.
    * @returns A list of promise schedules.
    */
-  search(
-    id: string,
-    tags?: Record<string, string>,
-    limit?: number,
-    cursor?: string | undefined,
-  ): Promise<{ cursor: string; schedules: Schedule[] }>;
+  search(id: string, tags?: Record<string, string>, limit?: number): AsyncGenerator<Schedule[], void>;
 }

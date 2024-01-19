@@ -1,5 +1,5 @@
 import { IPromiseStorage, IScheduleStorage } from "../storage";
-import { DurablePromise } from "../promise";
+import { DurablePromise, searchStates } from "../promise";
 import { Schedule } from "../schedule";
 
 export class MemoryPromiseStorage implements IPromiseStorage {
@@ -21,7 +21,16 @@ export class MemoryPromiseStorage implements IPromiseStorage {
     tags: Record<string, string> | undefined,
     limit: number | undefined,
   ): AsyncGenerator<DurablePromise[], void> {
-    yield Object.values(this.promises);
+    // for the memory storage, we will ignore limit and return all
+    // promises that match the search criteria
+    const regex = new RegExp(id.replaceAll("*", ".*"));
+    const states = searchStates(state);
+    const tagEntries = Object.entries(tags ?? {});
+
+    yield Object.values(this.promises)
+      .filter((promise) => states.includes(promise.state))
+      .filter((promise) => regex.test(promise.id))
+      .filter((promise) => tagEntries.every(([k, v]) => promise.tags?.[k] == v));
   }
 }
 
@@ -41,11 +50,17 @@ export class MemoryScheduleStorage implements IScheduleStorage {
 
   async *search(
     id: string,
-    state: string | undefined,
     tags: Record<string, string> | undefined,
     limit: number | undefined,
   ): AsyncGenerator<Schedule[], void> {
-    yield Object.values(this.schedules);
+    // for the memory storage, we will ignore limit and return all
+    // schedules that match the search criteria
+    const regex = new RegExp(id.replaceAll("*", ".*"));
+    const tagEntries = Object.entries(tags ?? {});
+
+    yield Object.values(this.schedules)
+      .filter((schedule) => regex.test(schedule.id))
+      .filter((schedule) => tagEntries.every(([k, v]) => schedule.tags?.[k] == v));
   }
 
   async delete(id: string): Promise<boolean> {

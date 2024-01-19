@@ -408,48 +408,47 @@ export class RemoteScheduleStore implements IScheduleStore {
     return true;
   }
 
-  async search(
+  async *search(
     id: string,
-    tags?: Record<string, string>,
-    limit?: number,
-    cursor?: string | undefined,
-  ): Promise<{ cursor: string; schedules: Schedule[] }> {
-    const params = new URLSearchParams({ id });
+    tags: Record<string, string> | undefined,
+    limit: number | undefined,
+  ): AsyncGenerator<Schedule[], void> {
+    let cursor: string | null | undefined = undefined;
 
-    if (tags) {
-      for (const [k, v] of Object.entries(tags)) {
+    while (cursor !== null) {
+      const params = new URLSearchParams({ id });
+
+      for (const [k, v] of Object.entries(tags ?? {})) {
         params.append(`tags[${k}]`, v);
       }
-    }
 
-    if (limit !== undefined) {
-      params.append("limit", limit.toString());
-    }
+      if (limit !== undefined) {
+        params.append("limit", limit.toString());
+      }
 
-    if (cursor !== undefined) {
-      params.append("cursor", cursor);
-    }
+      if (cursor !== undefined) {
+        params.append("cursor", cursor);
+      }
 
-    const url = new URL(`${this.url}/schedules`);
-    url.search = params.toString();
+      const url = new URL(`${this.url}/schedules`);
+      url.search = params.toString();
 
-    const result = await call(
-      url.toString(),
-      isSearchSchedulesResult,
-      {
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
+      const res = await call(
+        url.toString(),
+        isSearchSchedulesResult,
+        {
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          method: "GET",
         },
-        method: "GET",
-      },
-      this.logger,
-    );
+        this.logger,
+      );
 
-    return {
-      cursor: result.cursor,
-      schedules: result.schedules.map((schedule: Schedule) => schedule),
-    };
+      cursor = res.cursor;
+      yield res.schedules;
+    }
   }
 
   // any response from delete is true
