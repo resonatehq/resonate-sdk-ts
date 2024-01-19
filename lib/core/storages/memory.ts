@@ -30,10 +30,10 @@ export class MemoryScheduleStorage implements IScheduleStorage {
 
   constructor() {}
 
-  async rmw<P extends Schedule | undefined>(id: string, f: (item: Schedule | undefined) => P): Promise<P> {
+  async rmw<S extends Schedule | undefined>(id: string, f: (item: Schedule | undefined) => S): Promise<S> {
     const item = f(this.schedules[id]);
     if (item) {
-      this.schedules[id] = item as Schedule;
+      this.schedules[id] = item;
     }
 
     return item;
@@ -49,12 +49,11 @@ export class MemoryScheduleStorage implements IScheduleStorage {
   }
 
   async delete(id: string): Promise<boolean> {
-    try {
+    if (this.schedules[id]) {
       delete this.schedules[id];
       return true;
-    } catch (e) {
-      return false;
     }
+    return false;
   }
 }
 
