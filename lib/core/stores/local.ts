@@ -220,17 +220,9 @@ export class LocalScheduleStore implements IScheduleStore {
   constructor(storage: MemoryStorage) {
     this.promiseStorage = storage.promises;
     this.storage = storage.schedules;
-
-    this.startControlLoop();
   }
 
-  private startControlLoop() {
-    setInterval(() => {
-      this.handleSchedules();
-    }, 1000); // Adjust the interval as needed
-  }
-
-  private async handleSchedules() {
+  async handleSchedules() {
     const result = await this.storage.search("id", undefined, undefined, undefined);
 
     const schedules: Schedule[] = [];
@@ -421,9 +413,18 @@ export class LocalScheduleStore implements IScheduleStore {
 export class LocalStore {
   private localPromiseStore: LocalPromiseStore;
   private localScheduleStore: LocalScheduleStore;
+
   constructor(private memoryStorage: MemoryStorage) {
     this.localPromiseStore = new LocalPromiseStore(memoryStorage.promises);
     this.localScheduleStore = new LocalScheduleStore(memoryStorage);
+
+    this.startControlLoop();
+  }
+
+  private startControlLoop() {
+    setInterval(() => {
+      this.localScheduleStore.handleSchedules();
+    }, 1000);
   }
 
   get promises(): LocalPromiseStore {
