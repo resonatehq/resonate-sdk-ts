@@ -14,7 +14,8 @@ import {
 import { Schedule, isSchedule } from "../schedule";
 import { IPromiseStore, IScheduleStore } from "../store";
 import { ErrorCodes, ResonateError } from "../error";
-import { IPromiseStorage, IScheduleStorage, WithTimeout } from "../storage";
+import { IPromiseStorage, IScheduleStorage } from "../storage";
+import { WithTimeout } from "../storages/withTimeout";
 import { MemoryPromiseStorage } from "../storages/memory";
 
 export class LocalPromiseStore implements IPromiseStore {
