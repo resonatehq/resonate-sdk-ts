@@ -9,9 +9,7 @@ export class MemoryPromiseStorage implements IPromiseStorage {
   async rmw<P extends DurablePromise | undefined>(id: string, f: (item: DurablePromise | undefined) => P): Promise<P> {
     const item = f(this.promises[id]);
     if (item) {
-      if ("state" in item) {
-        this.promises[id] = item as DurablePromise;
-      }
+      this.promises[id] = item;
     }
 
     return item;
