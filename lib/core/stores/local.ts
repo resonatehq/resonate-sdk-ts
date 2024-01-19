@@ -35,7 +35,7 @@ export class LocalPromiseStore implements IPromiseStore {
     tags: Record<string, string> | undefined,
   ): Promise<PendingPromise | ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     return this.storage.rmw(id, (promise) => {
-      if (isDurablePromise(promise)) {
+      if (promise) {
         if (strict && !isPendingPromise(promise)) {
           throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
         }
@@ -76,7 +76,7 @@ export class LocalPromiseStore implements IPromiseStore {
     data: string | undefined,
   ): Promise<ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     return this.storage.rmw(id, (promise) => {
-      if (isDurablePromise(promise)) {
+      if (promise) {
         if (strict && !isPendingPromise(promise) && !isResolvedPromise(promise)) {
           throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
         }
@@ -118,7 +118,7 @@ export class LocalPromiseStore implements IPromiseStore {
     data: string | undefined,
   ): Promise<ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     return this.storage.rmw(id, (promise) => {
-      if (isDurablePromise(promise)) {
+      if (promise) {
         if (strict && !isPendingPromise(promise) && !isRejectedPromise(promise)) {
           throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
         }
@@ -160,7 +160,7 @@ export class LocalPromiseStore implements IPromiseStore {
     data: string | undefined,
   ): Promise<ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise> {
     return this.storage.rmw(id, (promise) => {
-      if (isDurablePromise(promise)) {
+      if (promise) {
         if (strict && !isPendingPromise(promise) && !isCanceledPromise(promise)) {
           throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
         }
@@ -197,7 +197,7 @@ export class LocalPromiseStore implements IPromiseStore {
   async get(id: string): Promise<DurablePromise> {
     const promise = await this.storage.rmw(id, (p) => p);
 
-    if (isDurablePromise(promise)) {
+    if (promise) {
       return promise;
     }
 
@@ -329,7 +329,7 @@ export class LocalScheduleStore implements IScheduleStore {
 
   async get(id: string): Promise<Schedule> {
     const schedule = await this.storage.rmw<Schedule>(id, (s) => {
-      if (isSchedule(s)) {
+      if (s) {
         return s;
       } else {
         throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
@@ -354,7 +354,7 @@ export class LocalScheduleStore implements IScheduleStore {
       const scheduleList: Schedule[] = [];
       for await (const item of result) {
         for await (const elem of item) {
-          if (isSchedule(elem)) {
+          if (elem) {
             scheduleList.push(elem);
           }
         }

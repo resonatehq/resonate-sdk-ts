@@ -19,8 +19,8 @@ async function call<T>(
   url: string,
   guard: (b: unknown) => b is T,
   options: RequestInit,
-  retries: number = 3,
   logger: ILogger,
+  retries: number = 3,
 ): Promise<T> {
   let error: unknown;
 
@@ -140,7 +140,6 @@ export class RemotePromiseStore implements IPromiseStore {
           tags: tags,
         }),
       },
-      3,
       this.logger,
     );
 
@@ -178,7 +177,6 @@ export class RemotePromiseStore implements IPromiseStore {
           },
         }),
       },
-      3,
       this.logger,
     );
 
@@ -216,7 +214,6 @@ export class RemotePromiseStore implements IPromiseStore {
           },
         }),
       },
-      3,
       this.logger,
     );
 
@@ -254,7 +251,6 @@ export class RemotePromiseStore implements IPromiseStore {
           },
         }),
       },
-      3,
       this.logger,
     );
 
@@ -272,7 +268,6 @@ export class RemotePromiseStore implements IPromiseStore {
         },
         method: "GET",
       },
-      3,
       this.logger,
     );
 
@@ -319,7 +314,6 @@ export class RemotePromiseStore implements IPromiseStore {
           },
           method: "GET",
         },
-        3,
         this.logger,
       );
 
@@ -375,7 +369,6 @@ export class RemoteScheduleStore implements IScheduleStore {
           promiseTags,
         }),
       },
-      3,
       this.logger,
     );
 
@@ -393,7 +386,6 @@ export class RemoteScheduleStore implements IScheduleStore {
         },
         method: "GET",
       },
-      3,
       this.logger,
     );
 
@@ -411,7 +403,6 @@ export class RemoteScheduleStore implements IScheduleStore {
           "Content-Type": "application/json",
         },
       },
-      3,
       this.logger,
     );
     return true;
@@ -452,7 +443,6 @@ export class RemoteScheduleStore implements IScheduleStore {
         },
         method: "GET",
       },
-      3,
       this.logger,
     );
 
