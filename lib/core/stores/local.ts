@@ -12,25 +12,33 @@ import {
   isCanceledPromise,
 } from "../promise";
 import { Schedule } from "../schedule";
-import { IStore, IPromiseStore, IScheduleStore } from "../store";
+import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
 import { ErrorCodes, ResonateError } from "../error";
 import { IPromiseStorage, IScheduleStorage } from "../storage";
 import { WithTimeout } from "../storages/withTimeout";
-import { MemoryPromiseStorage, MemoryScheduleStorage } from "../storages/memory";
+import { MemoryLockStore, MemoryPromiseStorage, MemoryScheduleStorage } from "../storages/memory";
+import { ILogger } from "../logger";
+import { Logger } from "../loggers/logger";
 
 export class LocalStore implements IStore {
   public promises: LocalPromiseStore;
   public schedules: LocalScheduleStore;
+  public locks: ILockStore;
 
   private toSchedule: Schedule[] = [];
   private next: number | undefined = undefined;
 
   constructor(
+    private logger: ILogger = new Logger(),
     promiseStorage: IPromiseStorage = new WithTimeout(new MemoryPromiseStorage()),
     scheduleStorage: IScheduleStorage = new MemoryScheduleStorage(),
+    lockStore: ILockStore = new MemoryLockStore(),
   ) {
     this.promises = new LocalPromiseStore(promiseStorage);
-    this.schedules = new LocalScheduleStore(this, scheduleStorage);
+    this.schedules = new LocalScheduleStore(scheduleStorage, this);
+    this.locks = lockStore;
+
+    this.init();
   }
 
   // handler the schedule store can call
@@ -42,6 +50,14 @@ export class LocalStore implements IStore {
   // handler the schedule store can call
   deleteSchedule(id: string) {
     this.toSchedule = this.toSchedule.filter((s) => s.id != id);
+    this.setSchedule();
+  }
+
+  private async init() {
+    for await (const schedules of this.schedules.search("*", undefined, undefined)) {
+      this.toSchedule = this.toSchedule.concat(schedules);
+    }
+
     this.setSchedule();
   }
 
@@ -57,12 +73,14 @@ export class LocalStore implements IStore {
     if (this.toSchedule.length > 0) {
       // set new timeout to schedule promise
       // + converts to number
-      this.next = +setTimeout(() => this.schedule(), this.toSchedule[0].nextRunTime - Date.now());
+      this.next = +setTimeout(() => this.schedulePromise(), this.toSchedule[0].nextRunTime - Date.now());
     }
   }
 
-  private schedule() {
+  private schedulePromise() {
+    this.next = undefined;
     const schedule = this.toSchedule.shift();
+
     if (schedule) {
       const id = this.generatePromiseId(schedule);
 
@@ -78,14 +96,14 @@ export class LocalStore implements IStore {
           schedule.promiseTags,
         );
       } catch (error) {
-        console.log("error creating scheduled promise", error);
+        this.logger.warn("error creating scheduled promise", error);
       }
 
       // update schedule
       try {
         this.schedules.update(schedule.id, schedule.nextRunTime);
       } catch (error) {
-        console.log("error updating schedule", error);
+        this.logger.warn("error updating schedule", error);
       }
     }
   }
@@ -289,8 +307,8 @@ export class LocalPromiseStore implements IPromiseStore {
 
 export class LocalScheduleStore implements IScheduleStore {
   constructor(
-    private store: LocalStore,
     private storage: IScheduleStorage = new MemoryScheduleStorage(),
+    private store: LocalStore | undefined = undefined,
   ) {}
 
   async create(
@@ -341,7 +359,10 @@ export class LocalScheduleStore implements IScheduleStore {
       };
     });
 
-    this.store.addSchedule(schedule);
+    if (this.store) {
+      this.store.addSchedule(schedule);
+    }
+
     return schedule;
   }
 
@@ -367,19 +388,21 @@ export class LocalScheduleStore implements IScheduleStore {
       return schedule;
     });
 
-    this.store.addSchedule(schedule);
+    if (this.store) {
+      this.store.addSchedule(schedule);
+    }
+
     return schedule;
   }
 
   async delete(id: string): Promise<boolean> {
     const ok = await this.storage.delete(id);
 
-    if (ok) {
+    if (ok && this.store) {
       this.store.deleteSchedule(id);
-      return true;
     }
 
-    return false;
+    return ok;
   }
 
   async get(id: string): Promise<Schedule> {

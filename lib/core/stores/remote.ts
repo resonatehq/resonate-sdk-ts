@@ -8,24 +8,33 @@ import {
   isDurablePromise,
   isCompletedPromise,
 } from "../promise";
-import { IStore, IPromiseStore, IScheduleStore, isSearchPromiseResult, isSearchSchedulesResult } from "../store";
+import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
 import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
 import { ILogger } from "../logger";
 import { Schedule, isSchedule } from "../schedule";
+import { Logger } from "../loggers/logger";
+import { MemoryLockStore } from "../storages/memory";
 
 export class RemoteStore implements IStore {
-  constructor(
-    public promises: RemotePromiseStore,
-    public schedules: RemoteScheduleStore,
-  ) {}
+  public promises: RemotePromiseStore;
+  public schedules: RemoteScheduleStore;
+  public locks: ILockStore;
+
+  constructor(url: string, logger: ILogger, encoder: IEncoder<string, string> = new Base64Encoder()) {
+    this.promises = new RemotePromiseStore(url, logger, encoder);
+    this.schedules = new RemoteScheduleStore(url, logger, encoder);
+
+    // temp
+    this.locks = new MemoryLockStore();
+  }
 }
 
 export class RemotePromiseStore implements IPromiseStore {
   constructor(
     private url: string,
-    private logger: ILogger,
+    private logger: ILogger = new Logger(),
     private encoder: IEncoder<string, string> = new Base64Encoder(),
   ) {}
 
@@ -461,7 +470,30 @@ function decode<P extends DurablePromise>(promise: P, encoder: IEncoder<string, 
   }
 }
 
-// any response from delete is true
+// Type guards
+
 function isDeleted(_: any): _ is any {
   return true;
+}
+
+function isSearchPromiseResult(obj: any): obj is { cursor: string; promises: DurablePromise[] } {
+  return (
+    obj !== undefined &&
+    obj.cursor !== undefined &&
+    (obj.cursor === null || typeof obj.cursor === "string") &&
+    obj.promises !== undefined &&
+    Array.isArray(obj.promises) &&
+    obj.promises.every(isDurablePromise)
+  );
+}
+
+function isSearchSchedulesResult(obj: any): obj is { cursor: string; schedules: Schedule[] } {
+  return (
+    obj !== undefined &&
+    obj.cursor !== undefined &&
+    (obj.cursor === null || typeof obj.cursor === "string") &&
+    obj.schedules !== undefined &&
+    Array.isArray(obj.schedules) &&
+    obj.schedules.every(isSchedule)
+  );
 }
