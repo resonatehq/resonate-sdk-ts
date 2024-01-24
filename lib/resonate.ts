@@ -475,10 +475,16 @@ class ResonateContext implements Context {
       }
     }
 
-    return this.run((ctx) => Promise.all(values), {
-      retry: Retry.never(),
-      ...opts,
-    });
+    // Use a generator instead of a function for future proofing
+    return this.run(
+      function* () {
+        return Promise.all(values);
+      },
+      {
+        retry: Retry.never(),
+        ...opts,
+      },
+    );
   }
 
   async any<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
@@ -494,10 +500,16 @@ class ResonateContext implements Context {
       }
     }
 
-    return this.run((ctx) => Promise.any(values), {
-      retry: Retry.never(),
-      ...opts,
-    });
+    // Use a generator instead of a function for future proofing
+    return this.run(
+      function* () {
+        return Promise.any(values);
+      },
+      {
+        retry: Retry.never(),
+        ...opts,
+      },
+    );
   }
 
   async race<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
@@ -513,10 +525,16 @@ class ResonateContext implements Context {
       }
     }
 
-    return this.run((ctx) => Promise.race(values), {
-      retry: Retry.never(),
-      ...opts,
-    });
+    // Use a generator instead of a function for future proofing
+    return this.run(
+      function* () {
+        return Promise.race(values);
+      },
+      {
+        retry: Retry.never(),
+        ...opts,
+      },
+    );
   }
 
   execute<A extends any[], R>(func: DurableFunction<A, R> | string, args: A): Promise<R> {
