@@ -8,7 +8,7 @@ import {
   isDurablePromise,
   isCompletedPromise,
 } from "../promise";
-import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
+import { IStore, IPromiseStore, IScheduleStore } from "../store";
 import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";

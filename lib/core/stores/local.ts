@@ -421,19 +421,13 @@ export class LocalScheduleStore implements IScheduleStore {
     return schedule;
   }
 
-  async *search(
-    id: string,
-    tags?: Record<string, string>,
-    limit?: number,
-  ): AsyncGenerator<Schedule[], void> {
+  async *search(id: string, tags?: Record<string, string>, limit?: number): AsyncGenerator<Schedule[], void> {
     // filter the schedules returned from storage
     const regex = new RegExp(id.replaceAll("*", ".*"));
     const tagEntries = Object.entries(tags ?? {});
 
     for await (const schedules of this.storage.all()) {
-      yield schedules
-        .filter((s) => regex.test(s.id))
-        .filter((s) => tagEntries.every(([k, v]) => s.tags?.[k] == v));
+      yield schedules.filter((s) => regex.test(s.id)).filter((s) => tagEntries.every(([k, v]) => s.tags?.[k] == v));
     }
   }
 
@@ -446,9 +440,7 @@ export class LocalScheduleStore implements IScheduleStore {
 }
 
 export class LocalLockStore implements ILockStore {
-  constructor(
-    private storage: IStorage<Lock> = new MemoryStorage<Lock>(),
-  ) {}
+  constructor(private storage: IStorage<Lock> = new MemoryStorage<Lock>()) {}
 
   async tryAcquire(id: string, pid: string, eid: string): Promise<boolean> {
     const lock = await this.storage.rmw(id, (lock) => {

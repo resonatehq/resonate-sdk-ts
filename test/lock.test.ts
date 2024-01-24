@@ -1,8 +1,6 @@
 import { jest, describe, test, expect } from "@jest/globals";
 import { Resonate, Context } from "../lib/resonate";
 import { LocalStore } from "../lib/core/stores/local";
-import { MemoryStorage } from "../lib/core/storages/memory";
-import { Lock } from "../lib/core/lock";
 
 // Set a larger timeout for hooks (e.g., 10 seconds)
 jest.setTimeout(10000);
