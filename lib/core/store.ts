@@ -182,6 +182,6 @@ export interface IScheduleStore {
  * Lock Store API
  */
 export interface ILockStore {
-  tryAcquire(id: string, pid: string, eid: string): boolean;
-  release(id: string, eid: string): void;
+  tryAcquire(id: string, pid: string, eid: string): Promise<boolean>;
+  release(id: string, eid: string): Promise<void>;
 }

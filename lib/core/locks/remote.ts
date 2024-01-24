@@ -1,10 +1,14 @@
 import { ErrorCodes, ResonateError } from "../error";
-import { ILockRemote } from "../lock";
 import { ILogger } from "../logger";
 import { Logger } from "../loggers/logger";
+import { ILockStore } from "../store";
 
-export class RemoteLock implements ILockRemote {
+export class RemoteLock implements ILockStore {
   private url: string;
+  // simple lock counter - tryAcquire increments, release decrements
+  // counter > 0 we call heartbeat api in a loop, setInterval
+  private lockCounter: number = 0;
+  private heartbeatInterval: NodeJS.Timer | null = null;
 
   constructor(
     url: string,
@@ -13,35 +17,41 @@ export class RemoteLock implements ILockRemote {
     this.url = url;
   }
 
-  async tryAcquire(resourceId: string, processId: string, executionId: string, timeout?: number): Promise<boolean> {
+  async tryAcquire(resourceId: string, processId: string, executionId: string): Promise<boolean> {
     const lockRequest = {
-      resource_id: resourceId,
-      process_id: processId,
-      execution_id: executionId,
-      timeout: timeout || 0,
+      resourceId: resourceId,
+      processId: processId,
+      executionId: executionId,
     };
 
-    return call<boolean>(
+    const acquired = call<boolean>(
       `${this.url}/locks/acquire`,
       (b: unknown): b is boolean => typeof b === "boolean",
       {
         method: "post",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(lockRequest),
       },
       this.logger,
     );
+
+    if (await acquired) {
+      this.lockCounter++;
+      // Start the heartbeat if it's not already running
+      if (this.lockCounter === 1) {
+        this.startHeartbeat(processId);
+      }
+      return true;
+    }
+    return false;
   }
 
-  async releaseLock(resourceId: string, executionId: string): Promise<void> {
+  async release(resourceId: string, executionId: string): Promise<void> {
     const releaseLockRequest = {
       resource_id: resourceId,
       execution_id: executionId,
     };
 
-    await call<void>(
+    call<void>(
       `${this.url}/locks/release`,
       (response: unknown): response is void => response === undefined,
       {
@@ -53,12 +63,34 @@ export class RemoteLock implements ILockRemote {
       },
       this.logger,
     );
+
+    this.lockCounter--;
+    // Stop the heartbeat if there are no more locks
+    if (this.lockCounter === 0) {
+      this.stopHeartbeat();
+    }
   }
 
-  async heartbeat(processId: string, timeout: number): Promise<number> {
+  private startHeartbeat(processId: string): void {
+    this.heartbeatInterval = setInterval(async () => {
+      const locksAffected = await this.heartbeat(processId);
+      if (locksAffected === 0) {
+        this.stopHeartbeat();
+      }
+    }, 5000); // desired heartbeat interval (in ms)
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval as any);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  private async heartbeat(processId: string): Promise<number> {
     const heartbeatRequest = {
       process_id: processId,
-      timeout: timeout,
+      timeout: 0,
     };
 
     return call<number>(

@@ -76,7 +76,7 @@ export class MemoryScheduleStorage implements IScheduleStorage {
 export class MemoryLockStore implements ILockStore {
   private locks: Record<string, { pid: string; eid: string }> = {};
 
-  tryAcquire(id: string, pid: string, eid: string): boolean {
+  async tryAcquire(id: string, pid: string, eid: string): Promise<boolean> {
     if (!this.locks[id] || (this.locks[id] && this.locks[id].eid === eid)) {
       // Lock is available, acquire it
       this.locks[id] = { pid, eid };
@@ -87,7 +87,7 @@ export class MemoryLockStore implements ILockStore {
     }
   }
 
-  release(id: string, eid: string): void {
+  async release(id: string, eid: string): Promise<void> {
     if (this.locks[id] && this.locks[id].eid === eid) {
       // Release the lock
       delete this.locks[id];
