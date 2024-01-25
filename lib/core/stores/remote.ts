@@ -502,13 +502,14 @@ export class RemoteLockStore implements ILockStore {
   // simple lock counter - tryAcquire increments, release decrements
   // counter > 0 we call heartbeat api in a loop, setInterval
   private lockCounter: number = 0;
-  private heartbeatInterval: NodeJS.Timer | null = null;
+  private heartbeatInterval: NodeJS.Timeout | number | null = null;
 
   constructor(
     url: string,
     private logger: ILogger = new Logger(),
   ) {
     this.url = url;
+    this.heartbeatInterval = 100;
   }
 
   async tryAcquire(resourceId: string, processId: string, executionId: string): Promise<boolean> {
@@ -568,7 +569,8 @@ export class RemoteLockStore implements ILockStore {
   private startHeartbeat(processId: string): void {
     this.heartbeatInterval = setInterval(async () => {
       const locksAffected = await this.heartbeat(processId);
-      if (locksAffected === 0) {
+      this.lockCounter = locksAffected; // Set lockCounter based on the response
+      if (this.lockCounter === 0) {
         this.stopHeartbeat();
       }
     }, 5000); // desired heartbeat interval (in ms)
@@ -576,8 +578,8 @@ export class RemoteLockStore implements ILockStore {
 
   private stopHeartbeat(): void {
     if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval as any);
-      this.heartbeatInterval = null;
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = 0;
     }
   }
 
