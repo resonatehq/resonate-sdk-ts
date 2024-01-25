@@ -25,8 +25,6 @@ export class RemoteStore implements IStore {
   constructor(url: string, logger: ILogger, encoder: IEncoder<string, string> = new Base64Encoder()) {
     this.promises = new RemotePromiseStore(url, logger, encoder);
     this.schedules = new RemoteScheduleStore(url, logger, encoder);
-
-    // temp
     this.locks = new RemoteLockStore(url, logger);
   }
 }
@@ -499,8 +497,6 @@ function isSearchSchedulesResult(obj: any): obj is { cursor: string; schedules: 
 
 export class RemoteLockStore implements ILockStore {
   private url: string;
-  // simple lock counter - tryAcquire increments, release decrements
-  // counter > 0 we call heartbeat api in a loop, setInterval
   private lockCounter: number = 0;
   private heartbeatInterval: NodeJS.Timeout | number | null = null;
 
