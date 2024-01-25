@@ -497,15 +497,13 @@ function isSearchSchedulesResult(obj: any): obj is { cursor: string; schedules: 
 
 export class RemoteLockStore implements ILockStore {
   private url: string;
-  private lockCounter: number = 0;
-  private heartbeatInterval: NodeJS.Timeout | number | null = null;
+  private heartbeatInterval: number | null = null;
 
   constructor(
     url: string,
     private logger: ILogger = new Logger(),
   ) {
     this.url = url;
-    this.heartbeatInterval = 100;
   }
 
   async tryAcquire(resourceId: string, processId: string, executionId: string): Promise<boolean> {
@@ -526,9 +524,7 @@ export class RemoteLockStore implements ILockStore {
     );
 
     if (await acquired) {
-      this.lockCounter++;
-      // Start the heartbeat if it's not already running
-      if (this.lockCounter === 1) {
+      if (this.heartbeatInterval === null) {
         this.startHeartbeat(processId);
       }
       return true;
@@ -554,19 +550,12 @@ export class RemoteLockStore implements ILockStore {
       },
       this.logger,
     );
-
-    this.lockCounter--;
-    // Stop the heartbeat if there are no more locks
-    if (this.lockCounter === 0) {
-      this.stopHeartbeat();
-    }
   }
 
   private startHeartbeat(processId: string): void {
-    this.heartbeatInterval = setInterval(async () => {
+    this.heartbeatInterval = +setInterval(async () => {
       const locksAffected = await this.heartbeat(processId);
-      this.lockCounter = locksAffected; // Set lockCounter based on the response
-      if (this.lockCounter === 0) {
+      if (locksAffected === 0) {
         this.stopHeartbeat();
       }
     }, 5000); // desired heartbeat interval (in ms)
