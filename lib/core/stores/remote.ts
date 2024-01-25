@@ -12,22 +12,24 @@ import { IStore, IPromiseStore, IScheduleStore } from "../store";
 import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
 import { ErrorCodes, ResonateError } from "../error";
+import { ILockStore } from "../store";
 import { ILogger } from "../logger";
 import { Schedule, isSchedule } from "../schedule";
 import { Logger } from "../loggers/logger";
 import { LocalLockStore } from "./local";
 
+
 export class RemoteStore implements IStore {
   public promises: RemotePromiseStore;
   public schedules: RemoteScheduleStore;
-  public locks: LocalLockStore;
+  public locks: RemoteLockStore;
 
   constructor(url: string, logger: ILogger, encoder: IEncoder<string, string> = new Base64Encoder()) {
     this.promises = new RemotePromiseStore(url, logger, encoder);
     this.schedules = new RemoteScheduleStore(url, logger, encoder);
 
     // temp
-    this.locks = new LocalLockStore();
+    this.locks = new RemoteLockStore(url, logger);
   }
 }
 
@@ -495,4 +497,109 @@ function isSearchSchedulesResult(obj: any): obj is { cursor: string; schedules: 
     Array.isArray(obj.schedules) &&
     obj.schedules.every(isSchedule)
   );
+}
+
+export class RemoteLockStore implements ILockStore {
+  private url: string;
+  // simple lock counter - tryAcquire increments, release decrements
+  // counter > 0 we call heartbeat api in a loop, setInterval
+  private lockCounter: number = 0;
+  private heartbeatInterval: NodeJS.Timer | null = null;
+
+  constructor(
+    url: string,
+    private logger: ILogger = new Logger(),
+  ) {
+    this.url = url;
+  }
+
+  async tryAcquire(resourceId: string, processId: string, executionId: string): Promise<boolean> {
+    const lockRequest = {
+      resourceId: resourceId,
+      processId: processId,
+      executionId: executionId,
+    };
+
+    const acquired = call<boolean>(
+      `${this.url}/locks/acquire`,
+      (b: unknown): b is boolean => typeof b === "boolean",
+      {
+        method: "post",
+        body: JSON.stringify(lockRequest),
+      },
+      this.logger,
+    );
+
+    if (await acquired) {
+      this.lockCounter++;
+      // Start the heartbeat if it's not already running
+      if (this.lockCounter === 1) {
+        this.startHeartbeat(processId);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  async release(resourceId: string, executionId: string): Promise<void> {
+    const releaseLockRequest = {
+      resource_id: resourceId,
+      execution_id: executionId,
+    };
+
+    call<void>(
+      `${this.url}/locks/release`,
+      (response: unknown): response is void => response === undefined,
+      {
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(releaseLockRequest),
+      },
+      this.logger,
+    );
+
+    this.lockCounter--;
+    // Stop the heartbeat if there are no more locks
+    if (this.lockCounter === 0) {
+      this.stopHeartbeat();
+    }
+  }
+
+  private startHeartbeat(processId: string): void {
+    this.heartbeatInterval = setInterval(async () => {
+      const locksAffected = await this.heartbeat(processId);
+      if (locksAffected === 0) {
+        this.stopHeartbeat();
+      }
+    }, 5000); // desired heartbeat interval (in ms)
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval as any);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  private async heartbeat(processId: string): Promise<number> {
+    const heartbeatRequest = {
+      process_id: processId,
+      timeout: 0,
+    };
+
+    return call<number>(
+      `${this.url}/locks/heartbeat`,
+      (locksAffected: unknown): locksAffected is number => typeof locksAffected === "number",
+      {
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(heartbeatRequest),
+      },
+      this.logger,
+    );
+  }
 }
