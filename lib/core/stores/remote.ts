@@ -16,7 +16,6 @@ import { ILockStore } from "../store";
 import { ILogger } from "../logger";
 import { Schedule, isSchedule } from "../schedule";
 import { Logger } from "../loggers/logger";
-import { LocalLockStore } from "./local";
 
 export class RemoteStore implements IStore {
   public promises: RemotePromiseStore;
