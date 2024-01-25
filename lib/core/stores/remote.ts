@@ -564,7 +564,7 @@ export class RemoteLockStore implements ILockStore {
   private stopHeartbeat(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = 0;
+      this.heartbeatInterval = null;
     }
   }
 
