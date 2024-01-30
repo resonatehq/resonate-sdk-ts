@@ -48,7 +48,7 @@ type ResonateOpts = {
 export class Resonate {
   private functions: Record<string, { func: DurableFunction<any, any>; opts: Opts }> = {};
 
-  private cache: ICache<Promise<any>> = new Cache();
+  private cache: ICache<{ context: Context; promise: Promise<any> }> = new Cache();
 
   private stores: Record<string, IStore> = {};
 
@@ -200,6 +200,14 @@ export class Resonate {
   run<A extends any[], R>(name: string, id: string, ...argsAndOpts: A): Promise<R>;
   run<A extends any[], R>(name: string, id: string, ...argsAndOpts: [...A, Partial<Opts>]): Promise<R>;
   run<A extends any[], R>(name: string, id: string, ...argsAndOpts: [...A, Partial<Opts>?]): Promise<R> {
+    return this._run<A, R>(name, id, ...argsAndOpts).promise;
+  }
+
+  _run<A extends any[], R>(
+    name: string,
+    id: string,
+    ...argsAndOpts: [...A, Partial<Opts>?]
+  ): { context: Context; promise: Promise<R> } {
     if (!(name in this.functions)) {
       throw new Error(`Function ${name} not registered`);
     }
@@ -219,17 +227,16 @@ export class Resonate {
     const store = this.store(opts.store);
 
     if (!this.cache.has(id)) {
-      const promise = new Promise(async (resolve, reject) => {
+      const context = new ResonateContext(this, name, id, idempotencyKey, opts);
+      const promise = new Promise<R>(async (resolve, reject) => {
         // lock
         while (!(await store.locks.tryAcquire(id, this.pid, opts.eid))) {
           // sleep
           await new Promise((r) => setTimeout(r, 1000));
         }
 
-        const context = new ResonateContext(this, name, id, idempotencyKey, opts);
-
         try {
-          resolve(await context.execute(func, args));
+          resolve(await context.execute<A, R>(func, args));
         } catch (e) {
           reject(e);
         } finally {
@@ -237,7 +244,7 @@ export class Resonate {
         }
       });
 
-      this.cache.set(id, promise);
+      this.cache.set(id, { context, promise });
     }
 
     return this.cache.get(id);
@@ -420,8 +427,11 @@ class ResonateContext implements Context {
     return Math.min(this.created + this.opts.timeout, this.parent?.timeout ?? Infinity);
   }
 
-  startTrace(id: string, i: number = this.traces.length - 1): ITrace {
-    const trace = this.traces[i]?.start(id) ?? this.parent?.startTrace(id, 0) ?? this.resonate.logger.startTrace(id);
+  startTrace(id: string, attrs?: Record<string, string>, i: number = this.traces.length - 1): ITrace {
+    const trace =
+      this.traces[i]?.start(id, attrs) ??
+      this.parent?.startTrace(id, attrs, 0) ??
+      this.resonate.logger.startTrace(id, attrs);
     this.traces.unshift(trace);
 
     return trace;
