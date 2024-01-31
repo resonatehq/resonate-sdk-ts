@@ -10,6 +10,7 @@ import {
   isResolvedPromise,
   isRejectedPromise,
   isCanceledPromise,
+  isTimedoutPromise,
 } from "../promise";
 import { Schedule } from "../schedule";
 import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
@@ -116,7 +117,6 @@ export class LocalStore implements IStore {
 
 export class LocalPromiseStore implements IPromiseStore {
   constructor(private storage: IStorage<DurablePromise> = new MemoryStorage<DurablePromise>()) {}
-  // constructor(private storage: IPromiseStorage = new WithTimeout(new MemoryPromiseStorage())) {}
 
   async create(
     id: string,
@@ -153,7 +153,7 @@ export class LocalPromiseStore implements IPromiseStore {
         throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
       }
 
-      if (promise.idempotencyKeyForCreate === undefined || ikey != promise.idempotencyKeyForCreate) {
+      if (promise.idempotencyKeyForCreate === undefined || ikey !== promise.idempotencyKeyForCreate) {
         throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
       }
 
@@ -195,7 +195,10 @@ export class LocalPromiseStore implements IPromiseStore {
         throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
       }
 
-      if (promise.idempotencyKeyForComplete === undefined || ikey != promise.idempotencyKeyForComplete) {
+      if (
+        !isTimedoutPromise(promise) &&
+        (promise.idempotencyKeyForComplete === undefined || ikey !== promise.idempotencyKeyForComplete)
+      ) {
         throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
       }
 
@@ -237,7 +240,10 @@ export class LocalPromiseStore implements IPromiseStore {
         throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
       }
 
-      if (promise.idempotencyKeyForComplete === undefined || ikey != promise.idempotencyKeyForComplete) {
+      if (
+        !isTimedoutPromise(promise) &&
+        (promise.idempotencyKeyForComplete === undefined || ikey !== promise.idempotencyKeyForComplete)
+      ) {
         throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
       }
 
@@ -279,7 +285,10 @@ export class LocalPromiseStore implements IPromiseStore {
         throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
       }
 
-      if (promise.idempotencyKeyForComplete === undefined || ikey != promise.idempotencyKeyForComplete) {
+      if (
+        !isTimedoutPromise(promise) &&
+        (promise.idempotencyKeyForComplete === undefined || ikey !== promise.idempotencyKeyForComplete)
+      ) {
         throw new ResonateError(ErrorCodes.FORBIDDEN, "Forbidden request");
       }
 
