@@ -1,6 +1,6 @@
 import { Opts } from "./core/opts";
 import { IStore } from "./core/store";
-import { DurablePromise, isPendingPromise, isResolvedPromise } from "./core/promise";
+import { DurablePromise, isDurablePromise, isPendingPromise, isResolvedPromise } from "./core/promise";
 import { Retry } from "./core/retries/retry";
 import { IBucket } from "./core/bucket";
 import { Bucket } from "./core/buckets/bucket";
@@ -9,7 +9,7 @@ import { RemoteStore } from "./core/stores/remote";
 import { ILogger, ITrace } from "./core/logger";
 import { Logger } from "./core/loggers/logger";
 import { JSONEncoder } from "./core/encoders/json";
-import { ResonateError } from "./core/error";
+import { ErrorCodes, ResonateError, ResonateTestError } from "./core/error";
 import { ICache } from "./core/cache";
 import { Cache } from "./core/caches/cache";
 
@@ -567,9 +567,22 @@ class ResonateContext implements Context {
 
       // trace
       const trace = this.startTrace(this.id);
-
+      // Check if test probability is passed in options
+      const randomSeed = this.opts.testRandomSeed;
+      const chooseFailureBranch = Math.floor(Math.random() * 3) + 1;
       // invoke
       try {
+        if (
+          this.opts.testFailureProb !== undefined &&
+          (randomSeed ?? 0) < this.opts.testFailureProb &&
+          chooseFailureBranch === 1
+        ) {
+          throw new ResonateTestError(
+            ErrorCodes.UNKNOWN,
+            "Test failure occurred with seed: " + (randomSeed ?? 0) + " and probability: " + this.opts.testFailureProb,
+          );
+        }
+
         let r = await generator.next();
         while (!r.done) {
           r = await generator.next(r.value);
@@ -580,14 +593,35 @@ class ResonateContext implements Context {
         if (isPendingPromise(promise)) {
           throw new Error("Invalid state");
         } else if (isResolvedPromise(promise)) {
+          if (
+            this.opts.testFailureProb !== undefined &&
+            (randomSeed ?? 0) < this.opts.testFailureProb &&
+            chooseFailureBranch === 2
+          ) {
+            throw new ResonateTestError(
+              ErrorCodes.UNKNOWN,
+              "Test failure occurred with seed: " + randomSeed + " and probability: " + this.opts.testFailureProb,
+            );
+          }
           resolve(this.opts.encoder.decode(promise.value.data) as R);
         } else {
+          if (
+            this.opts.testFailureProb !== undefined &&
+            (randomSeed ?? 0) < this.opts.testFailureProb &&
+            chooseFailureBranch === 3
+          ) {
+            throw new ResonateTestError(
+              ErrorCodes.UNKNOWN,
+              "Test failure occurred with seed: " + randomSeed + " and probability: " + this.opts.testFailureProb,
+            );
+          }
           reject(this.opts.encoder.decode(promise.value.data));
         }
       } catch (e: unknown) {
         // kill the promise when an error is thrown
         // note that this is not the same as a failed function invocation
         // which will return a promise
+        console.log("error: " + e);
         this.kill(ResonateError.fromError(e));
       } finally {
         trace.end();

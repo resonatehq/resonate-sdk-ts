@@ -18,15 +18,19 @@ function traces(ctx: Context): TraceTree {
   };
 }
 
+function simulatedFailure(prob: number): void {
+  if (Math.random() < prob) {
+    throw new Error("Simulated failure with prob: " + prob);
+  }
+}
+
+// ResonateTestError
+
 const baseline = new Resonate();
 
-baseline.register("test", test);
+baseline.register("test", test1);
 
-const resonate = new Resonate();
-
-resonate.register("test", test2);
-
-async function test(ctx: Context) {
+async function test1(ctx: Context) {
   //   if (Math.random() < 0.1) {
   //     throw new Error("Simulated failure in foo");
   //   }
@@ -36,9 +40,6 @@ async function test(ctx: Context) {
 }
 
 async function test2(ctx: Context) {
-  if (Math.random() < 0.7) {
-    throw new Error("Simulated failure in foo");
-  }
   await ctx.run(foo2);
   await ctx.run(foo2);
 }
@@ -49,9 +50,6 @@ async function foo(ctx: Context) {
 }
 
 async function foo2(ctx: Context) {
-  if (Math.random() < 0.6) {
-    throw new Error("Simulated failure in foo");
-  }
   await ctx.run(bar2);
   await ctx.run(bar2);
 }
@@ -59,9 +57,7 @@ async function foo2(ctx: Context) {
 async function bar(ctx: Context) {}
 
 async function bar2(ctx: Context) {
-  if (Math.random() < 0.8) {
-    throw new Error("Simulated failure in foo");
-  }
+  simulatedFailure(0.2);
 }
 
 function isSubsetTree(context: Context, other: Context): boolean {
@@ -90,21 +86,44 @@ function isSubsetTree(context: Context, other: Context): boolean {
 }
 
 async function main() {
-  const { context, promise } = baseline._run("test", "baseline");
-  await promise;
+  const { context: context1, promise: promise1 } = baseline._run("test", "baseline");
+  await promise1;
 
-  // map context to something useable
-  const traceTree = traces(context);
+  // Map context to something useable
+  const tree1 = traces(context1);
+  printTree(tree1);
 
-  printTree(traceTree);
+  const storedContexts: Context[] = [context1];
 
-  const { context: context2, promise: promise2 } = resonate._run("test", "baseline");
-  await promise2;
+  let currentContext: Context;
+  while (true) {
+    const resonate = new Resonate();
 
-  const traceTree2 = traces(context2);
-  printTree(traceTree2);
+    resonate.register("test", test2);
+    try {
+      const testRandomSeed = Math.random();
+      console.log("testRandomSeed: " + testRandomSeed);
+      const { context: currentContext, promise: currentPromise } = resonate._run("test", "baseline", {
+        testFailureProb: 0.6,
+        testRandomSeed: testRandomSeed,
+      });
 
-  console.log(isSubsetTree(context, context2));
+      await currentPromise;
+      // Break the loop if the current context was successful
+      const tree2 = traces(currentContext);
+      printTree(tree2);
+
+      storedContexts.push(currentContext);
+      break;
+    } catch (e) {
+      console.log("Failed to run test, trying again!");
+    }
+  }
+
+  // Compare every stored context to assert that each is a subset
+  for (const storedContext of storedContexts) {
+    console.log(isSubsetTree(context1, storedContext));
+  }
 }
 
 function printTree(tree: TraceTree, indent: string = ""): void {

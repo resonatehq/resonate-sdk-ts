@@ -41,4 +41,16 @@ export type Opts = {
    * Overrides the default execution id.
    */
   eid: string;
+
+  /**
+   * Test Only
+   * Probability of failure.
+   */
+  testFailureProb?: number;
+
+  /**
+   * Test Only
+   * Random Seed.
+   */
+  testRandomSeed?: number;
 };

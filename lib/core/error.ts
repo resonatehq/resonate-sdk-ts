@@ -23,3 +23,15 @@ export class ResonateError extends Error {
     return e instanceof ResonateError ? e : new ResonateError(ErrorCodes.UNKNOWN, "Unexpected error", e);
   }
 }
+
+// resonate test error extends ResonateError
+export class ResonateTestError extends ResonateError {
+  constructor(
+    public readonly code: ErrorCodes,
+    public readonly message: string,
+    public readonly cause?: any,
+    public readonly retryable: boolean = false,
+  ) {
+    super(code, message, cause, retryable);
+  }
+}
