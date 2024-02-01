@@ -24,14 +24,8 @@ export class ResonateError extends Error {
   }
 }
 
-// resonate test error extends ResonateError
-export class ResonateTestError extends ResonateError {
-  constructor(
-    public readonly code: ErrorCodes,
-    public readonly message: string,
-    public readonly cause?: any,
-    public readonly retryable: boolean = false,
-  ) {
-    super(code, message, cause, retryable);
+export class ResonateTestCrash extends ResonateError {
+  constructor(prob: number) {
+    super(ErrorCodes.UNKNOWN, "Simulated failure with prob: " + prob, undefined, false);
   }
 }

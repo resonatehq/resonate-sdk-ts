@@ -9,7 +9,7 @@ import { RemoteStore } from "./core/stores/remote";
 import { ILogger, ITrace } from "./core/logger";
 import { Logger } from "./core/loggers/logger";
 import { JSONEncoder } from "./core/encoders/json";
-import { ErrorCodes, ResonateError, ResonateTestError } from "./core/error";
+import { ErrorCodes, ResonateError, ResonateTestCrash } from "./core/error";
 import { ICache } from "./core/cache";
 import { Cache } from "./core/caches/cache";
 
@@ -577,10 +577,7 @@ class ResonateContext implements Context {
           (randomSeed ?? 0) < this.opts.testFailureProb &&
           chooseFailureBranch === 1
         ) {
-          throw new ResonateTestError(
-            ErrorCodes.UNKNOWN,
-            "Test failure occurred with seed: " + (randomSeed ?? 0) + " and probability: " + this.opts.testFailureProb,
-          );
+          throw new ResonateTestCrash(this.opts.testFailureProb);
         }
 
         let r = await generator.next();
@@ -598,10 +595,7 @@ class ResonateContext implements Context {
             (randomSeed ?? 0) < this.opts.testFailureProb &&
             chooseFailureBranch === 2
           ) {
-            throw new ResonateTestError(
-              ErrorCodes.UNKNOWN,
-              "Test failure occurred with seed: " + randomSeed + " and probability: " + this.opts.testFailureProb,
-            );
+            throw new ResonateTestCrash(this.opts.testFailureProb);
           }
           resolve(this.opts.encoder.decode(promise.value.data) as R);
         } else {
@@ -610,10 +604,7 @@ class ResonateContext implements Context {
             (randomSeed ?? 0) < this.opts.testFailureProb &&
             chooseFailureBranch === 3
           ) {
-            throw new ResonateTestError(
-              ErrorCodes.UNKNOWN,
-              "Test failure occurred with seed: " + randomSeed + " and probability: " + this.opts.testFailureProb,
-            );
+            throw new ResonateTestCrash(this.opts.testFailureProb);
           }
           reject(this.opts.encoder.decode(promise.value.data));
         }
@@ -621,7 +612,6 @@ class ResonateContext implements Context {
         // kill the promise when an error is thrown
         // note that this is not the same as a failed function invocation
         // which will return a promise
-        console.log("error: " + e);
         this.kill(ResonateError.fromError(e));
       } finally {
         trace.end();

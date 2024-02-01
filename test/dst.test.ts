@@ -96,6 +96,8 @@ async function main() {
   const storedContexts: Context[] = [context1];
 
   let currentContext: Context;
+  const probFailure = 0.6;
+  console.log("simulated probability of failure: " + probFailure);
   while (true) {
     const resonate = new Resonate();
 
@@ -104,7 +106,7 @@ async function main() {
       const testRandomSeed = Math.random();
       console.log("testRandomSeed: " + testRandomSeed);
       const { context: currentContext, promise: currentPromise } = resonate._run("test", "baseline", {
-        testFailureProb: 0.6,
+        testFailureProb: probFailure,
         testRandomSeed: testRandomSeed,
       });
 
