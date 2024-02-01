@@ -277,7 +277,7 @@ export class RemoteScheduleStore implements IScheduleStore {
       Accept: "application/json",
       "Content-Type": "application/json",
     };
-  
+
     if (ikey !== undefined) {
       reqHeaders["Idempotency-Key"] = ikey;
     }
@@ -286,7 +286,7 @@ export class RemoteScheduleStore implements IScheduleStore {
       data: promiseData ? encode(promiseData, this.encoder) : undefined,
       headers: promiseHeaders || {},
     };
-  
+
     const requestBody = {
       id,
       description,
@@ -294,11 +294,11 @@ export class RemoteScheduleStore implements IScheduleStore {
       tags,
       promiseId,
       promiseTimeout,
-      promiseParam : promiseValue,
+      promiseParam: promiseValue,
       promiseData: promiseData ? encode(promiseData, this.encoder) : undefined,
       promiseTags,
     };
-  
+
     const schedule = call<Schedule>(
       `${this.url}/schedules`,
       isSchedule,
@@ -309,9 +309,9 @@ export class RemoteScheduleStore implements IScheduleStore {
       },
       this.logger,
     );
-  
+
     return schedule;
-  }  
+  }
 
   async get(id: string): Promise<Schedule> {
     const schedule = call(
