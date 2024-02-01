@@ -148,7 +148,7 @@ export interface IScheduleStore {
     tags: Record<string, string> | undefined,
     promiseId: string,
     promiseTimeout: number,
-    promiseParam: Record<string, string> | undefined,
+    promiseHeaders: Record<string, string> | undefined,
     promiseData: string | undefined,
     promiseTags: Record<string, string> | undefined,
   ): Promise<Schedule>;
