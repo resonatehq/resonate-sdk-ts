@@ -1,4 +1,4 @@
-import { Opts } from "./core/opts";
+import { Opts, ContextOpts, isContextOpts } from "./core/opts";
 import { IStore } from "./core/store";
 import { DurablePromise, isPendingPromise, isResolvedPromise } from "./core/promise";
 import { Retry } from "./core/retries/retry";
@@ -17,22 +17,25 @@ import { IEncoder } from "./core/encoder";
 
 // Types
 
-type F<A extends any[], R> = (c: Context, ...a: A) => R;
-type G<A extends any[], R> = (c: Context, ...a: A) => Generator<Promise<any>, R, any>;
+type Func<T = any> = (ctx: Context, ...args: any[]) => T;
 
-type DurableFunction<A extends any[], R> = G<A, R> | F<A, R>;
+type Parameters<F extends Func> = F extends (ctx: Context, ...args: infer P) => any ? P : never;
 
-type Invocation<A extends any[], R> = AInvocation<A, R> | GInvocation<A, R>;
+type ReturnType<F extends Func> = F extends (ctx: Context, ...args: any) => infer R
+  ? R extends Generator<unknown, infer G>
+    ? G
+    : R
+  : never;
 
-function isF<A extends any[], R>(f: unknown): f is F<A, R> {
+function isFunction(f: unknown): f is Func {
   return (
     typeof f === "function" &&
     (f.constructor.name === "Function" || f.constructor.name === "AsyncFunction" || f.constructor.name === "")
   );
 }
 
-function isG<A extends any[], R>(g: unknown): g is G<A, R> {
-  return typeof g === "function" && g.constructor.name === "GeneratorFunction";
+function isGenerator(f: unknown): f is Func<Generator> {
+  return typeof f === "function" && f.constructor.name === "GeneratorFunction";
 }
 
 // Resonate
@@ -49,7 +52,7 @@ type ResonateOpts = {
 };
 
 export class Resonate {
-  private functions: Record<string, { func: DurableFunction<any, any>; opts: Opts }> = {};
+  private functions: Record<string, { func: Func; opts: Opts }> = {};
 
   private cache: ICache<Promise<any>> = new Cache();
 
@@ -113,11 +116,11 @@ export class Resonate {
    * @param opts
    * @returns Resonate function
    */
-  register<A extends any[], R>(
+  register<F extends Func>(
     name: string,
-    func: DurableFunction<A, R>,
-    opts: Partial<Opts> = {},
-  ): (id: string, ...args: A) => Promise<R> {
+    func: F,
+    opts: ContextOpts = new ContextOpts(),
+  ): (id: string, ...args: Parameters<F>) => Promise<ReturnType<F>> {
     if (name in this.functions) {
       throw new Error(`Function ${name} already registered`);
     }
@@ -126,17 +129,17 @@ export class Resonate {
       // the function
       func: func,
 
-      // default opts
+      // inject sensible default opts
       opts: {
         timeout: 10000,
         retry: Retry.exponential(),
         encoder: new JSONEncoder(),
         eid: randomId(),
-        ...opts,
+        ...opts.all(),
       },
     };
 
-    return (id: string, ...args: A): Promise<R> => {
+    return (id: string, ...args: Parameters<F>): Promise<ReturnType<F>> => {
       return this.run(name, id, ...args);
     };
   }
@@ -146,7 +149,7 @@ export class Resonate {
    *
    * @param module
    */
-  registerModule(module: Record<string, DurableFunction<any, any>>) {
+  registerModule(module: Record<string, Func>) {
     for (const key in module) {
       this.register(key, module[key]);
     }
@@ -162,25 +165,20 @@ export class Resonate {
    * @param opts
    * @returns Resonate function
    */
-  schedule<A extends any[], R>(
+  schedule<F extends Func>(name: string, cron: string, func: F, ...args: Parameters<F>): Promise<Schedule>;
+  schedule<F extends Func>(
     name: string,
     cron: string,
-    func: DurableFunction<A, R>,
-    ...argsAndOpts: A
+    func: F,
+    ...argsAndOpts: [...Parameters<F>, ContextOpts]
   ): Promise<Schedule>;
-  schedule<A extends any[], R>(
+  schedule<F extends Func>(
     name: string,
     cron: string,
-    func: DurableFunction<A, R>,
-    ...argsAndOpts: [...A, Partial<Opts>]
-  ): Promise<Schedule>;
-  schedule<A extends any[], R>(
-    name: string,
-    cron: string,
-    func: DurableFunction<A, R>,
-    ...argsAndOpts: [...A, Partial<Opts>?]
+    func: F,
+    ...argsAndOpts: [...Parameters<F>, ContextOpts?]
   ): Promise<Schedule> {
-    const { args, opts } = split(func, argsAndOpts);
+    const { args, opts } = split(argsAndOpts);
     this.register(name, func, opts);
 
     return this.store.schedules.create(
@@ -205,19 +203,27 @@ export class Resonate {
    * @param args arguments to pass to the function, optionally followed by Resonate {@link Opts}
    * @returns a promise that resolves to the return value of the function
    */
-  run<A extends any[], R>(name: string, id: string, ...argsAndOpts: A): Promise<R>;
-  run<A extends any[], R>(name: string, id: string, ...argsAndOpts: [...A, Partial<Opts>]): Promise<R>;
-  run<A extends any[], R>(name: string, id: string, ...argsAndOpts: [...A, Partial<Opts>?]): Promise<R> {
+  run<F extends Func>(name: string, id: string, ...args: Parameters<F>): Promise<ReturnType<F>>;
+  run<F extends Func>(
+    name: string,
+    id: string,
+    ...argsAndOpts: [...Parameters<F>, ContextOpts]
+  ): Promise<ReturnType<F>>;
+  run<F extends Func>(
+    name: string,
+    id: string,
+    ...argsAndOpts: [...Parameters<F>, ContextOpts?]
+  ): Promise<ReturnType<F>> {
     if (!(name in this.functions)) {
       throw new Error(`Function ${name} not registered`);
     }
 
     const { func, opts: defaults } = this.functions[name];
-    const { args, opts: override } = split(func, argsAndOpts);
+    const { args, opts: override } = split(argsAndOpts);
 
     // construct opts from defaults that are registered with the
     // with the function and overrides that are provided to run
-    const opts = { ...defaults, ...override };
+    const opts = { ...defaults, ...override.all() };
 
     // opts.id takes precedence so that we can reuse the unaltered
     // id on the recovery path
@@ -249,8 +255,15 @@ export class Resonate {
     return this.cache.get(id);
   }
 
-  async start(store: string = "default") {
-    setTimeout(() => this.start(store), 1000);
+  /**
+   * Start resonate recovery and scheudle path.
+   *
+   * Starts a control loop that polls the promise store for promises
+   * that have the "resonate:invocation" tag. When a promise is
+   * returned from the search, execute the corresponding function.
+   */
+  async start() {
+    setTimeout(() => this.start(), 1000);
 
     const search = this.store.promises.search(this.id(this.namespace, "*"), "pending", {
       "resonate:invocation": "true",
@@ -270,6 +283,16 @@ export class Resonate {
         }
       }
     }
+  }
+
+  /**
+   * Construct context opts.
+   *
+   * @param opts Resonate {@link Opts}
+   * @returns an instance of resonate opts
+   */
+  opts(opts: Partial<Opts>): ContextOpts {
+    return new ContextOpts(opts);
   }
 
   id(...parts: string[]): string {
@@ -337,10 +360,18 @@ export interface Context {
    * @param args arguments to pass to the function, optionally followed by Resonate {@link Opts}
    * @returns a promise that resolves to the return value of the function
    */
-  run<A extends any[], R>(func: DurableFunction<A, R>, ...args: A): Promise<R>;
-  run<A extends any[], R>(func: DurableFunction<A, R>, ...args: [...A, Partial<Opts>]): Promise<R>;
-  run<R>(func: string, args: any): Promise<R>;
-  run<R>(func: string, args: any, opts: Partial<Opts>): Promise<R>;
+  run<F extends Func>(func: F, ...args: Parameters<F>): Promise<ReturnType<F>>;
+  run<F extends Func>(func: F, ...args: [...Parameters<F>, ContextOpts]): Promise<ReturnType<F>>;
+  run<T>(func: string, args: any): Promise<T>;
+  run<T>(func: string, args: any, opts: ContextOpts): Promise<T>;
+
+  /**
+   * Construct context opts.
+   *
+   * @param opts Resonate {@link Opts}
+   * @returns an instance of resonate opts
+   */
+  opts(opts: Partial<Opts>): ContextOpts;
 
   /**
    * Wraps an array of durable promises into a new durable promise that fulfills when all input
@@ -355,7 +386,7 @@ export interface Context {
   all<T extends readonly unknown[] | []>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
   all<T extends readonly unknown[] | []>(
     values: T,
-    opts: Partial<Opts>,
+    opts: ContextOpts,
   ): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
 
   /**
@@ -369,7 +400,7 @@ export interface Context {
    * @returns a promise that resolves with the first resolved value, or rejects with an aggregate error if all durable promises reject
    */
   any<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
-  any<T extends readonly unknown[] | []>(values: T, opts: Partial<Opts>): Promise<Awaited<T[number]>>;
+  any<T extends readonly unknown[] | []>(values: T, opts: ContextOpts): Promise<Awaited<T[number]>>;
 
   /**
    * Wraps an array of durable promises into a new durable promise that fulfills when the first
@@ -382,7 +413,7 @@ export interface Context {
    * @returns a promise that fulfills with the first durable promise that resolves or rejects
    */
   race<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
-  race<T extends readonly unknown[] | []>(values: T, opts: Partial<Opts>): Promise<Awaited<T[number]>>;
+  race<T extends readonly unknown[] | []>(values: T, opts: ContextOpts): Promise<Awaited<T[number]>>;
 }
 
 class ResonateContext implements Context {
@@ -412,11 +443,11 @@ class ResonateContext implements Context {
     public readonly id: string,
     public readonly idempotencyKey: string,
     public readonly defaults: Opts,
-    public readonly opts: Opts = defaults,
+    public readonly _opts: Opts = defaults,
   ) {}
 
   get timeout(): number {
-    return Math.min(this.created + this.opts.timeout, this.parent?.timeout ?? Infinity);
+    return Math.min(this.created + this._opts.timeout, this.parent?.timeout ?? Infinity);
   }
 
   startTrace(id: string, i: number = this.traces.length - 1): ITrace {
@@ -435,12 +466,16 @@ class ResonateContext implements Context {
     return this.parent === undefined;
   }
 
-  run<A extends any[], R>(func: DurableFunction<A, R>, ...args: A): Promise<R>;
-  run<A extends any[], R>(func: DurableFunction<A, R>, ...args: [...A, Partial<Opts>]): Promise<R>;
-  run<R>(func: string, args: any): Promise<R>;
-  run<R>(func: string, args: any, opts: Partial<Opts>): Promise<R>;
-  run<A extends any[], R>(func: DurableFunction<A, R> | string, ...argsAndOpts: [...A, Partial<Opts>?]): Promise<R> {
-    const { args, opts } = split(func, argsAndOpts);
+  opts(opts: Partial<Opts>): ContextOpts {
+    return new ContextOpts(opts);
+  }
+
+  run<F extends Func>(func: F, ...args: Parameters<F>): Promise<ReturnType<F>>;
+  run<F extends Func>(func: F, ...args: [...Parameters<F>, ContextOpts]): Promise<ReturnType<F>>;
+  run<T>(func: string, args: any[]): Promise<T>;
+  run<T>(func: string, args: any[], opts: ContextOpts): Promise<T>;
+  run(func: Func | string, ...argsAndOpts: [...any, ContextOpts?]): Promise<any> {
+    const { args, opts } = split(argsAndOpts);
 
     const id = opts.id ?? this.resonate.id(this.id, `${this.counter++}`);
     const idempotencyKey = opts.idempotencyKey ?? id;
@@ -454,98 +489,14 @@ class ResonateContext implements Context {
       id,
       idempotencyKey,
       this.defaults,
-      {
-        ...this.defaults,
-        ...opts,
-      },
+      { ...this.defaults, ...opts.all() },
     );
     this.addChild(context);
 
     return context.execute(func, args);
   }
 
-  async all<T extends readonly unknown[] | []>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
-  async all<T extends readonly unknown[] | []>(
-    values: T,
-    opts: Partial<Opts>,
-  ): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
-  async all<T extends readonly unknown[] | []>(
-    values: T,
-    opts: Partial<Opts> = {},
-  ): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
-    // Promise.all handles rejected promises, however, on the recovery path
-    // the resolved/rejected value may be retrieved from the promise store,
-    // circumventing Promise.all. To avoid unhandled rejections, we attach
-    // a noop catch handler to each promise.
-    for (const value of values) {
-      if (value instanceof Promise) {
-        value.catch(() => {}); // noop
-      }
-    }
-
-    // Use a generator instead of a function for future proofing
-    return this.run(
-      function* () {
-        return Promise.all(values);
-      },
-      {
-        retry: Retry.never(),
-        ...opts,
-      },
-    );
-  }
-
-  async any<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
-  async any<T extends readonly unknown[] | []>(values: T, opts: Partial<Opts>): Promise<Awaited<T[number]>>;
-  async any<T extends readonly unknown[] | []>(values: T, opts: Partial<Opts> = {}): Promise<Awaited<T[number]>> {
-    // Promise.any handles rejected promises, however, on the recovery path
-    // the resolved/rejected value may be retrieved from the promise store,
-    // circumventing Promise.any. To avoid unhandled rejections, we attach
-    // a noop catch handler to each promise.
-    for (const value of values) {
-      if (value instanceof Promise) {
-        value.catch(() => {}); // noop
-      }
-    }
-
-    // Use a generator instead of a function for future proofing
-    return this.run(
-      function* () {
-        return Promise.any(values);
-      },
-      {
-        retry: Retry.never(),
-        ...opts,
-      },
-    );
-  }
-
-  async race<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
-  async race<T extends readonly unknown[] | []>(values: T, opts: Partial<Opts>): Promise<Awaited<T[number]>>;
-  async race<T extends readonly unknown[] | []>(values: T, opts: Partial<Opts> = {}): Promise<Awaited<T[number]>> {
-    // Promise.race handles rejected promises, however, on the recovery path
-    // the resolved/rejected value may be retrieved from the promise store,
-    // circumventing Promise.race. To avoid unhandled rejections, we attach
-    // a noop catch handler to each promise.
-    for (const value of values) {
-      if (value instanceof Promise) {
-        value.catch(() => {}); // noop
-      }
-    }
-
-    // Use a generator instead of a function for future proofing
-    return this.run(
-      function* () {
-        return Promise.race(values);
-      },
-      {
-        retry: Retry.never(),
-        ...opts,
-      },
-    );
-  }
-
-  execute<A extends any[], R>(func: DurableFunction<A, R> | string, args: A): Promise<R> {
+  execute(func: Func | string, args: any[]): Promise<any> {
     return new Promise(async (resolve, reject) => {
       // set reject for cancel
       this.reject = reject;
@@ -554,11 +505,11 @@ class ResonateContext implements Context {
       let generator: AsyncGenerator<DurablePromise, DurablePromise, DurablePromise>;
 
       if (typeof func === "string") {
-        generator = this.remoteExecution(func, args[0]);
-      } else if (isF<A, R>(func)) {
-        generator = this.localExecution(this.name, args, new AInvocation(func, this.bucket));
-      } else if (isG<A, R>(func)) {
+        generator = this.remoteExecution(func, args);
+      } else if (isGenerator(func)) {
         generator = this.localExecution(this.name, args, new GInvocation(func, this.bucket));
+      } else if (isFunction(func)) {
+        generator = this.localExecution(this.name, args, new AInvocation(func, this.bucket));
       } else {
         throw new Error("Invalid function");
       }
@@ -578,9 +529,9 @@ class ResonateContext implements Context {
         if (isPendingPromise(promise)) {
           throw new Error("Invalid state");
         } else if (isResolvedPromise(promise)) {
-          resolve(this.opts.encoder.decode(promise.value.data) as R);
+          resolve(this._opts.encoder.decode(promise.value.data));
         } else {
-          reject(this.opts.encoder.decode(promise.value.data));
+          reject(this._opts.encoder.decode(promise.value.data));
         }
       } catch (e: unknown) {
         // kill the promise when an error is thrown
@@ -593,12 +544,90 @@ class ResonateContext implements Context {
     });
   }
 
-  private async *localExecution<A extends any[], R>(
+  async all<T extends readonly unknown[] | []>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
+  async all<T extends readonly unknown[] | []>(
+    values: T,
+    opts: ContextOpts,
+  ): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
+  async all<T extends readonly unknown[] | []>(
+    values: T,
+    opts: ContextOpts = new ContextOpts(),
+  ): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+    // Promise.all handles rejected promises, however, on the recovery path
+    // the resolved/rejected value may be retrieved from the promise store,
+    // circumventing Promise.all. To avoid unhandled rejections, we attach
+    // a noop catch handler to each promise.
+    for (const value of values) {
+      if (value instanceof Promise) {
+        value.catch(() => {}); // noop
+      }
+    }
+
+    // Use a generator instead of a function for future proofing
+    return this.run(
+      function* () {
+        return Promise.all(values);
+      },
+      opts.merge({ retry: Retry.never() }),
+    );
+  }
+
+  async any<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
+  async any<T extends readonly unknown[] | []>(values: T, opts: ContextOpts): Promise<Awaited<T[number]>>;
+  async any<T extends readonly unknown[] | []>(
+    values: T,
+    opts: ContextOpts = new ContextOpts(),
+  ): Promise<Awaited<T[number]>> {
+    // Promise.any handles rejected promises, however, on the recovery path
+    // the resolved/rejected value may be retrieved from the promise store,
+    // circumventing Promise.any. To avoid unhandled rejections, we attach
+    // a noop catch handler to each promise.
+    for (const value of values) {
+      if (value instanceof Promise) {
+        value.catch(() => {}); // noop
+      }
+    }
+
+    // Use a generator instead of a function for future proofing
+    return this.run(
+      function* () {
+        return Promise.any(values);
+      },
+      opts.merge({ retry: Retry.never() }),
+    );
+  }
+
+  async race<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
+  async race<T extends readonly unknown[] | []>(values: T, opts: ContextOpts): Promise<Awaited<T[number]>>;
+  async race<T extends readonly unknown[] | []>(
+    values: T,
+    opts: ContextOpts = new ContextOpts(),
+  ): Promise<Awaited<T[number]>> {
+    // Promise.race handles rejected promises, however, on the recovery path
+    // the resolved/rejected value may be retrieved from the promise store,
+    // circumventing Promise.race. To avoid unhandled rejections, we attach
+    // a noop catch handler to each promise.
+    for (const value of values) {
+      if (value instanceof Promise) {
+        value.catch(() => {}); // noop
+      }
+    }
+
+    // Use a generator instead of a function for future proofing
+    return this.run(
+      function* () {
+        return Promise.race(values);
+      },
+      opts.merge({ retry: Retry.never() }),
+    );
+  }
+
+  private async *localExecution<F extends Func>(
     func: string,
-    args: A,
-    invocation: Invocation<A, R>,
+    args: Parameters<F>,
+    invocation: AInvocation<F> | GInvocation<F>,
   ): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
-    const data = this.isRoot ? this.opts.encoder.encode({ func, args }) : undefined;
+    const data = this.isRoot ? this._opts.encoder.encode({ func, args }) : undefined;
     const tags = this.isRoot ? { "resonate:invocation": "true" } : undefined;
 
     // create durable promise
@@ -623,13 +652,13 @@ class ResonateContext implements Context {
         const r = await this.withRetry((delay) => invocation.invoke(this, args, delay));
 
         // encode value
-        const data = this.opts.encoder.encode(r);
+        const data = this._opts.encoder.encode(r);
 
         // resolve durable promise
         return yield this.store.promises.resolve(this.id, this.idempotencyKey, false, undefined, data);
       } catch (e: unknown) {
         // encode error
-        const data = this.opts.encoder.encode(e);
+        const data = this._opts.encoder.encode(e);
 
         // reject durable promise
         return yield this.store.promises.reject(this.id, this.idempotencyKey, false, undefined, data);
@@ -643,7 +672,7 @@ class ResonateContext implements Context {
     func: string,
     args: any,
   ): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
-    const data = this.opts.encoder.encode(args);
+    const data = this._opts.encoder.encode(args);
 
     // create durable promise
     let promise = yield this.store.promises.create(
@@ -672,7 +701,7 @@ class ResonateContext implements Context {
   private async withRetry<T>(retriable: (d?: number) => Promise<T>): Promise<T> {
     let error;
 
-    for (const delay of this.opts.retry.iterator(this)) {
+    for (const delay of this._opts.retry.iterator(this)) {
       const trace = this.startTrace(`${this.id}:${this.attempt}`);
 
       try {
@@ -714,27 +743,27 @@ class ResonateContext implements Context {
 
 // Invocations
 
-class AInvocation<A extends any[], R> {
+class AInvocation<F extends Func> {
   constructor(
-    private func: F<A, R>,
+    private func: F,
     private bucket: IBucket,
   ) {}
 
-  async invoke(ctx: Context, args: A, delay?: number): Promise<R> {
+  async invoke(ctx: Context, args: Parameters<F>, delay?: number): Promise<ReturnType<F>> {
     return await this.bucket.schedule(() => this.func(ctx, ...args), delay);
   }
 }
 
-class GInvocation<A extends any[], R> {
+class GInvocation<F extends Func<Generator>> {
   constructor(
-    private func: G<A, R>,
+    private func: F,
     private bucket: IBucket,
   ) {}
 
-  async invoke(ctx: Context, args: A, delay?: number): Promise<R> {
+  async invoke(ctx: Context, args: Parameters<F>, delay?: number): Promise<ReturnType<F>> {
     const generator = this.func(ctx, ...args);
 
-    let lastValue: any;
+    let lastValue: unknown;
     let lastError: unknown;
 
     let g = await this.bucket.schedule(() => generator.next(), delay);
@@ -746,7 +775,7 @@ class GInvocation<A extends any[], R> {
         lastError = e;
       }
 
-      let next: () => IteratorResult<Promise<any>, R>;
+      let next: () => IteratorResult<unknown, any>;
       if (lastError) {
         next = () => generator.throw(lastError);
       } else {
@@ -762,16 +791,29 @@ class GInvocation<A extends any[], R> {
 
 // Utils
 
-function split<A extends any[], R>(
-  func: DurableFunction<A, R> | string,
-  args: [...A, Partial<Opts>?],
-): { args: A; opts: Partial<Opts> } {
-  const len = typeof func === "string" ? 1 : func.length - 1;
-  const opts = args.length > len ? args.pop() : {};
-
-  return { args: args as unknown as A, opts: opts as Partial<Opts> };
+function split(args: any[]): { args: any[]; opts: ContextOpts } {
+  const opts = isContextOpts(args[args.length - 1]) ? args.pop() : new ContextOpts();
+  return { args, opts };
 }
 
 function randomId(): string {
   return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(16);
 }
+
+// TODO: remove
+
+const bucket = new Bucket();
+
+function aFunc(ctx: Context, a: number, b: number) {
+  return a + b;
+}
+
+function* gFunc(ctx: Context, a: number, b: number) {
+  return a + b;
+}
+
+const a = new AInvocation(aFunc, bucket);
+a.invoke({} as Context, [1, 2]);
+
+const g = new GInvocation(gFunc, bucket);
+g.invoke({} as Context, [1, 2]);
