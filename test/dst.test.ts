@@ -84,7 +84,7 @@ describe("Simulate failures", () => {
     const probFailure = 0.8;
     console.log("simulated probability of failure: " + probFailure);
 
-    let continueLoop = true;
+    const continueLoop = true;
     while (continueLoop) {
       const resonate = new Resonate();
 
