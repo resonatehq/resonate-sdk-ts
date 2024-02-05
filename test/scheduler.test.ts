@@ -1,4 +1,4 @@
-import { Schedule, isSchedule } from "../lib/core/schedule";
+import { Schedule } from "../lib/core/schedule";
 import { IStore } from "../lib/core/store";
 import { LocalStore } from "../lib/core/stores/local";
 import { describe, beforeEach, test, expect, jest } from "@jest/globals";
