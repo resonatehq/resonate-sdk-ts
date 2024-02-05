@@ -417,7 +417,11 @@ export class RemoteLockStore implements ILockStore {
       this.startHeartbeat();
     }
 
-    return await acquired;
+    if (await acquired) {
+      return true;
+    }
+
+    return false;
   }
 
   async release(resourceId: string, executionId: string): Promise<void> {
