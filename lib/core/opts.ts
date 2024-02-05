@@ -46,7 +46,7 @@ export type Opts = {
    * Test Only
    * Probability of failure.
    */
-  testFailureProb?: number;
+  test?: number;
 
   /**
    * Test Only

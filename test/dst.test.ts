@@ -91,7 +91,7 @@ describe("Simulate failures", () => {
         const testRandomSeed = Math.random();
         console.log("testRandomSeed: " + testRandomSeed);
         const { context: currentContext, promise: currentPromise } = resonate._run("test", "baseline", {
-          testFailureProb: probFailure,
+          test: probFailure,
           testRandomSeed: testRandomSeed,
         });
 
