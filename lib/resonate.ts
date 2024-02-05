@@ -1,6 +1,6 @@
 import { Opts } from "./core/opts";
 import { IStore } from "./core/store";
-import { DurablePromise, isDurablePromise, isPendingPromise, isResolvedPromise } from "./core/promise";
+import { DurablePromise, isPendingPromise, isResolvedPromise } from "./core/promise";
 import { Retry } from "./core/retries/retry";
 import { IBucket } from "./core/bucket";
 import { Bucket } from "./core/buckets/bucket";
@@ -9,7 +9,7 @@ import { RemoteStore } from "./core/stores/remote";
 import { ILogger, ITrace } from "./core/logger";
 import { Logger } from "./core/loggers/logger";
 import { JSONEncoder } from "./core/encoders/json";
-import { ErrorCodes, ResonateError, ResonateTestCrash } from "./core/error";
+import { ResonateError, ResonateTestCrash } from "./core/error";
 import { ICache } from "./core/cache";
 import { Cache } from "./core/caches/cache";
 import { Schedule } from "./core/schedule";
