@@ -156,46 +156,6 @@ export class Resonate {
   }
 
   /**
-   * Invoke a function on a recurring schedule.
-   *
-   * @param name
-   * @param cron
-   * @param func
-   * @param args
-   * @param opts
-   * @returns Resonate function
-   */
-  schedule<F extends Func>(name: string, cron: string, func: F, ...args: Parameters<F>): Promise<Schedule>;
-  schedule<F extends Func>(
-    name: string,
-    cron: string,
-    func: F,
-    ...argsAndOpts: [...Parameters<F>, ContextOpts]
-  ): Promise<Schedule>;
-  schedule<F extends Func>(
-    name: string,
-    cron: string,
-    func: F,
-    ...argsAndOpts: [...Parameters<F>, ContextOpts?]
-  ): Promise<Schedule> {
-    const { args, opts } = split(argsAndOpts);
-    this.register(name, func, opts);
-
-    return this.store.schedules.create(
-      name,
-      name,
-      undefined,
-      cron,
-      undefined,
-      "{{.id}}/{{.timestamp}}",
-      opts.timeout ?? 10000,
-      undefined,
-      this.encoder.encode({ func: name, args: args }),
-      undefined,
-    );
-  }
-
-  /**
    * Invoke a Resonate function.
    *
    * @param name the name of the registered function
@@ -223,7 +183,7 @@ export class Resonate {
 
     // construct opts from defaults that are registered with the
     // with the function and overrides that are provided to run
-    const opts = { ...defaults, ...override.all() };
+    const opts = { ...defaults, ...override };
 
     // opts.id takes precedence so that we can reuse the unaltered
     // id on the recovery path
@@ -253,6 +213,46 @@ export class Resonate {
     }
 
     return this.cache.get(id);
+  }
+
+  /**
+   * Invoke a function on a recurring schedule.
+   *
+   * @param name
+   * @param cron
+   * @param func
+   * @param args
+   * @param opts
+   * @returns Resonate function
+   */
+  schedule<F extends Func>(name: string, cron: string, func: F, ...args: Parameters<F>): Promise<Schedule>;
+  schedule<F extends Func>(
+    name: string,
+    cron: string,
+    func: F,
+    ...argsAndOpts: [...Parameters<F>, ContextOpts]
+  ): Promise<Schedule>;
+  schedule<F extends Func>(
+    name: string,
+    cron: string,
+    func: F,
+    ...argsAndOpts: [...Parameters<F>, ContextOpts?]
+  ): Promise<Schedule> {
+    const { args, opts } = split(argsAndOpts);
+    this.register(name, func, this.opts(opts));
+
+    return this.store.schedules.create(
+      name,
+      name,
+      undefined,
+      cron,
+      undefined,
+      "{{.id}}/{{.timestamp}}",
+      opts.timeout ?? 10000,
+      undefined,
+      this.encoder.encode({ func: name, args: args }),
+      undefined,
+    );
   }
 
   /**
@@ -362,8 +362,8 @@ export interface Context {
    */
   run<F extends Func>(func: F, ...args: Parameters<F>): Promise<ReturnType<F>>;
   run<F extends Func>(func: F, ...args: [...Parameters<F>, ContextOpts]): Promise<ReturnType<F>>;
-  run<T>(func: string, args: any): Promise<T>;
-  run<T>(func: string, args: any, opts: ContextOpts): Promise<T>;
+  run<T>(func: string, ...args: any[]): Promise<T>;
+  run<T>(func: string, ...args: [...any[], ContextOpts]): Promise<T>;
 
   /**
    * Construct context opts.
@@ -472,9 +472,9 @@ class ResonateContext implements Context {
 
   run<F extends Func>(func: F, ...args: Parameters<F>): Promise<ReturnType<F>>;
   run<F extends Func>(func: F, ...args: [...Parameters<F>, ContextOpts]): Promise<ReturnType<F>>;
-  run<T>(func: string, args: any[]): Promise<T>;
-  run<T>(func: string, args: any[], opts: ContextOpts): Promise<T>;
-  run(func: Func | string, ...argsAndOpts: [...any, ContextOpts?]): Promise<any> {
+  run<T>(func: string, ...args: any[]): Promise<T>;
+  run<T>(func: string, ...args: [...any[], ContextOpts]): Promise<T>;
+  run<F extends Func>(func: F | string, ...argsAndOpts: [...Parameters<F>, ContextOpts?]): Promise<ReturnType<F>> {
     const { args, opts } = split(argsAndOpts);
 
     const id = opts.id ?? this.resonate.id(this.id, `${this.counter++}`);
@@ -489,14 +489,14 @@ class ResonateContext implements Context {
       id,
       idempotencyKey,
       this.defaults,
-      { ...this.defaults, ...opts.all() },
+      { ...this.defaults, ...opts },
     );
     this.addChild(context);
 
     return context.execute(func, args);
   }
 
-  execute(func: Func | string, args: any[]): Promise<any> {
+  execute<F extends Func>(func: F | string, args: Parameters<F>): Promise<ReturnType<F>> {
     return new Promise(async (resolve, reject) => {
       // set reject for cancel
       this.reject = reject;
@@ -529,7 +529,7 @@ class ResonateContext implements Context {
         if (isPendingPromise(promise)) {
           throw new Error("Invalid state");
         } else if (isResolvedPromise(promise)) {
-          resolve(this._opts.encoder.decode(promise.value.data));
+          resolve(this._opts.encoder.decode(promise.value.data) as ReturnType<F>);
         } else {
           reject(this._opts.encoder.decode(promise.value.data));
         }
@@ -791,9 +791,15 @@ class GInvocation<F extends Func<Generator>> {
 
 // Utils
 
-function split(args: any[]): { args: any[]; opts: ContextOpts } {
-  const opts = isContextOpts(args[args.length - 1]) ? args.pop() : new ContextOpts();
-  return { args, opts };
+function split<T extends any[]>(args: [...T, ContextOpts?]): { args: T; opts: Partial<Opts> } {
+  let opts: Partial<Opts> = {};
+
+  if (isContextOpts(args[args.length - 1])) {
+    opts = args[args.length - 1].all();
+    args.pop();
+  }
+
+  return { args: args as unknown as T, opts: opts };
 }
 
 function randomId(): string {

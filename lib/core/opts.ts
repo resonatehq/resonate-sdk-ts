@@ -36,18 +36,6 @@ export type Opts = {
 export class ContextOpts {
   constructor(private opts: Partial<Opts> = {}) {}
 
-  get id() {
-    return this.opts.id;
-  }
-
-  get idempotencyKey() {
-    return this.opts.idempotencyKey;
-  }
-
-  get timeout() {
-    return this.opts.timeout;
-  }
-
   all(): Partial<Opts> {
     return this.opts;
   }
