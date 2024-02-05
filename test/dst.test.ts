@@ -30,6 +30,23 @@ async function foo(ctx: Context) {
 
 async function bar(ctx: Context) {}
 
+// prime number generator
+async function test2(ctx: Context) {
+  await ctx.run(prime, 2);
+  await ctx.run(prime, 3);
+  await ctx.run(prime, 5);
+  await ctx.run(prime, 7);
+}
+
+async function prime(ctx: Context, n: number) {
+  for (let i = 2; i < n; i++) {
+    if (n % i === 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isSubsetTree(context: Context, other: Context): boolean {
   if (context.id !== other.id) {
     console.log("context.id: " + context.id);
@@ -89,6 +106,49 @@ describe("Simulate failures", () => {
       const resonate = new Resonate();
 
       resonate.register("test", test1);
+      try {
+        const testRandomSeed = Math.random();
+        console.log("testRandomSeed: " + testRandomSeed);
+        const { context: currentContext, promise: currentPromise } = resonate._run("test", "baseline", {
+          test: probFailure,
+          testRandomSeed: testRandomSeed,
+        });
+
+        await currentPromise;
+        // Break the loop if the current context was successful
+        const tree2 = traces(currentContext);
+        printTree(tree2);
+
+        storedContexts.push(currentContext);
+        break;
+      } catch (e) {
+        console.log("Failed to run test, trying again!");
+      }
+    }
+    expect(isSubsetTree(context1, storedContexts[1])).toBe(true);
+  });
+
+  test("Simulate failure 2", async () => {
+    const baseline = new Resonate();
+    baseline.register("test", test2);
+
+    const { context: context1, promise: promise1 } = baseline._run("test", "baseline");
+    await promise1;
+
+    // Map context to something useable
+    const tree1 = traces(context1);
+    printTree(tree1);
+
+    const storedContexts: Context[] = [context1];
+
+    const probFailure = 0.8;
+    console.log("simulated probability of failure: " + probFailure);
+
+    const continueLoop = true;
+    while (continueLoop) {
+      const resonate = new Resonate();
+
+      resonate.register("test", test2);
       try {
         const testRandomSeed = Math.random();
         console.log("testRandomSeed: " + testRandomSeed);
