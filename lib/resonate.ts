@@ -805,21 +805,3 @@ function split<T extends any[]>(args: [...T, ContextOpts?]): { args: T; opts: Pa
 function randomId(): string {
   return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(16);
 }
-
-// TODO: remove
-
-const bucket = new Bucket();
-
-function aFunc(ctx: Context, a: number, b: number) {
-  return a + b;
-}
-
-function* gFunc(ctx: Context, a: number, b: number) {
-  return a + b;
-}
-
-const a = new AInvocation(aFunc, bucket);
-a.invoke({} as Context, [1, 2]);
-
-const g = new GInvocation(gFunc, bucket);
-g.invoke({} as Context, [1, 2]);
