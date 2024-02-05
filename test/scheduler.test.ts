@@ -1,21 +1,23 @@
-import { Schedule } from "../lib/core/schedule";
+import { Schedule, isSchedule } from "../lib/core/schedule";
 import { IStore } from "../lib/core/store";
 import { LocalStore } from "../lib/core/stores/local";
-import { describe, beforeEach, test, expect } from "@jest/globals";
+import { describe, beforeEach, test, expect, jest } from "@jest/globals";
 import { RemoteStore } from "../lib/core/stores/remote";
 import { Logger } from "../lib/core/loggers/logger";
 
+jest.setTimeout(10000);
+
 describe("Schedule Store", () => {
   let store: IStore;
+  const scheduleId = "schedule-1";
+  const useDurable = process.env.USE_DURABLE === "true";
 
   beforeEach(() => {
-    const useDurable = process.env.USE_DURABLE === "true";
     const url = process.env.RESONATE_URL || "http://localhost:8001";
     store = useDurable ? new RemoteStore(url, "", new Logger()) : new LocalStore();
   });
 
   test("creates a schedule", async () => {
-    const scheduleId = "schedule-1";
     const cronExpression = "* * * * *"; // Every minute
     const tags = { category: "testing" };
     const promiseId = "promise-1";
@@ -39,7 +41,6 @@ describe("Schedule Store", () => {
 
     // get the schedule
     const createdSchedule = await store.schedules.get(scheduleId);
-    console.log(createdSchedule);
 
     expect(createdSchedule.id).toBe(scheduleId);
     expect(createdSchedule.cron).toBe(cronExpression);
@@ -69,7 +70,6 @@ describe("Schedule Store", () => {
 
     // search for the schedule
     const searchResults = await store.schedules.get(scheduleId);
-    console.log(searchResults);
     expect(searchResults.id).toBe(scheduleId);
 
     const isDeleted = await store.schedules.delete(scheduleId);
@@ -114,9 +114,25 @@ describe("Schedule Store", () => {
     // Expecting 1 schedules based on the search criteria
     let schedules: Schedule[] = [];
     for await (const searchResults of store.schedules.search("schedule-2", { category: "search testing" })) {
-      console.log(searchResults);
       schedules = schedules.concat(searchResults);
     }
     expect(schedules.length).toBe(1);
+  });
+
+  test("search schedule with non-existing ID", async () => {
+    let schedules: Schedule[] = [];
+    for await (const searchResults of store.schedules.search("non-existing-id", {})) {
+      schedules = schedules.concat(searchResults);
+    }
+    expect(schedules.length).toBe(0);
+  });
+
+  test("delete non-existing schedule", async () => {
+    if (useDurable) {
+      await expect(store.schedules.delete("non-existing-id")).rejects.toThrow();
+    } else {
+      const isDeleted = await store.schedules.delete("non-existing-id");
+      expect(isDeleted).toBeUndefined();
+    }
   });
 });

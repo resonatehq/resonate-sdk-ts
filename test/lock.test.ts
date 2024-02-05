@@ -3,8 +3,7 @@ import { Resonate, Context } from "../lib/resonate";
 import { LocalLockStore, LocalStore } from "../lib/core/stores/local";
 import { RemoteLockStore } from "../lib/core/stores/remote";
 
-// Set a larger timeout for hooks (e.g., 10 seconds)
-jest.setTimeout(100000);
+jest.setTimeout(80000);
 
 const sharedResource: string[] = [];
 
@@ -50,14 +49,10 @@ describe("Lock", () => {
     expect(sharedResource).toEqual(r);
   });
 
-  test("Multiple clients can acquire and release locks on different resources concurrently", async () => {});
-
   test("Lock store behaves correctly when acquiring and releasing locks", async () => {
-    // Acquire a lock
     const acquireResult = await lockStore.tryAcquire("resource-id-1", "execution-id-1");
     expect(acquireResult).toBe(true);
 
-    // Attempt to acquire the same lock with a different execution ID,
     if (useDurable) {
       // should get error 403
       await expect(lockStore.tryAcquire("resource-id-1", "execution-id-2")).rejects.toThrow();
@@ -66,10 +61,8 @@ describe("Lock", () => {
       expect(secondAcquireResult).toBe(false);
     }
 
-    // Release the lock
     await lockStore.release("resource-id-1", "execution-id-1");
 
-    // Attempt to release the lock again,
     if (useDurable) {
       // should result in an error 404
       await expect(lockStore.release("resource-id-1", "execution-id-1")).rejects.toThrow();
@@ -92,5 +85,15 @@ describe("Lock", () => {
 
     // Attempt to release the expired lock, should fail
     await expect(lockStore.release("resource-id-3", "execution-id-1")).rejects.toThrow();
+  });
+
+  test("Attempt to release a lock without acquiring it", async () => {
+    if (!useDurable) {
+      return;
+    }
+    const nonAcquiredResourceId = "non-acquired-resource-id";
+    const nonAcquiredExecutionId = "non-acquired-execution-id";
+
+    await expect(lockStore.release(nonAcquiredResourceId, nonAcquiredExecutionId)).rejects.toThrow();
   });
 });
