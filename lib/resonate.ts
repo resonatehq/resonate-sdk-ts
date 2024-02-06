@@ -14,7 +14,7 @@ import { ICache } from "./core/cache";
 import { Cache } from "./core/caches/cache";
 import { Schedule } from "./core/schedule";
 import { IEncoder } from "./core/encoder";
-import seedrandom = require("seedrandom")
+import seedrandom = require("seedrandom");
 // Types
 
 type F<A extends any[], R> = (c: Context, ...a: A) => R;
@@ -597,12 +597,20 @@ class ResonateContext implements Context {
         if (isPendingPromise(promise)) {
           throw new Error("Invalid state");
         } else if (isResolvedPromise(promise)) {
-          if (this.opts.test !== undefined && (randomSeed.double() ?? 0) < this.opts.test && chooseFailureBranch === 2) {
+          if (
+            this.opts.test !== undefined &&
+            (randomSeed.double() ?? 0) < this.opts.test &&
+            chooseFailureBranch === 2
+          ) {
             throw new ResonateTestCrash(this.opts.test);
           }
           resolve(this.opts.encoder.decode(promise.value.data) as R);
         } else {
-          if (this.opts.test !== undefined && (randomSeed.double() ?? 0) < this.opts.test && chooseFailureBranch === 3) {
+          if (
+            this.opts.test !== undefined &&
+            (randomSeed.double() ?? 0) < this.opts.test &&
+            chooseFailureBranch === 3
+          ) {
             throw new ResonateTestCrash(this.opts.test);
           }
           reject(this.opts.encoder.decode(promise.value.data));
