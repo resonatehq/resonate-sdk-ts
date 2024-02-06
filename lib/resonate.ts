@@ -57,12 +57,17 @@ type ResonateOpts = {
   bucket: IBucket;
   logger: ILogger;
   encoder: IEncoder<unknown, string | undefined>;
+  recoveryDelay: number;
 };
 
 export class Resonate {
   private functions: Record<string, { func: Func; opts: Opts }> = {};
 
   private cache: ICache<Promise<any>> = new Cache();
+
+  private recoveryDelay: number;
+
+  private recoveryInterval: number | undefined = undefined;
 
   private store: IStore;
 
@@ -97,6 +102,7 @@ export class Resonate {
     logger = new Logger(),
     bucket = new Bucket(),
     encoder = new JSONEncoder(),
+    recoveryDelay = 1000,
   }: Partial<ResonateOpts> = {}) {
     this.pid = pid;
     this.namespace = namespace;
@@ -105,6 +111,7 @@ export class Resonate {
     this.bucket = bucket;
     this.logger = logger;
     this.encoder = encoder;
+    this.recoveryDelay = recoveryDelay;
 
     // store
     if (store) {
@@ -227,7 +234,7 @@ export class Resonate {
    * @param opts
    * @returns Resonate function
    */
-  schedule(name: string, cron: string, func?: undefined, ...args: any[]): Promise<Schedule>;
+  schedule(name: string, cron: string, func: string, ...args: any[]): Promise<Schedule>;
   schedule<F extends Func>(name: string, cron: string, func: F, ...args: Params<F>): Promise<Schedule>;
   schedule<F extends Func>(
     name: string,
@@ -235,15 +242,27 @@ export class Resonate {
     func: F,
     ...argsAndOpts: [...Params<F>, ContextOpts]
   ): Promise<Schedule>;
-  schedule(name: string, cron: string, func?: Func, ...argsAndOpts: any[]): Promise<Schedule> {
-    if (func) {
+  schedule(name: string, cron: string, func: string | Func, ...argsAndOpts: any[]): Promise<Schedule> {
+    let args: any[];
+    let opts: Partial<Opts>;
+
+    if (typeof func == "string") {
+      if (!(func in this.functions)) {
+        throw new Error(`Function ${func} not registered`);
+      }
+
+      args = argsAndOpts;
+      opts = this.functions[func].opts;
+    } else {
+      ({ args, opts } = split(argsAndOpts));
+
       // only split the opts if func is provided, otherwise the top
       // level function is already registered with opts
-      this.register(name, func, this.options(split(argsAndOpts).opts));
+      this.register(name, func, this.options(opts));
     }
 
-    const { args } = split(argsAndOpts);
-    const { opts } = this.functions[name];
+    // lazily start the recovery loop
+    this.recover();
 
     return this.store.schedules.create(
       name,
@@ -254,21 +273,26 @@ export class Resonate {
       "{{.id}}/{{.timestamp}}",
       opts.timeout ?? 10000,
       undefined,
-      this.encoder.encode({ func: name, args: args }),
+      this.encoder.encode({ func: typeof func === "string" ? func : name, args: args }),
       undefined,
     );
   }
 
   /**
-   * Start resonate recovery and scheudle path.
+   * Start resonate recovery path.
    *
    * Starts a control loop that polls the promise store for promises
    * that have the "resonate:invocation" tag. When a promise is
    * returned from the search, execute the corresponding function.
    */
-  async start() {
-    setTimeout(() => this.start(), 1000);
+  async recover() {
+    if (this.recoveryInterval === undefined) {
+      // the + converts to a number
+      this.recoveryInterval = +setInterval(() => this._recover(), this.recoveryDelay);
+    }
+  }
 
+  private async _recover() {
     const search = this.store.promises.search(this.id(this.namespace, "*"), "pending", {
       "resonate:invocation": "true",
     });
@@ -363,8 +387,8 @@ export interface Context {
    */
   run<F extends Func>(func: F, ...args: Params<F>): Promise<Return<F>>;
   run<F extends Func>(func: F, ...args: [...Params<F>, ContextOpts]): Promise<Return<F>>;
-  run<T = any, P extends any[] = any[]>(func: string, ...args: P): Promise<T>;
-  run<T = any, P extends any[] = any[]>(func: string, ...args: [...P, ContextOpts]): Promise<T>;
+  run<T = any, P = any>(func: string, args: P): Promise<T>;
+  run<T = any, P = any>(func: string, args: P, opts: ContextOpts): Promise<T>;
 
   /**
    * Construct context opts.
@@ -473,8 +497,8 @@ class ResonateContext implements Context {
 
   run<F extends Func>(func: F, ...args: Params<F>): Promise<Return<F>>;
   run<F extends Func>(func: F, ...args: [...Params<F>, ContextOpts]): Promise<Return<F>>;
-  run<T = any, P extends any[] = any[]>(func: string, ...args: P): Promise<T>;
-  run<T = any, P extends any[] = any[]>(func: string, ...args: [...P, ContextOpts]): Promise<T>;
+  run<T = any, P = any>(func: string, args: P): Promise<T>;
+  run<T = any, P = any>(func: string, args: P, opts: ContextOpts): Promise<T>;
   run(func: Func | string, ...argsAndOpts: [...any, ContextOpts?]): Promise<any> {
     const { args, opts } = split(argsAndOpts);
 
@@ -673,7 +697,9 @@ class ResonateContext implements Context {
     func: string,
     args: any,
   ): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
-    const data = this.opts.encoder.encode(args);
+    // context run captures arguments in a rest parameter, for remote
+    // invocation we only care about the first argument
+    const data = this.opts.encoder.encode(args[0]);
 
     // create durable promise
     let promise = yield this.store.promises.create(
