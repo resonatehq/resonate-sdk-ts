@@ -57,7 +57,7 @@ describe("Context retries", () => {
   resonate.register(
     "async",
     foo,
-    resonate.opts({
+    resonate.options({
       timeout: Number.MAX_SAFE_INTEGER,
       retry: Retry.never(),
     }),
@@ -65,7 +65,7 @@ describe("Context retries", () => {
   resonate.register(
     "generator",
     bar,
-    resonate.opts({
+    resonate.options({
       timeout: Number.MAX_SAFE_INTEGER,
       retry: Retry.never(),
     }),
@@ -96,11 +96,11 @@ describe("Context retries", () => {
 });
 
 async function foo(ctx: Context, next: (c: Context) => void, retry: IRetry) {
-  return await ctx.run(next, ctx.opts({ retry }));
+  return await ctx.run(next, ctx.options({ retry }));
 }
 
 function* bar(ctx: Context, next: (c: Context) => void, retry: IRetry): Generator {
-  return yield ctx.run(next, ctx.opts({ retry }));
+  return yield ctx.run(next, ctx.options({ retry }));
 }
 
 function nope() {

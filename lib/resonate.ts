@@ -17,14 +17,22 @@ import { IEncoder } from "./core/encoder";
 
 // Types
 
+// Resonate supports any function that takes a context as the first
+// argument. The generic parameter is used to restrict the return
+// type when a generator used.
 type Func<T = any> = (ctx: Context, ...args: any[]) => T;
 
-type Parameters<F extends Func> = F extends (ctx: Context, ...args: infer P) => any ? P : never;
+// Similar to the built in Parameters type, but ignores the required
+// context parameter.
+type Params<F extends Func> = F extends (ctx: Context, ...args: infer P) => any ? P : never;
 
-type ReturnType<F extends Func> = F extends (ctx: Context, ...args: any) => infer R
+// Similar to the built in ReturnType type, but optionally returns
+// the awaited inferred return value of F if F is a generator,
+// otherwise returns the awaited inferred return value.
+type Return<F extends Func> = F extends (ctx: Context, ...args: any) => infer R
   ? R extends Generator<unknown, infer G>
-    ? G
-    : R
+    ? Awaited<G>
+    : Awaited<R>
   : never;
 
 function isFunction(f: unknown): f is Func {
@@ -111,16 +119,16 @@ export class Resonate {
   /**
    * Register a function with Resonate. Registered functions can be invoked with {@link run}, or by the returned function.
    *
-   * @param name
-   * @param func
-   * @param opts
+   * @param name a name to identify the function
+   * @param func the function to register with resonate
+   * @param opts optional resonate options
    * @returns Resonate function
    */
   register<F extends Func>(
     name: string,
     func: F,
     opts: ContextOpts = new ContextOpts(),
-  ): (id: string, ...args: Parameters<F>) => Promise<ReturnType<F>> {
+  ): (id: string, ...args: Params<F>) => Promise<Return<F>> {
     if (name in this.functions) {
       throw new Error(`Function ${name} already registered`);
     }
@@ -129,7 +137,7 @@ export class Resonate {
       // the function
       func: func,
 
-      // inject sensible default opts
+      // inject sensible defaults
       opts: {
         timeout: 10000,
         retry: Retry.exponential(),
@@ -139,7 +147,7 @@ export class Resonate {
       },
     };
 
-    return (id: string, ...args: Parameters<F>): Promise<ReturnType<F>> => {
+    return (id: string, ...args: Params<F>): Promise<Return<F>> => {
       return this.run(name, id, ...args);
     };
   }
@@ -147,11 +155,12 @@ export class Resonate {
   /**
    * Register a module with Resonate. Registered module functions can be invoked with run.
    *
-   * @param module
+   * @param module the javascript module
+   * @param opts optional resonate options
    */
-  registerModule(module: Record<string, Func>) {
+  registerModule(module: Record<string, Func>, opts: ContextOpts = new ContextOpts()) {
     for (const key in module) {
-      this.register(key, module[key]);
+      this.register(key, module[key], opts);
     }
   }
 
@@ -160,35 +169,28 @@ export class Resonate {
    *
    * @param name the name of the registered function
    * @param id a unique identifier for the invocation
-   * @param args arguments to pass to the function, optionally followed by Resonate {@link Opts}
+   * @param args arguments to pass to the function
    * @returns a promise that resolves to the return value of the function
    */
-  run<F extends Func>(name: string, id: string, ...args: Parameters<F>): Promise<ReturnType<F>>;
-  run<F extends Func>(
+  run<T = any, P extends any[] = any[]>(name: string, id: string, ...args: P): Promise<T> {
+    // use a constructed id for both the id and idempotency key
+    // TODO: can user override the top level id / idempotency key?
+    id = this.id(this.namespace, name, id);
+    return this._run(name, id, id, args);
+  }
+
+  _run<T = any, P extends any[] = any[]>(
     name: string,
     id: string,
-    ...argsAndOpts: [...Parameters<F>, ContextOpts]
-  ): Promise<ReturnType<F>>;
-  run<F extends Func>(
-    name: string,
-    id: string,
-    ...argsAndOpts: [...Parameters<F>, ContextOpts?]
-  ): Promise<ReturnType<F>> {
+    idempotencyKey: string | undefined,
+    args: P,
+  ): Promise<T> {
     if (!(name in this.functions)) {
       throw new Error(`Function ${name} not registered`);
     }
 
-    const { func, opts: defaults } = this.functions[name];
-    const { args, opts: override } = split(argsAndOpts);
-
-    // construct opts from defaults that are registered with the
-    // with the function and overrides that are provided to run
-    const opts = { ...defaults, ...override };
-
-    // opts.id takes precedence so that we can reuse the unaltered
-    // id on the recovery path
-    id = opts.id ?? this.id(this.namespace, name, id);
-    const idempotencyKey = opts.idempotencyKey ?? id;
+    // grab the registered function and options
+    const { func, opts } = this.functions[name];
 
     if (!this.cache.has(id)) {
       const promise = new Promise(async (resolve, reject) => {
@@ -225,21 +227,23 @@ export class Resonate {
    * @param opts
    * @returns Resonate function
    */
-  schedule<F extends Func>(name: string, cron: string, func: F, ...args: Parameters<F>): Promise<Schedule>;
+  schedule(name: string, cron: string, func?: undefined, ...args: any[]): Promise<Schedule>;
+  schedule<F extends Func>(name: string, cron: string, func: F, ...args: Params<F>): Promise<Schedule>;
   schedule<F extends Func>(
     name: string,
     cron: string,
     func: F,
-    ...argsAndOpts: [...Parameters<F>, ContextOpts]
+    ...argsAndOpts: [...Params<F>, ContextOpts]
   ): Promise<Schedule>;
-  schedule<F extends Func>(
-    name: string,
-    cron: string,
-    func: F,
-    ...argsAndOpts: [...Parameters<F>, ContextOpts?]
-  ): Promise<Schedule> {
-    const { args, opts } = split(argsAndOpts);
-    this.register(name, func, this.opts(opts));
+  schedule(name: string, cron: string, func?: Func, ...argsAndOpts: any[]): Promise<Schedule> {
+    if (func) {
+      // only split the opts if func is provided, otherwise the top
+      // level function is already registered with opts
+      this.register(name, func, this.options(split(argsAndOpts).opts));
+    }
+
+    const { args } = split(argsAndOpts);
+    const { opts } = this.functions[name];
 
     return this.store.schedules.create(
       name,
@@ -274,10 +278,7 @@ export class Resonate {
         try {
           const { func, args } = this.encoder.decode(promise.param.data) as { func: string; args: any[] };
 
-          this.run(func, promise.id, ...args, {
-            id: promise.id,
-            idempotencyKey: promise.idempotencyKeyForCreate,
-          });
+          this._run(func, promise.id, promise.idempotencyKeyForCreate, args);
         } catch (e: unknown) {
           this.logger.warn(`Durable promise ${promise.id} failed on the recovery path`, e);
         }
@@ -291,11 +292,11 @@ export class Resonate {
    * @param opts Resonate {@link Opts}
    * @returns an instance of resonate opts
    */
-  opts(opts: Partial<Opts>): ContextOpts {
+  options(opts: Partial<Opts>): ContextOpts {
     return new ContextOpts(opts);
   }
 
-  id(...parts: string[]): string {
+  private id(...parts: string[]): string {
     return parts.filter((p) => p !== "").join(this.seperator);
   }
 }
@@ -311,7 +312,7 @@ export interface Context {
   /**
    * The idempotency key of the context, defaults to the id.
    */
-  readonly idempotencyKey: string;
+  readonly idempotencyKey: string | undefined;
 
   /**
    * The absolute time the context will expire.
@@ -360,10 +361,10 @@ export interface Context {
    * @param args arguments to pass to the function, optionally followed by Resonate {@link Opts}
    * @returns a promise that resolves to the return value of the function
    */
-  run<F extends Func>(func: F, ...args: Parameters<F>): Promise<ReturnType<F>>;
-  run<F extends Func>(func: F, ...args: [...Parameters<F>, ContextOpts]): Promise<ReturnType<F>>;
-  run<T>(func: string, ...args: any[]): Promise<T>;
-  run<T>(func: string, ...args: [...any[], ContextOpts]): Promise<T>;
+  run<F extends Func>(func: F, ...args: Params<F>): Promise<Return<F>>;
+  run<F extends Func>(func: F, ...args: [...Params<F>, ContextOpts]): Promise<Return<F>>;
+  run<T = any, P extends any[] = any[]>(func: string, ...args: P): Promise<T>;
+  run<T = any, P extends any[] = any[]>(func: string, ...args: [...P, ContextOpts]): Promise<T>;
 
   /**
    * Construct context opts.
@@ -371,7 +372,7 @@ export interface Context {
    * @param opts Resonate {@link Opts}
    * @returns an instance of resonate opts
    */
-  opts(opts: Partial<Opts>): ContextOpts;
+  options(opts: Partial<Opts>): ContextOpts;
 
   /**
    * Wraps an array of durable promises into a new durable promise that fulfills when all input
@@ -386,7 +387,7 @@ export interface Context {
   all<T extends readonly unknown[] | []>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
   all<T extends readonly unknown[] | []>(
     values: T,
-    opts: ContextOpts,
+    opts?: ContextOpts,
   ): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
 
   /**
@@ -400,7 +401,7 @@ export interface Context {
    * @returns a promise that resolves with the first resolved value, or rejects with an aggregate error if all durable promises reject
    */
   any<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
-  any<T extends readonly unknown[] | []>(values: T, opts: ContextOpts): Promise<Awaited<T[number]>>;
+  any<T extends readonly unknown[] | []>(values: T, opts?: ContextOpts): Promise<Awaited<T[number]>>;
 
   /**
    * Wraps an array of durable promises into a new durable promise that fulfills when the first
@@ -413,7 +414,7 @@ export interface Context {
    * @returns a promise that fulfills with the first durable promise that resolves or rejects
    */
   race<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
-  race<T extends readonly unknown[] | []>(values: T, opts: ContextOpts): Promise<Awaited<T[number]>>;
+  race<T extends readonly unknown[] | []>(values: T, opts?: ContextOpts): Promise<Awaited<T[number]>>;
 }
 
 class ResonateContext implements Context {
@@ -441,13 +442,13 @@ class ResonateContext implements Context {
     private readonly bucket: IBucket,
     public readonly name: string,
     public readonly id: string,
-    public readonly idempotencyKey: string,
+    public readonly idempotencyKey: string | undefined,
     public readonly defaults: Opts,
-    public readonly _opts: Opts = defaults,
+    public readonly opts: Opts = defaults,
   ) {}
 
   get timeout(): number {
-    return Math.min(this.created + this._opts.timeout, this.parent?.timeout ?? Infinity);
+    return Math.min(this.created + this.opts.timeout, this.parent?.timeout ?? Infinity);
   }
 
   startTrace(id: string, i: number = this.traces.length - 1): ITrace {
@@ -466,18 +467,18 @@ class ResonateContext implements Context {
     return this.parent === undefined;
   }
 
-  opts(opts: Partial<Opts>): ContextOpts {
+  options(opts: Partial<Opts>): ContextOpts {
     return new ContextOpts(opts);
   }
 
-  run<F extends Func>(func: F, ...args: Parameters<F>): Promise<ReturnType<F>>;
-  run<F extends Func>(func: F, ...args: [...Parameters<F>, ContextOpts]): Promise<ReturnType<F>>;
-  run<T>(func: string, ...args: any[]): Promise<T>;
-  run<T>(func: string, ...args: [...any[], ContextOpts]): Promise<T>;
-  run<F extends Func>(func: F | string, ...argsAndOpts: [...Parameters<F>, ContextOpts?]): Promise<ReturnType<F>> {
+  run<F extends Func>(func: F, ...args: Params<F>): Promise<Return<F>>;
+  run<F extends Func>(func: F, ...args: [...Params<F>, ContextOpts]): Promise<Return<F>>;
+  run<T = any, P extends any[] = any[]>(func: string, ...args: P): Promise<T>;
+  run<T = any, P extends any[] = any[]>(func: string, ...args: [...P, ContextOpts]): Promise<T>;
+  run(func: Func | string, ...argsAndOpts: [...any, ContextOpts?]): Promise<any> {
     const { args, opts } = split(argsAndOpts);
 
-    const id = opts.id ?? this.resonate.id(this.id, `${this.counter++}`);
+    const id = opts.id ?? [this.id, this.counter++].join(this.resonate.seperator);
     const idempotencyKey = opts.idempotencyKey ?? id;
     const name = typeof func === "string" ? func : func.name;
 
@@ -496,7 +497,7 @@ class ResonateContext implements Context {
     return context.execute(func, args);
   }
 
-  execute<F extends Func>(func: F | string, args: Parameters<F>): Promise<ReturnType<F>> {
+  execute(func: Func | string, args: any[]): Promise<any> {
     return new Promise(async (resolve, reject) => {
       // set reject for cancel
       this.reject = reject;
@@ -529,9 +530,9 @@ class ResonateContext implements Context {
         if (isPendingPromise(promise)) {
           throw new Error("Invalid state");
         } else if (isResolvedPromise(promise)) {
-          resolve(this._opts.encoder.decode(promise.value.data) as ReturnType<F>);
+          resolve(this.opts.encoder.decode(promise.value.data));
         } else {
-          reject(this._opts.encoder.decode(promise.value.data));
+          reject(this.opts.encoder.decode(promise.value.data));
         }
       } catch (e: unknown) {
         // kill the promise when an error is thrown
@@ -624,10 +625,10 @@ class ResonateContext implements Context {
 
   private async *localExecution<F extends Func>(
     func: string,
-    args: Parameters<F>,
+    args: Params<F>,
     invocation: AInvocation<F> | GInvocation<F>,
   ): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
-    const data = this.isRoot ? this._opts.encoder.encode({ func, args }) : undefined;
+    const data = this.isRoot ? this.opts.encoder.encode({ func, args }) : undefined;
     const tags = this.isRoot ? { "resonate:invocation": "true" } : undefined;
 
     // create durable promise
@@ -652,13 +653,13 @@ class ResonateContext implements Context {
         const r = await this.withRetry((delay) => invocation.invoke(this, args, delay));
 
         // encode value
-        const data = this._opts.encoder.encode(r);
+        const data = this.opts.encoder.encode(r);
 
         // resolve durable promise
         return yield this.store.promises.resolve(this.id, this.idempotencyKey, false, undefined, data);
       } catch (e: unknown) {
         // encode error
-        const data = this._opts.encoder.encode(e);
+        const data = this.opts.encoder.encode(e);
 
         // reject durable promise
         return yield this.store.promises.reject(this.id, this.idempotencyKey, false, undefined, data);
@@ -672,7 +673,7 @@ class ResonateContext implements Context {
     func: string,
     args: any,
   ): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
-    const data = this._opts.encoder.encode(args);
+    const data = this.opts.encoder.encode(args);
 
     // create durable promise
     let promise = yield this.store.promises.create(
@@ -701,7 +702,7 @@ class ResonateContext implements Context {
   private async withRetry<T>(retriable: (d?: number) => Promise<T>): Promise<T> {
     let error;
 
-    for (const delay of this._opts.retry.iterator(this)) {
+    for (const delay of this.opts.retry.iterator(this)) {
       const trace = this.startTrace(`${this.id}:${this.attempt}`);
 
       try {
@@ -749,7 +750,7 @@ class AInvocation<F extends Func> {
     private bucket: IBucket,
   ) {}
 
-  async invoke(ctx: Context, args: Parameters<F>, delay?: number): Promise<ReturnType<F>> {
+  async invoke(ctx: Context, args: Params<F>, delay?: number): Promise<Return<F>> {
     return await this.bucket.schedule(() => this.func(ctx, ...args), delay);
   }
 }
@@ -760,7 +761,7 @@ class GInvocation<F extends Func<Generator>> {
     private bucket: IBucket,
   ) {}
 
-  async invoke(ctx: Context, args: Parameters<F>, delay?: number): Promise<ReturnType<F>> {
+  async invoke(ctx: Context, args: Params<F>, delay?: number): Promise<Return<F>> {
     const generator = this.func(ctx, ...args);
 
     let lastValue: unknown;

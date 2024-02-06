@@ -17,7 +17,7 @@ describe("Cache", () => {
   const reject = resonate.register(
     "reject",
     rejectSpy,
-    resonate.opts({
+    resonate.options({
       retry: Retry.never(),
     }),
   );
