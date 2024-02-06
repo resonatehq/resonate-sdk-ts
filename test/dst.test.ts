@@ -1,5 +1,6 @@
 import { describe, test, expect } from "@jest/globals";
 import { Resonate, Context } from "../lib/resonate";
+import { ResonateTestCrash } from "../lib/core/error";
 
 // trace tree
 type TraceTree = {
@@ -99,8 +100,6 @@ describe("Simulate failures", () => {
     const storedContexts: Context[] = [context1];
 
     const probFailure = 0.8;
-    console.log("simulated probability of failure: " + probFailure);
-
     const continueLoop = true;
     while (continueLoop) {
       const resonate = new Resonate();
@@ -108,10 +107,8 @@ describe("Simulate failures", () => {
       resonate.register("test", test1);
       try {
         const testRandomSeed = Math.random();
-        console.log("testRandomSeed: " + testRandomSeed);
         const { context: currentContext, promise: currentPromise } = resonate._run("test", "baseline", {
           test: probFailure,
-          testRandomSeed: testRandomSeed,
         });
 
         await currentPromise;
@@ -122,7 +119,9 @@ describe("Simulate failures", () => {
         storedContexts.push(currentContext);
         break;
       } catch (e) {
-        console.log("Failed to run test, trying again!");
+        if (e !== ResonateTestCrash) {
+          console.log("Failed to run test, trying again! ", e);
+        }
       }
     }
     expect(isSubsetTree(context1, storedContexts[1])).toBe(true);
@@ -142,19 +141,14 @@ describe("Simulate failures", () => {
     const storedContexts: Context[] = [context1];
 
     const probFailure = 0.8;
-    console.log("simulated probability of failure: " + probFailure);
-
     const continueLoop = true;
     while (continueLoop) {
       const resonate = new Resonate();
 
       resonate.register("test", test2);
       try {
-        const testRandomSeed = Math.random();
-        console.log("testRandomSeed: " + testRandomSeed);
         const { context: currentContext, promise: currentPromise } = resonate._run("test", "baseline", {
           test: probFailure,
-          testRandomSeed: testRandomSeed,
         });
 
         await currentPromise;

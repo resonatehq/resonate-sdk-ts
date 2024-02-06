@@ -14,7 +14,7 @@ import { ICache } from "./core/cache";
 import { Cache } from "./core/caches/cache";
 import { Schedule } from "./core/schedule";
 import { IEncoder } from "./core/encoder";
-
+import seedrandom = require("seedrandom")
 // Types
 
 type F<A extends any[], R> = (c: Context, ...a: A) => R;
@@ -578,11 +578,12 @@ class ResonateContext implements Context {
       // trace
       const trace = this.startTrace(this.id);
       // Check if test probability is passed in options
-      const randomSeed = this.opts.testRandomSeed;
-      const chooseFailureBranch = Math.floor(Math.random() * 3) + 1;
+      // only for testing purposes
+      const randomSeed = seedrandom();
+      const chooseFailureBranch = Math.floor(seedrandom().double() * 3) + 1;
       // invoke
       try {
-        if (this.opts.test !== undefined && (randomSeed ?? 0) < this.opts.test && chooseFailureBranch === 1) {
+        if (this.opts.test !== undefined && (randomSeed.double() ?? 0) < this.opts.test && chooseFailureBranch === 1) {
           throw new ResonateTestCrash(this.opts.test);
         }
 
@@ -596,12 +597,12 @@ class ResonateContext implements Context {
         if (isPendingPromise(promise)) {
           throw new Error("Invalid state");
         } else if (isResolvedPromise(promise)) {
-          if (this.opts.test !== undefined && (randomSeed ?? 0) < this.opts.test && chooseFailureBranch === 2) {
+          if (this.opts.test !== undefined && (randomSeed.double() ?? 0) < this.opts.test && chooseFailureBranch === 2) {
             throw new ResonateTestCrash(this.opts.test);
           }
           resolve(this.opts.encoder.decode(promise.value.data) as R);
         } else {
-          if (this.opts.test !== undefined && (randomSeed ?? 0) < this.opts.test && chooseFailureBranch === 3) {
+          if (this.opts.test !== undefined && (randomSeed.double() ?? 0) < this.opts.test && chooseFailureBranch === 3) {
             throw new ResonateTestCrash(this.opts.test);
           }
           reject(this.opts.encoder.decode(promise.value.data));

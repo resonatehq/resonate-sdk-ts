@@ -37,10 +37,4 @@ export type Opts = {
    * Probability of failure.
    */
   test?: number;
-
-  /**
-   * Test Only
-   * Random Seed.
-   */
-  testRandomSeed?: number;
 };
