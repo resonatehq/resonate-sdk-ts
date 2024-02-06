@@ -128,11 +128,6 @@ describe("Schedule Store", () => {
   });
 
   test("delete non-existing schedule", async () => {
-    if (useDurable) {
-      await expect(store.schedules.delete("non-existing-id")).rejects.toThrow();
-    } else {
-      const isDeleted = await store.schedules.delete("non-existing-id");
-      expect(isDeleted).toBeUndefined();
-    }
+    await expect(store.schedules.delete("non-existing-id")).rejects.toThrow();
   });
 });

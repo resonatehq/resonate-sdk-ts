@@ -396,7 +396,11 @@ export class RemoteLockStore implements ILockStore {
     private logger: ILogger = new Logger(),
   ) {}
 
-  async tryAcquire(resourceId: string, executionId: string): Promise<boolean> {
+  async tryAcquire(resourceId: string, executionId: string, lockExpiry?: number): Promise<boolean> {
+    if (lockExpiry !== undefined) {
+      this.lockExpiry = lockExpiry;
+    }
+
     const acquired = call<boolean>(
       `${this.url}/locks/acquire`,
       (b: unknown): b is any => true,

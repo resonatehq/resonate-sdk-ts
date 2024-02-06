@@ -77,20 +77,17 @@ describe("Lock", () => {
     }
 
     // Acquire a lock with a short expiration time
-    const acquireResult = await lockStore.tryAcquire("resource-id-3", "execution-id-1");
+    const acquireResult = await lockStore.tryAcquire("resource-id-3", "execution-id-1", 1000);
     expect(acquireResult).toBe(true);
 
     // Wait for the lock to expire
-    await new Promise((resolve) => setTimeout(resolve, 70000)); // Assuming lockExpiry is 60000
+    await new Promise((resolve) => setTimeout(resolve, 2000)); // Assuming lockExpiry is 60000
 
     // Attempt to release the expired lock, should fail
     await expect(lockStore.release("resource-id-3", "execution-id-1")).rejects.toThrow();
   });
 
   test("Attempt to release a lock without acquiring it", async () => {
-    if (!useDurable) {
-      return;
-    }
     const nonAcquiredResourceId = "non-acquired-resource-id";
     const nonAcquiredExecutionId = "non-acquired-execution-id";
 
