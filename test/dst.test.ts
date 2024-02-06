@@ -158,7 +158,9 @@ describe("Simulate failures", () => {
         storedContexts.push(currentContext);
         break;
       } catch (e) {
-        console.log("Failed to run test, trying again!");
+        if (e !== ResonateTestCrash) {
+          console.log("Failed to run test, trying again! ", e);
+        }
       }
     }
     expect(isSubsetTree(context1, storedContexts[1])).toBe(true);
