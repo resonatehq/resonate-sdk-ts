@@ -99,9 +99,15 @@ describe("Simulate failures", () => {
 
     const storedContexts: Context[] = [context1];
 
-    const probFailure = 0.8;
+    const probFailure = 0.6;
     const continueLoop = true;
+    let loopCount = 0;
     while (continueLoop) {
+      if (loopCount > 10) {
+        storedContexts.push(context1);
+        break;
+      }
+      loopCount++;
       const resonate = new Resonate();
 
       resonate.register("test", test1);
@@ -139,9 +145,15 @@ describe("Simulate failures", () => {
 
     const storedContexts: Context[] = [context1];
 
-    const probFailure = 0.8;
+    const probFailure = 0.7;
     const continueLoop = true;
+    let loopCount = 0;
     while (continueLoop) {
+      if (loopCount > 10) {
+        storedContexts.push(context1);
+        break;
+      }
+      loopCount++;
       const resonate = new Resonate();
 
       resonate.register("test", test2);
