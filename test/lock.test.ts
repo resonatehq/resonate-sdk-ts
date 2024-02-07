@@ -1,7 +1,7 @@
 import { jest, describe, test, expect } from "@jest/globals";
 import { Resonate, Context } from "../lib/resonate";
-import { LocalLockStore, LocalStore } from "../lib/core/stores/local";
-import { RemoteLockStore, RemoteStore } from "../lib/core/stores/remote";
+import { LocalStore } from "../lib/core/stores/local";
+import { RemoteStore } from "../lib/core/stores/remote";
 import { Logger } from "../lib/core/loggers/logger";
 
 jest.setTimeout(10000);

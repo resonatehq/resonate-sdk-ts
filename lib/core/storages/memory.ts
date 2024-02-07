@@ -1,4 +1,3 @@
-import { ErrorCodes, ResonateError } from "../error";
 import { IStorage } from "../storage";
 
 export class MemoryStorage<T> implements IStorage<T> {
