@@ -545,7 +545,7 @@ class ResonateContext implements Context {
 
       const randomSeed = seedrandom();
       const chooseFailureBranch = Math.floor(seedrandom().double() * 3) + 1;
-    
+
       // invoke
       try {
         if (this.opts.test !== undefined && (randomSeed.double() ?? 0) < this.opts.test && chooseFailureBranch === 1) {
