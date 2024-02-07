@@ -386,9 +386,8 @@ export class RemoteScheduleStore implements IScheduleStore {
 
 export class RemoteLockStore implements ILockStore {
   private lockExpiry: number = 60000;
-  private heartbeatInterval: number = this.lockExpiry / 4;
-
-  private interval: number | null = null;
+  private heartbeatDelay: number = this.lockExpiry / 4;
+  private hearbeatInterval: number | null = null;
 
   constructor(
     private url: string,
@@ -416,10 +415,8 @@ export class RemoteLockStore implements ILockStore {
       this.logger,
     );
 
-    if ((await acquired) && this.interval === null) {
-      // lazily start the heartbeat
-      this.startHeartbeat();
-    }
+    // lazily start the heartbeat
+    this.startHeartbeat();
 
     if (await acquired) {
       return true;
@@ -447,17 +444,16 @@ export class RemoteLockStore implements ILockStore {
   }
 
   private startHeartbeat(): void {
-    this.heartbeatInterval = +setInterval(async () => {
-      if ((await this.heartbeat()) === 0) {
-        this.stopHeartbeat();
-      }
-    }, this.heartbeatInterval);
+    if (this.hearbeatInterval === null) {
+      // the + converts to a number
+      this.hearbeatInterval = +setInterval(() => this.heartbeat(), this.heartbeatDelay);
+    }
   }
 
   private stopHeartbeat(): void {
-    if (this.interval !== null) {
-      clearInterval(this.interval);
-      this.interval = null;
+    if (this.hearbeatInterval !== null) {
+      clearInterval(this.hearbeatInterval);
+      this.hearbeatInterval = null;
     }
   }
 
@@ -477,6 +473,10 @@ export class RemoteLockStore implements ILockStore {
       },
       this.logger,
     );
+
+    if (res.locksAffected === 0) {
+      this.stopHeartbeat();
+    }
 
     return res.locksAffected;
   }
