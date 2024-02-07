@@ -457,10 +457,18 @@ export class LocalLockStore implements ILockStore {
       return lock;
     });
 
+    if (lock?.eid !== eid) {
+      return Promise.reject(new ResonateError(ErrorCodes.FORBIDDEN, `Forbidden request`));
+    }
+
     return lock.eid === eid;
   }
 
-  release(id: string, eid: string) {
+  async release(id: string, eid: string) {
+    const lock = await this.storage.rmw(id, (lock) => lock);
+    if (lock?.eid !== eid) {
+      return Promise.reject(new ResonateError(ErrorCodes.NOT_FOUND, `Not found`));
+    }
     return this.storage.rmd(id, (lock) => lock.eid === eid);
   }
 }

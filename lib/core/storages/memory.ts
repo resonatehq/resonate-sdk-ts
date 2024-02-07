@@ -16,10 +16,6 @@ export class MemoryStorage<T> implements IStorage<T> {
   async rmd(id: string, func: (item: T) => boolean): Promise<void> {
     const item = this.items[id];
 
-    if (!item) {
-      return Promise.reject(new ResonateError(ErrorCodes.NOT_FOUND, `Not found`));
-    }
-
     if (item && func(item)) {
       delete this.items[id];
     }

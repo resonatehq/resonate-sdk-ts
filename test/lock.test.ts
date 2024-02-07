@@ -21,7 +21,6 @@ function write(context: Context, id: string, final: boolean) {
 describe("Lock Store Tests", () => {
   const useDurable = process.env.USE_DURABLE === "true";
   const url = process.env.RESONATE_URL || "http://localhost:8001";
-  const lockStore = useDurable ? new RemoteLockStore(url, "process-id") : new LocalLockStore();
 
   const store = useDurable ? new RemoteStore(url, "process-id", new Logger()) : new LocalStore();
   const r1 = new Resonate({ store });
@@ -51,19 +50,13 @@ describe("Lock Store Tests", () => {
   // });
 
   test("Lock store behaves correctly when acquiring and releasing locks", async () => {
-    const acquireResult = await lockStore.tryAcquire("resource-id-1", "execution-id-1");
+    const acquireResult = await store.locks.tryAcquire("resource-id-1", "execution-id-1");
     expect(acquireResult).toBe(true);
 
-    if (useDurable) {
-      // should get error 403
-      await expect(lockStore.tryAcquire("resource-id-1", "execution-id-2")).rejects.toThrow();
-    } else {
-      const secondAcquireResult = await lockStore.tryAcquire("resource-id-1", "execution-id-2");
-      expect(secondAcquireResult).toBe(false);
-    }
+    await expect(store.locks.tryAcquire("resource-id-1", "execution-id-2")).rejects.toThrow();
 
-    await lockStore.release("resource-id-1", "execution-id-1");
-    await expect(lockStore.release("resource-id-1", "execution-id-1")).rejects.toThrow();
+    await store.locks.release("resource-id-1", "execution-id-1");
+    await expect(store.locks.release("resource-id-1", "execution-id-1")).rejects.toThrow();
   });
 
   test("Lock expiration works as expected", async () => {
@@ -72,20 +65,20 @@ describe("Lock Store Tests", () => {
     }
 
     // Acquire a lock with a short expiration time
-    const acquireResult = await lockStore.tryAcquire("resource-id-3", "execution-id-1", 1000);
+    const acquireResult = await store.locks.tryAcquire("resource-id-3", "execution-id-1", 1000);
     expect(acquireResult).toBe(true);
 
     // Wait for the lock to expire
     await new Promise((resolve) => setTimeout(resolve, 2000)); // Assuming lockExpiry is 60000
 
     // Attempt to release the expired lock, should fail
-    await expect(lockStore.release("resource-id-3", "execution-id-1")).rejects.toThrow();
+    await expect(store.locks.release("resource-id-3", "execution-id-1")).rejects.toThrow();
   });
 
   test("Attempt to release a lock without acquiring it", async () => {
     const nonAcquiredResourceId = "non-acquired-resource-id";
     const nonAcquiredExecutionId = "non-acquired-execution-id";
 
-    await expect(lockStore.release(nonAcquiredResourceId, nonAcquiredExecutionId)).rejects.toThrow();
+    await expect(store.locks.release(nonAcquiredResourceId, nonAcquiredExecutionId)).rejects.toThrow();
   });
 });
