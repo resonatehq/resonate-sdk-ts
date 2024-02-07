@@ -417,7 +417,11 @@ export class LocalScheduleStore implements IScheduleStore {
     return schedule;
   }
 
-  delete(id: string): Promise<void> {
+  async delete(id: string): Promise<void> {
+    if (!await this.storage.rmw(id, (schedule) => schedule)) {
+      return Promise.reject(new ResonateError(ErrorCodes.NOT_FOUND, "Not found"));
+    }
+  
     return this.storage.rmd(id, () => true);
   }
 
