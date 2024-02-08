@@ -33,10 +33,10 @@ describe("Cache", () => {
     const p3 = resonate.run("resolve", "p1", 3);
     const p4 = resonate.run("resolve", "p1", 4);
 
-    expect(await p1).toBe(1);
-    expect(await p2).toBe(1);
-    expect(await p3).toBe(1);
-    expect(await p4).toBe(1);
+    expect((await p1).toString()).toBe("1");
+    expect((await p2).toString()).toBe("1");
+    expect((await p3).toString()).toBe("1");
+    expect((await p4).toString()).toBe("1");
 
     expect(resolveSpy).toHaveBeenCalledTimes(1);
     expect(rejectSpy).toHaveBeenCalledTimes(0);
