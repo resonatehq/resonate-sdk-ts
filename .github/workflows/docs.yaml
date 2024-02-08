@@ -18,12 +18,14 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+      - name: Install dependencies
+        run: npm install
       - name: Build docs
         run: npm run docs
       # - name: Archive artifact # from: https://github.com/actions/upload-pages-artifact
