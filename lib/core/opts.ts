@@ -36,7 +36,7 @@ export type Opts = {
    * Test Only
    * Probability of failure.
    */
-  test?: number;
+  test: { p: number; generator: () => number };
 };
 
 export class ContextOpts {

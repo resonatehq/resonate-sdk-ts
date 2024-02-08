@@ -14,7 +14,6 @@ import { ICache } from "./core/cache";
 import { Cache } from "./core/caches/cache";
 import { Schedule } from "./core/schedule";
 import { IEncoder } from "./core/encoder";
-import seedrandom from "seedrandom";
 
 // Types
 
@@ -64,7 +63,7 @@ type ResonateOpts = {
 export class Resonate {
   private functions: Record<string, { func: Func; opts: Opts }> = {};
 
-  private cache: ICache<Promise<any>> = new Cache();
+  private cache: ICache<{ context: Context; promise: Promise<any> }> = new Cache();
 
   private recoveryDelay: number;
 
@@ -151,6 +150,7 @@ export class Resonate {
         retry: Retry.exponential(),
         encoder: new JSONEncoder(),
         eid: randomId(),
+        test: { p: 0, generator: Math.random },
         ...opts.all(),
       },
     };
@@ -181,18 +181,26 @@ export class Resonate {
    * @returns a promise that resolves to the return value of the function
    */
   run<T = any, P extends any[] = any[]>(name: string, id: string, ...args: P): Promise<T> {
+    return this.runWithContext(name, id, args).promise;
+  }
+
+  runWithContext<T = any, P extends any[] = any[]>(
+    name: string,
+    id: string,
+    ...args: P
+  ): { context: Context; promise: Promise<T> } {
     // use a constructed id for both the id and idempotency key
     // TODO: can user override the top level id / idempotency key?
     id = this.id(this.namespace, name, id);
     return this._run(name, id, id, args);
   }
 
-  _run<T = any, P extends any[] = any[]>(
+  private _run<T = any, P extends any[] = any[]>(
     name: string,
     id: string,
     idempotencyKey: string | undefined,
     args: P,
-  ): Promise<T> {
+  ): { context: Context; promise: Promise<T> } {
     if (!(name in this.functions)) {
       throw new Error(`Function ${name} not registered`);
     }
@@ -201,6 +209,8 @@ export class Resonate {
     const { func, opts } = this.functions[name];
 
     if (!this.cache.has(id)) {
+      const context = new ResonateContext(this, this.store, this.bucket, name, id, idempotencyKey, opts);
+
       const promise = new Promise(async (resolve, reject) => {
         // lock
         while (!(await this.store.locks.tryAcquire(id, opts.eid))) {
@@ -208,18 +218,29 @@ export class Resonate {
           await new Promise((r) => setTimeout(r, 1000));
         }
 
-        const context = new ResonateContext(this, this.store, this.bucket, name, id, idempotencyKey, opts);
-
+        let err: unknown;
+        let result: any;
         try {
-          resolve(await context.execute(func, args));
+          result = await context.execute(func, args);
         } catch (e) {
-          reject(e);
-        } finally {
-          await this.store.locks.release(id, opts.eid);
+          err = e;
+        }
+        // unlock
+        await this.store.locks.release(id, opts.eid);
+
+        // TODO : This is just for testing purposes.
+        if (err instanceof ResonateTestCrash) {
+          this.cache.delete(id);
+        }
+
+        if (err) {
+          reject(err);
+        } else {
+          resolve(result);
         }
       });
 
-      this.cache.set(id, promise);
+      this.cache.set(id, { context, promise });
     }
 
     return this.cache.get(id);
@@ -542,14 +563,14 @@ class ResonateContext implements Context {
 
       // trace
       const trace = this.startTrace(this.id);
-
-      const randomSeed = seedrandom();
-      const chooseFailureBranch = Math.floor(seedrandom().double() * 3) + 1;
+      const seedrandom = this.opts.test.generator();
+      const failureProb = seedrandom < this.opts.test.p;
+      const chooseFailureBranch = Math.floor(this.opts.test.generator() * 2);
 
       // invoke
       try {
-        if (this.opts.test !== undefined && (randomSeed.double() ?? 0) < this.opts.test && chooseFailureBranch === 1) {
-          throw new ResonateTestCrash(this.opts.test);
+        if (failureProb && chooseFailureBranch === 0) {
+          throw new ResonateTestCrash(this.opts.test.p);
         }
 
         let r = await generator.next();
@@ -561,23 +582,14 @@ class ResonateContext implements Context {
 
         if (isPendingPromise(promise)) {
           throw new Error("Invalid state");
-        } else if (isResolvedPromise(promise)) {
-          if (
-            this.opts.test !== undefined &&
-            (randomSeed.double() ?? 0) < this.opts.test &&
-            chooseFailureBranch === 2
-          ) {
-            throw new ResonateTestCrash(this.opts.test);
-          }
+        }
+
+        if (failureProb && chooseFailureBranch === 1) {
+          throw new ResonateTestCrash(this.opts.test.p);
+        }
+        if (isResolvedPromise(promise)) {
           resolve(this.opts.encoder.decode(promise.value.data));
         } else {
-          if (
-            this.opts.test !== undefined &&
-            (randomSeed.double() ?? 0) < this.opts.test &&
-            chooseFailureBranch === 3
-          ) {
-            throw new ResonateTestCrash(this.opts.test);
-          }
           reject(this.opts.encoder.decode(promise.value.data));
         }
       } catch (e: unknown) {
