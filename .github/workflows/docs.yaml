@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
   id-token: write
-  paes: write
+  pages: write
 
 jobs:
   build:
