@@ -102,7 +102,6 @@ describe("Simulate failures", () => {
     const tree1 = traces(context1);
     printTree(tree1);
 
-    const probFailure = 0.6;
     let context2: Context | undefined = undefined;
     while (!context2) {
       // Create a new resonate instance with opts
