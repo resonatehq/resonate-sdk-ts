@@ -1,0 +1,53 @@
+name: Generate and Deploy Docs
+
+on:
+  push:
+    branches:
+      - "*"  # temp
+
+jobs:
+  build:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+    - name: Install dependencies
+      run: npm install
+    - name: Build docs
+      run: npm run docs
+    - name: Archive artifact # from: https://github.com/actions/upload-pages-artifact
+      shell: sh
+      run: |
+        echo ::group::Archive artifact
+        tar \
+          --dereference --hard-dereference \
+          --directory docs \
+          -cvf "$RUNNER_TEMP/artifact.tar" \
+          --exclude=.git \
+          --exclude=.github \
+          .
+        echo ::endgroup::
+    - name: Upload artifact
+      id: upload-artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: github-pages
+        path: ${{ runner.temp }}/artifact.tar
+        if-no-files-found: error
+
+  deploy:
+    needs: build
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages
