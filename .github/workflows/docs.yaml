@@ -1,9 +1,12 @@
 name: Docs
 
 on:
-  push:
+  # push:
+  #   branches:
+  #     - main
+  pull_request:
     branches:
-      - "*" # temp
+      - main
 
 permissions:
   contents: read
@@ -15,30 +18,33 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Install dependencies
-        run: npm install
+        uses: actions/checkout@v3
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
       - name: Build docs
         run: npm run docs
-      - name: Archive artifact # from: https://github.com/actions/upload-pages-artifact
-        shell: sh
-        run: |
-          echo ::group::Archive artifact
-          tar \
-            --dereference --hard-dereference \
-            --directory docs \
-            -cvf "$RUNNER_TEMP/artifact.tar" \
-            --exclude=.git \
-            --exclude=.github \
-            .
-          echo ::endgroup::
-      - name: Upload artifact
-        id: upload-artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: github-pages
-          path: ${{ runner.temp }}/artifact.tar
-          if-no-files-found: error
+      # - name: Archive artifact # from: https://github.com/actions/upload-pages-artifact
+      #   shell: sh
+      #   run: |
+      #     echo ::group::Archive artifact
+      #     tar \
+      #       --dereference --hard-dereference \
+      #       --directory docs \
+      #       -cvf "$RUNNER_TEMP/artifact.tar" \
+      #       --exclude=.git \
+      #       --exclude=.github \
+      #       .
+      #     echo ::endgroup::
+      # - name: Upload artifact
+      #   id: upload-artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: github-pages
+      #     path: ${{ runner.temp }}/artifact.tar
+      #     if-no-files-found: error
 
   # deploy:
   #   runs-on: ubuntu-latest
