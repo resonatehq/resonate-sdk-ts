@@ -418,7 +418,7 @@ export class LocalScheduleStore implements IScheduleStore {
   }
 
   async delete(id: string): Promise<void> {
-    const result = this.storage.rmd(id, () => true);
+    const result = await this.storage.rmd(id, () => true);
     if (!result) {
       throw new ResonateError(ErrorCodes.NOT_FOUND, "Not found");
     }
