@@ -135,7 +135,7 @@ export class Resonate {
    * @returns A promise that resolves to the return value of the function.
    */
   run<T = any, P extends any[] = any[]>(name: string, id: string, ...args: P): Promise<T> {
-    return this.runWithContext(name, id, args).promise;
+    return this.runWithContext(name, id, ...args).promise;
   }
 
   runWithContext<T = any, P extends any[] = any[]>(
