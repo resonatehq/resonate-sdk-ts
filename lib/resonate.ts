@@ -138,6 +138,16 @@ export class Resonate {
     return this.runWithContext(name, id, ...args).promise;
   }
 
+  /**
+   * Invoke a Resonate function.
+   *
+   * @template T The return type of function.
+   * @template P The type of parameters to be passed to the function.
+   * @param name The name of the function registered with Resonate.
+   * @param id A unique identifier for this invocation.
+   * @param args The arguments to pass to the function.
+   * @returns An object containing the context and a promise that resolves to the return value of the function and the context.
+   */
   runWithContext<T = any, P extends any[] = any[]>(
     name: string,
     id: string,
@@ -173,11 +183,13 @@ export class Resonate {
         }
 
         let err: unknown;
+        let isrejected = false;
         let result: any;
         try {
           result = await context.execute(func, args);
         } catch (e) {
           err = e;
+          isrejected = true;
         }
         // unlock
         await this.store.locks.release(id, opts.eid);
@@ -187,7 +199,7 @@ export class Resonate {
           this.cache.delete(id);
         }
 
-        if (err) {
+        if (isrejected) {
           reject(err);
         } else {
           resolve(result);

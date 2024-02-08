@@ -90,80 +90,41 @@ function printTree(tree: TraceTree, indent: string = ""): void {
 
 describe("Simulate failures", () => {
   const seed = process.env.SEED || Math.random().toString();
-  test("Simulate failure 1", async () => {
-    const resonate = new Resonate();
-    resonate.register("baseline", test1);
-    resonate.register("withFailure", test1, resonate.options({ test: { p: 0.5, generator: seedrandom(seed) } }));
+  for (const func of [test1, test2]) {
+    test("Simulate failure 1", async () => {
+      const resonate = new Resonate();
+      resonate.register("baseline", func);
+      resonate.register("withFailure", func, resonate.options({ test: { p: 0.5, generator: seedrandom(seed) } }));
 
-    const { context: context1, promise: promise1 } = resonate.runWithContext("baseline", "baseline");
+      const { context: context1, promise: promise1 } = resonate.runWithContext("baseline", "baseline");
 
-    await promise1;
+      await promise1;
 
-    const tree1 = traces(context1);
-    printTree(tree1);
+      const tree1 = traces(context1);
+      printTree(tree1);
 
-    let context2: Context | undefined = undefined;
-    while (!context2) {
-      // Create a new resonate instance with opts
-      try {
-        const currentResult = resonate.runWithContext("withFailure", "withFailure");
-        const currentContext = currentResult.context;
-        const currentPromise = currentResult.promise;
+      let context2: Context | undefined = undefined;
+      while (!context2) {
+        // Create a new resonate instance with opts
+        try {
+          const currentResult = resonate.runWithContext("withFailure", "withFailure");
+          const currentContext = currentResult.context;
+          const currentPromise = currentResult.promise;
 
-        await currentPromise;
-        // Break the loop if the current context was successful
-        const tree2 = traces(currentContext);
-        printTree(tree2);
+          await currentPromise;
+          // Break the loop if the current context was successful
+          const tree2 = traces(currentContext);
+          printTree(tree2);
 
-        context2 = currentContext;
-        break;
-      } catch (e) {
-        if (e !== ResonateTestCrash) {
-          console.log("Failed to run test, trying again! ", e);
+          context2 = currentContext;
+          break;
+        } catch (e) {
+          if (e !== ResonateTestCrash) {
+            console.log("Failed to run test, trying again! ", e);
+          }
         }
       }
-    }
-    expect(isSubsetTree(context2, context1)).toBe(true);
-
-    // test another run
-    resonate.register("baseline2", test2);
-    const result = await resonate.runWithContext("baseline2", "baseline2");
-    const context3 = result.context;
-    const promise3 = result.promise;
-
-    await promise3;
-
-    const tree3 = traces(context3);
-    printTree(tree3);
-
-    const probFailure2 = 0.7;
-    let context4: Context | undefined = undefined;
-
-    resonate.register("test2", test2);
-    while (!context4) {
-      // Create a new resonate instance with opts
-      try {
-        const currentResult = resonate.runWithContext(
-          "baseline2",
-          "baseline2",
-          resonate.options({ test: { p: probFailure2, generator: seedrandom(seed) } }),
-        );
-        const currentContext = currentResult.context;
-        const currentPromise = currentResult.promise;
-
-        await currentPromise;
-        // Break the loop if the current context was successful
-        const tree4 = traces(currentContext);
-        printTree(tree4);
-
-        context4 = currentContext;
-        break;
-      } catch (e) {
-        if (e !== ResonateTestCrash) {
-          console.log("Failed to run test, trying again! ", e);
-        }
-      }
-    }
-    expect(isSubsetTree(context4, context3)).toBe(true);
-  });
+      expect(isSubsetTree(context2, context1)).toBe(true);
+    });
+  }
 });
