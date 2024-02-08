@@ -1,9 +1,9 @@
-name: Generate and Deploy Docs
+name: Docs
 
 on:
   push:
     branches:
-      - "*"  # temp
+      - "*" # temp
 
 jobs:
   build:
@@ -40,13 +40,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
 
-    permissions:
-      pages: write
-      id-token: write
+    # permissions:
+    #   pages: write
+    #   id-token: write
 
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    # environment:
+    #   name: github-pages
+    #   url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Deploy to GitHub Pages
