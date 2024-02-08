@@ -28,25 +28,25 @@ jobs:
         run: npm install
       - name: Build docs
         run: npm run docs
-      # - name: Archive artifact # from: https://github.com/actions/upload-pages-artifact
-      #   shell: sh
-      #   run: |
-      #     echo ::group::Archive artifact
-      #     tar \
-      #       --dereference --hard-dereference \
-      #       --directory docs \
-      #       -cvf "$RUNNER_TEMP/artifact.tar" \
-      #       --exclude=.git \
-      #       --exclude=.github \
-      #       .
-      #     echo ::endgroup::
-      # - name: Upload artifact
-      #   id: upload-artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: github-pages
-      #     path: ${{ runner.temp }}/artifact.tar
-      #     if-no-files-found: error
+      - name: Archive artifact # from: https://github.com/actions/upload-pages-artifact
+        shell: sh
+        run: |
+          echo ::group::Archive artifact
+          tar \
+            --dereference --hard-dereference \
+            --directory docs \
+            -cvf "$RUNNER_TEMP/artifact.tar" \
+            --exclude=.git \
+            --exclude=.github \
+            .
+          echo ::endgroup::
+      - name: Upload artifact
+        id: upload-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          if-no-files-found: error
 
   # deploy:
   #   runs-on: ubuntu-latest
