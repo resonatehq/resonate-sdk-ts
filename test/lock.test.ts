@@ -31,7 +31,7 @@ describe("Lock Store Tests", () => {
 
   test("Lock guards shared resource", async () => {
     expect(sharedResource.length).toBe(0);
-    
+
     r1.run("write", "id", "a", false);
     const p2 = r2.run("write", "id2", "b", true);
 
