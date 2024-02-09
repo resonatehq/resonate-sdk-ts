@@ -1,7 +1,7 @@
 import { jest, describe, test, expect } from "@jest/globals";
 import { Resonate, Context } from "../lib/resonate";
 import { LocalStore } from "../lib/core/stores/local";
-import { RemoteStore } from "../lib/core/stores/remote";
+import { RemoteLockStore, RemoteStore } from "../lib/core/stores/remote";
 import { Logger } from "../lib/core/loggers/logger";
 
 jest.setTimeout(50000);
@@ -44,8 +44,10 @@ describe("Lock Store Tests", () => {
       // release lock so p2 can run
       await store.locks.release("write/id", sharedResource[0]);
     } catch (e) {
+      // continue even if lock is not released
       console.error(e);
     }
+    // try but not fail
     const r = await p2;
 
     expect(sharedResource.length).toBe(2);
@@ -70,14 +72,15 @@ describe("Lock Store Tests", () => {
     }
 
     // Acquire a lock with a short expiration time
-    const acquireResult = await store.locks.tryAcquire("resource-id-3", "execution-id-1", 1000);
+    const remoteLockStore = new RemoteLockStore(url, "process-id", new Logger(), 1000);
+    const acquireResult = await remoteLockStore.tryAcquire("resource-id-3", "execution-id-1");
     expect(acquireResult).toBe(true);
 
     // Wait for the lock to expire
     await new Promise((resolve) => setTimeout(resolve, 2000)); // Assuming lockExpiry is 60000
 
     // Attempt to release the expired lock, should fail
-    await expect(store.locks.release("resource-id-3", "execution-id-1")).rejects.toThrow();
+    await expect(remoteLockStore.release("resource-id-3", "execution-id-1")).rejects.toThrow();
   });
 
   test("Attempt to release a lock without acquiring it", async () => {
