@@ -4,8 +4,12 @@ import { ResonateTestCrash } from "../../lib/core/error";
 import seedrandom from "seedrandom";
 
 import { primes } from "./programs/primes";
+import { recurse } from "./programs/recurse";
 
-const tests = [{ name: "primes", func: primes }];
+const tests = [
+  { name: "primes", func: primes },
+  { name: "recurse", func: recurse },
+];
 
 // equivalency algorithm
 function isEquivalent(received: Context, expected: Context): boolean {
