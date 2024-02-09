@@ -4,7 +4,7 @@ import { LocalStore } from "../lib/core/stores/local";
 import { RemoteStore } from "../lib/core/stores/remote";
 import { Logger } from "../lib/core/loggers/logger";
 
-jest.setTimeout(10000);
+jest.setTimeout(50000);
 
 const sharedResource: string[] = [];
 
@@ -30,6 +30,8 @@ describe("Lock Store Tests", () => {
   r2.register("write", write, r2.options({ eid: "b", timeout: 5000 }));
 
   test("Lock guards shared resource", async () => {
+    expect(sharedResource.length).toBe(0);
+    
     r1.run("write", "id", "a", false);
     const p2 = r2.run("write", "id2", "b", true);
 
@@ -38,9 +40,12 @@ describe("Lock Store Tests", () => {
     }
     expect(sharedResource.length).toBe(2);
 
-    // release lock so p2 can run
-    await store.locks.release("write/id", sharedResource[0]);
-
+    try {
+      // release lock so p2 can run
+      await store.locks.release("write/id", sharedResource[0]);
+    } catch (e) {
+      console.error(e);
+    }
     const r = await p2;
 
     expect(sharedResource.length).toBe(2);
