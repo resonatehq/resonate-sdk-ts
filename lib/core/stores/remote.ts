@@ -385,7 +385,6 @@ export class RemoteScheduleStore implements IScheduleStore {
 }
 
 export class RemoteLockStore implements ILockStore {
-  private lockTimeout: number = 60000;
   private heartbeatDelay: number = this.lockTimeout / 4;
   private hearbeatInterval: number | null = null;
 
@@ -393,13 +392,8 @@ export class RemoteLockStore implements ILockStore {
     private url: string,
     private pid: string,
     private logger: ILogger = new Logger(),
-    private lockExpiry?: number,
-  ) {
-    // if lockExpiry is provided, set locktimeout to lockExpiry
-    if (lockExpiry) {
-      this.lockTimeout = lockExpiry;
-    }
-  }
+    private lockTimeout: number = 60000,
+  ) {}
 
   async tryAcquire(resourceId: string, executionId: string): Promise<boolean> {
     const acquired = call<boolean>(
