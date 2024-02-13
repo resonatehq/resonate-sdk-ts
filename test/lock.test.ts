@@ -1,22 +1,9 @@
 import { jest, describe, test, expect } from "@jest/globals";
-import { Context } from "../lib/resonate";
 import { LocalStore } from "../lib/core/stores/local";
 import { RemoteStore } from "../lib/core/stores/remote";
 import { Logger } from "../lib/core/loggers/logger";
 
 jest.setTimeout(50000);
-
-const sharedResource: string[] = [];
-
-function write(context: Context, id: string, final: boolean) {
-  return new Promise((resolve) => {
-    sharedResource.push(id);
-
-    if (final) {
-      resolve(sharedResource);
-    }
-  });
-}
 
 describe("Lock Store Tests", () => {
   const useDurable = process.env.USE_DURABLE === "true";
