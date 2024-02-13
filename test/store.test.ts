@@ -5,6 +5,7 @@ import { RemotePromiseStore } from "../lib/core/stores/remote";
 import { LocalPromiseStore } from "../lib/core/stores/local";
 import { WithTimeout } from "../lib/core/storages/withTimeout";
 import { MemoryStorage } from "../lib/core/storages/memory";
+import { ErrorCodes } from "../lib/core/error";
 
 // Set a larger timeout for hooks (e.g., 10 seconds)
 jest.setTimeout(10000);
