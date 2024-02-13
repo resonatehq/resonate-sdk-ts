@@ -726,9 +726,6 @@ class ResonateContext implements Context {
 
       // the function to be called next
       next: async (promise, resolve, reject) => {
-        // let p = await promise;
-        // let completedPromise: CanceledPromise | ResolvedPromise | RejectedPromise | TimedoutPromise;
-
         if (isPendingPromise(promise)) {
           const fail = this.opts.test.generator() < this.opts.test.p;
           const branch = Math.floor(this.opts.test.generator() * 2);
@@ -797,7 +794,7 @@ class ResonateContext implements Context {
     const data = this.opts.encoder.encode(args[0]);
 
     // create durable promise
-    let promise = this.store.promises.create(
+    const promise = this.store.promises.create(
       func,
       this.idempotencyKey,
       false,
