@@ -9,7 +9,6 @@ jest.setTimeout(10000);
 
 describe("Schedule Store", () => {
   let store: IStore;
-  const scheduleId = "schedule-1";
   const useDurable = process.env.USE_DURABLE === "true";
 
   beforeEach(() => {
