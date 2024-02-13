@@ -36,6 +36,9 @@ describe("Schedule Store", () => {
 
     expect(createdSchedule.id).toBe(scheduleId);
     expect(createdSchedule.cron).toBe(cronExpression);
+
+    // Clean up
+    await store.schedules.delete(scheduleId);
   });
 
   // this test needs to be discussed
@@ -72,6 +75,9 @@ describe("Schedule Store", () => {
         {},
       ),
     ).toBeDefined();
+
+    // Clean up
+    await store.schedules.delete(scheduleId);
   });
 
   test("Schedule Store: Create schedule that exists with different idempotency key", async () => {
@@ -107,6 +113,9 @@ describe("Schedule Store", () => {
         {},
       ),
     ).rejects.toThrowError("Already exists");
+
+    // Clean up
+    await store.schedules.delete(scheduleId);
   });
 
   test("Schedule Store: Get schedule that exists", async () => {
@@ -130,6 +139,9 @@ describe("Schedule Store", () => {
     // Get the existing schedule
     const existingSchedule = await store.schedules.get(scheduleId);
     expect(existingSchedule.id).toBe(scheduleId);
+
+    // Clean up
+    await store.schedules.delete(scheduleId);
   });
 
   test("Schedule Store: Get schedule that does not exist", async () => {
@@ -170,6 +182,7 @@ describe("Schedule Store", () => {
     // Attempt to delete a schedule that does not exist, should throw NOT_FOUND error
     await expect(store.schedules.delete(nonExistingScheduleId)).rejects.toThrowError("Not found");
   });
+
   test("Schedule Store: Search by id", async () => {
     const scheduleId = "search-by-id-schedule";
 
@@ -194,6 +207,9 @@ describe("Schedule Store", () => {
     }
     expect(schedules.length).toBe(1);
     expect(schedules[0].id).toBe(scheduleId);
+
+    // Clean up
+    await store.schedules.delete(scheduleId);
   });
 
   test("Schedule Store: Search by id with wildcard(s)", async () => {
@@ -222,6 +238,11 @@ describe("Schedule Store", () => {
       schedules = schedules.concat(searchResults);
     }
     expect(schedules.length).toBe(3);
+
+    // Clean up
+    for (let i = 1; i <= 3; i++) {
+      await store.schedules.delete(`${scheduleIdPrefix}-${i}`);
+    }
   });
 
   test("Schedule Store: Search by tags", async () => {
@@ -248,5 +269,8 @@ describe("Schedule Store", () => {
       schedules = schedules.concat(searchResults);
     }
     expect(schedules.length).toBe(1);
+
+    // Clean up
+    await store.schedules.delete(scheduleId);
   });
 });
