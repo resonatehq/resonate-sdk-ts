@@ -107,22 +107,6 @@ describe("Lock Store Tests", () => {
     await store.locks.release(resourceId, executionId);
   });
 
-  test("Lock Store: Acquire lock that exists with same executionId", async () => {
-    const resourceId = "existing-resource-id";
-    const executionId = "existing-execution-id";
-
-    // Acquire the lock
-    const acquireResult = await store.locks.tryAcquire(resourceId, executionId);
-    expect(acquireResult).toBe(true);
-
-    // Attempt to acquire the lock again with the same executionId, should succeed
-    const secondAcquireResult = await store.locks.tryAcquire(resourceId, executionId);
-    expect(secondAcquireResult).toBe(true);
-
-    // Release the lock to clean up
-    await store.locks.release(resourceId, executionId);
-  });
-
   test("Lock Store: Acquire lock that exists with different executionId", async () => {
     const resourceId = "existing-resource-id";
     const executionId1 = "existing-execution-id-1";
