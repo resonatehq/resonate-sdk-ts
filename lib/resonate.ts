@@ -192,14 +192,16 @@ export class Resonate {
         }
 
         let err: unknown;
-        let isrejected = false;
-        let result: any;
+        let res: any;
+        let failed = false;
+
         try {
-          result = await context.execute(func, args);
+          res = await context.execute(func, args).promise;
         } catch (e) {
+          failed = true;
           err = e;
-          isrejected = true;
         }
+
         // unlock
         await this.store.locks.release(id, opts.eid);
 
@@ -208,10 +210,10 @@ export class Resonate {
           this.cache.delete(id);
         }
 
-        if (isrejected) {
+        if (failed) {
           reject(err);
         } else {
-          resolve(result);
+          resolve(res);
         }
       });
 
@@ -610,6 +612,10 @@ class ResonateContext implements Context {
   run<F extends Func>(func: F, ...args: [...Params<F>, Options?]): Promise<Return<F>>;
   run<T = any, P = any>(func: string, args: P, opts?: Options): Promise<T>;
   run(func: Func | string, ...argsAndOpts: [...any, Options?]): Promise<any> {
+    return this._run(func, ...argsAndOpts).promise;
+  }
+
+  _run(func: Func | string, ...argsAndOpts: [...any, Options?]): { id: Promise<string>; promise: Promise<any> } {
     const { args, opts } = split(argsAndOpts);
 
     const id = opts.id ?? [this.id, this.counter++].join(this.resonate.separator);
@@ -631,52 +637,199 @@ class ResonateContext implements Context {
     return context.execute(func, args);
   }
 
-  execute(func: Func | string, args: any[]): Promise<any> {
-    return new Promise(async (resolve, reject) => {
-      // set reject for cancel
+  execute(func: Func | string, args: any[]): { id: Promise<string>; promise: Promise<any> } {
+    // the execution represents either a local or remote execution:
+    // - promise resolves to a durable promise
+    // - next is a function that acts on the durable promise,
+    //   resolving or rejecting the corresponding javascript promise
+    //   accordingly, or throwing an error if an intolerable error
+    //   occurs (generally promise store or serialization errors)
+    const { promise, next } = this.execution(func, args);
+
+    // this promise resolves to the id of the durable promise, it can
+    // be used to insure that the durable promise has been created
+    const p1 = new Promise<string>(async (resolve, reject) => {
+      try {
+        const p = await promise;
+        resolve(p.id);
+      } catch (e: unknown) {
+        reject(e);
+      }
+    });
+
+    // this promise resolves to the value of the durable promise, it
+    // is the value that will be awaited in most cases
+    const p2 = new Promise(async (resolve, reject) => {
+      // hold on to the reject function if needed for killing the
+      // context
       this.reject = reject;
 
-      // generator
-      let generator: AsyncGenerator<DurablePromise, DurablePromise, DurablePromise>;
-
-      if (typeof func === "string") {
-        generator = this.remoteExecution(func, args);
-      } else if (isGenerator(func)) {
-        generator = this.localExecution(this.name, args, new GInvocation(func, this.bucket));
-      } else if (isFunction(func)) {
-        generator = this.localExecution(this.name, args, new AInvocation(func, this.bucket));
-      } else {
-        throw new Error("Invalid function");
-      }
-
-      // trace
-      const trace = this.startTrace(this.id);
-
-      // invoke
       try {
-        let r = await generator.next();
-        while (!r.done) {
-          r = await generator.next(r.value);
-        }
+        await next(await promise, resolve, reject);
+      } catch (e: unknown) {
+        // kill the context when an intolerable error occurs, this
+        // leave all javascript promises in the context tree pending
+        // except for the root context
+        this.kill(ResonateError.fromError(e));
+      }
+    });
 
-        const promise = r.value;
+    return {
+      id: p1,
+      promise: p2,
+    };
+  }
+
+  private execution(
+    func: Func | string,
+    args: any[],
+  ): {
+    promise: Promise<DurablePromise>;
+    next: (promise: DurablePromise, resolve: (v: any) => void, reject: (e: unknown) => void) => Promise<void>;
+  } {
+    if (typeof func === "string") {
+      return this.remoteExecution(func, args);
+    } else if (isGenerator(func)) {
+      return this.localExecution(this.name, args, new GInvocation(func, this.bucket));
+    } else if (isFunction(func)) {
+      return this.localExecution(this.name, args, new AInvocation(func, this.bucket));
+    }
+
+    throw new Error("Invalid function");
+  }
+
+  private localExecution<F extends Func>(
+    func: string,
+    args: Params<F>,
+    invocation: AInvocation<F> | GInvocation<F>,
+  ): {
+    promise: Promise<DurablePromise>;
+    next: (promise: DurablePromise, resolve: (v: any) => void, reject: (e: unknown) => void) => Promise<void>;
+  } {
+    const data = this.isRoot ? this.opts.encoder.encode({ func, args }) : undefined;
+    const tags = this.isRoot ? { "resonate:invocation": "true" } : undefined;
+
+    // create durable promise
+    const promise = this.store.promises.create(
+      this.id,
+      this.idempotencyKey,
+      false,
+      undefined,
+      data,
+      this.timeout,
+      tags,
+    );
+
+    return {
+      // the durable promise
+      promise: promise,
+
+      // the function to be called next
+      next: async (promise, resolve, reject) => {
+        // let p = await promise;
+        // let completedPromise: CanceledPromise | ResolvedPromise | RejectedPromise | TimedoutPromise;
 
         if (isPendingPromise(promise)) {
-          throw new Error("Invalid state");
-        } else if (isResolvedPromise(promise)) {
+          const fail = this.opts.test.generator() < this.opts.test.p;
+          const branch = Math.floor(this.opts.test.generator() * 2);
+
+          // generate failure before invoking the function
+          if (fail && branch === 0) {
+            throw new ResonateTestCrash(this.opts.test.p);
+          }
+
+          // save the result and error
+          let res: any;
+          let err: unknown;
+
+          // use a boolean to know if the function execution failed
+          // as it is possible to reject a promise with undefined,
+          // therefore we cannot rely on the caught value
+          let failed = false;
+
+          try {
+            // TODO
+            // decode the arguments from the promise
+            // if root context, this normalizes the information across
+            // the initial invocation and the recovery path
+
+            // invoke function
+            res = await this.withRetry((delay) => invocation.invoke(this, args, delay));
+          } catch (e: unknown) {
+            failed = true;
+            err = e;
+          }
+
+          if (fail && branch === 1) {
+            throw new ResonateTestCrash(this.opts.test.p);
+          }
+
+          // resolve or reject the durable promise
+          if (failed) {
+            // encode error
+            const data = this.opts.encoder.encode(err);
+            promise = await this.store.promises.reject(this.id, this.idempotencyKey, false, undefined, data);
+          } else {
+            // encode value
+            const data = this.opts.encoder.encode(res);
+            promise = await this.store.promises.resolve(this.id, this.idempotencyKey, false, undefined, data);
+          }
+        }
+
+        if (isResolvedPromise(promise)) {
           resolve(this.opts.encoder.decode(promise.value.data));
         } else {
           reject(this.opts.encoder.decode(promise.value.data));
         }
-      } catch (e: unknown) {
-        // kill the promise when an error is thrown
-        // note that this is not the same as a failed function invocation
-        // which will return a promise
-        this.kill(ResonateError.fromError(e));
-      } finally {
-        trace.end();
-      }
-    });
+      },
+    };
+  }
+
+  private remoteExecution(
+    func: string,
+    args: any,
+  ): {
+    promise: Promise<DurablePromise>;
+    next: (promise: DurablePromise, resolve: (v: any) => void, reject: (e: unknown) => void) => Promise<void>;
+  } {
+    // context run captures arguments in a rest parameter, for remote
+    // invocation we only care about the first argument
+    const data = this.opts.encoder.encode(args[0]);
+
+    // create durable promise
+    let promise = this.store.promises.create(
+      func,
+      this.idempotencyKey,
+      false,
+      undefined,
+      data,
+      this.timeout,
+      undefined,
+    );
+
+    return {
+      // the durable promise
+      promise: promise,
+
+      // the function to be called next
+      next: async (promise, resolve, reject) => {
+        while (isPendingPromise(promise)) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
+          try {
+            promise = await this.store.promises.get(func);
+          } catch (e: unknown) {
+            // TODO
+          }
+        }
+
+        if (isResolvedPromise(promise)) {
+          resolve(this.opts.encoder.decode(promise.value.data));
+        } else {
+          reject(this.opts.encoder.decode(promise.value.data));
+        }
+      },
+    };
   }
 
   async all<T extends readonly unknown[] | []>(
@@ -740,104 +893,6 @@ class ResonateContext implements Context {
       },
       opts.merge({ retry: Retry.never() }),
     );
-  }
-
-  private async *localExecution<F extends Func>(
-    func: string,
-    args: Params<F>,
-    invocation: AInvocation<F> | GInvocation<F>,
-  ): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
-    const data = this.isRoot ? this.opts.encoder.encode({ func, args }) : undefined;
-    const tags = this.isRoot ? { "resonate:invocation": "true" } : undefined;
-
-    // create durable promise
-    const promise = yield this.store.promises.create(
-      this.id,
-      this.idempotencyKey,
-      false,
-      undefined,
-      data,
-      this.timeout,
-      tags,
-    );
-
-    if (isPendingPromise(promise)) {
-      const fail = this.opts.test.generator() < this.opts.test.p;
-      const branch = Math.floor(this.opts.test.generator() * 2);
-
-      // generate failure before invoking the function
-      if (fail && branch === 0) {
-        throw new ResonateTestCrash(this.opts.test.p);
-      }
-
-      try {
-        // TODO
-        // decode the arguments from the promise
-        // if root context, this normalizes the information across
-        // the initial invocation and the recovery path
-
-        // invoke function
-        const r = await this.withRetry((delay) => invocation.invoke(this, args, delay));
-
-        // encode value
-        const data = this.opts.encoder.encode(r);
-
-        // generate failure after invoking the function but before
-        // resolve the promise
-        if (fail && branch === 1) {
-          throw new ResonateTestCrash(this.opts.test.p);
-        }
-
-        // resolve durable promise
-        return yield this.store.promises.resolve(this.id, this.idempotencyKey, false, undefined, data);
-      } catch (e: unknown) {
-        // encode error
-        const data = this.opts.encoder.encode(e);
-
-        // generate failure after invoking the function but before
-        // rejecting the promise
-        if (fail && branch === 1) {
-          throw new ResonateTestCrash(this.opts.test.p);
-        }
-
-        // reject durable promise
-        return yield this.store.promises.reject(this.id, this.idempotencyKey, false, undefined, data);
-      }
-    }
-
-    return promise;
-  }
-
-  private async *remoteExecution(
-    func: string,
-    args: any,
-  ): AsyncGenerator<DurablePromise, DurablePromise, DurablePromise> {
-    // context run captures arguments in a rest parameter, for remote
-    // invocation we only care about the first argument
-    const data = this.opts.encoder.encode(args[0]);
-
-    // create durable promise
-    let promise = yield this.store.promises.create(
-      func,
-      this.idempotencyKey,
-      false,
-      undefined,
-      data,
-      this.timeout,
-      undefined,
-    );
-
-    while (isPendingPromise(promise)) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      try {
-        promise = await this.store.promises.get(func);
-      } catch (e: unknown) {
-        // TODO
-      }
-    }
-
-    return promise;
   }
 
   private async withRetry<T>(retriable: (d?: number) => Promise<T>): Promise<T> {
