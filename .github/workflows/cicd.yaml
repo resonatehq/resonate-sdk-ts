@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Run linter
+        run: npm run lint
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
@@ -37,8 +39,6 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - name: Install dependencies
         run: npm install
-      # - name: Run linter
-      #   run: npm run lint
       - name: Run tests with USE_DURABLE=false
         env:
           USE_DURABLE: false
