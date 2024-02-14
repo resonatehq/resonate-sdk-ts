@@ -26,10 +26,10 @@ jobs:
         run: git clone https://github.com/resonatehq/resonate.git
       - name: Build the Go project
         run: go build -o resonate
-        working-directory: resonatehq/resonate
+        working-directory: resonate
       - name: Start the service
         run: ./resonate serve
-        working-directory: resonatehq/resonate
+        working-directory: resonate
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
