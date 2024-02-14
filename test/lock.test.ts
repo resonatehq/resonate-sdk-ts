@@ -5,7 +5,7 @@ import { Logger } from "../lib/core/loggers/logger";
 
 jest.setTimeout(50000);
 
-describe("Lock Store Tests", () => {
+describe("Store: Locks", () => {
   const useDurable = process.env.USE_DURABLE === "true";
   const url = process.env.RESONATE_URL || "http://localhost:8001";
 

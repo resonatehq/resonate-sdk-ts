@@ -7,7 +7,7 @@ import { Logger } from "../lib/core/loggers/logger";
 
 jest.setTimeout(10000);
 
-describe("Schedule Store", () => {
+describe("Store: Schedules", () => {
   let store: IStore;
   const useDurable = process.env.USE_DURABLE === "true";
 
