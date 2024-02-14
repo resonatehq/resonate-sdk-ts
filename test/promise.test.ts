@@ -8,7 +8,7 @@ import { MemoryStorage } from "../lib/core/storages/memory";
 
 jest.setTimeout(10000);
 
-describe("Store: promise", () => {
+describe("Store: Promise", () => {
   const useDurable = process.env.USE_DURABLE === "true";
   const url = process.env.RESONATE_URL || "http://localhost:8001";
 

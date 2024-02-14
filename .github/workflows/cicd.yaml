@@ -23,6 +23,8 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+      - name: Install dependencies
+        run: npm install
       - name: Run linter
         run: npm run lint
       - name: Set up Go
@@ -37,8 +39,6 @@ jobs:
       - name: Start the service
         run: ./resonate serve &
         working-directory: resonate
-      - name: Install dependencies
-        run: npm install
       - name: Run tests with USE_DURABLE=false
         env:
           USE_DURABLE: false
