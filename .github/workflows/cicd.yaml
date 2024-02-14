@@ -28,7 +28,7 @@ jobs:
         run: go build -o resonate
         working-directory: resonate
       - name: Start the service
-        run: ./resonate serve
+        run: ./resonate serve &
         working-directory: resonate
       - name: Set up Node
         uses: actions/setup-node@v4
