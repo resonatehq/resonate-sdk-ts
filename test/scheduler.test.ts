@@ -59,21 +59,22 @@ describe("Schedule Store", () => {
       {},
     );
 
-    // Attempt to create a schedule with the same idempotency key, should not throw error, rather return the existing schedule
-    expect(
-      await store.schedules.create(
-        scheduleId,
-        scheduleId,
-        "Existing Schedule",
-        cronExpression,
-        {},
-        "promise-1",
-        60000,
-        {},
-        '{"message": "Test"}',
-        {},
-      ),
-    ).toBeDefined();
+    const schedule = await store.schedules.create(
+      scheduleId,
+      scheduleId,
+      "Existing Schedule",
+      cronExpression,
+      {},
+      "promise-1",
+      60000,
+      {},
+      '{"message": "Test"}',
+      {},
+    );
+
+    expect(schedule.id).toBe(scheduleId);
+    expect(schedule.cron).toBe(cronExpression);
+    expect(schedule.idempotencyKey).toBe(scheduleId);
 
     // Clean up
     await store.schedules.delete(scheduleId);
