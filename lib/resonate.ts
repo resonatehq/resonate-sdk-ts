@@ -615,6 +615,22 @@ class ResonateContext implements Context {
     return this._run(func, ...argsAndOpts).promise;
   }
 
+  runAndGetTwoPromises<F extends Func>(
+    func: F,
+    ...args: [...Params<F>, Options?]
+  ): { id: Promise<string>; promise: Promise<Return<F>> };
+  runAndGetTwoPromises<T = any, P = any>(
+    func: string,
+    args: P,
+    opts?: Options,
+  ): { id: Promise<string>; promise: Promise<T> };
+  runAndGetTwoPromises(
+    func: Func | string,
+    ...argsAndOpts: [...any, Options?]
+  ): { id: Promise<string>; promise: Promise<any> } {
+    return this._run(func, ...argsAndOpts);
+  }
+
   _run(func: Func | string, ...argsAndOpts: [...any, Options?]): { id: Promise<string>; promise: Promise<any> } {
     const { args, opts } = split(argsAndOpts);
 
