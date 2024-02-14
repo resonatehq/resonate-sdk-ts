@@ -16,8 +16,6 @@ jobs:
   cicd:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
@@ -30,6 +28,8 @@ jobs:
       - name: Start the service
         run: ./resonate serve &
         working-directory: resonate
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
