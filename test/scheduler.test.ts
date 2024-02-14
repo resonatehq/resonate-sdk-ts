@@ -212,18 +212,26 @@ describe("Schedule Store", () => {
   });
 
   test("Schedule Store: Search by id with wildcard(s)", async () => {
-    const scheduleIdPrefix = "search-by-id-prefix";
+    const scheduleIdPrefix = "should-match";
     const wildcardSearch = `${scheduleIdPrefix}*`;
 
-    // Create multiple schedules with the same prefix
-    for (let i = 1; i <= 3; i++) {
+    const scheduleIds = [
+      "should-match-1",
+      "should-match-2",
+      "should-match-3",
+      "should-not-match-1",
+      "should-not-match-2",
+      "should-not-match-3",
+    ];
+
+    for (const i in scheduleIds) {
       await store.schedules.create(
-        `${scheduleIdPrefix}-${i}`,
-        `${scheduleIdPrefix}-${i}`,
+        scheduleIds[i],
+        scheduleIds[i],
         "Search by ID Prefix Schedule",
         "* * * * *",
         {},
-        `promise-${i}`,
+        `promise-${scheduleIds[i]}`,
         60000,
         {},
         '{"message": "Test"}',
@@ -239,37 +247,47 @@ describe("Schedule Store", () => {
     expect(schedules.length).toBe(3);
 
     // Clean up
-    for (let i = 1; i <= 3; i++) {
-      await store.schedules.delete(`${scheduleIdPrefix}-${i}`);
+    for (const i in scheduleIds) {
+      await store.schedules.delete(scheduleIds[i]);
     }
   });
 
   test("Schedule Store: Search by tags", async () => {
+    const scheduleIds = ["search-by-tags-schedule", "should-not-match-1", "should-not-match-2"];
+
     const scheduleId = "search-by-tags-schedule";
-    const tags = { category: "search testing", priority: "high" };
+    const searchtag = { category: "search testing", priority: "high" };
 
     // Create the schedule with specific tags
-    await store.schedules.create(
-      scheduleId,
-      scheduleId,
-      "Search by Tags Schedule",
-      "* * * * *",
-      tags,
-      "promise-1",
-      60000,
-      {},
-      '{"message": "Test"}',
-      {},
-    );
+    for (const i in scheduleIds) {
+      let tags = { category: "search don't match", priority: "mid" };
+      if (scheduleIds[i] === scheduleId) {
+        tags = searchtag;
+      }
+      await store.schedules.create(
+        scheduleIds[i],
+        scheduleIds[i],
+        "Search by Tags Schedule",
+        "* * * * *",
+        tags,
+        `promise-${scheduleIds[i]}`,
+        60000,
+        {},
+        '{"message": "Test"}',
+        {},
+      );
+    }
 
     // Search for the schedule by tags
     let schedules: Schedule[] = [];
-    for await (const searchResults of store.schedules.search(scheduleId, tags)) {
+    for await (const searchResults of store.schedules.search(scheduleId, searchtag)) {
       schedules = schedules.concat(searchResults);
     }
     expect(schedules.length).toBe(1);
 
     // Clean up
-    await store.schedules.delete(scheduleId);
+    for (const i in scheduleIds) {
+      await store.schedules.delete(scheduleIds[i]);
+    }
   });
 });
