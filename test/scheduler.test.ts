@@ -245,6 +245,8 @@ describe("Schedule Store", () => {
       schedules = schedules.concat(searchResults);
     }
     expect(schedules.length).toBe(3);
+    // assert ids
+    expect(schedules.map((s) => s.id)).toEqual(expect.arrayContaining(scheduleIds.slice(0, 3)));
 
     // Clean up
     for (const i in scheduleIds) {
