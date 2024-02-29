@@ -1,4 +1,4 @@
-import { Resonate, Context } from "./resonate";
+import { Resonate, Context } from "./resonateGenerator";
 import { ResonateOptions, ContextOptions } from "./core/opts";
 import { Func, Params, Return } from "./core/types";
 
