@@ -61,3 +61,5 @@ jobs:
           npm install -g npm
           npm version prerelease --no-git-tag-version --preid $GITHUB_SHA
           npm publish --access public
+      - name: Verify build
+        run: ts-node examples/hello_world/helloworld.ts
