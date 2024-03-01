@@ -1,9 +1,10 @@
-import { Future, FutureResolvers, ResonatePromise } from "./future";
+import { Future, ResonatePromise } from "./future";
 import { Execution, ResonateExecution, OrdinaryExecution, DeferredExecution, Info } from "./execution";
 
 import { IStore } from "./core/store";
 
 import { ResonateBase } from "./resonate";
+import { DurablePromise } from "./core/promise";
 
 /////////////////////////////////////////////////////////////////////
 // Types
@@ -43,8 +44,8 @@ type DeferredFunction = {
   args: any;
 };
 
-type Continuation<F extends GeneratorFunc> = {
-  execution: GeneratorExecution<F>;
+type Continuation<T> = {
+  execution: GeneratorExecution<T>;
   next: Next;
 };
 
@@ -73,17 +74,14 @@ class GeneratorExecution<T> extends ResonateExecution<T> {
 
   constructor(
     id: string,
-    future: Future<T>,
-    resolvers: FutureResolvers<T>,
     store: IStore,
     parent: GeneratorExecution<any> | null,
     func: (...args: any[]) => Generator<Yieldable, T>,
     args: any[],
     reject?: (v: unknown) => void,
   ) {
-    super(id, future, resolvers, store, parent, reject);
+    super(id, store, parent, reject);
 
-    // context is the first argument of the generator
     this.generator = func(new Context(this), ...args);
   }
 
@@ -128,17 +126,17 @@ export class Context {
   }
 
   // run returns a value
-  run(func: string, args: any): Call;
   run<F extends GeneratorFunc>(func: F, ...args: Params<F>): Call;
   run<F extends IOFunc>(func: F, ...args: Params<F>): Call;
+  run(func: string, args?: any): Call;
   run(func: string | ((...args: any[]) => any), ...args: any[]): Call {
     return this._call(func, args, false);
   }
 
   // call returns a future
-  call(func: string, args: any): Call;
   call<F extends GeneratorFunc>(func: F, ...args: Params<F>): Call;
   call<F extends IOFunc>(func: F, ...args: Params<F>): Call;
+  call(func: string, args?: any): Call;
   call(func: string | ((...args: any[]) => any), ...args: any[]): Call {
     return this._call(func, args, true);
   }
@@ -184,8 +182,9 @@ export class Scheduler {
     let execution = this.topLevel.find((e) => e.id === id);
 
     if (!execution || execution.killed) {
-      const { future, resolvers } = Future.withResolvers(id);
-      execution = new GeneratorExecution(id, future, resolvers, this.store, null, func, args, reject);
+      execution = new GeneratorExecution(id, this.store, null, func, args, reject);
+      this.executions.push(execution);
+      this.topLevel.push(execution);
 
       const promise = this.store.promises.create(
         id,
@@ -197,20 +196,21 @@ export class Scheduler {
         undefined,
       );
 
-      future.promise.created = promise.then(() => id);
+      execution.future.promise.created = promise.then(() => id);
+
+      // TODO: remove, why ide?
+      const _execution = execution;
 
       promise.then(
         (promise) => {
-          execution.sync(promise);
+          _execution.sync(promise);
 
-          if (future.pending) {
-            this.executions.push(execution);
-            this.topLevel.push(execution);
-            this.runnable.push({ execution, next: { kind: "init" } });
+          if (_execution.future.pending) {
+            this.runnable.push({ execution: _execution, next: { kind: "init" } });
             this.tick();
           }
         },
-        (error) => execution.kill(error),
+        (error) => _execution.kill(error),
       );
     }
 
@@ -306,12 +306,11 @@ export class Scheduler {
     const id = value.kind === "deferred" ? value.func : `${caller.id}/${caller.counter}`;
     caller.counter++;
 
-    // lazily create the future
-    const { future, resolvers } = Future.withResolvers<any>(id);
-    caller.create(future);
+    let callee: Execution<any>;
+    let promise: DurablePromise;
 
     try {
-      const promise = await this.store.promises.create(
+      promise = await this.store.promises.create(
         id,
         id,
         false,
@@ -320,47 +319,32 @@ export class Scheduler {
         Number.MAX_SAFE_INTEGER,
         undefined,
       );
-      future.promise.created = Promise.resolve(id);
-      caller.sync(promise);
     } catch (error) {
       caller.kill(error);
       return;
     }
 
-    let callee: Execution<any>;
-
     switch (value.kind) {
       case "resonate":
-        const rExecution = (callee = new GeneratorExecution(
-          id,
-          future,
-          resolvers,
-          this.store,
-          caller,
-          value.func,
-          value.args,
-        ));
+        const rExecution = new GeneratorExecution(id, this.store, caller, value.func, value.args);
 
-        if (future.pending) {
+        callee = rExecution;
+        callee.future.promise.created = Promise.resolve(id);
+        callee.sync(promise);
+
+        if (callee.future.pending) {
           this.runnable.push({ execution: rExecution, next: { kind: "init" } });
         }
         break;
 
       case "ordinary":
-        // nullable function if future is already complete
-        const func = future.pending ? value.func : () => {};
+        const oExecution = new OrdinaryExecution(id, this.store, caller, value.func, value.args);
 
-        const oExecution = (callee = new OrdinaryExecution(
-          id,
-          future,
-          resolvers,
-          this.store,
-          caller,
-          func,
-          value.args,
-        ));
+        callee = oExecution;
+        callee.future.promise.created = Promise.resolve(id);
+        callee.sync(promise);
 
-        if (future.pending) {
+        if (callee.future.pending) {
           oExecution.invocation.invoke().then(
             (value: any) => oExecution.resolve(value).finally(() => this.tick()),
             (error: any) => oExecution.reject(error).finally(() => this.tick()),
@@ -369,8 +353,15 @@ export class Scheduler {
         break;
 
       case "deferred":
-        const dExecution = (callee = new DeferredExecution(id, future, resolvers, this.store, caller));
+        const dExecution = new DeferredExecution(id, this.store, caller);
 
+        callee = dExecution;
+        callee.future.promise.created = Promise.resolve(id);
+        callee.sync(promise);
+
+        if (callee.future.pending) {
+          dExecution.poll();
+        }
         break;
 
       default:
@@ -379,19 +370,20 @@ export class Scheduler {
 
     caller.addChild(callee);
     callee.setParent(caller);
+    caller.create(callee.future);
     this.executions.push(callee);
 
     if (yieldFuture) {
-      this.runnable.push({ execution: caller, next: { kind: "value", value: future } });
+      this.runnable.push({ execution: caller, next: { kind: "value", value: callee.future } });
     } else {
-      this.applyFuture(caller, future);
+      this.applyFuture(caller, callee.future);
     }
   }
 
   private applyFuture(execution: GeneratorExecution<any>, future: Future<any>) {
-    if (execution.root !== future.executor?.root) {
+    if (execution.future.root !== future.root) {
       yeet(
-        `yielded future originates from ${future.executor?.root.id}, but this execution originates from ${execution.root.id}`,
+        `yielded future originates from ${future.root.id}, but this execution originates from ${execution.future.root.id}`,
       );
     }
 

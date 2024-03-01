@@ -1,6 +1,5 @@
 import { Future, FutureResolvers } from "./future";
 import { IStore } from "./core/store";
-import { ResonateBase } from "./resonate";
 import { DurablePromise } from "./core/promise";
 
 /////////////////////////////////////////////////////////////////////
@@ -49,18 +48,21 @@ export class Invocation<I, T> {
 
 export abstract class Execution<T> {
   createdAt: Date = new Date();
+  future: Future<T>;
+  resolvers: FutureResolvers<T>;
 
   abstract readonly kind: "ordinary" | "resonate" | "deferred";
   abstract root: ResonateExecution<any>;
   abstract parent: ResonateExecution<any> | null;
+  children: Execution<any>[] = [];
 
   constructor(
     public id: string,
-    public future: Future<T>,
-    public resolvers: FutureResolvers<T>,
     public store: IStore,
   ) {
-    this.future.setExecutor(this);
+    const { future, resolvers } = Future.withResolvers<T>(this);
+    this.future = future;
+    this.resolvers = resolvers;
   }
 
   abstract suspendable(): boolean;
@@ -72,7 +74,6 @@ export abstract class Execution<T> {
 
   setParent(execution: ResonateExecution<any>) {
     this.parent = execution;
-    this.future.setParent(execution.future);
   }
 
   kill(error: unknown) {
@@ -121,22 +122,14 @@ export class ResonateExecution<T> extends Execution<T> {
 
   root: ResonateExecution<any>;
   parent: ResonateExecution<any> | null;
-  children: Execution<any>[] = [];
 
   counter: number = 0;
 
   _killed: boolean = false;
   _reject?: (v: unknown) => void;
 
-  constructor(
-    id: string,
-    future: Future<T>,
-    resolvers: FutureResolvers<T>,
-    store: IStore,
-    parent: ResonateExecution<any> | null,
-    reject?: (v: unknown) => void,
-  ) {
-    super(id, future, resolvers, store);
+  constructor(id: string, store: IStore, parent: ResonateExecution<any> | null, reject?: (v: unknown) => void) {
+    super(id, store);
     this.root = parent?.root ?? this;
     this.parent = parent;
     this._reject = reject;
@@ -144,7 +137,6 @@ export class ResonateExecution<T> extends Execution<T> {
 
   addChild(execution: Execution<any>) {
     this.children.push(execution);
-    this.future.addChild(execution.future);
   }
 
   suspendable(): boolean {
@@ -169,14 +161,12 @@ export class OrdinaryExecution<T> extends Execution<T> {
 
   constructor(
     id: string,
-    future: Future<T>,
-    resolvers: FutureResolvers<T>,
     store: IStore,
     parent: ResonateExecution<any>,
     func: (info: Info, ...args: any) => T,
     args: any[] = [],
   ) {
-    super(id, future, resolvers, store);
+    super(id, store);
     this.root = parent.root;
     this.parent = parent;
 
@@ -196,26 +186,13 @@ export class DeferredExecution<T> extends Execution<T> {
   root: ResonateExecution<any>;
   parent: ResonateExecution<any>;
 
-  store: IStore;
   private interval?: number;
 
-  constructor(
-    id: string,
-    future: Future<T>,
-    resolvers: FutureResolvers<T>,
-    store: IStore,
-    parent: ResonateExecution<any>,
-    delay: number = 1000,
-  ) {
-    super(id, future, resolvers, store);
+  constructor(id: string, store: IStore, parent: ResonateExecution<any>) {
+    super(id, store);
     this.root = parent.root;
     this.parent = parent;
     this.store = store;
-
-    if (future.pending) {
-      // start a poller
-      this.interval = +setInterval(() => this.poll(), delay);
-    }
   }
 
   suspendable(): boolean {
@@ -226,7 +203,13 @@ export class DeferredExecution<T> extends Execution<T> {
     clearInterval(this.interval);
   }
 
-  private async poll() {
+  poll(delay: number = 1000) {
+    if (!this.interval) {
+      this.interval = +setInterval(() => this._poll(), delay);
+    }
+  }
+
+  private async _poll() {
     console.log("poll promise store");
 
     try {

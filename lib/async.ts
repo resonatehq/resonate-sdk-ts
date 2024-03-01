@@ -1,5 +1,5 @@
-import { Future, FutureResolvers, ResonatePromise } from "./future";
-import { ResonateExecution, OrdinaryExecution, Invocation, Info, Execution, DeferredExecution } from "./execution";
+import { ResonatePromise } from "./future";
+import { ResonateExecution, OrdinaryExecution, Invocation, Info, DeferredExecution } from "./execution";
 import { ResonateBase } from "./resonate";
 
 import { IStore } from "./core/store";
@@ -35,15 +35,13 @@ class AsyncExecution<T> extends ResonateExecution<T> {
 
   constructor(
     id: string,
-    future: Future<T>,
-    resolvers: FutureResolvers<T>,
     store: IStore,
     parent: AsyncExecution<any> | null,
     func: (...args: any[]) => T,
     args: any[],
     reject?: (v: unknown) => void,
   ) {
-    super(id, future, resolvers, store, parent, reject);
+    super(id, store, parent, reject);
 
     this.invocation = new Invocation(func, new Context(this), args);
   }
@@ -73,44 +71,39 @@ export class Context {
   }
 
   static run<F extends AsyncFunc>(store: IStore, id: string, func: F, args: Params<F>, reject: (v: unknown) => void) {
-    const { future, resolvers } = Future.withResolvers(id);
-    const execution = new AsyncExecution(id, future, resolvers, store, null, func, args, reject);
+    const execution = new AsyncExecution(id, store, null, func, args, reject);
 
     const ctx = new Context(execution);
-    ctx.durable(id, future, execution);
+    ctx.durable(id, execution);
 
     return execution;
   }
 
   run<F extends AsyncFunc>(func: F, ...args: Params<F>): ResonatePromise<Return<F>>;
-  run<T>(func: string, ...args: any): ResonatePromise<T>;
+  run<T>(func: string, args?: any): ResonatePromise<T>;
   run(func: string | ((...args: any[]) => any), ...args: any[]): Promise<any> {
     const id = typeof func === "string" ? func : `${this.execution.id}/${this.execution.counter}`;
     this.execution.counter++;
 
-    const { future, resolvers } = Future.withResolvers(id);
-
     let execution: AsyncExecution<any> | DeferredExecution<any>;
     if (typeof func === "string") {
-      execution = new DeferredExecution(id, future, resolvers, this.execution.store, this.execution);
+      execution = new DeferredExecution(id, this.execution.store, this.execution);
     } else {
-      execution = new AsyncExecution(id, future, resolvers, this.execution.store, this.execution, func, args);
+      execution = new AsyncExecution(id, this.execution.store, this.execution, func, args);
     }
 
-    return this.durable(id, future, execution);
+    return this.durable(id, execution);
   }
 
   io<F extends IOFunc>(func: F, ...args: Params<F>): Promise<Return<F>> {
     const id = `${this.execution.id}/${this.execution.counter++}`;
-    const { future, resolvers } = Future.withResolvers(id);
-    const execution = new OrdinaryExecution(id, future, resolvers, this.execution.store, this.execution, func, args);
+    const execution = new OrdinaryExecution(id, this.execution.store, this.execution, func, args);
 
-    return this.durable(id, future, execution);
+    return this.durable(id, execution);
   }
 
   private durable(
     id: string,
-    future: Future<any>,
     execution: AsyncExecution<any> | OrdinaryExecution<any> | DeferredExecution<any>,
   ): ResonatePromise<any> {
     const promise = execution.store.promises.create(
@@ -123,23 +116,27 @@ export class Context {
       undefined,
     );
 
-    future.promise.created = promise.then(() => id);
+    execution.future.promise.created = promise.then(() => id);
 
     promise.then(
       (promise) => {
         execution.sync(promise);
 
-        if (future.pending && execution.kind !== "deferred") {
-          execution.invocation.invoke().then(
-            (value) => execution.resolve(value),
-            (error) => execution.reject(error),
-          );
+        if (execution.future.pending) {
+          if (execution.kind === "deferred") {
+            execution.poll();
+          } else {
+            execution.invocation.invoke().then(
+              (value) => execution.resolve(value),
+              (error) => execution.reject(error),
+            );
+          }
         }
       },
-      (error) => this.execution.kill(error),
+      (error) => execution.kill(error),
     );
 
-    return future.promise;
+    return execution.future.promise;
   }
 }
 

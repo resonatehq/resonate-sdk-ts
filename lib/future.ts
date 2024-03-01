@@ -68,31 +68,25 @@ export class Future<T> {
   readonly kind = "future";
 
   // the underlying promise and its resolvers that this future wraps
+  id: string;
   promise: ResonatePromise<T>;
   private resolvePromise: (v: T) => void;
   private rejectPromise: (v: unknown) => void;
 
-  // the parent future of this future
-  parent: Future<any> | null = null;
-
-  // all child futures of this future
-  children: Future<any>[] = [];
-
-  // the execution associated with this future
-  executor: Execution<T> | null = null;
-
   // the state of the future
   private _state: FutureState<T> = { kind: "pending" };
 
-  constructor(public id: string) {
-    const { promise, resolve, reject } = ResonatePromise.withResolvers<T>(id);
+  constructor(private executor: Execution<T>) {
+    this.id = executor.id;
+
+    const { promise, resolve, reject } = ResonatePromise.withResolvers<T>(this.id);
     this.promise = promise;
     this.resolvePromise = resolve;
     this.rejectPromise = reject;
   }
 
-  static withResolvers<T>(id: string): { future: Future<T>; resolvers: FutureResolvers<T> } {
-    const future = new Future<T>(id);
+  static withResolvers<T>(executor: Execution<T>): { future: Future<T>; resolvers: FutureResolvers<T> } {
+    const future = new Future<T>(executor);
 
     return {
       future,
@@ -126,10 +120,6 @@ export class Future<T> {
     this._state = { kind: "timedout", value };
     this.rejectPromise(error);
   }
-
-  // onComplete(onResolved: (value: T) => void, onRejected: (value: unknown) => void) {
-  //     this.promise.then(onResolved, onRejected);
-  // }
 
   get pending() {
     return this._state.kind === "pending";
@@ -165,15 +155,15 @@ export class Future<T> {
     return this._state.kind === "pending" ? undefined : this._state.value;
   }
 
-  setExecutor(execution: Execution<T>) {
-    this.executor = execution;
+  get root() {
+    return this.executor.root.future;
   }
 
-  setParent(future: Future<any>) {
-    this.parent = future;
+  get parent() {
+    return this.executor.parent?.future ?? null;
   }
 
-  addChild(future: Future<any>) {
-    this.children.push(future);
+  get children() {
+    return this.executor.children.map((e) => e.future);
   }
 }
