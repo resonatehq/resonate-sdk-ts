@@ -2,9 +2,7 @@ import { Future, ResonatePromise } from "./future";
 import { Execution, ResonateExecution, OrdinaryExecution, DeferredExecution, Info } from "./execution";
 
 import { IStore } from "./core/store";
-
 import { ResonateBase } from "./resonate";
-import { DurablePromise } from "./core/promise";
 
 /////////////////////////////////////////////////////////////////////
 // Types
@@ -178,7 +176,7 @@ export class Scheduler {
   constructor(private store: IStore) {}
 
   add<F extends GeneratorFunc>(id: string, func: F, args: Params<F>): ResonatePromise<Return<F>> {
-    const { promise, resolve, reject } = ResonatePromise.withResolvers<Return<F>>(id);
+    const { promise, resolve, reject } = ResonatePromise.deferred<Return<F>>(id);
     let execution = this.topLevel.find((e) => e.id === id);
 
     if (!execution || execution.killed) {
@@ -198,7 +196,7 @@ export class Scheduler {
 
       execution.future.promise.created = promise.then(() => id);
 
-      // TODO: remove, why ide?
+      // why?
       const _execution = execution;
 
       promise.then(
@@ -306,11 +304,8 @@ export class Scheduler {
     const id = value.kind === "deferred" ? value.func : `${caller.id}/${caller.counter}`;
     caller.counter++;
 
-    let callee: Execution<any>;
-    let promise: DurablePromise;
-
     try {
-      promise = await this.store.promises.create(
+      const promise = await this.store.promises.create(
         id,
         id,
         false,
@@ -319,64 +314,57 @@ export class Scheduler {
         Number.MAX_SAFE_INTEGER,
         undefined,
       );
+
+      let callee: GeneratorExecution<any> | OrdinaryExecution<any> | DeferredExecution<any>;
+
+      switch (value.kind) {
+        case "resonate":
+          callee = new GeneratorExecution(id, this.store, caller, value.func, value.args);
+
+          if (callee.future.pending) {
+            this.runnable.push({ execution: callee, next: { kind: "init" } });
+          }
+          break;
+
+        case "ordinary":
+          callee = new OrdinaryExecution(id, this.store, caller, value.func, value.args);
+
+          if (callee.future.pending) {
+            callee.invocation.invoke().then(
+              (value: any) => callee.resolve(value).finally(() => this.tick()),
+              (error: any) => callee.reject(error).finally(() => this.tick()),
+            );
+          }
+          break;
+
+        case "deferred":
+          callee = new DeferredExecution(id, this.store, caller);
+
+          if (callee.future.pending) {
+            callee.poll();
+          }
+          break;
+
+        default:
+          yeet(`permitted call values are (resonate, ordinary, deferred), received ${value}`);
+      }
+
+      // bind future to durable promise
+      callee.future.promise.created = Promise.resolve(id);
+      callee.sync(promise);
+
+      caller.addChild(callee);
+      callee.setParent(caller);
+      caller.create(callee.future);
+      this.executions.push(callee);
+
+      if (yieldFuture) {
+        this.runnable.push({ execution: caller, next: { kind: "value", value: callee.future } });
+      } else {
+        this.applyFuture(caller, callee.future);
+      }
     } catch (error) {
       caller.kill(error);
-      return;
-    }
-
-    switch (value.kind) {
-      case "resonate":
-        const rExecution = new GeneratorExecution(id, this.store, caller, value.func, value.args);
-
-        callee = rExecution;
-        callee.future.promise.created = Promise.resolve(id);
-        callee.sync(promise);
-
-        if (callee.future.pending) {
-          this.runnable.push({ execution: rExecution, next: { kind: "init" } });
-        }
-        break;
-
-      case "ordinary":
-        const oExecution = new OrdinaryExecution(id, this.store, caller, value.func, value.args);
-
-        callee = oExecution;
-        callee.future.promise.created = Promise.resolve(id);
-        callee.sync(promise);
-
-        if (callee.future.pending) {
-          oExecution.invocation.invoke().then(
-            (value: any) => oExecution.resolve(value).finally(() => this.tick()),
-            (error: any) => oExecution.reject(error).finally(() => this.tick()),
-          );
-        }
-        break;
-
-      case "deferred":
-        const dExecution = new DeferredExecution(id, this.store, caller);
-
-        callee = dExecution;
-        callee.future.promise.created = Promise.resolve(id);
-        callee.sync(promise);
-
-        if (callee.future.pending) {
-          dExecution.poll();
-        }
-        break;
-
-      default:
-        yeet(`permitted call values are (resonate, ordinary, deferred), received ${value}`);
-    }
-
-    caller.addChild(callee);
-    callee.setParent(caller);
-    caller.create(callee.future);
-    this.executions.push(callee);
-
-    if (yieldFuture) {
-      this.runnable.push({ execution: caller, next: { kind: "value", value: callee.future } });
-    } else {
-      this.applyFuture(caller, callee.future);
     }
   }
 

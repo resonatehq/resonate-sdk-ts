@@ -70,15 +70,6 @@ export class Context {
     return this.execution.counter;
   }
 
-  static run<F extends AsyncFunc>(store: IStore, id: string, func: F, args: Params<F>, reject: (v: unknown) => void) {
-    const execution = new AsyncExecution(id, store, null, func, args, reject);
-
-    const ctx = new Context(execution);
-    ctx.durable(id, execution);
-
-    return execution;
-  }
-
   run<F extends AsyncFunc>(func: F, ...args: Params<F>): ResonatePromise<Return<F>>;
   run<T>(func: string, args?: any): ResonatePromise<T>;
   run(func: string | ((...args: any[]) => any), ...args: any[]): Promise<any> {
@@ -150,12 +141,41 @@ export class Scheduler {
   constructor(private store: IStore) {}
 
   add<F extends AsyncFunc>(id: string, func: F, args: Params<F>): ResonatePromise<Return<F>> {
-    const { promise, resolve, reject } = ResonatePromise.withResolvers<Return<F>>(id);
+    const { promise, resolve, reject } = ResonatePromise.deferred<Return<F>>(id);
     let execution = this.executions.find((e) => e.id === id);
 
     if (!execution || execution.killed) {
-      execution = Context.run(this.store, id, func, args, reject);
+      execution = new AsyncExecution(id, this.store, null, func, args, reject);
       this.executions.push(execution);
+
+      const promise = execution.store.promises.create(
+        id,
+        id,
+        false,
+        undefined,
+        undefined,
+        Number.MAX_SAFE_INTEGER,
+        undefined,
+      );
+
+      execution.future.promise.created = promise.then(() => id);
+
+      // why?
+      const _execution = execution;
+
+      promise.then(
+        (promise) => {
+          _execution.sync(promise);
+
+          if (_execution.future.pending) {
+            _execution.invocation.invoke().then(
+              (value) => _execution.resolve(value),
+              (error) => _execution.reject(error),
+            );
+          }
+        },
+        (error) => _execution.kill(error),
+      );
     }
 
     // bind wrapper promiser to execution promise

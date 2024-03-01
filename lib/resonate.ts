@@ -7,7 +7,7 @@ import { IStore } from "./core/store";
 
 type Func = (...args: any[]) => unknown;
 
-type Params<F extends Func> = F extends (ctx: any, ...args: infer P) => any ? P : never;
+type Params<F extends Func> = F extends (ctx: any, ...args: infer P) => unknown ? P : never;
 
 type Return<F extends Func, G extends Func> = F extends (...args: any[]) => Generator
   ? G extends (...args: any[]) => Generator<unknown, infer T>

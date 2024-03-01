@@ -25,7 +25,7 @@ export class ResonatePromise<T> extends Promise<T> {
   }
 
   // returns a promise and its resolvers, inspired by javascripts Promise.withResolvers
-  static withResolvers<T>(id: string) {
+  static deferred<T>(id: string) {
     let resolve!: (v: T) => void;
     let reject!: (v?: unknown) => void;
 
@@ -79,13 +79,13 @@ export class Future<T> {
   constructor(private executor: Execution<T>) {
     this.id = executor.id;
 
-    const { promise, resolve, reject } = ResonatePromise.withResolvers<T>(this.id);
+    const { promise, resolve, reject } = ResonatePromise.deferred<T>(this.id);
     this.promise = promise;
     this.resolvePromise = resolve;
     this.rejectPromise = reject;
   }
 
-  static withResolvers<T>(executor: Execution<T>): { future: Future<T>; resolvers: FutureResolvers<T> } {
+  static deferred<T>(executor: Execution<T>): { future: Future<T>; resolvers: FutureResolvers<T> } {
     const future = new Future<T>(executor);
 
     return {

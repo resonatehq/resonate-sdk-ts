@@ -60,7 +60,7 @@ export abstract class Execution<T> {
     public id: string,
     public store: IStore,
   ) {
-    const { future, resolvers } = Future.withResolvers<T>(this);
+    const { future, resolvers } = Future.deferred<T>(this);
     this.future = future;
     this.resolvers = resolvers;
   }
