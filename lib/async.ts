@@ -1,34 +1,60 @@
-import { Future, FutureResolvers } from "./future";
-import { ResonateExecution, OrdinaryExecution, Info } from "./execution";
-import { resolveDurablePromise, rejectDurablePromise, syncFutureToDurablePromise } from "./helpers";
+import { Future, FutureResolvers, ResonatePromise } from "./future";
+import { ResonateExecution, OrdinaryExecution, Invocation, Info, Execution, DeferredExecution } from "./execution";
+import { ResonateBase } from "./resonate";
 
 import { IStore } from "./core/store";
+
+/////////////////////////////////////////////////////////////////////
+// Types
+/////////////////////////////////////////////////////////////////////
+
+type AsyncFunc = (ctx: Context, ...args: any[]) => unknown;
+
+type IOFunc = (info: Info, ...args: any[]) => unknown;
+
+type Params<F> = F extends (ctx: any, ...args: infer P) => unknown ? P : never;
+
+type Return<F extends AsyncFunc | IOFunc> = Awaited<ReturnType<F>>;
+
+/////////////////////////////////////////////////////////////////////
+// Resonate
+/////////////////////////////////////////////////////////////////////
+
+export class Resonate extends ResonateBase<AsyncFunc> {
+  constructor(store: IStore) {
+    super(store, new Scheduler(store));
+  }
+}
+
+/////////////////////////////////////////////////////////////////////
+// Execution
+/////////////////////////////////////////////////////////////////////
+
+class AsyncExecution<T> extends ResonateExecution<T> {
+  invocation: Invocation<Context, T>;
+
+  constructor(
+    id: string,
+    future: Future<T>,
+    resolvers: FutureResolvers<T>,
+    store: IStore,
+    parent: AsyncExecution<any> | null,
+    func: (...args: any[]) => T,
+    args: any[],
+    reject?: (v: unknown) => void,
+  ) {
+    super(id, future, resolvers, store, parent, reject);
+
+    this.invocation = new Invocation(func, new Context(this), args);
+  }
+}
 
 /////////////////////////////////////////////////////////////////////
 // Context
 /////////////////////////////////////////////////////////////////////
 
-type Opts = {
-  durable: boolean;
-  ignore: boolean;
-};
-
-class Invocation<T> {
-  constructor(
-    private func: (ctx: Context, ...args: any[]) => T,
-    private args: any[],
-  ) {}
-
-  async invoke(ctx: Context): Promise<T> {
-    return this.func(ctx, ...this.args);
-  }
-}
-
 export class Context {
-  constructor(
-    private store: IStore,
-    private execution: AsyncExecution<any>,
-  ) {}
+  constructor(private execution: AsyncExecution<any>) {}
 
   get id() {
     return this.execution.id;
@@ -46,102 +72,74 @@ export class Context {
     return this.execution.counter;
   }
 
-  static run<A extends any[], R>(store: IStore, id: string, func: (ctx: Context, ...args: A) => R, ...args: A) {
-    const { future, resolvers } = Future.withResolvers<R>(id);
-    const execution = new AsyncExecution(id, future, resolvers, null, func, args);
+  static run<F extends AsyncFunc>(store: IStore, id: string, func: F, args: Params<F>, reject: (v: unknown) => void) {
+    const { future, resolvers } = Future.withResolvers(id);
+    const execution = new AsyncExecution(id, future, resolvers, store, null, func, args, reject);
 
-    const ctx = new Context(store, execution);
-    return ctx.onionize(id, future, execution);
+    const ctx = new Context(execution);
+    ctx.durable(id, future, execution);
+
+    return execution;
   }
 
-  async run<A extends any[], R>(func: (ctx: Context, ...args: A) => R, ...args: A): Promise<R> {
-    const id = `${this.execution.id}/${this.execution.counter++}`;
-    const { future, resolvers } = Future.withResolvers<R>(id);
-    const execution = new AsyncExecution(id, future, resolvers, this.execution, func, args);
+  run<F extends AsyncFunc>(func: F, ...args: Params<F>): ResonatePromise<Return<F>>;
+  run<T>(func: string, ...args: any): ResonatePromise<T>;
+  run(func: string | ((...args: any[]) => any), ...args: any[]): Promise<any> {
+    const id = typeof func === "string" ? func : `${this.execution.id}/${this.execution.counter}`;
+    this.execution.counter++;
 
-    return this.onionize(id, future, execution);
-  }
+    const { future, resolvers } = Future.withResolvers(id);
 
-  async io<A extends any[], R>(func: (info: Info, ...args: A) => R, ...args: A): Promise<R> {
-    const id = `${this.execution.id}/${this.execution.counter++}`;
-    const { future, resolvers } = Future.withResolvers<R>(id);
-    const execution = new OrdinaryExecution(id, future, resolvers, this.execution, func, args);
-
-    return this.onionize(id, future, execution);
-  }
-
-  private async onionize<T>(
-    id: string,
-    future: Future<T>,
-    execution: AsyncExecution<T> | OrdinaryExecution<T>,
-    opts: Opts = { durable: true, ignore: false },
-  ): Promise<T> {
-    const ctx = new Context(this.store, this.execution);
-
-    if (!opts.durable) {
-      future.promise.created = Promise.resolve(id);
-      execution.invocation.invoke(ctx).then(execution.resolvers.resolve, execution.resolvers.reject);
+    let execution: AsyncExecution<any> | DeferredExecution<any>;
+    if (typeof func === "string") {
+      execution = new DeferredExecution(id, future, resolvers, this.execution.store, this.execution);
     } else {
-      try {
-        const creationPromise = this.store.promises.create(
-          id,
-          id,
-          false,
-          undefined,
-          undefined,
-          Number.MAX_SAFE_INTEGER,
-          undefined,
-        );
-        future.promise.created = creationPromise.then(() => id);
-
-        const promise = await creationPromise;
-
-        if (promise.state === "PENDING") {
-          execution.invocation.invoke(ctx).then(
-            (value) => resolveDurablePromise(this.store, execution, value),
-            (error) => rejectDurablePromise(this.store, execution, error),
-          );
-        } else {
-          if (!opts.ignore) {
-            // future.set(promise);
-            syncFutureToDurablePromise(promise, execution.resolvers);
-          } else {
-            // why? because
-            execution.invocation.invoke(ctx).then(
-              () => syncFutureToDurablePromise(promise, execution.resolvers),
-              () => syncFutureToDurablePromise(promise, execution.resolvers),
-            );
-          }
-        }
-      } catch (error) {
-        this.execution.kill(error);
-      }
+      execution = new AsyncExecution(id, future, resolvers, this.execution.store, this.execution, func, args);
     }
 
-    return future.promise;
+    return this.durable(id, future, execution);
   }
-}
 
-/////////////////////////////////////////////////////////////////////
-// Async Execution
-/////////////////////////////////////////////////////////////////////
+  io<F extends IOFunc>(func: F, ...args: Params<F>): Promise<Return<F>> {
+    const id = `${this.execution.id}/${this.execution.counter++}`;
+    const { future, resolvers } = Future.withResolvers(id);
+    const execution = new OrdinaryExecution(id, future, resolvers, this.execution.store, this.execution, func, args);
 
-export class AsyncExecution<T> extends ResonateExecution<T> {
-  invocation: Invocation<T>;
+    return this.durable(id, future, execution);
+  }
 
-  constructor(
+  private durable(
     id: string,
-    future: Future<T>,
-    resolvers: FutureResolvers<T>,
-    parent: AsyncExecution<any> | null,
-    func: (ctx: Context, ...args: any) => T,
-    args: any[] = [],
-    reject?: (v: unknown) => void,
-  ) {
-    super(id, future, resolvers, parent, reject);
+    future: Future<any>,
+    execution: AsyncExecution<any> | OrdinaryExecution<any> | DeferredExecution<any>,
+  ): ResonatePromise<any> {
+    const promise = execution.store.promises.create(
+      id,
+      id,
+      false,
+      undefined,
+      undefined,
+      Number.MAX_SAFE_INTEGER,
+      undefined,
+    );
 
-    // context is the first argument of the generator
-    this.invocation = new Invocation(func, args);
+    future.promise.created = promise.then(() => id);
+
+    promise.then(
+      (promise) => {
+        execution.sync(promise);
+
+        if (future.pending && execution.kind !== "deferred") {
+          execution.invocation.invoke().then(
+            (value) => execution.resolve(value),
+            (error) => execution.reject(error),
+          );
+        }
+      },
+      (error) => this.execution.kill(error),
+    );
+
+    return future.promise;
   }
 }
 
@@ -150,10 +148,23 @@ export class AsyncExecution<T> extends ResonateExecution<T> {
 /////////////////////////////////////////////////////////////////////
 
 export class Scheduler {
+  private executions: AsyncExecution<any>[] = [];
+
   constructor(private store: IStore) {}
 
-  async add<T>(id: string, func: (ctx: Context, ...args: any[]) => T, args: any[]): Promise<T> {
-    // TODO: grab execution and return promise if it already exists
-    return Context.run(this.store, id, func, ...args);
+  add<F extends AsyncFunc>(id: string, func: F, args: Params<F>): ResonatePromise<Return<F>> {
+    const { promise, resolve, reject } = ResonatePromise.withResolvers<Return<F>>(id);
+    let execution = this.executions.find((e) => e.id === id);
+
+    if (!execution || execution.killed) {
+      execution = Context.run(this.store, id, func, args, reject);
+      this.executions.push(execution);
+    }
+
+    // bind wrapper promiser to execution promise
+    execution.future.promise.then(resolve, reject);
+    promise.created = execution.future.promise.created;
+
+    return promise;
   }
 }
