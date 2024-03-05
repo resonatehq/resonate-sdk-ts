@@ -68,4 +68,3 @@ jobs:
       - name: Run HelloWorld
         run: ts-node hello_world.ts
         working-directory: workflows/helloworld
-
