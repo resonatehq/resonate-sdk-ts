@@ -64,7 +64,7 @@ jobs:
           echo "::set-output name=version::$VERSION"
       - name: Install Resonate and ts-node
         run: npm install @resonatehq/sdk@$VERSION ts-node
-        working-directory: workflows/helloworld
+        working-directory: workflows/hello_world
       - name: Run HelloWorld
         run: ts-node hello_world.ts
-        working-directory: workflows/helloworld
+        working-directory: workflows/hello_world
