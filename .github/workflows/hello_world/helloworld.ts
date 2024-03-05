@@ -1,6 +1,6 @@
-const resonateModule = import("@resonatehq/sdk");
+// helloworld.ts
+import { Resonate } from "@resonatehq/sdk";
 
-resonateModule.then(({ Resonate }) => {
-  const resonate = new Resonate();
-  console.log("Hello World!", resonate);
-});
+const resonate = new Resonate();
+
+console.log("Hello World!", resonate);
