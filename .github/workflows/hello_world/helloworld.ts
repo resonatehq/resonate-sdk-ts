@@ -1,5 +1,6 @@
-const { Resonate } = require("@resonatehq/sdk");
+const resonateModule = import("@resonatehq/sdk");
 
-const resonate = new Resonate();
-
-console.log("Hello World!", resonate);
+resonateModule.then(({ Resonate }) => {
+  const resonate = new Resonate();
+  console.log("Hello World!", resonate);
+});
