@@ -62,6 +62,8 @@ jobs:
           VERSION=$(npm version prerelease --no-git-tag-version --preid $GITHUB_SHA)
           npm publish --access public
           echo "::set-output name=version::$VERSION"
+      - name: Print Variables
+        run: echo $VERSION
       - name: Install Resonate and run Hello World app
-        run: npm install --save @resonatehq/sdk@$VERSION ts-node ts-node-esm && node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld.ts
+        run: npm install --save @resonatehq/sdk@$VERSION ts-node && node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld.ts
         working-directory: .github/workflows/hello_world
