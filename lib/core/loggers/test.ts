@@ -1,5 +1,5 @@
-import { Logger } from "./logger";
 import { ILogger, ITrace } from "../logger";
+import { Logger } from "./logger";
 
 export class TestLogger extends Logger implements ILogger {
   public traces: any[] = [];

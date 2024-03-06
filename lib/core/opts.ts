@@ -1,8 +1,8 @@
-import { IEncoder } from "./encoder";
-import { IRetry } from "./retry";
-import { ILogger } from "./logger";
-import { IStore } from "./store";
 import { IBucket } from "./bucket";
+import { IEncoder } from "./encoder";
+import { ILogger } from "./logger";
+import { IRetry } from "./retry";
+import { IStore } from "./store";
 
 /**
  * Resonate configuration options.
@@ -39,12 +39,6 @@ export interface ResonateOptions {
   namespace: string;
 
   /**
-   * The frequency in ms to poll the promise server for pending
-   * promises that may need to be recovered, defaults to 1000.
-   */
-  recoveryDelay: number;
-
-  /**
    * A retry instance, defaults to exponential backoff.
    */
   retry: IRetry;
@@ -74,7 +68,9 @@ export interface ResonateOptions {
   url: string;
 }
 
-export interface ContextOptions {
+export interface Options {
+  __resonate: true;
+
   /**
    * Overrides the default bucket.
    */
@@ -91,14 +87,9 @@ export interface ContextOptions {
   encoder: IEncoder<unknown, string | undefined>;
 
   /**
-   * Overrides the default promise identifer.
-   */
-  id?: string;
-
-  /**
    * Overrides the default promise idempotency key.
    */
-  idempotencyKey?: string;
+  // idempotencyKey: string | undefined;
 
   /**
    * Overrides the default retry policy.
@@ -114,27 +105,11 @@ export interface ContextOptions {
    * Test Only
    * Probability of failure.
    */
-  test: { p: number; generator: () => number };
+  // test: { p: number; generator: () => number };
 }
 
-// Use a class to wrap ContextOptions so we can use the prototype
-// (see the type guard below) to distinguish between options and a
-// function parameters on calls to run.
-export class Options {
-  constructor(private opts: Partial<ContextOptions> = {}) {}
+export type PartialOptions = Partial<Options> & { __resonate: true };
 
-  all(): Partial<ContextOptions> {
-    return this.opts;
-  }
-
-  merge(opts: Partial<ContextOptions>): Options {
-    return new Options({
-      ...this.opts,
-      ...opts,
-    });
-  }
-}
-
-export function isContextOpts(o: unknown): o is Options {
-  return o instanceof Options;
+export function isPartialOptions(o: unknown): o is PartialOptions {
+  return typeof o === "object" && o !== null && (o as PartialOptions).__resonate === true;
 }

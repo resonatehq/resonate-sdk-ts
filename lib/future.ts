@@ -9,6 +9,10 @@ export class ResonatePromise<T> extends Promise<T> {
   // can be used to await durable promise creation
   created: Promise<string>;
 
+  // You are not expected to understand this (we don't either)
+  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/@@species
+  static [Symbol.species] = Promise;
+
   constructor(
     public id: string,
     executor: (resolve: (v: T) => void, reject: (v?: unknown) => void) => void,
@@ -16,12 +20,6 @@ export class ResonatePromise<T> extends Promise<T> {
     super(executor);
     this.created = Promise.reject("not created");
     this.created.catch(() => {});
-  }
-
-  // You are not expected to understand this (we don't either)
-  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/@@species
-  static get [Symbol.species]() {
-    return Promise;
   }
 
   // returns a promise and its resolvers, inspired by javascripts Promise.withResolvers
@@ -125,6 +123,10 @@ export class Future<T> {
     return this._state.kind === "pending";
   }
 
+  get completed() {
+    return !this.pending;
+  }
+
   get resolved() {
     return this._state.kind === "resolved";
   }
@@ -139,20 +141,6 @@ export class Future<T> {
 
   get timedout() {
     return this._state.kind === "timedout";
-  }
-
-  get completed() {
-    return !this.pending;
-  }
-
-  // should probably remove
-  get state() {
-    return this._state.kind;
-  }
-
-  // should probably remove
-  get value() {
-    return this._state.kind === "pending" ? undefined : this._state.value;
   }
 
   get root() {

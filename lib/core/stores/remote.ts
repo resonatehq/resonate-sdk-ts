@@ -1,3 +1,8 @@
+import { IEncoder } from "../encoder";
+import { Base64Encoder } from "../encoders/base64";
+import { ErrorCodes, ResonateError } from "../error";
+import { ILogger } from "../logger";
+import { Logger } from "../loggers/logger";
 import {
   DurablePromise,
   PendingPromise,
@@ -8,21 +13,20 @@ import {
   isDurablePromise,
   isCompletedPromise,
 } from "../promise";
-import { IStore, IPromiseStore, IScheduleStore } from "../store";
-import { IEncoder } from "../encoder";
-import { Base64Encoder } from "../encoders/base64";
-import { ErrorCodes, ResonateError } from "../error";
-import { ILockStore } from "../store";
-import { ILogger } from "../logger";
 import { Schedule, isSchedule } from "../schedule";
-import { Logger } from "../loggers/logger";
+import { ILockStore, IStore, IPromiseStore, IScheduleStore } from "../store";
 
 export class RemoteStore implements IStore {
   public promises: RemotePromiseStore;
   public schedules: RemoteScheduleStore;
   public locks: RemoteLockStore;
 
-  constructor(url: string, pid: string, logger: ILogger, encoder: IEncoder<string, string> = new Base64Encoder()) {
+  constructor(
+    url: string,
+    pid: string,
+    logger: ILogger = new Logger(),
+    encoder: IEncoder<string, string> = new Base64Encoder(),
+  ) {
     this.promises = new RemotePromiseStore(url, logger, encoder);
     this.schedules = new RemoteScheduleStore(url, logger, encoder);
     this.locks = new RemoteLockStore(url, pid, logger);

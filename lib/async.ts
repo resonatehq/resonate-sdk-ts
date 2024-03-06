@@ -1,28 +1,38 @@
-import { ResonatePromise } from "./future";
-import { ResonateExecution, OrdinaryExecution, Invocation, Info, DeferredExecution } from "./execution";
-import { ResonateBase } from "./resonate";
-
+import { ResonateOptions, Options, PartialOptions } from "./core/opts";
+import { Retry } from "./core/retries/retry";
+import { IScheduler } from "./core/scheduler";
 import { IStore } from "./core/store";
+import { ResonateExecution, OrdinaryExecution, Invocation, Info, DeferredExecution } from "./execution";
+import { ResonatePromise } from "./future";
+import { ResonateBase } from "./resonate";
 
 /////////////////////////////////////////////////////////////////////
 // Types
 /////////////////////////////////////////////////////////////////////
 
-type AsyncFunc = (ctx: Context, ...args: any[]) => unknown;
+type AFunc = (ctx: Context, ...args: any[]) => any;
 
-type IOFunc = (info: Info, ...args: any[]) => unknown;
+type IFunc = (info: Info, ...args: any[]) => any;
 
-type Params<F> = F extends (ctx: any, ...args: infer P) => unknown ? P : never;
+type Params<F> = F extends (ctx: any, ...args: infer P) => any ? P : never;
 
-type Return<F extends AsyncFunc | IOFunc> = Awaited<ReturnType<F>>;
+type Return<F> = F extends (...args: any[]) => infer T ? Awaited<T> : never;
 
 /////////////////////////////////////////////////////////////////////
 // Resonate
 /////////////////////////////////////////////////////////////////////
 
-export class Resonate extends ResonateBase<AsyncFunc> {
-  constructor(store: IStore) {
-    super(store, new Scheduler(store));
+export class Resonate extends ResonateBase {
+  constructor(opts: Partial<ResonateOptions> = {}) {
+    super(Scheduler, opts);
+  }
+
+  register<F extends AFunc>(
+    name: string,
+    func: F,
+    opts: Partial<Options> = {},
+  ): (id: string, ...args: Params<F>) => ResonatePromise<Return<F>> {
+    return super.register(name, func, opts);
   }
 }
 
@@ -31,19 +41,24 @@ export class Resonate extends ResonateBase<AsyncFunc> {
 /////////////////////////////////////////////////////////////////////
 
 class AsyncExecution<T> extends ResonateExecution<T> {
-  invocation: Invocation<Context, T>;
+  scheduler: Scheduler;
+  invocation: Invocation<T>;
 
   constructor(
+    scheduler: Scheduler,
     id: string,
-    store: IStore,
+    opts: Options,
     parent: AsyncExecution<any> | null,
     func: (...args: any[]) => T,
     args: any[],
     reject?: (v: unknown) => void,
   ) {
-    super(id, store, parent, reject);
+    super(id, opts, parent, reject);
 
-    this.invocation = new Invocation(func, new Context(this), args);
+    this.scheduler = scheduler;
+
+    const ctx = new Context(this);
+    this.invocation = new Invocation(this, () => func(ctx, ...args), Retry.never());
   }
 }
 
@@ -59,67 +74,62 @@ export class Context {
   }
 
   get idempotencyKey() {
-    return this.execution.id;
+    return this.execution.idempotencyKey;
   }
 
   get timeout() {
-    return Number.MAX_SAFE_INTEGER;
+    return this.execution.timeout;
   }
 
   get counter() {
     return this.execution.counter;
   }
 
-  run<F extends AsyncFunc>(func: F, ...args: Params<F>): ResonatePromise<Return<F>>;
-  run<T>(func: string, args?: any): ResonatePromise<T>;
-  run(func: string | ((...args: any[]) => any), ...args: any[]): Promise<any> {
-    const id = typeof func === "string" ? func : `${this.execution.id}/${this.execution.counter}`;
-    this.execution.counter++;
+  run<F extends AFunc>(func: F, ...args: [...Params<F>, PartialOptions?]): ResonatePromise<Return<F>>;
+  run<T>(func: string, args?: any, opts?: PartialOptions): ResonatePromise<T>;
+  run(func: string | ((...args: any[]) => any), ...argsWithOpts: any[]): ResonatePromise<any> {
+    const id = this.nextId();
+    const { args, opts } = this.execution.split(argsWithOpts);
 
     let execution: AsyncExecution<any> | DeferredExecution<any>;
     if (typeof func === "string") {
-      execution = new DeferredExecution(id, this.execution.store, this.execution);
+      execution = new DeferredExecution(func, opts, this.execution);
     } else {
-      execution = new AsyncExecution(id, this.execution.store, this.execution, func, args);
+      execution = new AsyncExecution(this.execution.scheduler, id, opts, this.execution, func, args);
     }
 
-    return this.durable(id, execution);
+    return this.durable(execution);
   }
 
-  io<F extends IOFunc>(func: F, ...args: Params<F>): Promise<Return<F>> {
-    const id = `${this.execution.id}/${this.execution.counter++}`;
-    const execution = new OrdinaryExecution(id, this.execution.store, this.execution, func, args);
+  io<F extends IFunc>(func: F, ...args: [...Params<F>, PartialOptions?]): Promise<Return<F>>;
+  io(func: (...args: any[]) => any, ...argsWithOpts: any[]): ResonatePromise<any> {
+    const id = this.nextId();
+    const { args, opts } = this.execution.split(argsWithOpts);
+    const execution = new OrdinaryExecution(id, opts, this.execution, func, args);
 
-    return this.durable(id, execution);
+    return this.durable(execution);
+  }
+
+  options(opts: Partial<Options> = {}): PartialOptions {
+    return { ...opts, __resonate: true };
+  }
+
+  private nextId() {
+    return [this.execution.id, this.execution.counter++].join(this.execution.scheduler.resonate.separator);
   }
 
   private durable(
-    id: string,
     execution: AsyncExecution<any> | OrdinaryExecution<any> | DeferredExecution<any>,
   ): ResonatePromise<any> {
-    const promise = execution.store.promises.create(
-      id,
-      id,
-      false,
-      undefined,
-      undefined,
-      Number.MAX_SAFE_INTEGER,
-      undefined,
-    );
-
-    execution.future.promise.created = promise.then(() => id);
-
-    promise.then(
-      (promise) => {
-        execution.sync(promise);
-
+    execution.createDurablePromise(this.execution.scheduler.store).then(
+      () => {
         if (execution.future.pending) {
           if (execution.kind === "deferred") {
-            execution.poll();
+            execution.poll(this.execution.scheduler.store);
           } else {
             execution.invocation.invoke().then(
-              (value) => execution.resolve(value),
-              (error) => execution.reject(error),
+              (value: any) => execution.resolve(this.execution.scheduler.store, value),
+              (error: any) => execution.reject(this.execution.scheduler.store, error),
             );
           }
         }
@@ -135,42 +145,41 @@ export class Context {
 // Scheduler
 /////////////////////////////////////////////////////////////////////
 
-export class Scheduler {
+export class Scheduler implements IScheduler {
   private executions: AsyncExecution<any>[] = [];
 
-  constructor(private store: IStore) {}
+  constructor(
+    public readonly resonate: Resonate,
+    public readonly store: IStore,
+  ) {}
 
-  add<F extends AsyncFunc>(id: string, func: F, args: Params<F>): ResonatePromise<Return<F>> {
-    const { promise, resolve, reject } = ResonatePromise.deferred<Return<F>>(id);
+  add(name: string, version: number, id: string, func: AFunc, args: any[], opts: Options): ResonatePromise<any> {
+    const { promise, resolve, reject } = ResonatePromise.deferred(id);
     let execution = this.executions.find((e) => e.id === id);
 
     if (!execution || execution.killed) {
-      execution = new AsyncExecution(id, this.store, null, func, args, reject);
+      execution = new AsyncExecution(this, id, opts, null, func, args, reject);
       this.executions.push(execution);
 
-      const promise = execution.store.promises.create(
-        id,
-        id,
-        false,
-        undefined,
-        undefined,
-        Number.MAX_SAFE_INTEGER,
-        undefined,
-      );
+      const data = {
+        func: name,
+        args: args,
+        version: version,
+      };
 
-      execution.future.promise.created = promise.then(() => id);
+      const promise = execution.createDurablePromise(this.store, data, {
+        "resonate:invocation": "true",
+      });
 
       // why?
       const _execution = execution;
 
       promise.then(
-        (promise) => {
-          _execution.sync(promise);
-
+        () => {
           if (_execution.future.pending) {
             _execution.invocation.invoke().then(
-              (value) => _execution.resolve(value),
-              (error) => _execution.reject(error),
+              (value) => _execution.resolve(this.store, value),
+              (error) => _execution.reject(this.store, error),
             );
           }
         },

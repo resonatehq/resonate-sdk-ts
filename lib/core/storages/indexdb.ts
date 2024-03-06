@@ -1,7 +1,7 @@
-import { IStorage } from "../storage";
-import { DurablePromise, isDurablePromise } from "../promise";
 import { ResonateError, ErrorCodes } from "../error";
+import { DurablePromise, isDurablePromise } from "../promise";
 import { Schedule } from "../schedule";
+import { IStorage } from "../storage";
 
 export class IndexedDbStorage implements IStorage<DurablePromise> {
   private dbName = "resonateDB";
