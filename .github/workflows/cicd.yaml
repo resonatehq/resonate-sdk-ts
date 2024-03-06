@@ -54,7 +54,7 @@ jobs:
       - name: Build
         run: npm run build
       - name: Publish
-        if: github.event_name == 'push' # && github.ref == 'refs/heads/main'
+        # if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm install -g npm &&
