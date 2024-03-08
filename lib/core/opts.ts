@@ -97,6 +97,11 @@ export interface Options {
   retry: IRetry;
 
   /**
+   * Overrides the default store.
+   */
+  store: IStore;
+
+  /**
    * Overrides the default timeout.
    */
   timeout: number;

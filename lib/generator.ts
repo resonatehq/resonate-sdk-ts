@@ -1,6 +1,6 @@
+import { DurablePromise } from "./core/durablePromise";
 import { ResonateOptions, Options, PartialOptions } from "./core/opts";
-import { IScheduler } from "./core/scheduler";
-import { IStore } from "./core/store";
+import * as utils from "./core/utils";
 import { Execution, ResonateExecution, OrdinaryExecution, DeferredExecution, Info } from "./execution";
 import { Future, ResonatePromise } from "./future";
 import { ResonateBase } from "./resonate";
@@ -58,8 +58,11 @@ type Next = { kind: "init" } | { kind: "value"; value: any } | { kind: "error"; 
 /////////////////////////////////////////////////////////////////////
 
 export class Resonate extends ResonateBase {
+  scheduler: Scheduler;
+
   constructor(opts: Partial<ResonateOptions> = {}) {
-    super(Scheduler, opts);
+    super(opts);
+    this.scheduler = new Scheduler();
   }
 
   register<F extends GFunc>(
@@ -68,6 +71,17 @@ export class Resonate extends ResonateBase {
     opts: Partial<Options> = {},
   ): (id: string, ...args: Params<F>) => ResonatePromise<Return<F>> {
     return super.register(name, func, opts);
+  }
+
+  protected schedule<F extends GFunc>(
+    name: string,
+    version: number,
+    id: string,
+    func: F,
+    args: Params<F>,
+    opts: Options,
+  ): ResonatePromise<Return<F>> {
+    return this.scheduler.add(name, version, id, func, args, opts);
   }
 }
 
@@ -84,13 +98,15 @@ class GeneratorExecution<T> extends ResonateExecution<T> {
 
   constructor(
     id: string,
+    idempotencyKey: string | undefined,
     opts: Options,
+    promise: Promise<DurablePromise<T>> | DurablePromise<T>,
     parent: GeneratorExecution<any> | null,
     func: (...args: any[]) => Generator<Yieldable, T>,
     args: any[],
     reject?: (v: unknown) => void,
   ) {
-    super(id, opts, parent, reject);
+    super(id, idempotencyKey, opts, promise, parent, reject);
 
     this.generator = func(new Context(this), ...args);
   }
@@ -172,7 +188,7 @@ export class Context {
 // Scheduler
 /////////////////////////////////////////////////////////////////////
 
-export class Scheduler implements IScheduler {
+export class Scheduler {
   // tick is mutually exclusive
   private running: boolean = false;
 
@@ -191,49 +207,50 @@ export class Scheduler implements IScheduler {
   // executions that have been killed
   private killed: Execution<any>[] = [];
 
-  constructor(
-    public resonate: Resonate,
-    public store: IStore,
-  ) {}
+  constructor() {}
 
   add(name: string, version: number, id: string, func: GFunc, args: any[], opts: Options): ResonatePromise<any> {
-    const { promise, resolve, reject } = ResonatePromise.deferred(id);
-    let execution = this.executions.find((e) => e.id === id);
+    const execution = this.executions.find((e) => e.id === id);
 
-    if (!execution || execution.killed) {
-      execution = new GeneratorExecution(id, opts, null, func, args, reject);
-      this.executions.push(execution);
-      this.allExecutions.push(execution);
+    if (execution && !execution.killed) {
+      const { promise, resolve, reject } = ResonatePromise.deferred(id, execution.promise);
+      execution.future.promise.then(resolve, reject);
 
-      const data = {
+      return promise;
+    } else {
+      const idempotencyKey = utils.hash(id);
+
+      const param = {
         func: name,
         args: args,
         version: version,
       };
 
-      const promise = execution.createDurablePromise(this.store, data, {
+      const headers = {
         "resonate:invocation": "true",
+      };
+
+      const durablePromise = DurablePromise.create(opts.store.promises, opts.encoder, id, opts.timeout, {
+        idempotencyKey,
+        param,
+        headers,
       });
 
-      // why?
-      const _execution = execution;
+      const { promise, resolve, reject } = ResonatePromise.deferred(id, durablePromise);
+      const execution = new GeneratorExecution(id, idempotencyKey, opts, durablePromise, null, func, args, reject);
+      execution.future.promise.then(resolve, reject);
+      this.executions.push(execution);
+      this.allExecutions.push(execution);
 
-      promise.then(
-        () => {
-          if (_execution.future.pending) {
-            this.runnable.push({ execution: _execution, next: { kind: "init" } });
-            this.tick();
-          }
-        },
-        (error) => _execution.kill(error),
-      );
+      // TODO: handle case where promise is already completed
+
+      durablePromise
+        .then((p) => this.runnable.push({ execution, next: { kind: "init" } }))
+        .then(() => this.tick())
+        .catch((e) => execution.kill(e));
+
+      return promise;
     }
-
-    // bind wrapper promiser to execution promise
-    execution.future.promise.then(resolve, reject);
-    promise.created = execution.future.promise.created;
-
-    return promise;
   }
 
   async tick() {
@@ -258,15 +275,18 @@ export class Scheduler implements IScheduler {
               this.delayedResolve(continuation.execution, result.value);
             } else {
               // resolve the durable promise
-              await continuation.execution.resolve(this.store, result.value);
+              await continuation.execution.promise
+                .then((p) => p.resolve(result.value, { idempotencyKey: continuation.execution.idempotencyKey }))
+                .catch((e) => continuation.execution.kill(e));
             }
           } else {
-            // reject the durable promise
             await this.apply(continuation.execution, result.value);
           }
         } catch (error) {
           // reject the durable promise
-          await continuation.execution.reject(this.store, error);
+          await continuation.execution.promise
+            .then((p) => p.reject(error, { idempotencyKey: continuation.execution.idempotencyKey }))
+            .catch((e) => continuation.execution.kill(e));
         }
       }
 
@@ -279,15 +299,7 @@ export class Scheduler implements IScheduler {
       this.print();
     }
 
-    // check if we can suspend
-
-    // if (this.executions.every(e => e.suspendable())) {
-    //     console.log("lets suspend");
-    //     // TODO: "close" the scheduler and reject anything added
-    //     await Promise.all(this.executions.map(e => e.suspend()));
-    // } else {
-    //     console.log("cannot suspend");
-    // }
+    // TODO: check if we can suspend
 
     this.running = false;
   }
@@ -319,40 +331,47 @@ export class Scheduler implements IScheduler {
   }
 
   private async applyCall(caller: GeneratorExecution<any>, { value, yieldFuture }: Call) {
-    const id = [caller.id, caller.counter++].join(this.resonate.separator);
+    const id = `${caller.id}.${caller.counter++}`;
 
     try {
+      const idempotencyKey = utils.hash(id);
+
+      const promise = await DurablePromise.create(
+        value.opts.store.promises,
+        value.opts.encoder,
+        id,
+        value.opts.timeout,
+        { idempotencyKey },
+      );
+
       let callee: GeneratorExecution<any> | OrdinaryExecution<any> | DeferredExecution<any>;
 
       switch (value.kind) {
         case "resonate":
-          callee = new GeneratorExecution(id, value.opts, caller, value.func, value.args);
-          await callee.createDurablePromise(this.store);
+          callee = new GeneratorExecution(id, idempotencyKey, value.opts, promise, caller, value.func, value.args);
 
-          if (callee.future.pending) {
+          if (promise.pending) {
             this.runnable.push({ execution: callee, next: { kind: "init" } });
           }
           break;
 
         case "ordinary":
-          callee = new OrdinaryExecution(id, value.opts, caller, value.func, value.args);
-          await callee.createDurablePromise(this.store);
+          callee = new OrdinaryExecution(id, idempotencyKey, value.opts, promise, caller, value.func, value.args);
 
-          if (callee.future.pending) {
-            callee.invocation.invoke().then(
-              (value: any) => callee.resolve(this.store, value).then(() => this.tick()),
-              (error: any) => callee.reject(this.store, error).then(() => this.tick()),
-            );
+          if (promise.pending) {
+            callee.invocation
+              .invoke()
+              .then(
+                (v) => promise.resolve(v, { idempotencyKey }),
+                (e) => promise.reject(e, { idempotencyKey }),
+              )
+              .catch((e) => callee.kill(e))
+              .finally(() => this.tick());
           }
           break;
 
         case "deferred":
-          callee = new DeferredExecution(value.func, value.opts, caller);
-          await callee.createDurablePromise(this.store);
-
-          if (callee.future.pending) {
-            callee.poll(this.store);
-          }
+          callee = new DeferredExecution(value.func, idempotencyKey, value.opts, promise, caller);
           break;
 
         default:
@@ -429,10 +448,15 @@ export class Scheduler implements IScheduler {
       this.awaiting = this.awaiting.filter((e) => e !== execution);
     };
 
-    future.promise.then(
-      (value: any) => execution.resolve(this.store, value).then(cleanup),
-      (error: any) => execution.reject(this.store, error).then(cleanup),
-    );
+    // TODO: verify this
+
+    future.promise
+      .then(
+        (v) => execution.promise.then((p) => p.resolve(v, { idempotencyKey: execution.idempotencyKey })),
+        (e) => execution.promise.then((p) => p.reject(e, { idempotencyKey: execution.idempotencyKey })),
+      )
+      .catch((e) => execution.kill(e))
+      .finally(() => cleanup());
   }
 
   private kill(execution: Execution<any>) {
@@ -460,7 +484,7 @@ export class Scheduler implements IScheduler {
           idempotencyKey: e.idempotencyKey,
           kind: e.kind,
           parent: e.parent ? e.parent.id : undefined,
-          completed: e.future.completed,
+          // completed: e.future.completed,
           killed: e.killed,
           created: created,
           awaited: awaited,

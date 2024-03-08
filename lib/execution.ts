@@ -1,10 +1,7 @@
+import { DurablePromise } from "./core/durablePromise";
 import { Options, PartialOptions, isPartialOptions } from "./core/opts";
-import { DurablePromise } from "./core/promise";
 import { IRetry } from "./core/retry";
-import { IStore } from "./core/store";
-
-import * as utils from "./core/utils";
-import { Future, FutureResolvers } from "./future";
+import { Future } from "./future";
 
 /////////////////////////////////////////////////////////////////////
 // Info
@@ -62,10 +59,10 @@ export class Invocation<T> {
 /////////////////////////////////////////////////////////////////////
 
 export abstract class Execution<T> {
-  createdAt: number = Date.now();
+  promise: Promise<DurablePromise<T>>;
   future: Future<T>;
-  resolvers: FutureResolvers<T>;
-  idempotencyKey: string;
+
+  createdAt: number = Date.now();
 
   abstract readonly kind: "ordinary" | "resonate" | "deferred";
   abstract root: ResonateExecution<any>;
@@ -77,16 +74,16 @@ export abstract class Execution<T> {
 
   constructor(
     public readonly id: string,
+    public readonly idempotencyKey: string | undefined,
     public readonly opts: Options,
+    promise: Promise<DurablePromise<T>> | DurablePromise<T>,
   ) {
-    const { future, resolvers } = Future.deferred<T>(this);
-    this.future = future;
-    this.resolvers = resolvers;
-    this.idempotencyKey = utils.hash(this.id);
+    this.promise = Promise.resolve(promise);
+    this.future = new Future(this);
   }
 
-  abstract suspendable(): boolean;
-  abstract suspend(): void | Promise<void>;
+  // abstract suspendable(): boolean;
+  // abstract suspend(): void | Promise<void>;
 
   get timeout(): number {
     return Math.min(this.createdAt + this.opts.timeout, this.parent?.timeout ?? Infinity);
@@ -113,69 +110,6 @@ export abstract class Execution<T> {
       ? { args: args.slice(0, -1), opts: { ...parentOpts, ...opts } }
       : { args, opts: parentOpts };
   }
-
-  async createDurablePromise(store: IStore, data?: any, tags?: Record<string, string>) {
-    const promise = store.promises.create(
-      this.id,
-      this.idempotencyKey,
-      false,
-      undefined,
-      this.opts.encoder.encode(data),
-      this.timeout,
-      tags,
-    );
-
-    // bind future resonate promise to durable promise
-    this.future.promise.created = promise.then(() => this.id);
-    this.sync(await promise);
-  }
-
-  async resolve(store: IStore, data: any) {
-    try {
-      const promise = await store.promises.resolve(
-        this.id,
-        this.idempotencyKey,
-        false,
-        undefined,
-        this.opts.encoder.encode(data),
-      );
-      this.sync(promise);
-    } catch (error) {
-      this.kill(error);
-    }
-  }
-
-  async reject(store: IStore, data: any) {
-    try {
-      const promise = await store.promises.reject(
-        this.id,
-        this.idempotencyKey,
-        false,
-        undefined,
-        this.opts.encoder.encode(data),
-      );
-      this.sync(promise);
-    } catch (error) {
-      this.kill(error);
-    }
-  }
-
-  sync(promise: DurablePromise) {
-    switch (promise.state) {
-      case "RESOLVED":
-        this.resolvers.resolve(this.opts.encoder.decode(promise.value.data) as T);
-        break;
-      case "REJECTED":
-        this.resolvers.reject(this.opts.encoder.decode(promise.value.data));
-        break;
-      case "REJECTED_CANCELED":
-        this.resolvers.cancel("canceled");
-        break;
-      case "REJECTED_TIMEDOUT":
-        this.resolvers.timeout("timedout");
-        break;
-    }
-  }
 }
 
 export class ResonateExecution<T> extends Execution<T> {
@@ -187,8 +121,15 @@ export class ResonateExecution<T> extends Execution<T> {
   _killed: boolean = false;
   _reject?: (v: unknown) => void;
 
-  constructor(id: string, opts: Options, parent: ResonateExecution<any> | null, reject?: (v: unknown) => void) {
-    super(id, opts);
+  constructor(
+    id: string,
+    idempotencyKey: string | undefined,
+    opts: Options,
+    promise: Promise<DurablePromise<T>> | DurablePromise<T>,
+    parent: ResonateExecution<any> | null,
+    reject?: (v: unknown) => void,
+  ) {
+    super(id, idempotencyKey, opts, promise);
     this.root = parent?.root ?? this;
     this.parent = parent;
     this._reject = reject;
@@ -198,14 +139,14 @@ export class ResonateExecution<T> extends Execution<T> {
     this.children.push(execution);
   }
 
-  suspendable(): boolean {
-    // TODO: this is wrong
-    // return this.future.completed || (!!this.blocked && this.children.every(c => c.suspendable()));
-    // return this.blocked?.executor?.kind === "deferred" && this.children.every(c => c.suspendable());
-    return false;
-  }
+  // suspendable(): boolean {
+  //   // TODO: this is wrong
+  //   // return this.future.completed || (!!this.blocked && this.children.every(c => c.suspendable()));
+  //   // return this.blocked?.executor?.kind === "deferred" && this.children.every(c => c.suspendable());
+  //   return false;
+  // }
 
-  suspend() {}
+  // suspend() {}
 }
 
 export class OrdinaryExecution<T> extends Execution<T> {
@@ -218,24 +159,26 @@ export class OrdinaryExecution<T> extends Execution<T> {
 
   constructor(
     id: string,
+    idempotencyKey: string | undefined,
     opts: Options,
+    promise: Promise<DurablePromise<T>> | DurablePromise<T>,
     parent: ResonateExecution<any>,
     func: (info: Info, ...args: any) => T,
     args: any[] = [],
   ) {
-    super(id, opts);
+    super(id, idempotencyKey, opts, promise);
     this.root = parent.root;
     this.parent = parent;
 
     const info = new Info(this);
-    this.invocation = new Invocation(this, () => func(info, args));
+    this.invocation = new Invocation(this, () => func(info, ...args));
   }
 
-  suspendable(): boolean {
-    return this.future.completed;
-  }
+  // suspendable(): boolean {
+  //   return this.future.completed;
+  // }
 
-  suspend() {}
+  // suspend() {}
 }
 
 export class DeferredExecution<T> extends Execution<T> {
@@ -246,37 +189,44 @@ export class DeferredExecution<T> extends Execution<T> {
 
   private interval?: number;
 
-  constructor(id: string, opts: Options, parent: ResonateExecution<any>) {
-    super(id, opts);
+  constructor(
+    id: string,
+    idempotencyKey: string | undefined,
+    opts: Options,
+    promise: Promise<DurablePromise<T>> | DurablePromise<T>,
+    parent: ResonateExecution<any>,
+  ) {
+    super(id, idempotencyKey, opts, promise);
     this.root = parent.root;
     this.parent = parent;
   }
 
-  suspendable(): boolean {
-    return true;
-  }
+  // suspendable(): boolean {
+  //   return true;
+  // }
 
-  suspend() {
-    clearInterval(this.interval);
-  }
+  // suspend() {
+  //   clearInterval(this.interval);
+  // }
 
-  poll(store: IStore, delay: number = 1000) {
-    if (!this.interval) {
-      this.interval = +setInterval(() => this._poll(store), delay);
-    }
-  }
+  // poll() {
+  //   return this.durablePromise.complete;
+  //   if (!this.interval) {
+  //     this.interval = +setInterval(() => this._poll(), delay);
+  //   }
+  // }
 
-  private async _poll(store: IStore) {
-    console.log("poll promise store");
+  // private async _poll() {
+  //   console.log("poll promise store");
 
-    try {
-      const promise = await store.promises.get(this.future.id);
-      if (promise.state !== "PENDING") {
-        this.sync(promise);
-        this.suspend();
-      }
-    } catch (e) {
-      // TODO: log
-    }
-  }
+  //   try {
+  //     const p = await this.durablePromise;
+  //     const promise = await DurablePromise.get(this.opts.store.promises, this.opts.encoder, this.id);
+  //     if (!promise.pending) {
+  //       this.suspend();
+  //     }
+  //   } catch (e) {
+  //     // TODO: log
+  //   }
+  // }
 }

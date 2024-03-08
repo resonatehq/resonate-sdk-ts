@@ -1,5 +1,6 @@
 import { IBucket } from "./core/bucket";
 import { Bucket } from "./core/buckets/bucket";
+import { DurablePromise, CreateOptions, CompleteOptions } from "./core/durablePromise";
 import { IEncoder } from "./core/encoder";
 import { JSONEncoder } from "./core/encoders/json";
 import { ILogger } from "./core/logger";
@@ -7,7 +8,6 @@ import { Logger } from "./core/loggers/logger";
 import { ResonateOptions, Options } from "./core/opts";
 import { Retry } from "./core/retries/retry";
 import { IRetry } from "./core/retry";
-import { IScheduler } from "./core/scheduler";
 import { IStore } from "./core/store";
 import { LocalStore } from "./core/stores/local";
 import { RemoteStore } from "./core/stores/remote";
@@ -36,25 +36,21 @@ export abstract class ResonateBase {
   private readonly encoder: IEncoder<unknown, string | undefined>;
   private readonly logger: ILogger;
   private readonly retry: IRetry;
-  private readonly scheduler: IScheduler;
   private readonly store: IStore;
 
-  constructor(
-    scheduler: { new (resonate: ResonateBase, store: IStore): IScheduler },
-    {
-      bucket = new Bucket(),
-      encoder = new JSONEncoder(),
-      logger = new Logger(),
-      namespace = "",
-      pid = utils.randomId(),
-      // retry = Retry.exponential(),
-      retry = Retry.linear(0, 3),
-      separator = "/",
-      store = undefined,
-      timeout = 10000, // 10s
-      url = undefined,
-    }: Partial<ResonateOptions> = {},
-  ) {
+  constructor({
+    bucket = new Bucket(),
+    encoder = new JSONEncoder(),
+    logger = new Logger(),
+    namespace = "",
+    pid = utils.randomId(),
+    // retry = Retry.exponential(),
+    retry = Retry.linear(0, 3),
+    separator = "/",
+    store = undefined,
+    timeout = 10000, // 10s
+    url = undefined,
+  }: Partial<ResonateOptions> = {}) {
     this.bucket = bucket;
     this.encoder = encoder;
     this.logger = logger;
@@ -71,8 +67,6 @@ export abstract class ResonateBase {
     } else {
       this.store = new LocalStore(this.logger);
     }
-
-    this.scheduler = new scheduler(this, this.store);
   }
 
   register(name: string, func: Func, opts: Partial<Options> = {}): (id: string, ...args: any) => ResonatePromise<any> {
@@ -95,26 +89,54 @@ export abstract class ResonateBase {
       throw new Error(`Function ${name} not registered`);
     }
 
-    id = (this.namespace === "" ? [name, id] : [this.namespace, name, id]).join(this.separator);
+    // id = (this.namespace === "" ? [name, id] : [this.namespace, name, id]).join(this.separator);
 
     const { func, opts } = this.functions[name];
-    return this.scheduler.add(name, 1, id, func, args, opts);
+    return this.schedule(name, 1, id, func, args, opts);
+    // return this.scheduler.add(name, 1, id, func, args, opts);
   }
 
-  recover() {
-    // TODO
-  }
+  protected abstract schedule(
+    name: string,
+    version: number,
+    id: string,
+    func: Func,
+    args: any[],
+    opts: Options,
+  ): ResonatePromise<any>;
 
-  schedule() {
-    // TODO
+  // recover() {
+  //   // TODO
+  // }
+
+  // schedule() {
+  //   // TODO
+  // }
+
+  get promises() {
+    return {
+      get: <T>(id: string) => DurablePromise.get<T>(this.store.promises, this.encoder, id),
+
+      create: <T>(id: string, timeout: number, opts: Partial<CreateOptions> = {}) =>
+        DurablePromise.create<T>(this.store.promises, this.encoder, id, timeout, opts),
+
+      resolve: <T>(id: string, value: T, opts: Partial<CompleteOptions> = {}) =>
+        DurablePromise.resolve<T>(this.store.promises, this.encoder, id, value, opts),
+
+      reject: <T>(id: string, error: any, opts: Partial<CompleteOptions> = {}) =>
+        DurablePromise.reject<T>(this.store.promises, this.encoder, id, error, opts),
+
+      cancel: <T>(id: string, error: any, opts: Partial<CompleteOptions> = {}) =>
+        DurablePromise.cancel<T>(this.store.promises, this.encoder, id, error, opts),
+    };
   }
 
   options({
     bucket = this.bucket,
     eid = utils.randomId(),
     encoder = this.encoder,
-    // idempotencyKey = undefined,
     retry = this.retry,
+    store = this.store,
     timeout = this.timeout,
   }: Partial<Options>): Options {
     return {
@@ -122,8 +144,8 @@ export abstract class ResonateBase {
       bucket,
       eid,
       encoder,
-      // idempotencyKey,
       retry,
+      store,
       timeout,
     };
   }

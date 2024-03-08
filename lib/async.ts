@@ -1,7 +1,7 @@
+import { DurablePromise } from "./core/durablePromise";
 import { ResonateOptions, Options, PartialOptions } from "./core/opts";
 import { Retry } from "./core/retries/retry";
-import { IScheduler } from "./core/scheduler";
-import { IStore } from "./core/store";
+import * as utils from "./core/utils";
 import { ResonateExecution, OrdinaryExecution, Invocation, Info, DeferredExecution } from "./execution";
 import { ResonatePromise } from "./future";
 import { ResonateBase } from "./resonate";
@@ -23,8 +23,11 @@ type Return<F> = F extends (...args: any[]) => infer T ? Awaited<T> : never;
 /////////////////////////////////////////////////////////////////////
 
 export class Resonate extends ResonateBase {
+  scheduler: Scheduler;
+
   constructor(opts: Partial<ResonateOptions> = {}) {
-    super(Scheduler, opts);
+    super(opts);
+    this.scheduler = new Scheduler();
   }
 
   register<F extends AFunc>(
@@ -34,6 +37,17 @@ export class Resonate extends ResonateBase {
   ): (id: string, ...args: Params<F>) => ResonatePromise<Return<F>> {
     return super.register(name, func, opts);
   }
+
+  protected schedule<F extends AFunc>(
+    name: string,
+    version: number,
+    id: string,
+    func: F,
+    args: Params<F>,
+    opts: Options,
+  ): ResonatePromise<Return<F>> {
+    return this.scheduler.add(name, version, id, func, args, opts);
+  }
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -41,21 +55,19 @@ export class Resonate extends ResonateBase {
 /////////////////////////////////////////////////////////////////////
 
 class AsyncExecution<T> extends ResonateExecution<T> {
-  scheduler: Scheduler;
   invocation: Invocation<T>;
 
   constructor(
-    scheduler: Scheduler,
     id: string,
+    idempotencyKey: string | undefined,
     opts: Options,
+    promise: Promise<DurablePromise<T>>,
     parent: AsyncExecution<any> | null,
     func: (...args: any[]) => T,
     args: any[],
     reject?: (v: unknown) => void,
   ) {
-    super(id, opts, parent, reject);
-
-    this.scheduler = scheduler;
+    super(id, idempotencyKey, opts, promise, parent, reject);
 
     const ctx = new Context(this);
     this.invocation = new Invocation(this, () => func(ctx, ...args), Retry.never());
@@ -88,54 +100,53 @@ export class Context {
   run<F extends AFunc>(func: F, ...args: [...Params<F>, PartialOptions?]): ResonatePromise<Return<F>>;
   run<T>(func: string, args?: any, opts?: PartialOptions): ResonatePromise<T>;
   run(func: string | ((...args: any[]) => any), ...argsWithOpts: any[]): ResonatePromise<any> {
-    const id = this.nextId();
+    const id = `${this.execution.id}.${this.execution.counter++}`;
+    const idempotencyKey = utils.hash(id);
     const { args, opts } = this.execution.split(argsWithOpts);
+
+    const promise = DurablePromise.create(opts.store.promises, opts.encoder, id, opts.timeout, { idempotencyKey });
 
     let execution: AsyncExecution<any> | DeferredExecution<any>;
     if (typeof func === "string") {
-      execution = new DeferredExecution(func, opts, this.execution);
+      execution = new DeferredExecution(func, idempotencyKey, opts, promise, this.execution);
     } else {
-      execution = new AsyncExecution(this.execution.scheduler, id, opts, this.execution, func, args);
+      execution = new AsyncExecution(id, idempotencyKey, opts, promise, this.execution, func, args);
     }
 
-    return this.durable(execution);
+    return this.execute(execution);
   }
 
   io<F extends IFunc>(func: F, ...args: [...Params<F>, PartialOptions?]): Promise<Return<F>>;
   io(func: (...args: any[]) => any, ...argsWithOpts: any[]): ResonatePromise<any> {
-    const id = this.nextId();
+    const id = `${this.execution.id}.${this.execution.counter++}`;
+    const idempotencyKey = utils.hash(id);
     const { args, opts } = this.execution.split(argsWithOpts);
-    const execution = new OrdinaryExecution(id, opts, this.execution, func, args);
 
-    return this.durable(execution);
+    const promise = DurablePromise.create(opts.store.promises, opts.encoder, id, opts.timeout, { idempotencyKey });
+
+    const execution = new OrdinaryExecution(id, idempotencyKey, opts, promise, this.execution, func, args);
+    return this.execute(execution);
   }
 
   options(opts: Partial<Options> = {}): PartialOptions {
     return { ...opts, __resonate: true };
   }
 
-  private nextId() {
-    return [this.execution.id, this.execution.counter++].join(this.execution.scheduler.resonate.separator);
-  }
-
-  private durable(
+  private execute(
     execution: AsyncExecution<any> | OrdinaryExecution<any> | DeferredExecution<any>,
   ): ResonatePromise<any> {
-    execution.createDurablePromise(this.execution.scheduler.store).then(
-      () => {
-        if (execution.future.pending) {
-          if (execution.kind === "deferred") {
-            execution.poll(this.execution.scheduler.store);
-          } else {
-            execution.invocation.invoke().then(
-              (value: any) => execution.resolve(this.execution.scheduler.store, value),
-              (error: any) => execution.reject(this.execution.scheduler.store, error),
-            );
-          }
+    execution.promise
+      .then((p) => {
+        if (p.pending && execution.kind !== "deferred") {
+          return execution.invocation.invoke().then(
+            (v) => p.resolve(v, { idempotencyKey: execution.idempotencyKey }),
+            (e) => p.reject(e, { idempotencyKey: execution.idempotencyKey }),
+          );
         }
-      },
-      (error) => execution.kill(error),
-    );
+
+        // TODO: deferred execution
+      })
+      .catch((e) => execution.kill(e));
 
     return execution.future.promise;
   }
@@ -145,52 +156,60 @@ export class Context {
 // Scheduler
 /////////////////////////////////////////////////////////////////////
 
-export class Scheduler implements IScheduler {
+export class Scheduler {
   private executions: AsyncExecution<any>[] = [];
 
-  constructor(
-    public readonly resonate: Resonate,
-    public readonly store: IStore,
-  ) {}
+  add<F extends AFunc>(
+    name: string,
+    version: number,
+    id: string,
+    func: F,
+    args: Params<F>,
+    opts: Options,
+  ): ResonatePromise<Return<F>> {
+    const execution = this.executions.find((e) => e.id === id);
 
-  add(name: string, version: number, id: string, func: AFunc, args: any[], opts: Options): ResonatePromise<any> {
-    const { promise, resolve, reject } = ResonatePromise.deferred(id);
-    let execution = this.executions.find((e) => e.id === id);
+    if (execution && !execution.killed) {
+      const { promise, resolve, reject } = ResonatePromise.deferred(id, execution.promise);
+      execution.future.promise.then(resolve, reject);
 
-    if (!execution || execution.killed) {
-      execution = new AsyncExecution(this, id, opts, null, func, args, reject);
-      this.executions.push(execution);
-
-      const data = {
+      return promise;
+    } else {
+      const param = {
         func: name,
         args: args,
         version: version,
       };
 
-      const promise = execution.createDurablePromise(this.store, data, {
+      const headers = {
         "resonate:invocation": "true",
+      };
+
+      const idempotencyKey = utils.hash(id);
+
+      const durablePromise = DurablePromise.create<Return<F>>(opts.store.promises, opts.encoder, id, opts.timeout, {
+        idempotencyKey,
+        param,
+        headers,
       });
 
-      // why?
-      const _execution = execution;
+      const { promise, resolve, reject } = ResonatePromise.deferred(id, durablePromise);
+      const execution = new AsyncExecution(id, idempotencyKey, opts, durablePromise, null, func, args, reject);
+      execution.future.promise.then(resolve, reject);
+      this.executions.push(execution);
 
-      promise.then(
-        () => {
-          if (_execution.future.pending) {
-            _execution.invocation.invoke().then(
-              (value) => _execution.resolve(this.store, value),
-              (error) => _execution.reject(this.store, error),
-            );
-          }
-        },
-        (error) => _execution.kill(error),
-      );
+      // TODO: handle case where promise is already completed
+
+      durablePromise
+        .then((p) =>
+          execution.invocation.invoke().then(
+            (v) => p.resolve(v, { idempotencyKey: execution.idempotencyKey }),
+            (e) => p.reject(e, { idempotencyKey: execution.idempotencyKey }),
+          ),
+        )
+        .catch((e) => execution.kill(e));
+
+      return promise;
     }
-
-    // bind wrapper promiser to execution promise
-    execution.future.promise.then(resolve, reject);
-    promise.created = execution.future.promise.created;
-
-    return promise;
   }
 }
