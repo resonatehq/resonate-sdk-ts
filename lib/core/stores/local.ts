@@ -14,7 +14,7 @@ import {
 } from "../promise";
 import { Schedule } from "../schedule";
 import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
-import { ErrorCodes, ResonateError, ResonateLocalStoreError } from "../error";
+import { ErrorCodes, ResonateLocalStoreError } from "../error";
 import { IStorage } from "../storage";
 import { WithTimeout } from "../storages/withTimeout";
 import { MemoryStorage } from "../storages/memory";

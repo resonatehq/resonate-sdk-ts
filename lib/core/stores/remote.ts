@@ -11,7 +11,7 @@ import {
 import { IStore, IPromiseStore, IScheduleStore } from "../store";
 import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
-import { ErrorCodes, ResonateError, ResonateServerError } from "../error";
+import { ErrorCodes, ResonateServerError } from "../error";
 import { ILockStore } from "../store";
 import { ILogger } from "../logger";
 import { Schedule, isSchedule } from "../schedule";
@@ -537,7 +537,7 @@ async function call<T>(
     }
   }
 
-  throw ResonateError.fromError(error);
+  throw ResonateServerError.fromError(error);
 }
 
 function encode(value: string, encoder: IEncoder<string, string>): string {
