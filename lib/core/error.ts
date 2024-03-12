@@ -9,6 +9,7 @@ export enum ErrorCodes {
   ENCODER = 7,
   CANCELLED = 8,
   TIMEOUT = 9,
+  KILLED = 10,
 }
 
 export class ResonateError extends Error {
@@ -21,18 +22,7 @@ export class ResonateError extends Error {
   }
 }
 
-export class ResonateServerError extends ResonateError {
-  constructor(
-    public readonly code: ErrorCodes,
-    message: string,
-    public readonly cause?: any,
-    public readonly retryable: boolean = false,
-  ) {
-    super(message);
-  }
-}
-
-export class ResonateLocalStoreError extends ResonateError {
+export class ResonateStorageError extends ResonateError {
   constructor(
     public readonly code: ErrorCodes,
     message: string,
@@ -49,14 +39,20 @@ export class ResonateTestCrash extends ResonateError {
   }
 }
 
-export class ResonateCancelled extends ResonateServerError {
-  constructor(cause?: any) {
-    super(ErrorCodes.CANCELLED, "Promise Cancelled", cause);
+export class ResonateCancelled extends ResonateError {
+  constructor() {
+    super("Promise Cancelled");
   }
 }
 
-export class ResonateTimeout extends ResonateServerError {
+export class ResonateTimeout extends ResonateError {
   constructor() {
-    super(ErrorCodes.TIMEOUT, "Promise Timedout");
+    super("Promise Timedout");
+  }
+}
+
+export class ResonateKilled extends ResonateError {
+  constructor() {
+    super("Promise Killed");
   }
 }
