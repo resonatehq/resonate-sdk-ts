@@ -1,9 +1,8 @@
-import { DurablePromise } from "./core/durablePromise";
 import { ResonateOptions, Options, PartialOptions } from "./core/opts";
-import { Retry } from "./core/retries/retry";
 import * as utils from "./core/utils";
-import { ResonateExecution, OrdinaryExecution, Invocation, Info, DeferredExecution } from "./execution";
+import { Execution, OrdinaryExecution, DeferredExecution } from "./execution";
 import { ResonatePromise } from "./future";
+import { Invocation } from "./invocation";
 import { ResonateBase } from "./resonate";
 
 /////////////////////////////////////////////////////////////////////
@@ -51,104 +50,83 @@ export class Resonate extends ResonateBase {
 }
 
 /////////////////////////////////////////////////////////////////////
-// Execution
-/////////////////////////////////////////////////////////////////////
-
-class AsyncExecution<T> extends ResonateExecution<T> {
-  invocation: Invocation<T>;
-
-  constructor(
-    id: string,
-    idempotencyKey: string | undefined,
-    opts: Options,
-    promise: Promise<DurablePromise<T>>,
-    parent: AsyncExecution<any> | null,
-    func: (...args: any[]) => T,
-    args: any[],
-    reject?: (v: unknown) => void,
-  ) {
-    super(id, idempotencyKey, opts, promise, parent, reject);
-
-    const ctx = new Context(this);
-    this.invocation = new Invocation(this, () => func(ctx, ...args), Retry.never());
-  }
-}
-
-/////////////////////////////////////////////////////////////////////
 // Context
 /////////////////////////////////////////////////////////////////////
 
-export class Context {
-  constructor(private execution: AsyncExecution<any>) {}
+export class Info {
+  constructor(private invocation: Invocation<any>) {}
 
   get id() {
-    return this.execution.id;
+    return this.invocation.id;
   }
 
   get idempotencyKey() {
-    return this.execution.idempotencyKey;
+    return this.invocation.idempotencyKey;
   }
 
   get timeout() {
-    return this.execution.timeout;
+    return this.invocation.timeout;
+  }
+
+  get attempt() {
+    return this.invocation.attempt;
+  }
+}
+
+export class Context {
+  constructor(private invocation: Invocation<any>) {}
+
+  get id() {
+    return this.invocation.id;
+  }
+
+  get idempotencyKey() {
+    return this.invocation.idempotencyKey;
+  }
+
+  get timeout() {
+    return this.invocation.timeout;
   }
 
   get counter() {
-    return this.execution.counter;
+    return this.invocation.counter;
   }
 
   run<F extends AFunc>(func: F, ...args: [...Params<F>, PartialOptions?]): ResonatePromise<Return<F>>;
   run<T>(func: string, args?: any, opts?: PartialOptions): ResonatePromise<T>;
   run(func: string | ((...args: any[]) => any), ...argsWithOpts: any[]): ResonatePromise<any> {
-    const id = `${this.execution.id}.${this.execution.counter++}`;
+    const id = typeof func === "string" ? func : `${this.invocation.id}.${this.invocation.counter++}`;
     const idempotencyKey = utils.hash(id);
-    const { args, opts } = this.execution.split(argsWithOpts);
+    const { args, opts } = this.invocation.split(argsWithOpts);
 
-    const promise = DurablePromise.create(opts.store.promises, opts.encoder, id, opts.timeout, { idempotencyKey });
+    const invocation = new Invocation(id, idempotencyKey, opts, this.invocation);
 
-    let execution: AsyncExecution<any> | DeferredExecution<any>;
+    let execution: Execution<any>;
     if (typeof func === "string") {
-      execution = new DeferredExecution(func, idempotencyKey, opts, promise, this.execution);
+      execution = new DeferredExecution(invocation);
     } else {
-      execution = new AsyncExecution(id, idempotencyKey, opts, promise, this.execution, func, args);
+      const ctx = new Context(invocation);
+      execution = new OrdinaryExecution(invocation, () => func(ctx, ...args));
     }
 
-    return this.execute(execution);
+    return execution.execute();
   }
 
   io<F extends IFunc>(func: F, ...args: [...Params<F>, PartialOptions?]): Promise<Return<F>>;
   io(func: (...args: any[]) => any, ...argsWithOpts: any[]): ResonatePromise<any> {
-    const id = `${this.execution.id}.${this.execution.counter++}`;
+    const id = `${this.invocation.id}.${this.invocation.counter++}`;
     const idempotencyKey = utils.hash(id);
-    const { args, opts } = this.execution.split(argsWithOpts);
+    const { args, opts } = this.invocation.split(argsWithOpts);
 
-    const promise = DurablePromise.create(opts.store.promises, opts.encoder, id, opts.timeout, { idempotencyKey });
+    const invocation = new Invocation(id, idempotencyKey, opts, this.invocation);
+    const info = new Info(invocation);
+    const execution = new OrdinaryExecution(invocation, () => func(info, ...args));
 
-    const execution = new OrdinaryExecution(id, idempotencyKey, opts, promise, this.execution, func, args);
-    return this.execute(execution);
+    return execution.execute();
   }
 
   options(opts: Partial<Options> = {}): PartialOptions {
     return { ...opts, __resonate: true };
-  }
-
-  private execute(
-    execution: AsyncExecution<any> | OrdinaryExecution<any> | DeferredExecution<any>,
-  ): ResonatePromise<any> {
-    execution.promise
-      .then((p) => {
-        if (p.pending && execution.kind !== "deferred") {
-          return execution.invocation.invoke().then(
-            (v) => p.resolve(v, { idempotencyKey: execution.idempotencyKey }),
-            (e) => p.reject(e, { idempotencyKey: execution.idempotencyKey }),
-          );
-        }
-
-        // TODO: deferred execution
-      })
-      .catch((e) => execution.kill(e));
-
-    return execution.future.promise;
   }
 }
 
@@ -157,7 +135,7 @@ export class Context {
 /////////////////////////////////////////////////////////////////////
 
 export class Scheduler {
-  private executions: AsyncExecution<any>[] = [];
+  private executions: Record<string, { execution: Execution<any>; promise: ResonatePromise<any> }> = {};
 
   add<F extends AFunc>(
     name: string,
@@ -167,49 +145,18 @@ export class Scheduler {
     args: Params<F>,
     opts: Options,
   ): ResonatePromise<Return<F>> {
-    const execution = this.executions.find((e) => e.id === id);
-
-    if (execution && !execution.killed) {
-      const { promise, resolve, reject } = ResonatePromise.deferred(id, execution.promise);
-      execution.future.promise.then(resolve, reject);
-
-      return promise;
-    } else {
-      const param = {
-        func: name,
-        args: args,
-        version: version,
-      };
-
-      const headers = {
-        "resonate:invocation": "true",
-      };
-
-      const idempotencyKey = utils.hash(id);
-
-      const durablePromise = DurablePromise.create<Return<F>>(opts.store.promises, opts.encoder, id, opts.timeout, {
-        idempotencyKey,
-        param,
-        headers,
-      });
-
-      const { promise, resolve, reject } = ResonatePromise.deferred(id, durablePromise);
-      const execution = new AsyncExecution(id, idempotencyKey, opts, durablePromise, null, func, args, reject);
-      execution.future.promise.then(resolve, reject);
-      this.executions.push(execution);
-
-      // TODO: handle case where promise is already completed
-
-      durablePromise
-        .then((p) =>
-          execution.invocation.invoke().then(
-            (v) => p.resolve(v, { idempotencyKey: execution.idempotencyKey }),
-            (e) => p.reject(e, { idempotencyKey: execution.idempotencyKey }),
-          ),
-        )
-        .catch((e) => execution.kill(e));
-
-      return promise;
+    if (this.executions[id] && this.executions[id].execution.invocation.killed) {
+      return this.executions[id].promise;
     }
+
+    const idempotencyKey = utils.hash(id);
+    const invocation = new Invocation<Return<F>>(id, idempotencyKey, opts);
+    const ctx = new Context(invocation);
+    const execution = new OrdinaryExecution(invocation, () => func(ctx, ...args));
+    const promise = execution.execute();
+
+    this.executions[id] = { execution, promise };
+
+    return promise;
   }
 }

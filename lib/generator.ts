@@ -1,8 +1,9 @@
 import { DurablePromise } from "./core/durablePromise";
 import { ResonateOptions, Options, PartialOptions } from "./core/opts";
 import * as utils from "./core/utils";
-import { Execution, ResonateExecution, OrdinaryExecution, DeferredExecution, Info } from "./execution";
+import { DeferredExecution, Execution, GeneratorExecution, OrdinaryExecution } from "./execution";
 import { Future, ResonatePromise } from "./future";
+import { Invocation } from "./invocation";
 import { ResonateBase } from "./resonate";
 
 /////////////////////////////////////////////////////////////////////
@@ -48,6 +49,7 @@ type DeferredFunction = {
 
 type Continuation<T> = {
   execution: GeneratorExecution<T>;
+  promise: DurablePromise<T>;
   next: Next;
 };
 
@@ -86,69 +88,46 @@ export class Resonate extends ResonateBase {
 }
 
 /////////////////////////////////////////////////////////////////////
-// Execution
-/////////////////////////////////////////////////////////////////////
-
-class GeneratorExecution<T> extends ResonateExecution<T> {
-  generator: Generator<Yieldable, T>;
-
-  created: Future<any>[] = [];
-  awaited: Future<any>[] = [];
-  blocked: Future<any> | null = null;
-
-  constructor(
-    id: string,
-    idempotencyKey: string | undefined,
-    opts: Options,
-    promise: Promise<DurablePromise<T>> | DurablePromise<T>,
-    parent: GeneratorExecution<any> | null,
-    func: (...args: any[]) => Generator<Yieldable, T>,
-    args: any[],
-    reject?: (v: unknown) => void,
-  ) {
-    super(id, idempotencyKey, opts, promise, parent, reject);
-
-    this.generator = func(new Context(this), ...args);
-  }
-
-  create(future: Future<any>) {
-    this.created.push(future);
-  }
-
-  await(future: Future<any>) {
-    this.awaited.push(future);
-  }
-
-  block(future: Future<any>) {
-    this.blocked = future;
-  }
-
-  unblock() {
-    this.blocked = null;
-  }
-}
-
-/////////////////////////////////////////////////////////////////////
 // Context
 /////////////////////////////////////////////////////////////////////
 
-export class Context {
-  constructor(private execution: GeneratorExecution<any>) {}
+export class Info {
+  constructor(private invocation: Invocation<any>) {}
 
   get id() {
-    return this.execution.id;
+    return this.invocation.id;
   }
 
   get idempotencyKey() {
-    return this.execution.idempotencyKey;
+    return this.invocation.idempotencyKey;
   }
 
   get timeout() {
-    return this.execution.timeout;
+    return this.invocation.timeout;
+  }
+
+  get attempt() {
+    return this.invocation.attempt;
+  }
+}
+
+export class Context {
+  constructor(private invocation: Invocation<any>) {}
+
+  get id() {
+    return this.invocation.id;
+  }
+
+  get idempotencyKey() {
+    return this.invocation.idempotencyKey;
+  }
+
+  get timeout() {
+    return this.invocation.timeout;
   }
 
   get counter() {
-    return this.execution.counter;
+    return this.invocation.counter;
   }
 
   // run returns a value
@@ -172,7 +151,7 @@ export class Context {
   }
 
   private _call(func: string | ((...args: any[]) => any), argsWithOpts: any[], yieldFuture: boolean): Call {
-    const { args, opts } = this.execution.split(argsWithOpts);
+    const { args, opts } = this.invocation.split(argsWithOpts);
 
     if (typeof func === "string") {
       return { kind: "call", value: { kind: "deferred", func, args: args[0], opts }, yieldFuture };
@@ -192,65 +171,43 @@ export class Scheduler {
   // tick is mutually exclusive
   private running: boolean = false;
 
-  // all executions
-  private allExecutions: Execution<any>[] = [];
-
   // all top level executions
-  private executions: GeneratorExecution<any>[] = [];
+  private executions: Record<string, { execution: Execution<any>; promise: ResonatePromise<any> }> = {};
+
+  // all invocations
+  private invocations: Invocation<any>[] = [];
 
   // executions with a next value
   private runnable: Continuation<any>[] = [];
 
   // executions that are waiting for a next value
-  private awaiting: GeneratorExecution<any>[] = [];
+  private awaiting: Execution<any>[] = [];
 
   // executions that have been killed
-  private killed: Execution<any>[] = [];
+  private killed: Invocation<any>[] = [];
 
-  constructor() {}
-
-  add(name: string, version: number, id: string, func: GFunc, args: any[], opts: Options): ResonatePromise<any> {
-    const execution = this.executions.find((e) => e.id === id);
-
-    if (execution && !execution.killed) {
-      const { promise, resolve, reject } = ResonatePromise.deferred(id, execution.promise);
-      execution.future.promise.then(resolve, reject);
-
-      return promise;
-    } else {
-      const idempotencyKey = utils.hash(id);
-
-      const param = {
-        func: name,
-        args: args,
-        version: version,
-      };
-
-      const headers = {
-        "resonate:invocation": "true",
-      };
-
-      const durablePromise = DurablePromise.create(opts.store.promises, opts.encoder, id, opts.timeout, {
-        idempotencyKey,
-        param,
-        headers,
-      });
-
-      const { promise, resolve, reject } = ResonatePromise.deferred(id, durablePromise);
-      const execution = new GeneratorExecution(id, idempotencyKey, opts, durablePromise, null, func, args, reject);
-      execution.future.promise.then(resolve, reject);
-      this.executions.push(execution);
-      this.allExecutions.push(execution);
-
-      // TODO: handle case where promise is already completed
-
-      durablePromise
-        .then((p) => this.runnable.push({ execution, next: { kind: "init" } }))
-        .then(() => this.tick())
-        .catch((e) => execution.kill(e));
-
-      return promise;
+  add(name: string, version: number, id: string, func: GFunc, args: any[], opts: Options) {
+    if (this.executions[id] && !this.executions[id].execution.invocation.killed) {
+      return this.executions[id].promise;
     }
+
+    const idempotencyKey = utils.hash(id);
+    const invocation = new Invocation(id, idempotencyKey, opts);
+    const generator = func(new Context(invocation), ...args);
+    const execution = new GeneratorExecution(invocation, generator);
+    const promise = execution.execute();
+
+    execution.create().then((promise) => {
+      if (promise && promise.pending) {
+        this.runnable.push({ execution, promise, next: { kind: "init" } });
+        this.tick();
+      }
+    });
+
+    this.invocations.push(invocation);
+    this.executions[id] = { execution, promise };
+
+    return promise;
   }
 
   async tick() {
@@ -263,36 +220,33 @@ export class Scheduler {
       const key = await keypress();
       if (key === "\u001b") {
         // kill when escape key is pressed
-        continuation?.execution.kill("manually killed");
+        continuation?.execution.invocation.kill("manually killed");
       }
 
-      if (continuation && !continuation.execution.killed) {
+      if (continuation && !continuation.execution.invocation.killed) {
         try {
           const result = this.next(continuation);
 
           if (result.done) {
             if (result.value instanceof Future) {
-              this.delayedResolve(continuation.execution, result.value);
+              result.value.promise.then(
+                (v) => continuation.execution.resolve(continuation.promise, v),
+                (e) => continuation.execution.reject(continuation.promise, e),
+              );
             } else {
-              // resolve the durable promise
-              await continuation.execution.promise
-                .then((p) => p.resolve(result.value, { idempotencyKey: continuation.execution.idempotencyKey }))
-                .catch((e) => continuation.execution.kill(e));
+              await continuation.execution.resolve(continuation.promise, result.value);
             }
           } else {
-            await this.apply(continuation.execution, result.value);
+            await this.apply(continuation, result.value);
           }
         } catch (error) {
-          // reject the durable promise
-          await continuation.execution.promise
-            .then((p) => p.reject(error, { idempotencyKey: continuation.execution.idempotencyKey }))
-            .catch((e) => continuation.execution.kill(e));
+          await continuation.execution.reject(continuation.promise, error);
         }
-      }
 
-      // housekeeping
-      if (continuation && continuation.execution.killed) {
-        this.kill(continuation.execution);
+        // housekeeping
+        if (continuation.execution.invocation.killed) {
+          this.kill(continuation.execution);
+        }
       }
 
       // debugging
@@ -317,105 +271,80 @@ export class Scheduler {
     }
   }
 
-  private async apply(execution: GeneratorExecution<any>, yielded: Yieldable) {
+  private async apply(continuation: Continuation<any>, yielded: Yieldable) {
     switch (yielded.kind) {
       case "call":
-        await this.applyCall(execution, yielded);
+        await this.applyCall(continuation, yielded);
         break;
       case "future":
-        this.applyFuture(execution, yielded);
+        this.applyFuture(continuation, yielded);
         break;
       default:
         yeet(`permitted yielded values are (call, future), received ${yielded}`);
     }
   }
 
-  private async applyCall(caller: GeneratorExecution<any>, { value, yieldFuture }: Call) {
-    const id = `${caller.id}.${caller.counter++}`;
+  private async applyCall(continuation: Continuation<any>, { value, yieldFuture }: Call) {
+    const id =
+      value.kind === "deferred"
+        ? value.func
+        : `${continuation.execution.invocation.id}.${continuation.execution.invocation.counter++}`;
+    const idempotencyKey = utils.hash(id);
 
-    try {
-      const idempotencyKey = utils.hash(id);
+    const invocation = new Invocation(id, idempotencyKey, value.opts, continuation.execution.invocation);
+    continuation.execution.invocation.addChild(invocation);
+    this.invocations.push(invocation);
 
-      const promise = await DurablePromise.create(
-        value.opts.store.promises,
-        value.opts.encoder,
-        id,
-        value.opts.timeout,
-        { idempotencyKey },
-      );
+    if (value.kind === "resonate") {
+      const ctx = new Context(invocation);
+      const execution = new GeneratorExecution(invocation, value.func(ctx, ...value.args));
+      const promise = await execution.create();
 
-      let callee: GeneratorExecution<any> | OrdinaryExecution<any> | DeferredExecution<any>;
-
-      switch (value.kind) {
-        case "resonate":
-          callee = new GeneratorExecution(id, idempotencyKey, value.opts, promise, caller, value.func, value.args);
-
-          if (promise.pending) {
-            this.runnable.push({ execution: callee, next: { kind: "init" } });
-          }
-          break;
-
-        case "ordinary":
-          callee = new OrdinaryExecution(id, idempotencyKey, value.opts, promise, caller, value.func, value.args);
-
-          if (promise.pending) {
-            callee.invocation
-              .invoke()
-              .then(
-                (v) => promise.resolve(v, { idempotencyKey }),
-                (e) => promise.reject(e, { idempotencyKey }),
-              )
-              .catch((e) => callee.kill(e))
-              .finally(() => this.tick());
-          }
-          break;
-
-        case "deferred":
-          callee = new DeferredExecution(value.func, idempotencyKey, value.opts, promise, caller);
-          break;
-
-        default:
-          yeet(`permitted call values are (resonate, ordinary, deferred), received ${value}`);
+      if (promise && promise.pending) {
+        this.runnable.push({ execution, promise, next: { kind: "init" } });
       }
+    } else if (value.kind === "ordinary") {
+      const info = new Info(invocation);
+      const execution = new OrdinaryExecution(invocation, () => value.func(info, ...value.args));
+      execution.execute();
+    } else if (value.kind === "deferred") {
+      const execution = new DeferredExecution(invocation);
+      execution.execute();
+    } else {
+      yeet(`permitted call values are (resonate, ordinary, deferred), received ${value}`);
+    }
 
-      // add to all executions
-      this.allExecutions.push(callee);
-
-      // TODO: should these move up?
-      caller.addChild(callee);
-      callee.setParent(caller);
-      caller.create(callee.future);
-
-      if (yieldFuture) {
-        this.runnable.push({ execution: caller, next: { kind: "value", value: callee.future } });
-      } else {
-        this.applyFuture(caller, callee.future);
-      }
-    } catch (error) {
-      caller.kill(error);
+    if (yieldFuture) {
+      this.runnable.push({
+        execution: continuation.execution,
+        promise: continuation.promise,
+        next: { kind: "value", value: invocation.future },
+      });
+    } else {
+      this.applyFuture(continuation, invocation.future);
     }
   }
 
-  private applyFuture(execution: GeneratorExecution<any>, future: Future<any>) {
-    if (execution.future.root !== future.root) {
+  private applyFuture({ execution, promise }: Continuation<any>, future: Future<any>) {
+    if (execution.invocation.future.root !== future.root) {
       yeet(
-        `yielded future originates from ${future.root.id}, but this execution originates from ${execution.future.root.id}`,
+        `yielded future originates from ${future.root.id}, but this execution originates from ${execution.invocation.future.root.id}`,
       );
     }
 
-    execution.await(future);
-    execution.block(future);
+    execution.invocation.await(future);
+    execution.invocation.block(future);
     this.awaiting.push(execution);
 
     const apply = (next: Next) => {
       // unblock
-      execution.unblock();
+      execution.invocation.unblock();
 
       // remove from awaiting
       this.awaiting = this.awaiting.filter((e) => e !== execution);
 
       // add to runnable
-      this.runnable.push({ execution, next });
+      this.runnable.push({ execution, promise, next });
 
       // tick again
       this.tick();
@@ -427,70 +356,26 @@ export class Scheduler {
     );
   }
 
-  // can we merge this with applyFuture?
-  // we would need to wire up ordinary executions to the tick
-  async delayedResolve(execution: GeneratorExecution<any>, future: Future<any>) {
-    if (execution.future.root !== future.root) {
-      yeet(
-        `yielded future originates from ${future.root.id}, but this execution originates from ${execution.future.root.id}`,
-      );
-    }
-
-    execution.await(future);
-    execution.block(future);
-    this.awaiting.push(execution);
-
-    const cleanup = () => {
-      // unblock
-      execution.unblock();
-
-      // remove from awaiting
-      this.awaiting = this.awaiting.filter((e) => e !== execution);
-    };
-
-    // TODO: verify this
-
-    future.promise
-      .then(
-        (v) => execution.promise.then((p) => p.resolve(v, { idempotencyKey: execution.idempotencyKey })),
-        (e) => execution.promise.then((p) => p.reject(e, { idempotencyKey: execution.idempotencyKey })),
-      )
-      .catch((e) => execution.kill(e))
-      .finally(() => cleanup());
-  }
-
   private kill(execution: Execution<any>) {
-    console.log("Oh no! Killed!", execution.id);
-
-    const killed = this.executions.filter((e) => e.root === execution.root);
+    const killed = this.invocations.filter((i) => i.root === execution.invocation.root);
     this.killed = this.killed.concat(killed);
 
-    this.executions = this.executions.filter((e) => e.root !== execution.root);
-    this.awaiting = this.awaiting.filter((e) => e.root !== execution.root);
-    this.runnable = this.runnable.filter((c) => c.execution.root !== execution.root);
+    this.awaiting = this.awaiting.filter((e) => e.invocation.root !== execution.invocation.root);
+    this.runnable = this.runnable.filter((c) => c.execution.invocation.root !== execution.invocation.root);
   }
 
   print() {
-    // all executions
-    console.log("\n \x1b[1mExecutions\x1b[0m");
+    // all invocations
+    console.log("\n \x1b[1mInvocations\x1b[0m");
     console.table(
-      this.allExecutions.map((e) => {
-        const created = e instanceof GeneratorExecution ? e.created.map((f) => f.id).join(",") : undefined;
-        const awaited = e instanceof GeneratorExecution ? e.awaited.map((f) => f.id).join(",") : undefined;
-        const blocked = e instanceof GeneratorExecution ? e.blocked?.id : undefined;
-
-        return {
-          id: e.id,
-          idempotencyKey: e.idempotencyKey,
-          kind: e.kind,
-          parent: e.parent ? e.parent.id : undefined,
-          // completed: e.future.completed,
-          killed: e.killed,
-          created: created,
-          awaited: awaited,
-          blocked: blocked,
-        };
-      }),
+      this.invocations.map((i) => ({
+        id: i.id,
+        idempotencyKey: i.idempotencyKey,
+        parent: i.parent ? i.parent.id : undefined,
+        killed: i.killed,
+        awaited: i.awaited.map((f) => f.id).join(","),
+        blocked: i.blocked?.id,
+      })),
     );
   }
 }
