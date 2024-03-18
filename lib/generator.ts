@@ -1,9 +1,9 @@
-import { DurablePromise } from "./core/durablePromise";
-import { ResonateOptions, Options, PartialOptions } from "./core/opts";
+import { DeferredExecution, Execution, GeneratorExecution, OrdinaryExecution } from "./core/execution";
+import { Future, ResonatePromise } from "./core/future";
+import { Invocation } from "./core/invocation";
+import { ResonateOptions, Options, PartialOptions } from "./core/options";
+import { DurablePromise } from "./core/promises/promises";
 import * as utils from "./core/utils";
-import { DeferredExecution, Execution, GeneratorExecution, OrdinaryExecution } from "./execution";
-import { Future, ResonatePromise } from "./future";
-import { Invocation } from "./invocation";
 import { ResonateBase } from "./resonate";
 
 /////////////////////////////////////////////////////////////////////

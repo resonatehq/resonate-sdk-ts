@@ -1,18 +1,16 @@
-import { IBucket } from "./core/bucket";
-import { Bucket } from "./core/buckets/bucket";
-import { DurablePromise, CreateOptions, CompleteOptions } from "./core/durablePromise";
 import { IEncoder } from "./core/encoder";
 import { JSONEncoder } from "./core/encoders/json";
+import { ResonatePromise } from "./core/future";
 import { ILogger } from "./core/logger";
 import { Logger } from "./core/loggers/logger";
-import { ResonateOptions, Options } from "./core/opts";
+import { ResonateOptions, Options } from "./core/options";
+import { DurablePromise, CreateOptions, CompleteOptions } from "./core/promises/promises";
 import { Retry } from "./core/retries/retry";
 import { IRetry } from "./core/retry";
 import { IStore } from "./core/store";
 import { LocalStore } from "./core/stores/local";
 import { RemoteStore } from "./core/stores/remote";
 import * as utils from "./core/utils";
-import { ResonatePromise } from "./future";
 
 /////////////////////////////////////////////////////////////////////
 // Types
@@ -32,14 +30,12 @@ export abstract class ResonateBase {
   public readonly separator: string;
   public readonly timeout: number;
 
-  private readonly bucket: IBucket;
   private readonly encoder: IEncoder<unknown, string | undefined>;
   private readonly logger: ILogger;
   private readonly retry: IRetry;
   private readonly store: IStore;
 
   constructor({
-    bucket = new Bucket(),
     encoder = new JSONEncoder(),
     logger = new Logger(),
     namespace = "",
@@ -51,7 +47,6 @@ export abstract class ResonateBase {
     timeout = 10000, // 10s
     url = undefined,
   }: Partial<ResonateOptions> = {}) {
-    this.bucket = bucket;
     this.encoder = encoder;
     this.logger = logger;
     this.namespace = namespace;
@@ -89,11 +84,8 @@ export abstract class ResonateBase {
       throw new Error(`Function ${name} not registered`);
     }
 
-    // id = (this.namespace === "" ? [name, id] : [this.namespace, name, id]).join(this.separator);
-
     const { func, opts } = this.functions[name];
     return this.schedule(name, 1, id, func, args, opts);
-    // return this.scheduler.add(name, 1, id, func, args, opts);
   }
 
   protected abstract schedule(
@@ -104,14 +96,6 @@ export abstract class ResonateBase {
     args: any[],
     opts: Options,
   ): ResonatePromise<any>;
-
-  // recover() {
-  //   // TODO
-  // }
-
-  // schedule() {
-  //   // TODO
-  // }
 
   get promises() {
     return {
@@ -132,7 +116,6 @@ export abstract class ResonateBase {
   }
 
   options({
-    bucket = this.bucket,
     eid = utils.randomId(),
     encoder = this.encoder,
     retry = this.retry,
@@ -141,7 +124,6 @@ export abstract class ResonateBase {
   }: Partial<Options>): Options {
     return {
       __resonate: true,
-      bucket,
       eid,
       encoder,
       retry,

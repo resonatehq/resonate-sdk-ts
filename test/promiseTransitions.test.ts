@@ -1,6 +1,6 @@
 import { jest, describe, test, expect } from "@jest/globals";
 
-import { DurablePromise } from "../lib/core/promise";
+import { DurablePromise } from "../lib/core/promises/types";
 import { RemotePromiseStore } from "../lib/core/stores/remote";
 import { LocalPromiseStore } from "../lib/core/stores/local";
 import { WithTimeout } from "../lib/core/storages/withTimeout";

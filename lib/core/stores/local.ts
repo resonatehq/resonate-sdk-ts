@@ -14,8 +14,8 @@ import {
   isRejectedPromise,
   isCanceledPromise,
   isTimedoutPromise,
-} from "../promise";
-import { Schedule } from "../schedule";
+} from "../promises/types";
+import { Schedule } from "../schedules/types";
 import { IStorage } from "../storage";
 import { MemoryStorage } from "../storages/memory";
 import { WithTimeout } from "../storages/withTimeout";

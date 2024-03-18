@@ -1,8 +1,8 @@
-import { ResonateOptions, Options, PartialOptions } from "./core/opts";
+import { Execution, OrdinaryExecution, DeferredExecution } from "./core/execution";
+import { ResonatePromise } from "./core/future";
+import { Invocation } from "./core/invocation";
+import { ResonateOptions, Options, PartialOptions } from "./core/options";
 import * as utils from "./core/utils";
-import { Execution, OrdinaryExecution, DeferredExecution } from "./execution";
-import { ResonatePromise } from "./future";
-import { Invocation } from "./invocation";
 import { ResonateBase } from "./resonate";
 
 /////////////////////////////////////////////////////////////////////

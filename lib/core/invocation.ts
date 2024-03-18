@@ -1,5 +1,5 @@
-import { Options, PartialOptions, isPartialOptions } from "./core/opts";
 import { Future } from "./future";
+import { Options, PartialOptions, isPartialOptions } from "./options";
 
 /////////////////////////////////////////////////////////////////////
 // Invocation
@@ -75,8 +75,4 @@ export class Invocation<T> {
       ? { args: args.slice(0, -1), opts: { ...parentOpts, ...opts } }
       : { args, opts: parentOpts };
   }
-
-  // TODO
-  // suspendable(): boolean;
-  // suspend(): void | Promise<void>;
 }

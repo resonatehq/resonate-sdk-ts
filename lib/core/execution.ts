@@ -1,7 +1,7 @@
-import { DurablePromise } from "./core/durablePromise";
-import { IRetry } from "./core/retry";
 import { Future, ResonatePromise } from "./future";
 import { Invocation } from "./invocation";
+import { DurablePromise } from "./promises/promises";
+import { IRetry } from "./retry";
 
 /////////////////////////////////////////////////////////////////////
 // Execution
@@ -92,11 +92,10 @@ export class DeferredExecution<T> extends Execution<T> {
         this.invocation.opts.encoder,
         this.invocation.id,
         this.invocation.opts.timeout,
-        { idempotencyKey: this.invocation.idempotencyKey },
+        { idempotencyKey: this.invocation.idempotencyKey, poll: true },
       );
 
-      // TODO: poll
-      // promise.completed.then(p => p.resolved ? this.invocation.resolve(p.value) : this.invocation.reject(p.error));
+      promise.completed.then((p) => (p.resolved ? this.invocation.resolve(p.value) : this.invocation.reject(p.error)));
     } catch (e) {
       this.invocation.kill(e);
     }
@@ -113,7 +112,6 @@ export class GeneratorExecution<T> extends Execution<T> {
   constructor(
     invocation: Invocation<T>,
     public generator: Generator<any, T>,
-    // public promise: DurablePromise<T>,
   ) {
     super(invocation);
   }

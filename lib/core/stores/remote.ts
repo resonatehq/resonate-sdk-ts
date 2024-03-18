@@ -12,8 +12,8 @@ import {
   TimedoutPromise,
   isDurablePromise,
   isCompletedPromise,
-} from "../promise";
-import { Schedule, isSchedule } from "../schedule";
+} from "../promises/types";
+import { Schedule, isSchedule } from "../schedules/types";
 import { ILockStore, IStore, IPromiseStore, IScheduleStore } from "../store";
 
 export class RemoteStore implements IStore {
@@ -261,7 +261,7 @@ export class RemotePromiseStore implements IPromiseStore {
 export class RemoteScheduleStore implements IScheduleStore {
   constructor(
     private url: string,
-    private logger: ILogger,
+    private logger: ILogger = new Logger(),
     private encoder: IEncoder<string, string> = new Base64Encoder(),
   ) {}
 

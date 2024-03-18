@@ -1,4 +1,3 @@
-import { IBucket } from "./bucket";
 import { IEncoder } from "./encoder";
 import { ILogger } from "./logger";
 import { IRetry } from "./retry";
@@ -8,12 +7,6 @@ import { IStore } from "./store";
  * Resonate configuration options.
  */
 export interface ResonateOptions {
-  /**
-   * A bucket instance, if not provided a default bucket will be
-   * used.
-   */
-  bucket: IBucket;
-
   /**
    * An encoder instance used for encoding and decoding values
    * returned (or thrown) by registered functions. If not provided,
@@ -72,11 +65,6 @@ export interface Options {
   __resonate: true;
 
   /**
-   * Overrides the default bucket.
-   */
-  bucket: IBucket;
-
-  /**
    * Overrides the generated default execution id.
    */
   eid: string;
@@ -85,11 +73,6 @@ export interface Options {
    * Overrides the default encoder.
    */
   encoder: IEncoder<unknown, string | undefined>;
-
-  /**
-   * Overrides the default promise idempotency key.
-   */
-  // idempotencyKey: string | undefined;
 
   /**
    * Overrides the default retry policy.
@@ -105,12 +88,6 @@ export interface Options {
    * Overrides the default timeout.
    */
   timeout: number;
-
-  /**
-   * Test Only
-   * Probability of failure.
-   */
-  // test: { p: number; generator: () => number };
 }
 
 export type PartialOptions = Partial<Options> & { __resonate: true };

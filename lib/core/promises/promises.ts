@@ -1,6 +1,6 @@
-import { IEncoder } from "./encoder";
-import { PendingPromise, ResolvedPromise, RejectedPromise, CanceledPromise, TimedoutPromise } from "./promise";
-import { IPromiseStore } from "./store";
+import { IEncoder } from "../encoder";
+import { IPromiseStore } from "../store";
+import { PendingPromise, ResolvedPromise, RejectedPromise, CanceledPromise, TimedoutPromise } from "./types";
 
 export type CompleteOptions = {
   idempotencyKey: string;
@@ -11,6 +11,7 @@ export type CompleteOptions = {
 export type CreateOptions = CompleteOptions & {
   param: any;
   tags: Record<string, string>;
+  poll: boolean;
 };
 
 export class DurablePromise<T> {
@@ -18,17 +19,22 @@ export class DurablePromise<T> {
   readonly completed: Promise<DurablePromise<T>>;
   private complete!: (value: DurablePromise<T>) => void;
 
+  private interval: NodeJS.Timeout | undefined;
+
   constructor(
     private store: IPromiseStore,
     private encoder: IEncoder<unknown, string | undefined>,
-    private _promise: PendingPromise | ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise,
+    private promise: PendingPromise | ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise,
+    poll: boolean = false,
   ) {
     this.created = Promise.resolve(this);
     this.completed = new Promise((resolve) => {
       this.complete = resolve;
     });
 
-    this.promise = _promise;
+    if (poll) {
+      this.interval = setInterval(() => this.poll(), 5000);
+    }
   }
 
   get id() {
@@ -71,17 +77,6 @@ export class DurablePromise<T> {
     return this.encoder.decode(this.promise.value.data);
   }
 
-  private get promise() {
-    return this._promise;
-  }
-
-  private set promise(promise: PendingPromise | ResolvedPromise | RejectedPromise | CanceledPromise | TimedoutPromise) {
-    this._promise = promise;
-    if (!this.pending) {
-      this.complete(this);
-    }
-  }
-
   static async get<T>(store: IPromiseStore, encoder: IEncoder<unknown, string | undefined>, id: string) {
     return new DurablePromise<T>(store, encoder, await store.get(id));
   }
@@ -105,6 +100,7 @@ export class DurablePromise<T> {
         timeout,
         opts.tags,
       ),
+      opts.poll ?? false,
     );
   }
 
@@ -160,6 +156,11 @@ export class DurablePromise<T> {
           opts.headers,
           this.encoder.encode(value),
         );
+
+    if (!this.pending) {
+      this.complete(this);
+    }
+
     return this;
   }
 
@@ -173,6 +174,11 @@ export class DurablePromise<T> {
           opts.headers,
           this.encoder.encode(error),
         );
+
+    if (!this.pending) {
+      this.complete(this);
+    }
+
     return this;
   }
 
@@ -186,6 +192,24 @@ export class DurablePromise<T> {
           opts.headers,
           this.encoder.encode(error),
         );
+
+    if (!this.pending) {
+      this.complete(this);
+    }
+
     return this;
+  }
+
+  private async poll() {
+    try {
+      this.promise = await this.store.get(this.id);
+
+      if (!this.pending) {
+        this.complete(this);
+        clearInterval(this.interval);
+      }
+    } catch (e) {
+      // TODO: log
+    }
   }
 }
