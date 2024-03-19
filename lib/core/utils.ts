@@ -8,5 +8,8 @@ export function hash(s: string): string {
     h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
   }
 
-  return Math.abs(h).toString(16);
+  // Generate fixed length hexadecimal hash
+  const hashString = (Math.abs(h) >>> 0).toString(16); // Convert to unsigned int and then to hexadecimal
+  const maxLength = 8;
+  return "0".repeat(Math.max(0, maxLength - hashString.length)) + hashString;
 }

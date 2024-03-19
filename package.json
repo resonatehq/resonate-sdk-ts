@@ -20,7 +20,7 @@
         "lint:fix": "eslint . --fix",
         "prettier": "prettier . --check",
         "prettier:fix": "prettier . --write",
-        "docs": "npx typedoc lib/index.ts --githubPages ",
+        "docs": "npx typedoc lib/index.ts --githubPages",
         "debug": "node --inspect-brk ./node_modules/.bin/jest -i"
     },
     "files": [
@@ -29,7 +29,6 @@
     "devDependencies": {
         "@jest/globals": "^29.7.0",
         "@types/node": "^20.11.19",
-        "@types/seedrandom": "^3.0.8",
         "@typescript-eslint/eslint-plugin": "^6.10.0",
         "eslint": "^8.53.0",
         "eslint-config-prettier": "^9.0.0",
@@ -39,7 +38,6 @@
         "eslint-plugin-n": "^16.3.1",
         "eslint-plugin-promise": "^6.1.1",
         "prettier": "^3.2.5",
-        "seedrandom": "^3.0.5",
         "ts-jest": "^29.1.1",
         "ts-node": "^10.9.2",
         "typedoc": "^0.25.7",
@@ -47,7 +45,6 @@
         "typescript": "^5.2.2"
     },
     "dependencies": {
-        "@opentelemetry/api": "^1.7.0",
         "cron-parser": "^4.9.0"
     }
 }

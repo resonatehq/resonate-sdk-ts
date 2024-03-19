@@ -27,20 +27,9 @@ export interface ResonateOptions {
   logger: ILogger;
 
   /**
-   * Your resonate namespace, defaults to an empty string.
-   */
-  namespace: string;
-
-  /**
    * A retry instance, defaults to exponential backoff.
    */
   retry: IRetry;
-
-  /**
-   * A seperator token used for constructing promise ids, defaults to
-   * "/".
-   */
-  separator: string;
 
   /**
    * A store instance, if provided this will take precedence over a
@@ -61,13 +50,11 @@ export interface ResonateOptions {
   url: string;
 }
 
+/**
+ * Resonate function invocation options.
+ */
 export interface Options {
   __resonate: true;
-
-  /**
-   * Overrides the generated default execution id.
-   */
-  eid: string;
 
   /**
    * Overrides the default encoder.

@@ -1,9 +1,7 @@
+import { describe, test, expect, jest } from "@jest/globals";
 import { Schedule } from "../lib/core/schedules/types";
-import { IStore } from "../lib/core/store";
-import { LocalScheduleStore, LocalStore } from "../lib/core/stores/local";
-import { describe, beforeEach, test, expect, jest } from "@jest/globals";
-import { RemoteScheduleStore, RemoteStore } from "../lib/core/stores/remote";
-import { Logger } from "../lib/core/loggers/logger";
+import { LocalScheduleStore } from "../lib/core/stores/local";
+import { RemoteScheduleStore } from "../lib/core/stores/remote";
 
 jest.setTimeout(10000);
 
@@ -11,11 +9,6 @@ describe("Store: Schedules", () => {
   const useDurable = process.env.USE_DURABLE === "true";
   const url = process.env.RESONATE_URL || "http://localhost:8001";
   const store = useDurable ? new RemoteScheduleStore(url) : new LocalScheduleStore();
-
-  // beforeEach(() => {
-  //   const url = process.env.RESONATE_URL || "http://localhost:8001";
-  //   store = useDurable ? new RemoteStore(url, "", new Logger()) : new LocalStore();
-  // });
 
   test("Schedule Store: Create schedule", async () => {
     const scheduleId = "new-schedule";

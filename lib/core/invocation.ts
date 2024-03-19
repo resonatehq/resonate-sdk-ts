@@ -23,6 +23,15 @@ export class Invocation<T> {
   awaited: Future<any>[] = [];
   blocked: Future<any> | null = null;
 
+  /**
+   * Represents a Resonate function invocation.
+   *
+   * @constructor
+   * @param id - A unique id for this invocation.
+   * @param idempotencyKey - An idempotency key used to deduplicate invocations.
+   * @param opts - The invocation options.
+   * @param parent - The parent invocation.
+   */
   constructor(
     public readonly id: string,
     public readonly idempotencyKey: string | undefined,

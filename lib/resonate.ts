@@ -25,9 +25,7 @@ type Func = (...args: any[]) => any;
 export abstract class ResonateBase {
   private readonly functions: Record<string, { func: Func; opts: Options }> = {};
 
-  public readonly namespace: string;
   public readonly pid: string;
-  public readonly separator: string;
   public readonly timeout: number;
 
   protected readonly encoder: IEncoder<unknown, string | undefined>;
@@ -38,21 +36,16 @@ export abstract class ResonateBase {
   constructor({
     encoder = new JSONEncoder(),
     logger = new Logger(),
-    namespace = "",
     pid = utils.randomId(),
-    // retry = Retry.exponential(),
-    retry = Retry.linear(0, 3),
-    separator = "/",
+    retry = Retry.exponential(),
     store = undefined,
     timeout = 10000, // 10s
     url = undefined,
   }: Partial<ResonateOptions> = {}) {
     this.encoder = encoder;
     this.logger = logger;
-    this.namespace = namespace;
     this.pid = pid;
     this.retry = retry;
-    this.separator = separator;
     this.timeout = timeout;
 
     if (store) {
@@ -116,7 +109,6 @@ export abstract class ResonateBase {
   }
 
   options({
-    eid = utils.randomId(),
     encoder = this.encoder,
     retry = this.retry,
     store = this.store,
@@ -124,7 +116,6 @@ export abstract class ResonateBase {
   }: Partial<Options>): Options {
     return {
       __resonate: true,
-      eid,
       encoder,
       retry,
       store,
