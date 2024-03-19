@@ -1,12 +1,13 @@
-import { ILogger } from "../logger";
-
-type LogLevel = "debug" | "info" | "warn" | "error";
+import { ILogger, LogLevel } from "../logger";
 
 export class Logger implements ILogger {
+  public level: LogLevel;
   private _level: number;
 
-  constructor(public level: LogLevel = "info") {
-    switch (level) {
+  constructor(level?: LogLevel) {
+    this.level = level ?? (process.env.LOG_LEVEL as LogLevel) ?? "info";
+
+    switch (this.level) {
       case "debug":
         this._level = 0;
         break;
@@ -36,6 +37,12 @@ export class Logger implements ILogger {
 
   error(...args: any[]): void {
     this.log(3, args);
+  }
+
+  table(...args: any[]): void {
+    if (this._level <= 0) {
+      console.table(...args);
+    }
   }
 
   private log(level: number, args: any[]): void {

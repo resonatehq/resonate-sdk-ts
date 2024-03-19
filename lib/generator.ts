@@ -1,6 +1,7 @@
 import { DeferredExecution, Execution, GeneratorExecution, OrdinaryExecution } from "./core/execution";
 import { Future, ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
+import { ILogger } from "./core/logger";
 import { ResonateOptions, Options, PartialOptions } from "./core/options";
 import { DurablePromise } from "./core/promises/promises";
 import * as utils from "./core/utils";
@@ -64,7 +65,7 @@ export class Resonate extends ResonateBase {
 
   constructor(opts: Partial<ResonateOptions> = {}) {
     super(opts);
-    this.scheduler = new Scheduler();
+    this.scheduler = new Scheduler(this.logger);
   }
 
   register<F extends GFunc>(
@@ -75,7 +76,7 @@ export class Resonate extends ResonateBase {
     return super.register(name, func, opts);
   }
 
-  protected schedule<F extends GFunc>(
+  protected execute<F extends GFunc>(
     name: string,
     version: number,
     id: string,
@@ -167,7 +168,7 @@ export class Context {
 // Scheduler
 /////////////////////////////////////////////////////////////////////
 
-export class Scheduler {
+class Scheduler {
   // tick is mutually exclusive
   private running: boolean = false;
 
@@ -185,6 +186,8 @@ export class Scheduler {
 
   // executions that have been killed
   private killed: Invocation<any>[] = [];
+
+  constructor(private logger: ILogger) {}
 
   add(name: string, version: number, id: string, func: GFunc, args: any[], opts: Options) {
     if (this.executions[id] && !this.executions[id].execution.invocation.killed) {
@@ -217,11 +220,12 @@ export class Scheduler {
     while (this.runnable.length > 0) {
       const continuation = this.runnable.shift();
 
-      const key = await keypress();
-      if (key === "\u001b") {
+      if (this.logger.level === "debug" && (await this.keypress()) === "\u001b") {
         // kill when escape key is pressed
         continuation?.execution.invocation.kill("manually killed");
       }
+
+      this.print();
 
       if (continuation && !continuation.execution.invocation.killed) {
         try {
@@ -248,9 +252,6 @@ export class Scheduler {
           this.kill(continuation.execution);
         }
       }
-
-      // debugging
-      this.print();
     }
 
     // TODO: check if we can suspend
@@ -267,7 +268,7 @@ export class Scheduler {
       case "error":
         return execution.generator.throw(next.error);
       default:
-        yeet(`permitted continuation values are (init, value, error), received ${next}`);
+        this.yeet(`permitted continuation values are (init, value, error), received ${next}`);
     }
   }
 
@@ -280,7 +281,7 @@ export class Scheduler {
         this.applyFuture(continuation, yielded);
         break;
       default:
-        yeet(`permitted yielded values are (call, future), received ${yielded}`);
+        this.yeet(`permitted yielded values are (call, future), received ${yielded}`);
     }
   }
 
@@ -311,7 +312,7 @@ export class Scheduler {
       const execution = new DeferredExecution(invocation);
       execution.execute();
     } else {
-      yeet(`permitted call values are (resonate, ordinary, deferred), received ${value}`);
+      this.yeet(`permitted call values are (resonate, ordinary, deferred), received ${value}`);
     }
 
     if (yieldFuture) {
@@ -327,7 +328,7 @@ export class Scheduler {
 
   private applyFuture({ execution, promise }: Continuation<any>, future: Future<any>) {
     if (execution.invocation.future.root !== future.root) {
-      yeet(
+      this.yeet(
         `yielded future originates from ${future.root.id}, but this execution originates from ${execution.invocation.future.root.id}`,
       );
     }
@@ -364,10 +365,32 @@ export class Scheduler {
     this.runnable = this.runnable.filter((c) => c.execution.invocation.root !== execution.invocation.root);
   }
 
+  private async keypress(): Promise<string> {
+    this.logger.debug("Press any key to continue...");
+
+    return new Promise((resolve) => {
+      const onData = (data: Buffer) => {
+        process.stdin.removeListener("data", onData);
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+
+        const c = data.toString();
+        if (c === "\u0003") {
+          this.logger.debug("^C");
+          process.exit(1);
+        }
+        resolve(c);
+      };
+
+      process.stdin.resume();
+      process.stdin.setRawMode(true);
+      process.stdin.once("data", onData);
+    });
+  }
+
   print() {
-    // all invocations
-    console.log("\n \x1b[1mInvocations\x1b[0m");
-    console.table(
+    this.logger.debug("Invocations");
+    this.logger.table(
       this.invocations.map((i) => ({
         id: i.id,
         idempotencyKey: i.idempotencyKey,
@@ -378,33 +401,10 @@ export class Scheduler {
       })),
     );
   }
-}
 
-// helper functions
-function yeet(msg: string): never {
-  console.log(msg);
-  process.exit(1);
-}
-
-async function keypress(): Promise<string> {
-  console.log("Press any key to continue...");
-
-  return new Promise((resolve) => {
-    const onData = (data: Buffer) => {
-      process.stdin.removeListener("data", onData);
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
-
-      const c = data.toString();
-      if (c === "\u0003") {
-        console.log("^C");
-        process.exit(1);
-      }
-      resolve(c);
-    };
-
-    process.stdin.resume();
-    process.stdin.setRawMode(true);
-    process.stdin.once("data", onData);
-  });
+  // helper functions
+  private yeet(msg: string): never {
+    this.logger.error(msg);
+    process.exit(1);
+  }
 }

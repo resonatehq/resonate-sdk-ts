@@ -30,10 +30,10 @@ export abstract class ResonateBase {
   public readonly separator: string;
   public readonly timeout: number;
 
-  private readonly encoder: IEncoder<unknown, string | undefined>;
-  private readonly logger: ILogger;
-  private readonly retry: IRetry;
-  private readonly store: IStore;
+  protected readonly encoder: IEncoder<unknown, string | undefined>;
+  protected readonly logger: ILogger;
+  protected readonly retry: IRetry;
+  protected readonly store: IStore;
 
   constructor({
     encoder = new JSONEncoder(),
@@ -85,10 +85,10 @@ export abstract class ResonateBase {
     }
 
     const { func, opts } = this.functions[name];
-    return this.schedule(name, 1, id, func, args, opts);
+    return this.execute(name, 1, id, func, args, opts);
   }
 
-  protected abstract schedule(
+  protected abstract execute(
     name: string,
     version: number,
     id: string,

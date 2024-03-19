@@ -37,7 +37,7 @@ export class Resonate extends ResonateBase {
     return super.register(name, func, opts);
   }
 
-  protected schedule<F extends AFunc>(
+  protected execute<F extends AFunc>(
     name: string,
     version: number,
     id: string,
@@ -134,7 +134,7 @@ export class Context {
 // Scheduler
 /////////////////////////////////////////////////////////////////////
 
-export class Scheduler {
+class Scheduler {
   private executions: Record<string, { execution: Execution<any>; promise: ResonatePromise<any> }> = {};
 
   add<F extends AFunc>(
