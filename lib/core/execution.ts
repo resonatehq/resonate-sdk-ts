@@ -63,7 +63,7 @@ export class OrdinaryExecution<T> extends Execution<T> {
         this.invocation.opts.store.promises,
         this.invocation.opts.encoder,
         this.invocation.id,
-        this.invocation.opts.timeout,
+        this.invocation.timeout,
         { idempotencyKey: this.invocation.idempotencyKey },
       );
 
@@ -106,7 +106,7 @@ export class DeferredExecution<T> extends Execution<T> {
         this.invocation.opts.store.promises,
         this.invocation.opts.encoder,
         this.invocation.id,
-        this.invocation.opts.timeout,
+        this.invocation.timeout,
         { idempotencyKey: this.invocation.idempotencyKey, poll: true },
       );
 
@@ -140,7 +140,7 @@ export class GeneratorExecution<T> extends Execution<T> {
         this.invocation.opts.store.promises,
         this.invocation.opts.encoder,
         this.invocation.id,
-        this.invocation.opts.timeout,
+        this.invocation.timeout,
         { idempotencyKey: this.invocation.idempotencyKey },
       );
 
