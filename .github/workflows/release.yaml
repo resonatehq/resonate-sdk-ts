@@ -2,7 +2,8 @@ name: Resonate SDK TypeScript Release Workflow
 
 on:
   push:
-    branches: ["release-*"]
+    branches: 
+      - "release-*"
   workflow_dispatch:
 
 jobs:
@@ -23,8 +24,8 @@ jobs:
           MINOR_STRING_TOKEN: minor(
           PATCH_STRING_TOKEN: patch(
           TAG_CONTEXT: branch
-      outputs:
-        new_tag: ${{ steps.tag_version.outputs.new_tag }}
+    outputs:
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
 
   build-artifacts:
     needs: [bump-version]
@@ -55,7 +56,8 @@ jobs:
       - name: Build and push Docker image
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm install -g npm &&
+        run: |
+          npm install -g npm &&
           npm publish --access public --tag ${{ needs.bump-version.outputs.new_tag }}
 
   verify-github-artifacts:
@@ -64,5 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Resonate SDK and run tests
-        run: npm install --save @resonatehq/sdk@${{ needs.bump-version.outputs.new_tag }} ts-node@latest && node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld.ts
+        run: |
+          npm install --save @resonatehq/sdk@${{ needs.bump-version.outputs.new_tag }} ts-node@latest
+          node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld.ts
         working-directory: .github/workflows/hello_world
