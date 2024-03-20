@@ -2,7 +2,7 @@ name: Resonate SDK TypeScript Release Workflow
 
 on:
   push:
-    branches: 
+    branches:
       - "release-*"
   workflow_dispatch:
 
@@ -47,7 +47,7 @@ jobs:
         run: npm run prettier
       - name: Build
         run: npm run build
-  
+
   publish-github-artifacts:
     needs: [bump-version]
     runs-on: ubuntu-latest
