@@ -1,0 +1,68 @@
+name: Resonate SDK TypeScript Release Workflow
+
+on:
+  push:
+    branches: ["release-*"]
+  workflow_dispatch:
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Bump version and push tag
+        id: tag_version
+        uses: anothrNick/github-tag-action@1.64.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WITH_V: true
+          MAJOR_STRING_TOKEN: major(
+          MINOR_STRING_TOKEN: minor(
+          PATCH_STRING_TOKEN: patch(
+          TAG_CONTEXT: branch
+      outputs:
+        new_tag: ${{ steps.tag_version.outputs.new_tag }}
+
+  build-artifacts:
+    needs: [bump-version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Install dependencies
+        run: npm install
+      - name: Run tests
+        run: npm test
+      - name: Run linter
+        run: npm run lint
+      - name: Run prettier
+        run: npm run prettier
+      - name: Build
+        run: npm run build
+  
+  publish-github-artifacts:
+    needs: [bump-version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and push Docker image
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm install -g npm &&
+          npm publish --access public --tag ${{ needs.bump-version.outputs.new_tag }}
+
+  verify-github-artifacts:
+    needs: [bump-version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Resonate SDK and run tests
+        run: npm install --save @resonatehq/sdk@${{ needs.bump-version.outputs.new_tag }} ts-node@latest && node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld.ts
+        working-directory: .github/workflows/hello_world
