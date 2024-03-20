@@ -86,9 +86,20 @@ export class Resonate extends ResonateBase {
   register<F extends GFunc>(
     name: string,
     func: F,
-    opts: Partial<Options> = {},
-  ): (id: string, ...args: Params<F>) => ResonatePromise<Return<F>> {
-    return super.register(name, func, opts);
+    opts?: Partial<Options>,
+  ): (id: string, ...args: any) => ResonatePromise<Return<F>>;
+  register<F extends GFunc>(
+    name: string,
+    version: number,
+    func: F,
+    opts?: Partial<Options>,
+  ): (id: string, ...args: any) => ResonatePromise<Return<F>>;
+  register<F extends GFunc>(
+    name: string,
+    funcOrVersion: F | number,
+    funcOrOpts: F | Partial<Options>,
+  ): (id: string, ...args: any) => ResonatePromise<Return<F>> {
+    return super.register(name, funcOrVersion, funcOrOpts);
   }
 
   /**
@@ -123,6 +134,13 @@ export class Info {
   constructor(private invocation: Invocation<any>) {}
 
   /**
+   * The running count of function execution attempts.
+   */
+  get attempt() {
+    return this.invocation.attempt;
+  }
+
+  /**
    * Uniquely identifies the function invocation.
    */
   get id() {
@@ -144,10 +162,10 @@ export class Info {
   }
 
   /**
-   * The running count of function execution attempts.
+   * The resonate function version.
    */
-  get attempt() {
-    return this.invocation.attempt;
+  get version() {
+    return this.invocation.version;
   }
 }
 
@@ -155,6 +173,13 @@ export class Context {
   constructor(private invocation: Invocation<any>) {}
 
   /**
+   * The running count of child function invocations.
+   */
+  get counter() {
+    return this.invocation.counter;
+  }
+
+  /**
    * Uniquely identifies the function invocation.
    */
   get id() {
@@ -176,10 +201,10 @@ export class Context {
   }
 
   /**
-   * The running count of child function invocations.
+   * The resonate function version.
    */
-  get counter() {
-    return this.invocation.counter;
+  get version() {
+    return this.invocation.version;
   }
 
   /**
@@ -306,8 +331,18 @@ class Scheduler {
     // the idempotency key is a hash of the id
     const idempotencyKey = utils.hash(id);
 
+    // params, used for recovery
+    const param = {
+      func: name,
+      version,
+      args,
+    };
+
+    // add an invocation tag
+    opts.tags["resonate:invocation"] = "true";
+
     // create a new invocation
-    const invocation = new Invocation(id, idempotencyKey, opts);
+    const invocation = new Invocation(id, idempotencyKey, param, opts, version);
 
     // create a new execution
     const generator = func(new Context(invocation), ...args);
@@ -430,7 +465,14 @@ class Scheduler {
     const idempotencyKey = utils.hash(id);
 
     // create a new invocation
-    const invocation = new Invocation(id, idempotencyKey, value.opts, continuation.execution.invocation);
+    const invocation = new Invocation(
+      id,
+      idempotencyKey,
+      undefined,
+      value.opts,
+      continuation.execution.invocation.version,
+      continuation.execution.invocation,
+    );
     this.invocations.push(invocation);
 
     // add child and increment counter
