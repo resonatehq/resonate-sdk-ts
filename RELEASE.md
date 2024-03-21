@@ -1,17 +1,13 @@
-# Release Notes - Version 1.2.3
+# Release Notes - Version 0.2.0
 
 ## Overview
-This release introduces X.
+This release introduces release automations to sdk.
 
 ## New Features
-- Added support for X. 
-- Implemented a new X. 
-- Introduced a X. 
+- Standardised the release.
 
 ## Enhancements
-- Optimized the X.
-- Refined the user interface for X.
-- Enhanced the search functionality for X.
+- improvements in the release process.
 
 ## Bug Fixes
 - Fixed an issue where X.
@@ -20,4 +16,3 @@ This release introduces X.
 
 ## Known Issues
 - The new collaboration feature may experience some limitations when X.
-- The X is currently not available for X. This will be addressed in a future update.

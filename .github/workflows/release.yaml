@@ -35,7 +35,7 @@ jobs:
           make_latest: true
 
   publish-npm-package:
-    needs: [build-artifacts]
+    needs: [bump-version]
     runs-on: ubuntu-latest
     permissions:
       contents: read
