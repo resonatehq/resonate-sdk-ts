@@ -39,10 +39,15 @@ jobs:
         run: npm run build
 
   publish-github-artifacts:
-    needs: [bump-version]
+    needs: [build-artifacts]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
       - name: Build and push Docker image
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -51,7 +56,7 @@ jobs:
           npm publish --provenance --access public --tag v${{ steps.get_version.outputs.version }}
 
   verify-github-artifacts:
-    needs: [bump-version]
+    needs: [publish-github-artifacts]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
