@@ -37,7 +37,7 @@ jobs:
         run: npm run prettier
       - name: Build
         run: npm run build
-        
+
   publish-github-artifacts:
     needs: [build-artifacts]
     runs-on: ubuntu-latest
