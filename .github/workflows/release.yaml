@@ -68,5 +68,5 @@ jobs:
       - name: Install Resonate SDK and run tests
         run: |
           npm install --save @resonatehq/sdk@${{ needs.bump-version.outputs.new_tag }} ts-node@latest
-          node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld.ts
+          node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld_release.ts
         working-directory: .github/workflows/hello_world
