@@ -23,8 +23,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Create tag
+        uses: actions/github-script@v5
+        with:
+          script: |
+            github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'refs/tags/${{ steps.get_version.outputs.version }}',
+              sha: context.sha
+            })
       - name: Test
-        run: cat RELEASE.md
+        run: cat RELEASE.md # Test that the file exists
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
