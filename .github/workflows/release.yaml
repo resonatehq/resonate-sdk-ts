@@ -19,9 +19,6 @@ jobs:
         id: get_version
         run: |
           echo "::set-output name=version::$(node -e 'console.log(require("./package.json").version)')"
-      - name: echo version
-        run: |
-          echo "Version: ${{ steps.get_version.outputs.version }}"
 
   # Create a tag if it does not exist
   create-tag:
@@ -62,25 +59,25 @@ jobs:
           generate_release_notes: true
           make_latest: true
 
-  # publish-npm-package:
-  #   needs: [bump-version]
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: read
-  #     id-token: write
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Set up Node
-  #       uses: actions/setup-node@v2
-  #       with:
-  #         node-version: "20"
-  #         registry-url: "https://registry.npmjs.org"
-  #     - name: Build and push npm package
-  #       env:
-  #         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-  #       run: |
-  #         npm install -g npm &&
-  #         npm publish --provenance --access public --tag v${{ steps.get_version.outputs.version }}
+  publish-npm-package:
+    needs: [bump-version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Build and push npm package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm install -g npm &&
+          npm publish --provenance --access public --tag v${{ steps.get_version.outputs.version }}
 
   verify-npm-package:
     needs: [publish-npm-package]

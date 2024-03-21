@@ -16,6 +16,7 @@ This release introduces release automations to sdk.
 
 - Fixed an issue where X.
 - Resolved a problem with the X.
+- Addressed several major X glitches.
 - Addressed several minor X glitches.
 
 ## Known Issues
