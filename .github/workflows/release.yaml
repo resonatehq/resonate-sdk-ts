@@ -78,10 +78,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm &&
-          npm publish --provenance --access public --tag resonate-v${{ needs.bump-version.outputs.version }}
+          npm publish --provenance --access public --tag latest
 
   verify-npm-package:
-    needs: [publish-npm-package]
+    needs: [bump-version, publish-npm-package]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
