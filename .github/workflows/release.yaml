@@ -44,7 +44,7 @@ jobs:
   publish-github-release:
     needs: [bump-version, create-tag]
     runs-on: ubuntu-latest
-    permissions:
+    permissions: # The permissions needed to create a release
       contents: write
     steps:
       - name: Checkout
