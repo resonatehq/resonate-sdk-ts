@@ -58,7 +58,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm &&
-          npm publish --access public --tag ${{ needs.bump-version.outputs.new_tag }}
+          npm publish --provenance --access public --tag ${{ needs.bump-version.outputs.new_tag }}
 
   verify-github-artifacts:
     needs: [bump-version]
