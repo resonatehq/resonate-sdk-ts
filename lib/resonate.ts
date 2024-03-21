@@ -105,7 +105,27 @@ export abstract class ResonateBase {
     }
   }
 
+  /**
+   * Run a Resonate function. Functions must first be registered with {@link register}.
+   *
+   * @template T The return type of the function.
+   * @param id A unique id for the function invocation.
+   * @param name The function name.
+   * @param args The function arguments.
+   * @returns A promise that resolve to the function return value.
+   */
   run<T>(name: string, id: string, ...args: any[]): ResonatePromise<T>;
+
+  /**
+   * Run a Resonate function. Functions must first be registered with {@link register}.
+   *
+   * @template T The return type of the function.
+   * @param name The function name.
+   * @param version The function version.
+   * @param id A unique id for the function invocation.
+   * @param args The function arguments.
+   * @returns A promise that resolve to the function return value.
+   */
   run<T>(name: string, version: number, id: string, ...args: any[]): ResonatePromise<T>;
   run<T>(name: string, idOrVersion: string | number, ...args: any[]): ResonatePromise<T> {
     const id = typeof idOrVersion === "string" ? idOrVersion : args.shift();
@@ -128,9 +148,21 @@ export abstract class ResonateBase {
     opts: Options,
   ): ResonatePromise<any>;
 
+  /**
+   * Start the resonate service.
+   *
+   * @param delay Frequency in ms to check for pending promises.
+   */
   start(delay: number = 5000) {
     clearInterval(this.interval);
     this.interval = setInterval(() => this._start(), delay);
+  }
+
+  /**
+   * Stop the resonate service.
+   */
+  stop() {
+    clearInterval(this.interval);
   }
 
   private async _start() {
@@ -178,6 +210,12 @@ export abstract class ResonateBase {
     };
   }
 
+  /**
+   * Construct options.
+   *
+   * @param opts A partial {@link Options} object.
+   * @returns Options with the __resonate flag set.
+   */
   options({
     encoder = this.encoder,
     retry = this.retry,

@@ -88,6 +88,17 @@ export class Resonate extends ResonateBase {
     func: F,
     opts?: Partial<Options>,
   ): (id: string, ...args: any) => ResonatePromise<Return<F>>;
+
+  /**
+   * Register a function with Resonate. Registered functions can be invoked by calling {@link run}, or by the returned function.
+   *
+   * @template F The type of the generator function.
+   * @param name A unique name to identify the function.
+   * @param version Version of the function.
+   * @param func The generator function to register with Resonate.
+   * @param opts Resonate options, can be constructed by calling {@link options}.
+   * @returns Resonate function
+   */
   register<F extends GFunc>(
     name: string,
     version: number,
@@ -321,7 +332,14 @@ class Scheduler {
 
   constructor(private logger: ILogger) {}
 
-  add(name: string, version: number, id: string, func: GFunc, args: any[], opts: Options) {
+  add<F extends GFunc>(
+    name: string,
+    version: number,
+    id: string,
+    func: F,
+    args: Params<F>,
+    opts: Options,
+  ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
     if (this.executions[id] && !this.executions[id].execution.invocation.killed) {

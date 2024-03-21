@@ -49,6 +49,17 @@ export class Resonate extends ResonateBase {
     func: F,
     opts?: Partial<Options>,
   ): (id: string, ...args: any) => ResonatePromise<Return<F>>;
+
+  /**
+   * Register a function with Resonate. Registered functions can be invoked by calling {@link run}, or by the returned function.
+   *
+   * @template F The type of the function.
+   * @param name A unique name to identify the function.
+   * @param version Version of the function.
+   * @param func The function to register with Resonate.
+   * @param opts Resonate options, can be constructed by calling {@link options}.
+   * @returns Resonate function
+   */
   register<F extends AFunc>(
     name: string,
     version: number,
@@ -231,7 +242,7 @@ export class Context {
    * @param args The function arguments, optionally followed by {@link options}.
    * @returns A promise that resolves to the return value of the function.
    */
-  io<F extends IFunc>(func: F, ...args: [...Params<F>, PartialOptions?]): Promise<Return<F>>;
+  io<F extends IFunc>(func: F, ...args: [...Params<F>, PartialOptions?]): ResonatePromise<Return<F>>;
   io(func: (...args: any[]) => any, ...argsWithOpts: any[]): ResonatePromise<any> {
     const id = `${this.invocation.id}.${this.invocation.counter}`;
     const idempotencyKey = utils.hash(id);
