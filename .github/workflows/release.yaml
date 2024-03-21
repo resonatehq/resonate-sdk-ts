@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -33,9 +35,9 @@ jobs:
       - uses: rickstaa/action-create-tag@v1
         id: "tag_create"
         with:
-          tag: ${{ steps.get_version.outputs.version }}
+          tag: v${{ needs.bump-version.outputs.version }}
           tag_exists_error: false
-          message: "${{ steps.get_version.outputs.version }} release"
+          message: "${{ needs.bump-version.outputs.version }} release"
 
   publish-github-release:
     needs: [bump-version, create-tag]
@@ -49,8 +51,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE.md
-          name: Resonate ${{ steps.get_version.outputs.version }}
-          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Resonate v${{ needs.bump-version.outputs.version }}
+          tag_name: v${{ needs.bump-version.outputs.version }}
           generate_release_notes: true
           make_latest: true
 
@@ -72,7 +74,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm &&
-          npm publish --provenance --access public --tag v${{ steps.get_version.outputs.version }}
+          npm publish --provenance --access public --tag v${{ needs.bump-version.outputs.version }}
 
   verify-npm-package:
     needs: [publish-npm-package]
@@ -81,6 +83,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Resonate SDK and run tests
         run: |
-          npm install --save @resonatehq/sdk@${{ steps.get_version.outputs.version }} ts-node@latest
+          npm install --save @resonatehq/sdk@${{ needs.bump-version.outputs.version }} ts-node@latest
           node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld_release.ts
         working-directory: .github/workflows/hello_world
