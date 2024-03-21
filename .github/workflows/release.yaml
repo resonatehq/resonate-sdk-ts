@@ -17,28 +17,24 @@ jobs:
         run: |
           echo "::set-output name=version::$(node -e 'console.log(require("./package.json").version)')"
 
-  build-artifacts:
+  publish-github-release:
     needs: [bump-version]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Set up Node
-        uses: actions/setup-node@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Test
+        run: cat RELEASE.md
+      - name: Release
+        uses: softprops/action-gh-release@v2
         with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-      - name: Install dependencies
-        run: npm install
-      - name: Run tests
-        run: npm test
-      - name: Run linter
-        run: npm run lint
-      - name: Run prettier
-        run: npm run prettier
-      - name: Build
-        run: npm run build
+          body_path: RELEASE.md
+          name: Resonate ${{ steps.get_version.outputs.version }}
+          tag_name: ${{ steps.get_version.outputs.version }}
+          generate_release_notes: true
+          make_latest: true
 
-  publish-github-artifacts:
+  publish-npm-package:
     needs: [build-artifacts]
     runs-on: ubuntu-latest
     permissions:
@@ -58,8 +54,8 @@ jobs:
           npm install -g npm &&
           npm publish --provenance --access public --tag v${{ steps.get_version.outputs.version }}
 
-  verify-github-artifacts:
-    needs: [publish-github-artifacts]
+  verify-npm-package:
+    needs: [publish-npm-package]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
