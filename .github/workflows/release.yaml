@@ -37,10 +37,13 @@ jobs:
         run: npm run prettier
       - name: Build
         run: npm run build
-
+        
   publish-github-artifacts:
     needs: [build-artifacts]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - name: Set up Node
@@ -48,7 +51,7 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
-      - name: Build and push Docker image
+      - name: Build and push npm package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
