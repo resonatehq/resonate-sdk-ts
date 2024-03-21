@@ -12,20 +12,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Bump version and push tag
-        id: tag_version
-        uses: anothrNick/github-tag-action@1.64.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WITH_V: true
-          MAJOR_STRING_TOKEN: major(
-          MINOR_STRING_TOKEN: minor(
-          PATCH_STRING_TOKEN: patch(
-          TAG_CONTEXT: branch
-    outputs:
-      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+      - name: Get version from package.json
+        id: get_version
+        run: |
+          echo "::set-output name=version::$(node -e 'console.log(require("./package.json").version)')"
 
   build-artifacts:
     needs: [bump-version]
@@ -58,7 +48,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm &&
-          npm publish --provenance --access public --tag ${{ needs.bump-version.outputs.new_tag }}
+          npm publish --provenance --access public --tag v${{ steps.get_version.outputs.version }}
 
   verify-github-artifacts:
     needs: [bump-version]
@@ -67,6 +57,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Resonate SDK and run tests
         run: |
-          npm install --save @resonatehq/sdk@${{ needs.bump-version.outputs.new_tag }} ts-node@latest
+          npm install --save @resonatehq/sdk@${{ steps.get_version.outputs.version }} ts-node@latest
           node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld_release.ts
         working-directory: .github/workflows/hello_world
