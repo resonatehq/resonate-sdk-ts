@@ -1,5 +1,5 @@
 import * as cronParser from "cron-parser";
-import { ErrorCodes, ResonateStorageError } from "../error";
+import { ErrorCodes, ResonateStorageError } from "../errors";
 import { ILogger } from "../logger";
 import { Logger } from "../loggers/logger";
 import {

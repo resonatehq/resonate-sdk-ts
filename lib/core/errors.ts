@@ -7,9 +7,6 @@ export enum ErrorCodes {
   ALREADY_EXISTS = 5,
   INVALID_STATE = 6,
   ENCODER = 7,
-  CANCELED = 8,
-  TIMEDOUT = 9,
-  KILLED = 10,
 }
 
 export class ResonateError extends Error {
@@ -34,19 +31,28 @@ export class ResonateStorageError extends ResonateError {
 }
 
 export class ResonateCanceled extends ResonateError {
-  constructor() {
-    super("Promise Canceled");
+  originalError: unknown;
+
+  constructor(error: unknown) {
+    super(`Resonate function canceled: ${typeof error === "string" ? error : "unknown reason"}`);
+    this.originalError = error;
   }
 }
 
 export class ResonateTimedout extends ResonateError {
-  constructor() {
-    super("Promise Timedout");
+  timeout: number;
+
+  constructor(timeout: number) {
+    super(`Resonate function timedout at ${new Date(timeout).toISOString()}`);
+    this.timeout = timeout;
   }
 }
 
 export class ResonateKilled extends ResonateError {
-  constructor() {
-    super("Promise Killed");
+  originalError: unknown;
+
+  constructor(error: unknown) {
+    super(`Resonate function killed: ${error instanceof Error ? error.message : "unknown reason"}`);
+    this.originalError = error;
   }
 }

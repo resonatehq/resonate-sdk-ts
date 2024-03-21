@@ -205,6 +205,15 @@ export class Context {
     // 2. a generated string in the case of an ordinary execution
     const id = typeof func === "string" ? func : `${this.invocation.id}.${this.invocation.counter}`;
 
+    // human readable name of the function
+    const name = typeof func === "string" ? func : func.name;
+
+    // the parent is the current invocation
+    const parent = this.invocation;
+
+    // version is inherited from the parent
+    const version = this.invocation.version;
+
     // the idempotency key is a hash of the id
     const idempotencyKey = utils.hash(id);
 
@@ -212,7 +221,7 @@ export class Context {
     const { args, opts } = this.invocation.split(argsWithOpts);
 
     // create a new invocation
-    const invocation = new Invocation(id, idempotencyKey, undefined, opts, this.invocation.version, this.invocation);
+    const invocation = new Invocation(name, version, id, idempotencyKey, undefined, undefined, opts, parent);
 
     let execution: Execution<any>;
     if (typeof func === "string") {
@@ -220,10 +229,9 @@ export class Context {
       // this execution will be fulfilled out-of-process
       execution = new DeferredExecution(invocation);
     } else {
-      const ctx = new Context(invocation);
-
-      // create an ordinary execution
+      // create an ordinary execution// human readable name of the function
       // this execution wraps a user-provided function
+      const ctx = new Context(invocation);
       execution = new OrdinaryExecution(invocation, () => func(ctx, ...args));
     }
 
@@ -248,12 +256,16 @@ export class Context {
     const idempotencyKey = utils.hash(id);
     const { args, opts } = this.invocation.split(argsWithOpts);
 
-    const invocation = new Invocation(id, idempotencyKey, undefined, opts, this.invocation.version, this.invocation);
-    const info = new Info(invocation);
+    const name = func.name;
+    const parent = this.invocation;
+    const version = parent.version;
+
+    const invocation = new Invocation(name, version, id, idempotencyKey, undefined, undefined, opts, parent);
 
     // create an ordinary execution
     // this execution wraps a user-provided io function
     // unlike run, an io function can not create child invocations
+    const info = new Info(invocation);
     const execution = new OrdinaryExecution(invocation, () => func(info, ...args));
 
     // bump the invocation counter
@@ -279,7 +291,7 @@ export class Context {
 /////////////////////////////////////////////////////////////////////
 
 class Scheduler {
-  private executions: Record<string, { execution: Execution<any>; promise: ResonatePromise<any> }> = {};
+  private cache: Record<string, Execution<any>> = {};
 
   add<F extends AFunc>(
     name: string,
@@ -291,8 +303,9 @@ class Scheduler {
   ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
-    if (this.executions[id] && !this.executions[id].execution.invocation.killed) {
-      return this.executions[id].promise;
+    if (this.cache[id] && !this.cache[id].killed) {
+      // execute is idempotent
+      return this.cache[id].execute();
     }
 
     // the idempotency key is a hash of the id
@@ -305,21 +318,17 @@ class Scheduler {
       args,
     };
 
-    // add an invocation tag
-    opts.tags["resonate:invocation"] = "true";
-
     // create a new invocation
-    const invocation = new Invocation<Return<F>>(id, idempotencyKey, param, opts, version);
+    const invocation = new Invocation<Return<F>>(name, version, id, idempotencyKey, undefined, param, opts);
 
     // create a new execution
     const ctx = new Context(invocation);
     const execution = new OrdinaryExecution(invocation, () => func(ctx, ...args));
-    const promise = execution.execute();
 
-    // store the execution and promise,
+    // store the execution,
     // will be used if run is called again with the same id
-    this.executions[id] = { execution, promise };
+    this.cache[id] = execution;
 
-    return promise;
+    return execution.execute();
   }
 }

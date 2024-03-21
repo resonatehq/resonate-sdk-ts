@@ -1,6 +1,6 @@
 import { IEncoder } from "../encoder";
 import { Base64Encoder } from "../encoders/base64";
-import { ErrorCodes, ResonateStorageError } from "../error";
+import { ErrorCodes, ResonateStorageError } from "../errors";
 import { ILogger } from "../logger";
 import { Logger } from "../loggers/logger";
 import {
@@ -497,20 +497,20 @@ async function call<T>(
 
   for (let i = 0; i < retries; i++) {
     try {
-      logger.debug("store:req", {
-        method: options.method,
-        url: url,
-        headers: options.headers,
-        body: options.body,
-      });
+      // logger.debug("store:req", {
+      //   method: options.method,
+      //   url: url,
+      //   headers: options.headers,
+      //   body: options.body,
+      // });
 
       const r = await fetch(url, options);
       const body: unknown = r.status !== 204 ? await r.json() : undefined;
 
-      logger.debug("store:res", {
-        status: r.status,
-        body: body,
-      });
+      // logger.debug("store:res", {
+      //   status: r.status,
+      //   body: body,
+      // });
 
       if (!r.ok) {
         switch (r.status) {

@@ -1,3 +1,4 @@
+import { ResonateKilled } from "./errors";
 import { Future, ResonatePromise } from "./future";
 import { Invocation } from "./invocation";
 import { DurablePromise } from "./promises/promises";
@@ -8,6 +9,8 @@ import { IRetry } from "./retry";
 /////////////////////////////////////////////////////////////////////
 
 export abstract class Execution<T> {
+  private promise: ResonatePromise<T> | null = null;
+
   /**
    * Represents an execution of a Resonate function invocation.
    *
@@ -16,15 +19,39 @@ export abstract class Execution<T> {
    */
   constructor(public invocation: Invocation<T>) {}
 
-  execute() {
+  execute(): ResonatePromise<T> {
+    if (this.promise) {
+      return this.promise;
+    }
+
     const forkPromise = this.fork();
     const joinPromise = forkPromise.then((f) => this.join(f));
 
-    return new ResonatePromise(this.invocation.id, forkPromise, joinPromise);
+    const promise = new ResonatePromise(this.invocation.id, forkPromise, joinPromise);
+    this.promise = promise;
+
+    return promise;
   }
 
   protected abstract fork(): Promise<Future<T>>;
   protected abstract join(future: Future<T>): Promise<T>;
+
+  get killed() {
+    return this.invocation.root.killed;
+  }
+
+  kill(error: unknown) {
+    this.invocation.root.killed = true;
+    this.invocation.reject(new ResonateKilled(error));
+  }
+
+  protected tags() {
+    if (this.invocation.parent === null) {
+      return { ...this.invocation.opts.tags, "resonate:invocation": "true" };
+    }
+
+    return this.invocation.opts.tags;
+  }
 }
 
 export class OrdinaryExecution<T> extends Execution<T> {
@@ -44,10 +71,11 @@ export class OrdinaryExecution<T> extends Execution<T> {
         this.invocation.opts.encoder,
         this.invocation.id,
         this.invocation.timeout,
+        this.invocation.param,
         {
           idempotencyKey: this.invocation.idempotencyKey,
-          param: this.invocation.param,
-          tags: this.invocation.opts.tags,
+          headers: this.invocation.headers,
+          tags: this.tags(),
         },
       );
 
@@ -66,8 +94,8 @@ export class OrdinaryExecution<T> extends Execution<T> {
         this.invocation.reject(promise.error());
       }
     } catch (e) {
-      // if an error occurs, kill the invocation
-      this.invocation.kill(e);
+      // if an error occurs, kill the execution
+      this.kill(e);
     }
 
     return this.invocation.future;
@@ -111,10 +139,11 @@ export class DeferredExecution<T> extends Execution<T> {
         this.invocation.opts.encoder,
         this.invocation.id,
         this.invocation.timeout,
+        this.invocation.param,
         {
           idempotencyKey: this.invocation.idempotencyKey,
-          param: this.invocation.param,
-          tags: this.invocation.opts.tags,
+          headers: this.invocation.headers,
+          tags: this.tags(),
           poll: true,
         },
       );
@@ -124,8 +153,8 @@ export class DeferredExecution<T> extends Execution<T> {
         p.resolved ? this.invocation.resolve(p.value()) : this.invocation.reject(p.error()),
       );
     } catch (e) {
-      // if an error occurs, kill the invocation
-      this.invocation.kill(e);
+      // if an error occurs, kill the execution
+      this.kill(e);
     }
 
     return this.invocation.future;
@@ -152,10 +181,11 @@ export class GeneratorExecution<T> extends Execution<T> {
         this.invocation.opts.encoder,
         this.invocation.id,
         this.invocation.timeout,
+        this.invocation.param,
         {
           idempotencyKey: this.invocation.idempotencyKey,
-          param: this.invocation.param,
-          tags: this.invocation.opts.tags,
+          headers: this.invocation.headers,
+          tags: this.tags(),
         },
       );
 
@@ -167,8 +197,8 @@ export class GeneratorExecution<T> extends Execution<T> {
       }
       return promise;
     } catch (e) {
-      // if an error occurs, kill the invocation
-      this.invocation.kill(e);
+      // if an error occurs, kill the execution
+      this.kill(e);
     }
   }
 
@@ -184,8 +214,8 @@ export class GeneratorExecution<T> extends Execution<T> {
         this.invocation.reject(promise.error());
       }
     } catch (e) {
-      // if an error occurs, kill the invocation
-      this.invocation.kill(e);
+      // if an error occurs, kill the execution
+      this.kill(e);
     }
 
     return promise;
@@ -203,8 +233,8 @@ export class GeneratorExecution<T> extends Execution<T> {
         this.invocation.reject(promise.error());
       }
     } catch (e) {
-      // if an error occurs, kill the invocation
-      this.invocation.kill(e);
+      // if an error occurs, kill the execution
+      this.kill(e);
     }
 
     return promise;
