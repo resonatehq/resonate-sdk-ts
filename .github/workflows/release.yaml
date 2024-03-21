@@ -78,7 +78,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm &&
-          npm publish --provenance --access public --tag v${{ needs.bump-version.outputs.version }}
+          npm publish --provenance --access public --tag ${{ needs.bump-version.outputs.version }}
 
   verify-npm-package:
     needs: [publish-npm-package]
