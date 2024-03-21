@@ -37,7 +37,7 @@ jobs:
       - uses: rickstaa/action-create-tag@v1
         id: "tag_create"
         with:
-          tag: resonate-v${{ needs.bump-version.outputs.version }}
+          tag: v${{ needs.bump-version.outputs.version }}
           tag_exists_error: false
           message: "${{ needs.bump-version.outputs.version }} release"
 
@@ -78,7 +78,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm &&
-          npm publish --provenance --access public --tag ${{ needs.bump-version.outputs.version }}
+          npm publish --provenance --access public --tag resonate-v${{ needs.bump-version.outputs.version }}
 
   verify-npm-package:
     needs: [publish-npm-package]
