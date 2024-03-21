@@ -17,22 +17,33 @@ jobs:
         run: |
           echo "::set-output name=version::$(node -e 'console.log(require("./package.json").version)')"
 
+  create-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: rickstaa/action-create-tag@v1
+        id: "tag_create"
+        with:
+          tag: ${{ steps.get_version.outputs.version }}
+          tag_exists_error: false
+          message: "${{ steps.get_version.outputs.version }} release"
+
+      # Print result using the env variable.
+      - run: |
+        echo "Tag already present: ${{ env.TAG_EXISTS }}"
+
+      # Print result using the action output.
+      - run: |
+        echo "Tag already present: ${{ steps.tag_create.outputs.tag_exists }}"
+
   publish-github-release:
     needs: [bump-version]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Create tag
-        uses: actions/github-script@v5
-        with:
-          script: |
-            github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: 'refs/tags/${{ steps.get_version.outputs.version }}',
-              sha: context.sha
-            })
       - name: Test
         run: cat RELEASE.md # Test that the file exists
       - name: Release
