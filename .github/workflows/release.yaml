@@ -73,8 +73,7 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
-            - name: Build
-      - name: Build npm package 
+      - name: Build npm package
         run: npm install -g npm && npm run build
       - name: Publish npm package
         env:
