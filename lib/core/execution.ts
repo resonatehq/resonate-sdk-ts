@@ -1,4 +1,4 @@
-import { ResonateKilled } from "./errors";
+import { ErrorCodes, ResonateError } from "./errors";
 import { Future, ResonatePromise } from "./future";
 import { Invocation } from "./invocation";
 import { DurablePromise } from "./promises/promises";
@@ -27,10 +27,8 @@ export abstract class Execution<T> {
     const forkPromise = this.fork();
     const joinPromise = forkPromise.then((f) => this.join(f));
 
-    const promise = new ResonatePromise(this.invocation.id, forkPromise, joinPromise);
-    this.promise = promise;
-
-    return promise;
+    this.promise = new ResonatePromise(this.invocation.id, forkPromise, joinPromise);
+    return this.promise;
   }
 
   protected abstract fork(): Promise<Future<T>>;
@@ -41,8 +39,11 @@ export abstract class Execution<T> {
   }
 
   kill(error: unknown) {
+    // this will mark the entire invocation tree as killed
     this.invocation.root.killed = true;
-    this.invocation.reject(new ResonateKilled(error));
+
+    // reject only the root invocation
+    this.invocation.root.reject(new ResonateError("Resonate function killed", ErrorCodes.KILLED, error, true));
   }
 
   protected tags() {
@@ -110,6 +111,7 @@ export class OrdinaryExecution<T> extends Execution<T> {
 
     // invoke the function according to the retry policy
     for (const delay of this.retry.iterator(this.invocation)) {
+      console.log("attempt", this.invocation.attempt);
       try {
         await new Promise((resolve) => setTimeout(resolve, delay));
         return await this.func();
@@ -224,7 +226,7 @@ export class GeneratorExecution<T> extends Execution<T> {
   async reject(promise: DurablePromise<T>, error: any) {
     try {
       // reject the durable promise
-      await promise.resolve(error, { idempotencyKey: this.invocation.idempotencyKey });
+      await promise.reject(error, { idempotencyKey: this.invocation.idempotencyKey });
 
       // resolve/reject the invocation
       if (promise.resolved) {

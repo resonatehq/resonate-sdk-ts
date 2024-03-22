@@ -394,7 +394,7 @@ class Scheduler {
       // step through the generator if in debug mode
       if (this.logger.level === "debug" && (await this.keypress()) === "\u001b") {
         // kill when escape key is pressed
-        continuation?.execution.kill(new Error("manual kill"));
+        continuation?.execution.kill("manual kill");
       }
 
       if (continuation && !continuation.execution.killed) {
@@ -511,11 +511,11 @@ class Scheduler {
       // create an ordinary execution
       const info = new Info(invocation);
       execution = new OrdinaryExecution(invocation, () => value.func(info, ...value.args));
-      execution.execute();
+      execution.execute().catch(() => {});
     } else if (value.kind === "deferred") {
       // create a deferred execution
       execution = new DeferredExecution(invocation);
-      execution.execute();
+      execution.execute().catch(() => {});
     } else {
       this.yeet(`permitted call values are (resonate, ordinary, deferred), received ${value}`);
     }
@@ -612,6 +612,7 @@ class Scheduler {
         idempotencyKey: e.invocation.idempotencyKey,
         parent: e.invocation.parent ? e.invocation.parent.id : undefined,
         killed: e.killed,
+        pending: e.invocation.future.value.kind === "pending",
         awaited: e.invocation.awaited.map((f) => f.id).join(","),
         blocked: e.invocation.blocked?.id,
       })),

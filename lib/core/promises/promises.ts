@@ -1,5 +1,5 @@
 import { IEncoder } from "../encoder";
-import { ResonateCanceled, ResonateTimedout } from "../errors";
+import { ErrorCodes, ResonateError } from "../errors";
 import { IPromiseStore } from "../store";
 import { PendingPromise, ResolvedPromise, RejectedPromise, CanceledPromise, TimedoutPromise } from "./types";
 
@@ -88,9 +88,16 @@ export class DurablePromise<T> {
     if (this.rejected) {
       return this.encoder.decode(this.promise.value.data);
     } else if (this.canceled) {
-      return new ResonateCanceled(this.encoder.decode(this.promise.value.data));
+      return new ResonateError(
+        "Resonate function canceled",
+        ErrorCodes.CANCELED,
+        this.encoder.decode(this.promise.value.data),
+      );
     } else if (this.timedout) {
-      return new ResonateTimedout(this.promise.timeout);
+      return new ResonateError(
+        `Resonate function timedout at ${new Date(this.promise.timeout).toISOString()}`,
+        ErrorCodes.TIMEDOUT,
+      );
     } else {
       throw new Error("Promise is not rejected, canceled, or timedout");
     }

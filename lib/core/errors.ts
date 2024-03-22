@@ -1,58 +1,37 @@
 export enum ErrorCodes {
+  // unknown
   UNKNOWN = 0,
-  SERVER = 1,
-  PAYLOAD = 2,
-  FORBIDDEN = 3,
-  NOT_FOUND = 4,
-  ALREADY_EXISTS = 5,
-  INVALID_STATE = 6,
-  ENCODER = 7,
+
+  // canceled
+  CANCELED = 10,
+
+  // timedout
+  TIMEDOUT = 20,
+
+  // killed
+  KILLED = 30,
+
+  // store
+  STORE = 40,
+  STORE_PAYLOAD = 41,
+  STORE_FORBIDDEN = 42,
+  STORE_NOT_FOUND = 43,
+  STORE_ALREADY_EXISTS = 44,
+  STORE_INVALID_STATE = 45,
+  STORE_ENCODER = 46,
 }
 
 export class ResonateError extends Error {
-  constructor(public readonly message: string) {
+  constructor(
+    message: string,
+    public readonly code: ErrorCodes,
+    public readonly cause?: any,
+    public readonly retriable: boolean = false,
+  ) {
     super(message);
   }
 
   public static fromError(e: unknown): ResonateError {
-    return e instanceof ResonateError ? e : new ResonateError("Unexpected error: " + e);
-  }
-}
-
-export class ResonateStorageError extends ResonateError {
-  constructor(
-    public readonly code: ErrorCodes,
-    message: string,
-    public readonly cause?: any,
-    public readonly retryable: boolean = false,
-  ) {
-    super(message);
-  }
-}
-
-export class ResonateCanceled extends ResonateError {
-  originalError: unknown;
-
-  constructor(error: unknown) {
-    super(`Resonate function canceled: ${typeof error === "string" ? error : "unknown reason"}`);
-    this.originalError = error;
-  }
-}
-
-export class ResonateTimedout extends ResonateError {
-  timeout: number;
-
-  constructor(timeout: number) {
-    super(`Resonate function timedout at ${new Date(timeout).toISOString()}`);
-    this.timeout = timeout;
-  }
-}
-
-export class ResonateKilled extends ResonateError {
-  originalError: unknown;
-
-  constructor(error: unknown) {
-    super(`Resonate function killed: ${error instanceof Error ? error.message : "unknown reason"}`);
-    this.originalError = error;
+    return e instanceof ResonateError ? e : new ResonateError("Unknown error", ErrorCodes.UNKNOWN, e, true);
   }
 }

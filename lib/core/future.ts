@@ -1,4 +1,3 @@
-import { ResonateCanceled, ResonateTimedout } from "./errors";
 import { Invocation } from "./invocation";
 
 /////////////////////////////////////////////////////////////////////
@@ -41,19 +40,14 @@ export class ResonatePromise<T> extends Promise<T> {
 // Future
 /////////////////////////////////////////////////////////////////////
 
-export type Value<T> =
-  | { kind: "pending" }
-  | { kind: "resolved"; value: T }
-  | { kind: "rejected"; error: unknown }
-  | { kind: "canceled"; error: ResonateCanceled }
-  | { kind: "timedout"; error: ResonateTimedout };
+export type Value<T> = { kind: "pending" } | { kind: "resolved"; value: T } | { kind: "rejected"; error: unknown };
 
 export class Future<T> {
   // a discriminate property
   readonly kind = "future";
 
   // initial value
-  _value: Value<T> = { kind: "pending" };
+  private _value: Value<T> = { kind: "pending" };
 
   /**
    * Represents the eventual return value of a Resonate function.
@@ -121,13 +115,6 @@ export class Future<T> {
 
   private reject(error: unknown) {
     this._reject(error);
-
-    if (error instanceof ResonateCanceled) {
-      this._value = { kind: "canceled", error };
-    } else if (error instanceof ResonateTimedout) {
-      this._value = { kind: "timedout", error };
-    } else {
-      this._value = { kind: "rejected", error };
-    }
+    this._value = { kind: "rejected", error };
   }
 }
