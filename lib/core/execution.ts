@@ -111,7 +111,6 @@ export class OrdinaryExecution<T> extends Execution<T> {
 
     // invoke the function according to the retry policy
     for (const delay of this.retry.iterator(this.invocation)) {
-      console.log("attempt", this.invocation.attempt);
       try {
         await new Promise((resolve) => setTimeout(resolve, delay));
         return await this.func();

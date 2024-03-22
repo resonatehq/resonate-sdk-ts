@@ -468,13 +468,13 @@ class Scheduler {
   }
 
   private async applyCall(continuation: Continuation<any>, { value, yieldFuture }: Call) {
+    // the parent is the current invocation
+    const parent = continuation.execution.invocation;
+
     // the id is either:
     // 1. a provided string in the case of a deferred execution
     // 2. a generated string in the case of an ordinary execution
-    const id =
-      value.kind === "deferred"
-        ? value.func
-        : `${continuation.execution.invocation.id}.${continuation.execution.invocation.counter}`;
+    const id = value.kind === "deferred" ? value.func : `${parent.id}.${parent.counter}`;
 
     // the idempotency key is a hash of the id
     const idempotencyKey = utils.hash(id);
@@ -482,18 +482,15 @@ class Scheduler {
     // human readable name of the function
     const name = value.kind === "deferred" ? value.func : value.func.name;
 
-    // the parent is the current invocation
-    const parent = continuation.execution.invocation;
-
     // version is inherited from the parent
-    const version = continuation.execution.invocation.version;
+    const version = parent.version;
 
     // create a new invocation
     const invocation = new Invocation(name, version, id, idempotencyKey, undefined, undefined, value.opts, parent);
 
     // add child and increment counter
-    continuation.execution.invocation.addChild(invocation);
-    continuation.execution.invocation.counter++;
+    parent.addChild(invocation);
+    parent.counter++;
 
     let execution: GeneratorExecution<any> | OrdinaryExecution<any> | DeferredExecution<any>;
 

@@ -2,6 +2,7 @@ import { Execution, OrdinaryExecution, DeferredExecution } from "./core/executio
 import { ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
 import { ResonateOptions, Options, PartialOptions } from "./core/options";
+import { Retry } from "./core/retries/retry";
 import * as utils from "./core/utils";
 import { ResonateBase } from "./resonate";
 
@@ -200,19 +201,19 @@ export class Context {
    */
   run<T>(func: string, args?: any, opts?: PartialOptions): ResonatePromise<T>;
   run(func: string | ((...args: any[]) => any), ...argsWithOpts: any[]): ResonatePromise<any> {
+    // the parent is the current invocation
+    const parent = this.invocation;
+
     // the id is either:
     // 1. a provided string in the case of a deferred execution
     // 2. a generated string in the case of an ordinary execution
-    const id = typeof func === "string" ? func : `${this.invocation.id}.${this.invocation.counter}`;
+    const id = typeof func === "string" ? func : `${parent.id}.${parent.counter}`;
 
     // human readable name of the function
     const name = typeof func === "string" ? func : func.name;
 
-    // the parent is the current invocation
-    const parent = this.invocation;
-
     // version is inherited from the parent
-    const version = this.invocation.version;
+    const version = parent.version;
 
     // the idempotency key is a hash of the id
     const idempotencyKey = utils.hash(id);
@@ -232,11 +233,11 @@ export class Context {
       // create an ordinary execution// human readable name of the function
       // this execution wraps a user-provided function
       const ctx = new Context(invocation);
-      execution = new OrdinaryExecution(invocation, () => func(ctx, ...args));
+      execution = new OrdinaryExecution(invocation, () => func(ctx, ...args), Retry.never());
     }
 
-    // bump the invocation counter
-    this.invocation.counter++;
+    // bump the counter
+    parent.counter++;
 
     // return a resonate promise
     return execution.execute();
@@ -252,12 +253,13 @@ export class Context {
    */
   io<F extends IFunc>(func: F, ...args: [...Params<F>, PartialOptions?]): ResonatePromise<Return<F>>;
   io(func: (...args: any[]) => any, ...argsWithOpts: any[]): ResonatePromise<any> {
-    const id = `${this.invocation.id}.${this.invocation.counter}`;
+    const parent = this.invocation;
+
+    const id = `${parent.id}.${parent.counter}`;
     const idempotencyKey = utils.hash(id);
     const { args, opts } = this.invocation.split(argsWithOpts);
 
     const name = func.name;
-    const parent = this.invocation;
     const version = parent.version;
 
     const invocation = new Invocation(name, version, id, idempotencyKey, undefined, undefined, opts, parent);
@@ -268,8 +270,8 @@ export class Context {
     const info = new Info(invocation);
     const execution = new OrdinaryExecution(invocation, () => func(info, ...args));
 
-    // bump the invocation counter
-    this.invocation.counter++;
+    // bump the counter
+    parent.counter++;
 
     // return a resonate promise
     return execution.execute();
