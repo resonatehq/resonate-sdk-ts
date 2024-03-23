@@ -66,6 +66,8 @@ export interface Options {
    */
   encoder: IEncoder<unknown, string | undefined>;
 
+  poll: number;
+
   /**
    * Overrides the default retry policy.
    */
