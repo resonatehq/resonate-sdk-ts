@@ -31,11 +31,11 @@ describe("Async functions", () => {
   }
 
   async function deferredSuccess(ctx: Context) {
-    return await ctx.run("success", undefined, ctx.options({ poll: 0 }));
+    return await ctx.run("success", ctx.options({ poll: 0 }));
   }
 
   async function deferredFailure(ctx: Context) {
-    return await ctx.run("failure", undefined, ctx.options({ poll: 0 }));
+    return await ctx.run("failure", ctx.options({ poll: 0 }));
   }
 
   test("success", async () => {

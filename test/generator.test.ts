@@ -35,11 +35,11 @@ describe("Generator functions", () => {
   }
 
   function* deferredSuccess(ctx: Context): Generator<any> {
-    return yield ctx.run("success", undefined, ctx.options({ poll: 0 }));
+    return yield ctx.run("success", ctx.options({ poll: 0 }));
   }
 
   function* deferredFailure(ctx: Context): Generator<any> {
-    return yield ctx.run("failure", undefined, ctx.options({ poll: 0 }));
+    return yield ctx.run("failure", ctx.options({ poll: 0 }));
   }
 
   function* generatorSuccess() {
