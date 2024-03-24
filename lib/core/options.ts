@@ -66,6 +66,10 @@ export interface Options {
    */
   encoder: IEncoder<unknown, string | undefined>;
 
+  /**
+   * The frequency in ms to poll the promise store for a completed
+   * remote promise.
+   */
   poll: number;
 
   /**
