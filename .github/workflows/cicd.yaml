@@ -25,22 +25,22 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - name: Install dependencies
         run: npm install
-      # - name: Run linter
-      #   run: npm run lint
-      # - name: Run prettier
-      #   run: npm run prettier
-      # - name: Set up Go
-      #   uses: actions/setup-go@v2
-      #   with:
-      #     go-version: 1.21
-      # - name: Clone the repository
-      #   run: git clone https://github.com/resonatehq/resonate.git
-      # - name: Build the Go project
-      #   run: go build -o resonate
-      #   working-directory: resonate
-      # - name: Start the service
-      #   run: ./resonate serve &
-      #   working-directory: resonate
+      - name: Run linter
+        run: npm run lint
+      - name: Run prettier
+        run: npm run prettier
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.21
+      - name: Clone the repository
+        run: git clone https://github.com/resonatehq/resonate.git
+      - name: Build the Go project
+        run: go build -o resonate
+        working-directory: resonate
+      - name: Start the service
+        run: ./resonate serve &
+        working-directory: resonate
       # - name: Run tests with USE_DURABLE=false
       #   env:
       #     USE_DURABLE: false
@@ -55,7 +55,3 @@ jobs:
       #     token: ${{ secrets.CODECOV_TOKEN }}
       - name: Build
         run: npm run build
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance --access public --tag latest-2
