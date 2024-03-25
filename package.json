@@ -1,6 +1,6 @@
 {
     "name": "@guergabo-test/sdk",
-    "version": "0.3.3",
+    "version": "0.3.5",
     "description": "TypeScript SDK for Resonate",
     "author": "Resonate Developers",
     "license": "Apache-2.0",
@@ -18,7 +18,7 @@
         "dist"
     ],
     "scripts": {
-        "test": "node --loader ts-node/esm --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.js",
+        "test": "jest --config jest.config.js", 
         "build": "tsc --build tsconfig.build.json",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
@@ -47,5 +47,8 @@
         "typedoc": "^0.25.7",
         "typedoc-material-theme": "^1.0.2",
         "typescript": "^5.2.2"
+    }, 
+    "engines": {
+        "node": ">= 18"
     }
 }
