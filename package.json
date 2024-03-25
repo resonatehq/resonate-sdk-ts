@@ -2,7 +2,7 @@
     "name": "@guergabo-test/sdk",
     "version": "0.3.3",
     "description": "TypeScript SDK for Resonate",
-    "author": "Resonate Developers", 
+    "author": "Resonate Developers",
     "license": "Apache-2.0",
     "type": "commonjs",
     "main": "dist/index.js",
@@ -29,7 +29,7 @@
     },
     "dependencies": {
         "cron-parser": "^4.9.0"
-    }, 
+    },
     "devDependencies": {
         "@jest/globals": "^29.7.0",
         "@types/node": "^20.11.19",
