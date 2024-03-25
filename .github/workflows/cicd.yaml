@@ -55,3 +55,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
       - name: Build
         run: npm run build
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public --tag latest
