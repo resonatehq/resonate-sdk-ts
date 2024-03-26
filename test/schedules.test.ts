@@ -18,25 +18,21 @@ describe("Store: Schedules", () => {
       const scheduleId = "new-schedule";
       const cronExpression = "* * * * *"; // Every minute
 
-      try {
-        const createdSchedule = await store.create(
-          scheduleId,
-          scheduleId,
-          undefined,
-          cronExpression,
-          undefined,
-          "promise-1",
-          1,
-          undefined,
-          undefined,
-          undefined,
-        );
+      const createdSchedule = await store.create(
+        scheduleId,
+        scheduleId,
+        undefined,
+        cronExpression,
+        undefined,
+        "promise-1",
+        1,
+        undefined,
+        undefined,
+        undefined,
+      );
 
-        expect(createdSchedule.id).toBe(scheduleId);
-        expect(createdSchedule.cron).toBe(cronExpression);
-      } catch (error: any) {
-        throw error;
-      }
+      expect(createdSchedule.id).toBe(scheduleId);
+      expect(createdSchedule.cron).toBe(cronExpression);
 
       // Clean up
       await store.delete(scheduleId);
