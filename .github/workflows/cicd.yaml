@@ -75,6 +75,9 @@ jobs:
       - name: Checkout resonate-sdk-ts repository
         uses: actions/checkout@v4
 
+      - name: Install dependencies
+        run: npm install
+
       - name: Build
         run: npm run build
 
