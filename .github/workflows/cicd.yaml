@@ -46,24 +46,19 @@ jobs:
           repository: resonatehq/resonate
           path: resonate
 
-      - name: Build resonate
-        run: go build -o resonate
+      - name: Build and start resonate
+        run: go build -o resonate && ./resonate serve &
         working-directory: resonate
 
-      # - name: Start the service
-      #   run: ./resonate serve &
-      #   working-directory: resonate
-      # - name: Run tests with USE_DURABLE=false
-      #   env:
-      #     USE_DURABLE: false
-      #   run: npm test
-      # - name: Run tests with USE_DURABLE=true
-      #   env:
-      #     USE_DURABLE: true
-      #   run: npm test
-      # - name: Upload coverage report to Codecov
-      #   uses: codecov/codecov-action@v3
-      #   with:
-      #     token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Run tests
+        env:
+          RESONATE_STORE_URL: http://localhost:8001
+        run: npm test
+
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       # - name: Build
       #   run: npm run build
