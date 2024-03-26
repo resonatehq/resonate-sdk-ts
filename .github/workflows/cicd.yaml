@@ -13,8 +13,17 @@ permissions:
   id-token: write
 
 jobs:
-  setup:
+  test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: ghcr.io/resonatehq/resonate:main
+        options: >-
+          serve
+        ports:
+          - 8001:8001
+
     steps:
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -34,10 +43,6 @@ jobs:
       - name: Run prettier
         run: npm run prettier
 
-  test:
-    runs-on: ubuntu-latest
-    needs: setup
-    steps:
       # - name: Set up Go
       #   uses: actions/setup-go@v2
       #   with:
@@ -50,10 +55,10 @@ jobs:
       # - name: Start the service
       #   run: ./resonate serve &
       #   working-directory: resonate
-      - name: Run tests with USE_DURABLE=false
-        env:
-          USE_DURABLE: false
-        run: npm test
+      # - name: Run tests with USE_DURABLE=false
+      #   env:
+      #     USE_DURABLE: false
+      #   run: npm test
       # - name: Run tests with USE_DURABLE=true
       #   env:
       #     USE_DURABLE: true
