@@ -35,7 +35,6 @@ describe("Store: Schedules", () => {
         expect(createdSchedule.id).toBe(scheduleId);
         expect(createdSchedule.cron).toBe(cronExpression);
       } catch (error: any) {
-        console.log(error, error.cause.error.details);
         throw error;
       }
 
