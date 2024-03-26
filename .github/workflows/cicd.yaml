@@ -46,8 +46,12 @@ jobs:
           repository: resonatehq/resonate
           path: resonate
 
-      - name: Build and start resonate
-        run: go build -o resonate && ./resonate serve &
+      - name: Build resonate
+        run: go build -o resonate
+        working-directory: resonate
+
+      - name: Start resonate server
+        run: ./resonate serve &
         working-directory: resonate
 
       - name: Run tests
