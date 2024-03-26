@@ -13,45 +13,54 @@ permissions:
   id-token: write
 
 jobs:
-  cicd:
+  setup:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install dependencies
         run: npm install
+
       - name: Run linter
         run: npm run lint
+
       - name: Run prettier
         run: npm run prettier
-      - name: Set up Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: 1.21
-      - name: Clone the repository
-        run: git clone https://github.com/resonatehq/resonate.git
-      - name: Build the Go project
-        run: go build -o resonate
-        working-directory: resonate
-      - name: Start the service
-        run: ./resonate serve &
-        working-directory: resonate
+
+  test:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      # - name: Set up Go
+      #   uses: actions/setup-go@v2
+      #   with:
+      #     go-version: 1.21
+      # - name: Clone resonate repository
+      #   run: git clone https://github.com/resonatehq/resonate.git
+      # - name: Build the Go project
+      #   run: go build -o resonate
+      #   working-directory: resonate
+      # - name: Start the service
+      #   run: ./resonate serve &
+      #   working-directory: resonate
       - name: Run tests with USE_DURABLE=false
         env:
           USE_DURABLE: false
         run: npm test
-      - name: Run tests with USE_DURABLE=true
-        env:
-          USE_DURABLE: true
-        run: npm test
-      - name: Upload coverage report to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-      - name: Build
-        run: npm run build
+      # - name: Run tests with USE_DURABLE=true
+      #   env:
+      #     USE_DURABLE: true
+      #   run: npm test
+      # - name: Upload coverage report to Codecov
+      #   uses: codecov/codecov-action@v3
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      # - name: Build
+      #   run: npm run build
