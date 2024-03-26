@@ -17,10 +17,9 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      postgres:
+      resonate:
         image: ghcr.io/resonatehq/resonate:main
-        options: >-
-          serve
+        command: serve
         ports:
           - 8001:8001
 
