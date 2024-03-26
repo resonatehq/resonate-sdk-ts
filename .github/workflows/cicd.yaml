@@ -16,14 +16,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    services:
-      resonate:
-        image: ghcr.io/resonatehq/resonate:main
-        options: >-
-          --entrypoint "./resonate serve"
-        ports:
-          - 8001:8001
-
     steps:
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -31,8 +23,19 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Checkout repository
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.21
+
+      - name: Checkout resonate-sdk-ts repository
         uses: actions/checkout@v4
+
+      - name: Checkout resonate repository
+        uses: actions/checkout@v4
+        with:
+          repository: resonatehq/resonate
+          path: resonate
 
       - name: Install dependencies
         run: npm install
@@ -43,12 +46,6 @@ jobs:
       - name: Run prettier
         run: npm run prettier
 
-      # - name: Set up Go
-      #   uses: actions/setup-go@v2
-      #   with:
-      #     go-version: 1.21
-      # - name: Clone resonate repository
-      #   run: git clone https://github.com/resonatehq/resonate.git
       # - name: Build the Go project
       #   run: go build -o resonate
       #   working-directory: resonate
