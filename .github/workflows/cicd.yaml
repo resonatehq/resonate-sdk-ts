@@ -19,7 +19,8 @@ jobs:
     services:
       resonate:
         image: ghcr.io/resonatehq/resonate:main
-        command: serve
+        options: >-
+          --entrypoint serve
         ports:
           - 8001:8001
 
