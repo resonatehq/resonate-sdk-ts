@@ -1,4 +1,9 @@
-import { Resonate } from "@resonatehq/sdk/dist/index.js";
+import { Resonate, Context } from "@resonatehq/sdk";
 
 const resonate = new Resonate();
-console.log("Hello World!", resonate);
+
+resonate.register("app", (ctx: Context) => {
+  return "Hello World";
+});
+
+resonate.run("app", "app.1");

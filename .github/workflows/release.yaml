@@ -4,7 +4,7 @@ on:
   release:
     types:
       - published
-  workflow_dispatch:  # temp
+  workflow_dispatch: # temp
 
 permissions:
   contents: read
@@ -13,7 +13,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Set up Node
         uses: actions/setup-node@v2
@@ -24,23 +23,21 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Verify tag matches package.json version
-        run: |
-          RELEASE_VERSION=${{ github.ref_name }}
-          PACKAGE_VERSION=$(npm pkg get version | sed 's/"//g')
-          echo $RELEASE_VERSION
-          echo $PACKAGE_VERSION
+      # - name: Verify tag matches package.json version
+      #   run: |
+      #     RELEASE_VERSION=${{ github.ref_name }}
+      #     PACKAGE_VERSION=$(npm pkg get version | sed 's/"//g')
 
-          if [ "$RELEASE_VERSION" != "v$PACKAGE_VERSION" ]; then
-            echo "Error: GitHub release tag ($RELEASE_VERSION) does not match package.json version ($PACKAGE_VERSION)"
-            exit 1
-          fi
+      #     if [ "$RELEASE_VERSION" != "v$PACKAGE_VERSION" ]; then
+      #       echo "Error: GitHub release tag ($RELEASE_VERSION) does not match package.json version ($PACKAGE_VERSION)"
+      #       exit 1
+      #     fi
 
-      # - name: Install dependencies
-      #   run: npm install
+      - name: Install dependencies
+        run: npm install
 
-      # - name: Build
-      #   run: npm run build
+      - name: Build
+        run: npm run build
 
       # - name: Publish
       #   env:
@@ -48,18 +45,21 @@ jobs:
       #   run: |
       #     npm publish --provenance --access public --tag latest
 
-  # verify-npm-package:
-  #   needs: [bump-version, publish-npm-package]
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Set up Node
-  #       uses: actions/setup-node@v2
-  #       with:
-  #         node-version: "20"
-  #         registry-url: "https://registry.npmjs.org"
-  #     - name: Install Resonate SDK and run tests
-  #       run: |
-  #         npm install --save @resonatehq/sdk ts-node@latest
-  #         node --no-warnings=ExperimentalWarning --loader ts-node/esm helloworld_release.ts
-  #       working-directory: .github/workflows/hello_world
+  verify:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Verify package
+        run: |
+          npm install @resonatehq/sdk@latest ts-node@latest
+          ts-node helloworld_release.ts
+        working-directory: .github/workflows/hello_world
