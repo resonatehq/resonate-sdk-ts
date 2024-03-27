@@ -26,9 +26,15 @@ jobs:
 
       - name: Verify tag matches package.json version
         run: |
-          echo ${{ github.ref_name }}
-          echo ${{ github.event.release.tag_name }}
-          npm pkg get version
+          RELEASE_VERSION=${{ github.event.release.tag_name }}
+          PACKAGE_VERSION=$(npm pkg get version | sed 's/"//g')
+          echo $RELEASE_VERSION
+          echo $PACKAGE_VERSION
+
+          if [ "$RELEASE_VERSION" != "v$PACKAGE_VERSION" ]; then
+            echo "Error: GitHub release tag ($RELEASE_VERSION) does not match package.json version (v$PACKAGE_VERSION)"
+            exit 1
+          fi
 
       # - name: Install dependencies
       #   run: npm install
