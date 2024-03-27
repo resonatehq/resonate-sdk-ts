@@ -58,9 +58,11 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Install ts-node
+        run: npm install -g ts-node
+
       - name: Verify package
         run: |
-          npm install -g ts-node
-          npm install @resonatehq/sdk@latest 
-          ts-node helloworld.ts
-        working-directory: .github/workflows/hello_world
+          # npm install @resonatehq/sdk@latest
+          ts-node app.ts
+        working-directory: examples/async
