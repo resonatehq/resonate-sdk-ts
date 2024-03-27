@@ -8,7 +8,7 @@ import { RemotePromiseStore } from "../lib/core/stores/remote";
 // Set a larger timeout for hooks (e.g., 10 seconds)
 jest.setTimeout(10000);
 
-describe("Resonate Server Tests", () => {
+describe("Store: Promise Transitions", () => {
   const stores: IPromiseStore[] = [new LocalPromiseStore(new WithTimeout())];
 
   if (process.env.RESONATE_STORE_URL) {
@@ -16,7 +16,7 @@ describe("Resonate Server Tests", () => {
   }
 
   for (const store of stores) {
-    describe("State Transition Tests", () => {
+    describe(store.constructor.name, () => {
       test("Test Case 0: transitions from Init to Pending via Create", async () => {
         const promise = await store.create(
           "id0",
