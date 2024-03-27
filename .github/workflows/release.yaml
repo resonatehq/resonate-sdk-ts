@@ -4,7 +4,6 @@ on:
   release:
     types:
       - published
-  workflow_dispatch: # temp
 
 permissions:
   contents: read
@@ -23,15 +22,15 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # - name: Verify tag matches package.json version
-      #   run: |
-      #     RELEASE_VERSION=${{ github.ref_name }}
-      #     PACKAGE_VERSION=$(npm pkg get version | sed 's/"//g')
+      - name: Verify tag matches package.json version
+        run: |
+          RELEASE_VERSION=${{ github.ref_name }}
+          PACKAGE_VERSION=$(npm pkg get version | sed 's/"//g')
 
-      #     if [ "$RELEASE_VERSION" != "v$PACKAGE_VERSION" ]; then
-      #       echo "Error: GitHub release tag ($RELEASE_VERSION) does not match package.json version ($PACKAGE_VERSION)"
-      #       exit 1
-      #     fi
+          if [ "$RELEASE_VERSION" != "v$PACKAGE_VERSION" ]; then
+            echo "Error: GitHub release tag ($RELEASE_VERSION) does not match package.json version ($PACKAGE_VERSION)"
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm install
@@ -39,11 +38,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      # - name: Publish
-      #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      #   run: |
-      #     npm publish --provenance --access public --tag latest
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --provenance --access public --tag latest
 
   verify:
     needs: publish
