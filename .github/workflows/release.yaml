@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Set up Node
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Set up Node
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
@@ -61,5 +61,5 @@ jobs:
       - name: Verify package
         run: |
           npm install @resonatehq/sdk@latest ts-node@latest
-          ts-node helloworld_release.ts
+          ts-node helloworld.ts
         working-directory: .github/workflows/hello_world
