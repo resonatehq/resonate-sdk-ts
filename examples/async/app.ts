@@ -7,7 +7,8 @@ resonate.register("app", (ctx: Context) => {
 });
 
 async function main() {
-    await resonate.run("app", "app.1");
+  const result = await resonate.run("app", "app.1");
+  console.log(result);
 }
 
 main();
