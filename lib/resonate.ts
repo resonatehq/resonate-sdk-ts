@@ -249,18 +249,22 @@ export abstract class ResonateBase {
     version: number = 1,
     ...args: any[]
   ): Promise<schedules.Schedule> {
-    if (typeof func !== "string") {
+    if (typeof func === "function") {
       this.register(name, version, func);
-    } else if (!this.functions[name] || !this.functions[name][version]) {
-      throw new Error(`Function ${name} version ${version} not registered`);
     }
 
-    const { opts } = this.functions[name][version];
+    const funcName = typeof func === "string" ? func : name;
 
-    const idempotencyKey = utils.hash(name);
+    if (!this.functions[funcName] || !this.functions[funcName][version]) {
+      throw new Error(`Function ${funcName} version ${version} not registered`);
+    }
+
+    const { opts } = this.functions[funcName][version];
+
+    const idempotencyKey = utils.hash(funcName);
 
     const promiseParam = {
-      func: name,
+      func: funcName,
       version,
       args,
     };
