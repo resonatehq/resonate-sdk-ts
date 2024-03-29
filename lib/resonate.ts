@@ -142,6 +142,7 @@ export abstract class ResonateBase {
 
     return (id: string, ...args: any[]) => this.run(name, id, ...args, options);
   }
+
   registerModule(module: Record<string, Func>, opts: Partial<Options> = {}) {
     for (const key in module) {
       this.register(key, module[key], opts);
@@ -291,7 +292,9 @@ export abstract class ResonateBase {
   private split(args: [...any, PartialOptions?]): { args: any[]; opts: Options } {
     const opts = args[args.length - 1];
 
-    return isOptions(opts) ? { args: args.slice(0, -1), opts: this.defaults(opts) } : { args, opts: this.defaults() };
+    return isOptions(opts)
+      ? { args: args.slice(0, -1), opts: this.defaults(opts) }
+      : { args, opts: this.defaults() };
   }
 }
 

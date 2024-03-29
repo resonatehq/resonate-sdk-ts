@@ -2,6 +2,7 @@ import { Execution, OrdinaryExecution, DeferredExecution } from "./core/executio
 import { ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
 import { ResonateOptions, Options, PartialOptions } from "./core/options";
+import { Retry } from "./core/retries/retry";
 import * as schedules from "./core/schedules/schedules";
 import * as utils from "./core/utils";
 import { ResonateBase } from "./resonate";
@@ -31,7 +32,7 @@ export class Resonate extends ResonateBase {
    */
   constructor(opts: Partial<ResonateOptions> = {}) {
     super(opts);
-    this.scheduler = new Scheduler();
+    this.scheduler = new Scheduler(this);
   }
 
   /**
@@ -110,7 +111,10 @@ export class Resonate extends ResonateBase {
 /////////////////////////////////////////////////////////////////////
 
 export class Context {
-  constructor(private invocation: Invocation<any>) {}
+  constructor(
+    private resonate: Resonate,
+    private invocation: Invocation<any>,
+  ) {}
 
   /**
    * The running count of function execution attempts.
@@ -216,7 +220,7 @@ export class Context {
     } else {
       // create an ordinary execution
       // this execution wraps a user-provided function
-      const ctx = new Context(invocation);
+      const ctx = new Context(this.resonate, invocation);
       execution = new OrdinaryExecution(invocation, () => func(ctx, ...args));
     }
 
@@ -225,6 +229,64 @@ export class Context {
 
     // return a resonate promise
     return execution.execute();
+  }
+
+  // promise combinators
+
+  all<T extends readonly unknown[] | []>(values: T): ResonatePromise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+    return this.run(
+      (c: Context, v: T) => Promise.all(v),
+      values,
+      this.options({
+        retry: Retry.never(),
+      }),
+    );
+  }
+
+  any<T extends readonly unknown[] | []>(values: T): ResonatePromise<Awaited<T[number]>> {
+    return this.run(
+      (c: Context, v: T) => Promise.any(v),
+      values,
+      this.options({
+        retry: Retry.never(),
+      }),
+    );
+  }
+
+  race<T extends readonly unknown[] | []>(values: T): ResonatePromise<Awaited<T[number]>> {
+    return this.run(
+      (c: Context, v: T) => Promise.race(v),
+      values,
+      this.options({
+        retry: Retry.never(),
+      }),
+    );
+  }
+
+  allSettled<T extends readonly unknown[] | []>(
+    values: T,
+  ): ResonatePromise<{ -readonly [P in keyof T]: PromiseSettledResult<Awaited<T[P]>> }> {
+    return this.run(
+      (c: Context, v: T) => Promise.allSettled(v),
+      values,
+      this.options({
+        retry: Retry.never(),
+      }),
+    );
+  }
+
+  // convenience functions
+
+  random(): ResonatePromise<number> {
+    return this.run(Math.random);
+  }
+
+  now(): ResonatePromise<number> {
+    return this.run(Date.now);
+  }
+
+  detached<T>(name: string, id: string, ...args: [...any, PartialOptions?]): ResonatePromise<T> {
+    return this.resonate.run(name, id, ...args);
   }
 
   /**
@@ -244,6 +306,8 @@ export class Context {
 
 class Scheduler {
   private cache: Record<string, Execution<any>> = {};
+
+  constructor(private resonate: Resonate) {}
 
   add<F extends Func>(
     name: string,
@@ -271,7 +335,7 @@ class Scheduler {
     const invocation = new Invocation<Return<F>>(name, id, idempotencyKey, undefined, param, opts);
 
     // create a new execution
-    const ctx = new Context(invocation);
+    const ctx = new Context(this.resonate, invocation);
     const execution = new OrdinaryExecution(invocation, () => func(ctx, ...args));
 
     // store the execution,
