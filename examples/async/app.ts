@@ -5,7 +5,7 @@ const resonate = new Resonate({
   retry: Retry.exponential(
     100,      // initial delay (in ms) 
     2,        // backoff factor
-    Infinity, // max attemps 
+    Infinity, // max attempts 
     60000,    // max delay (in ms, 1 minute) 
   ),
 });
