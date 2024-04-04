@@ -50,12 +50,13 @@ describe("Resonate", () => {
       test("Register", async () => {
         const resonate = new module.Resonate();
 
-        register(resonate, "foo", () => "foo.1");
+        register(resonate, "foo", () => "foo.1", resonate.options({ timeout: 1000 }));
+        // register(resonate, "foo", () => "foo.1");
         register(resonate, "foo", () => "foo.2", { version: 2 });
         register(resonate, "bar", () => "bar.1", { version: 1 });
         register(resonate, "bar", () => "bar.2", { version: 2 });
 
-        expect(await resonate.run("foo", "foo.0")).toBe("foo.2");
+        expect(await resonate.run("foo", "foo.0")).toBe("foo.2"); // 1... 
         expect(await resonate.run("foo", "foo.1", resonate.options({ version: 1 }))).toBe("foo.1");
         expect(await resonate.run("foo", "foo.2", resonate.options({ version: 2 }))).toBe("foo.2");
 
