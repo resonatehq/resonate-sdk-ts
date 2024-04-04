@@ -55,7 +55,7 @@ describe("Resonate", () => {
         register(resonate, "bar", () => "bar.1", { version: 1 });
         register(resonate, "bar", () => "bar.2", { version: 2 });
 
-        expect(await resonate.run("foo", "foo.0")).toBe("foo.2"); 
+        expect(await resonate.run("foo", "foo.0")).toBe("foo.2");
         expect(await resonate.run("foo", "foo.1", resonate.options({ version: 1 }))).toBe("foo.1");
         expect(await resonate.run("foo", "foo.2", resonate.options({ version: 2 }))).toBe("foo.2");
 
