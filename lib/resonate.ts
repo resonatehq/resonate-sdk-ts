@@ -213,8 +213,8 @@ export abstract class ResonateBase {
   /**
    * Construct options.
    *
-   * @param opts A partial {@link RegOptions} object.
-   * @returns Options with the __resonate flag set.
+   * @param opts A partial {@link Options} object.
+   * @returns PartialOptions.
    */
   options(opts: Partial<Options> = {}): PartialOptions {
     return { ...opts, __resonate: true };
@@ -292,9 +292,7 @@ export abstract class ResonateBase {
   private split(args: [...any, PartialOptions?]): { args: any[]; opts: Options } {
     const opts = args[args.length - 1];
 
-    return isOptions(opts)
-      ? { args: args.slice(0, -1), opts: this.defaults(opts) }
-      : { args, opts: this.defaults() };
+    return isOptions(opts) ? { args: args.slice(0, -1), opts: this.defaults(opts) } : { args, opts: this.defaults() };
   }
 }
 
