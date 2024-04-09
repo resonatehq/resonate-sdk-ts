@@ -104,13 +104,7 @@ export abstract class ResonateBase {
     };
   }
 
-  protected abstract execute(
-    name: string,
-    id: string,
-    func: Func,
-    args: any[],
-    opts: Options,
-  ): ResonatePromise<any>;
+  protected abstract execute(name: string, id: string, func: Func, args: any[], opts: Options): ResonatePromise<any>;
 
   register(name: string, func: Func, opts: Partial<Options> = {}): (id: string, ...args: any) => ResonatePromise<any> {
     // set default version
