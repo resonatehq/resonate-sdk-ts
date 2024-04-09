@@ -107,7 +107,6 @@ export abstract class ResonateBase {
   protected abstract execute(
     name: string,
     id: string,
-    // idempotencyKey: string | undefined,
     func: Func,
     args: any[],
     opts: Options,
@@ -139,7 +138,6 @@ export abstract class ResonateBase {
 
     // register specific version
     this.functions[name][options.version] = { func, opts: options };
-
     return (id: string, ...args: any[]) => this.run(name, id, ...args, options);
   }
 
