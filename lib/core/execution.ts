@@ -46,36 +46,6 @@ export abstract class Execution<T> {
     this.invocation.root.reject(new ResonateError("Resonate function killed", ErrorCodes.KILLED, error, true));
   }
 
-  private async forkWithLock(): Promise<Future<T>> {
-    const opts = this.invocation.opts;
-
-    while (opts.lock && !(await opts.store.locks.tryAcquire(this.invocation.id, opts.eid))) {
-      await new Promise((resolve) => setTimeout(resolve, opts.poll));
-    }
-
-    console.log(this.invocation.id, "lock:", opts.lock, "lock acquired");
-
-    return this.fork();
-  }
-
-  private joinWithLock(future: Future<T>): Promise<T> {
-    const opts = this.invocation.opts;
-    const promise = this.join(future);
-
-    if (opts.lock) {
-      promise.finally(async () => {
-        try {
-          await opts.store.locks.release(this.invocation.id, opts.eid);
-          console.log(this.invocation.id, "lock:", opts.lock, "lock released");
-        } catch (e) {
-          opts.logger.warn("Failed to release lock", e);
-        }
-      });
-    }
-
-    return promise;
-  }
-
   protected tags() {
     if (this.invocation.parent === null) {
       return { ...this.invocation.opts.tags, "resonate:invocation": "true" };
