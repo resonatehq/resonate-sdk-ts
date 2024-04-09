@@ -4,7 +4,6 @@ import { Invocation } from "./core/invocation";
 import { ILogger } from "./core/logger";
 import { ResonateOptions, Options, PartialOptions } from "./core/options";
 import * as schedules from "./core/schedules/schedules";
-import * as utils from "./core/utils";
 import { ResonateBase } from "./resonate";
 
 /////////////////////////////////////////////////////////////////////
@@ -50,7 +49,6 @@ type DeferredFunction = {
 
 type Continuation<T> = {
   execution: GeneratorExecution<T>;
-  // promise: DurablePromise<T>;
   next: Next;
 };
 
@@ -72,6 +70,16 @@ export class Resonate extends ResonateBase {
   constructor(opts: Partial<ResonateOptions> = {}) {
     super(opts);
     this.scheduler = new Scheduler(this.logger);
+  }
+
+  protected execute<F extends GFunc>(
+    name: string,
+    id: string,
+    func: F,
+    args: Params<F>,
+    opts: Options,
+  ): ResonatePromise<Return<F>> {
+    return this.scheduler.add(name, id, func, args, opts);
   }
 
   /**
@@ -132,17 +140,6 @@ export class Resonate extends ResonateBase {
   schedule(name: string, cron: string, func: string, ...args: [...any, PartialOptions?]): Promise<schedules.Schedule>;
   schedule(name: string, cron: string, func: GFunc | string, ...args: any[]): Promise<schedules.Schedule> {
     return super.schedule(name, cron, func, ...args);
-  }
-
-  protected execute<F extends GFunc>(
-    name: string,
-    id: string,
-    idempotencyKey: string | undefined,
-    func: F,
-    args: Params<F>,
-    opts: Options,
-  ): ResonatePromise<Return<F>> {
-    return this.scheduler.add(name, id, idempotencyKey, func, args, opts);
   }
 }
 
@@ -341,14 +338,7 @@ class Scheduler {
 
   constructor(private logger: ILogger) {}
 
-  add<F extends GFunc>(
-    name: string,
-    id: string,
-    idempotencyKey: string | undefined,
-    func: F,
-    args: Params<F>,
-    opts: Options,
-  ): ResonatePromise<Return<F>> {
+  add<F extends GFunc>(name: string, id: string, func: F, args: Params<F>, opts: Options): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
     if (opts.durable && this.cache[id] && !this.cache[id].killed) {
@@ -363,12 +353,11 @@ class Scheduler {
     };
 
     // create a new invocation
-    const invocation = new Invocation(name, id, idempotencyKey, undefined, param, opts);
+    const invocation = new Invocation(name, id, undefined, param, opts);
 
     // create a new execution
     const generator = func(new Context(invocation), ...args);
     const execution = new GeneratorExecution(invocation, generator);
-    const promise = execution.execute();
 
     // once the durable promise has been created,
     // add the execution to runnable if the future is pending
@@ -379,12 +368,12 @@ class Scheduler {
       }
     });
 
-    // store the invocation, execution, and promise
+    // store the invocation and execution,
     // will be used if run is called again with the same id
     this.cache[id] = execution;
     this.executions.push(execution);
 
-    return promise;
+    return execution.execute();
   }
 
   private async tick() {
@@ -482,9 +471,6 @@ class Scheduler {
     // 2. a generated string in the case of an ordinary execution
     const id = value.kind === "deferred" ? value.func : `${parent.id}.${parent.counter}`;
 
-    // the idempotency key is a hash of the id
-    const idempotencyKey = utils.hash(id);
-
     // human readable name of the function
     const name = value.kind === "deferred" ? value.func : value.func.name;
 
@@ -492,7 +478,7 @@ class Scheduler {
     const param = value.kind === "deferred" ? value.args[0] : undefined;
 
     // create a new invocation
-    const invocation = new Invocation(name, id, idempotencyKey, undefined, param, value.opts, parent);
+    const invocation = new Invocation(name, id, undefined, param, value.opts, parent);
 
     // add child and increment counter
     parent.addChild(invocation);

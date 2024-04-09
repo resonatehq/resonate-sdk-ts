@@ -4,7 +4,6 @@ import { Invocation } from "./core/invocation";
 import { ResonateOptions, Options, PartialOptions } from "./core/options";
 import { Retry } from "./core/retries/retry";
 import * as schedules from "./core/schedules/schedules";
-import * as utils from "./core/utils";
 import { ResonateBase } from "./resonate";
 
 /////////////////////////////////////////////////////////////////////
@@ -33,6 +32,16 @@ export class Resonate extends ResonateBase {
   constructor(opts: Partial<ResonateOptions> = {}) {
     super(opts);
     this.scheduler = new Scheduler(this);
+  }
+
+  protected execute<F extends Func>(
+    name: string,
+    id: string,
+    func: F,
+    args: Params<F>,
+    opts: Options,
+  ): ResonatePromise<Return<F>> {
+    return this.scheduler.add(name, id, func, args, opts);
   }
 
   /**
@@ -92,17 +101,6 @@ export class Resonate extends ResonateBase {
   schedule(name: string, cron: string, func: string, ...args: [...any, PartialOptions?]): Promise<schedules.Schedule>;
   schedule(name: string, cron: string, func: Func | string, ...args: any[]): Promise<schedules.Schedule> {
     return super.schedule(name, cron, func, ...args);
-  }
-
-  protected execute<F extends Func>(
-    name: string,
-    id: string,
-    idempotencyKey: string | undefined,
-    func: F,
-    args: Params<F>,
-    opts: Options,
-  ): ResonatePromise<Return<F>> {
-    return this.scheduler.add(name, id, idempotencyKey, func, args, opts);
   }
 }
 
@@ -200,9 +198,6 @@ export class Context {
     // human readable name of the function
     const name = typeof func === "string" ? func : func.name;
 
-    // the idempotency key is a hash of the id
-    const idempotencyKey = utils.hash(id);
-
     // opts are optional and can be provided as the last arg
     const { args, opts } = this.invocation.split(argsWithOpts);
 
@@ -210,7 +205,7 @@ export class Context {
     const param = typeof func === "string" ? args[0] : undefined;
 
     // create a new invocation
-    const invocation = new Invocation(name, id, idempotencyKey, undefined, param, opts, parent);
+    const invocation = new Invocation(name, id, undefined, param, opts, parent);
 
     let execution: Execution<any>;
     if (typeof func === "string") {
@@ -388,14 +383,7 @@ class Scheduler {
 
   constructor(private resonate: Resonate) {}
 
-  add<F extends Func>(
-    name: string,
-    id: string,
-    idempotencyKey: string | undefined,
-    func: F,
-    args: Params<F>,
-    opts: Options,
-  ): ResonatePromise<Return<F>> {
+  add<F extends Func>(name: string, id: string, func: F, args: Params<F>, opts: Options): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
     if (opts.durable && this.cache[id] && !this.cache[id].killed) {
@@ -411,7 +399,7 @@ class Scheduler {
     };
 
     // create a new invocation
-    const invocation = new Invocation<Return<F>>(name, id, idempotencyKey, undefined, param, opts);
+    const invocation = new Invocation<Return<F>>(name, id, undefined, param, opts);
 
     // create a new execution
     const ctx = new Context(this.resonate, invocation);

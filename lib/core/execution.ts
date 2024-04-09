@@ -46,6 +46,36 @@ export abstract class Execution<T> {
     this.invocation.root.reject(new ResonateError("Resonate function killed", ErrorCodes.KILLED, error, true));
   }
 
+  private async forkWithLock(): Promise<Future<T>> {
+    const opts = this.invocation.opts;
+
+    while (opts.lock && !(await opts.store.locks.tryAcquire(this.invocation.id, opts.eid))) {
+      await new Promise((resolve) => setTimeout(resolve, opts.poll));
+    }
+
+    console.log(this.invocation.id, "lock:", opts.lock, "lock acquired");
+
+    return this.fork();
+  }
+
+  private joinWithLock(future: Future<T>): Promise<T> {
+    const opts = this.invocation.opts;
+    const promise = this.join(future);
+
+    if (opts.lock) {
+      promise.finally(async () => {
+        try {
+          await opts.store.locks.release(this.invocation.id, opts.eid);
+          console.log(this.invocation.id, "lock:", opts.lock, "lock released");
+        } catch (e) {
+          opts.logger.warn("Failed to release lock", e);
+        }
+      });
+    }
+
+    return promise;
+  }
+
   protected tags() {
     if (this.invocation.parent === null) {
       return { ...this.invocation.opts.tags, "resonate:invocation": "true" };
@@ -117,6 +147,26 @@ export class OrdinaryExecution<T> extends Execution<T> {
   }
 
   private async run(): Promise<T> {
+    const opts = this.invocation.opts;
+
+    // acquire lock if necessary
+    while (opts.lock && !(await opts.store.locks.tryAcquire(this.invocation.id, opts.eid))) {
+      await new Promise((resolve) => setTimeout(resolve, opts.poll));
+    }
+
+    return this._run().finally(async () => {
+      // release lock if necessary
+      if (opts.lock) {
+        try {
+          await opts.store.locks.release(this.invocation.id, opts.eid);
+        } catch (e) {
+          opts.logger.warn("Failed to release lock", e);
+        }
+      }
+    });
+  }
+
+  private async _run(): Promise<T> {
     let error;
 
     // invoke the function according to the retry policy
@@ -211,6 +261,15 @@ export class GeneratorExecution<T> extends Execution<T> {
         } else if (this.durablePromise.rejected || this.durablePromise.canceled || this.durablePromise.timedout) {
           this.invocation.reject(this.durablePromise.error());
         }
+
+        // acquire lock if necessary
+        while (
+          this.invocation.opts.lock &&
+          this.durablePromise.pending &&
+          !(await this.invocation.opts.store.locks.tryAcquire(this.invocation.id, this.invocation.opts.eid))
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
+        }
       } catch (e) {
         // if an error occurs, kill the execution
         this.kill(e);
@@ -234,6 +293,15 @@ export class GeneratorExecution<T> extends Execution<T> {
       } catch (e) {
         // if an error occurs, kill the execution
         this.kill(e);
+      } finally {
+        // release lock if necessary
+        if (this.invocation.opts.lock) {
+          try {
+            await this.invocation.opts.store.locks.release(this.invocation.id, this.invocation.opts.eid);
+          } catch (e) {
+            this.invocation.opts.logger.warn("Failed to release lock", e);
+          }
+        }
       }
     } else {
       // if not durbale, just resolve the invocation
@@ -257,6 +325,15 @@ export class GeneratorExecution<T> extends Execution<T> {
       } catch (e) {
         // if an error occurs, kill the execution
         this.kill(e);
+      } finally {
+        // release lock if necessary
+        if (this.invocation.opts.lock) {
+          try {
+            await this.invocation.opts.store.locks.release(this.invocation.id, this.invocation.opts.eid);
+          } catch (e) {
+            this.invocation.opts.logger.warn("Failed to release lock", e);
+          }
+        }
       }
     } else {
       // if not durbale, just reject the invocation

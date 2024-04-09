@@ -1,5 +1,6 @@
 import { Future } from "./future";
 import { Options, PartialOptions, isOptions } from "./options";
+import * as utils from "./utils";
 
 /////////////////////////////////////////////////////////////////////
 // Invocation
@@ -35,7 +36,6 @@ export class Invocation<T> {
   constructor(
     public readonly name: string,
     public readonly id: string,
-    public readonly idempotencyKey: string | undefined,
     public readonly headers: Record<string, string> | undefined,
     public readonly param: unknown,
     public readonly opts: Options,
@@ -48,6 +48,12 @@ export class Invocation<T> {
 
     this.root = parent?.root ?? this;
     this.parent = parent ?? null;
+  }
+
+  get idempotencyKey(): string | undefined {
+    return typeof this.opts.idempotencyKey === "function"
+      ? this.opts.idempotencyKey(this.id)
+      : this.opts.idempotencyKey;
   }
 
   get timeout(): number {
@@ -71,15 +77,33 @@ export class Invocation<T> {
   }
 
   split(args: [...any, PartialOptions?]): { args: any[]; opts: Options } {
-    const opts = args[args.length - 1];
+    let opts = args[args.length - 1];
 
     // defaults are specified on the root invocation
     // this means that overrides only apply to the current invocation
     // and do no propagate to children
     const defaults = this.root.opts;
 
-    return isOptions(opts)
-      ? { args: args.slice(0, -1), opts: { ...defaults, ...opts, tags: { ...defaults.tags, ...opts.tags } } }
-      : { args, opts: defaults };
+    // by default, lock is only applied to the root
+    defaults.lock = false;
+
+    // if idempotencyKey is overriden on the root with a string,
+    // revert to hash function
+    if (typeof defaults.idempotencyKey === "string") {
+      defaults.idempotencyKey = utils.hash;
+    }
+
+    // merge opts
+    if (isOptions(opts)) {
+      args = args.slice(0, -1);
+      opts = { ...defaults, ...opts, tags: { ...defaults.tags, ...opts.tags } };
+    } else {
+      opts = defaults;
+    }
+
+    // if durable is false, disable lock
+    opts.lock = opts.durable ? opts.lock : false;
+
+    return { args, opts };
   }
 }

@@ -73,14 +73,29 @@ export type Options = {
   durable: boolean;
 
   /**
+   * A unique id for this execution, defaults to a random id.
+   */
+  eid: string;
+
+  /**
    * Overrides the default encoder.
    */
   encoder: IEncoder<unknown, string | undefined>;
 
   /**
+   * Overrides the default idempotency key.
+   */
+  idempotencyKey: string | ((id: string) => string) | undefined;
+
+  /**
    * Acquire a lock for the execution.
    */
   lock: boolean;
+
+  /**
+   * Overrides the default logger.
+   */
+  logger: ILogger;
 
   /**
    * Overrides the default polling frequency.

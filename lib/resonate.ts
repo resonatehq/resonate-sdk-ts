@@ -107,7 +107,7 @@ export abstract class ResonateBase {
   protected abstract execute(
     name: string,
     id: string,
-    idempotencyKey: string | undefined,
+    // idempotencyKey: string | undefined,
     func: Func,
     args: any[],
     opts: Options,
@@ -163,14 +163,14 @@ export abstract class ResonateBase {
       args,
       opts: { version },
     } = this.split(argsWithOpts);
-    const idempotencyKey = utils.hash(id);
 
     if (!this.functions[name] || !this.functions[name][version]) {
       throw new Error(`Function ${name} version ${version} not registered`);
     }
 
     const { func, opts } = this.functions[name][version];
-    return this.execute(name, id, idempotencyKey, func, args, opts);
+
+    return this.execute(name, id, func, args, opts);
   }
 
   schedule(
@@ -196,7 +196,8 @@ export abstract class ResonateBase {
       opts: { timeout, version },
     } = this.functions[funcName][opts.version];
 
-    const idempotencyKey = utils.hash(funcName);
+    const idempotencyKey =
+      typeof opts.idempotencyKey === "function" ? opts.idempotencyKey(funcName) : opts.idempotencyKey;
 
     const promiseParam = {
       func: funcName,
@@ -239,8 +240,11 @@ export abstract class ResonateBase {
 
   private defaults({
     durable = true,
+    eid = utils.randomId(),
     encoder = this.encoder,
+    idempotencyKey = utils.hash,
     lock = true,
+    logger = this.logger,
     poll = this.poll,
     retry = this.retry,
     store = this.store,
@@ -251,11 +255,17 @@ export abstract class ResonateBase {
     // merge tags
     tags = { ...this.tags, ...tags };
 
+    // if durable is false, disable lock
+    lock = durable ? lock : false;
+
     return {
       __resonate: true,
+      eid,
       durable,
       encoder,
+      idempotencyKey,
       lock,
+      logger,
       poll,
       retry,
       store,
@@ -281,8 +291,9 @@ export abstract class ResonateBase {
             Array.isArray(param.args)
           ) {
             const { func, opts } = this.functions[param.func][param.version];
+            opts.idempotencyKey = promise.idempotencyKeyForCreate;
 
-            this.execute(param.func, promise.id, promise.idempotencyKeyForCreate, func, param.args, opts);
+            this.execute(param.func, promise.id, func, param.args, opts);
           }
         }
       }
@@ -295,7 +306,6 @@ export abstract class ResonateBase {
 
   private split(args: [...any, PartialOptions?]): { args: any[]; opts: Options } {
     const opts = args[args.length - 1];
-
     return isOptions(opts) ? { args: args.slice(0, -1), opts: this.defaults(opts) } : { args, opts: this.defaults() };
   }
 }
