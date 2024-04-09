@@ -68,9 +68,19 @@ export type Options = {
   __resonate: true;
 
   /**
+   * Persist the result to durable storage.
+   */
+  durable: boolean;
+
+  /**
    * Overrides the default encoder.
    */
   encoder: IEncoder<unknown, string | undefined>;
+
+  /**
+   * Acquire a lock for the execution.
+   */
+  lock: boolean;
 
   /**
    * Overrides the default polling frequency.

@@ -398,7 +398,7 @@ class Scheduler {
   ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
-    if (this.cache[id] && !this.cache[id].killed) {
+    if (opts.durable && this.cache[id] && !this.cache[id].killed) {
       // execute is idempotent
       return this.cache[id].execute();
     }

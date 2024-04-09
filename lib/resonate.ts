@@ -238,7 +238,9 @@ export abstract class ResonateBase {
   }
 
   private defaults({
+    durable = true,
     encoder = this.encoder,
+    lock = true,
     poll = this.poll,
     retry = this.retry,
     store = this.store,
@@ -251,7 +253,9 @@ export abstract class ResonateBase {
 
     return {
       __resonate: true,
+      durable,
       encoder,
+      lock,
       poll,
       retry,
       store,

@@ -3,7 +3,6 @@ import { Future, ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
 import { ILogger } from "./core/logger";
 import { ResonateOptions, Options, PartialOptions } from "./core/options";
-import { DurablePromise } from "./core/promises/promises";
 import * as schedules from "./core/schedules/schedules";
 import * as utils from "./core/utils";
 import { ResonateBase } from "./resonate";
@@ -51,7 +50,7 @@ type DeferredFunction = {
 
 type Continuation<T> = {
   execution: GeneratorExecution<T>;
-  promise: DurablePromise<T>;
+  // promise: DurablePromise<T>;
   next: Next;
 };
 
@@ -352,7 +351,7 @@ class Scheduler {
   ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
-    if (this.cache[id] && !this.cache[id].killed) {
+    if (opts.durable && this.cache[id] && !this.cache[id].killed) {
       return this.cache[id].execute();
     }
 
@@ -372,10 +371,10 @@ class Scheduler {
     const promise = execution.execute();
 
     // once the durable promise has been created,
-    // add the execution to runnable
-    execution.create().then((promise) => {
-      if (promise && promise.pending) {
-        this.runnable.push({ execution, promise, next: { kind: "init" } });
+    // add the execution to runnable if the future is pending
+    execution.create().then(() => {
+      if (invocation.future.pending) {
+        this.runnable.push({ execution, next: { kind: "init" } });
         this.tick();
       }
     });
@@ -414,12 +413,12 @@ class Scheduler {
             // need to handle the special case where a generator returns a future
             if (result.value instanceof Future) {
               result.value.promise.then(
-                (v) => continuation.execution.resolve(continuation.promise, v),
-                (e) => continuation.execution.reject(continuation.promise, e),
+                (v) => continuation.execution.resolve(v),
+                (e) => continuation.execution.reject(e),
               );
             } else {
               // resolve the durable promise
-              await continuation.execution.resolve(continuation.promise, result.value);
+              await continuation.execution.resolve(result.value);
             }
           } else {
             // apply the yielded value to the generator
@@ -427,7 +426,7 @@ class Scheduler {
           }
         } catch (error) {
           // if anything goes wrong, reject the durable promise
-          await continuation.execution.reject(continuation.promise, error);
+          await continuation.execution.reject(error);
         }
 
         // housekeeping
@@ -505,11 +504,12 @@ class Scheduler {
       // create a generator execution
       const ctx = new Context(invocation);
       execution = new GeneratorExecution(invocation, value.func(ctx, ...value.args));
-      const promise = await execution.create();
 
-      if (promise && promise.pending) {
-        // if the durable promise is pending, add to runnable
-        this.runnable.push({ execution, promise, next: { kind: "init" } });
+      await execution.create();
+
+      // if the future is pending, add to runnable
+      if (invocation.future.pending) {
+        this.runnable.push({ execution, next: { kind: "init" } });
       }
     } else if (value.kind === "ordinary") {
       // create an ordinary execution
@@ -531,7 +531,6 @@ class Scheduler {
       // if the call is expected to yield a future, add the future to runnable
       this.runnable.push({
         execution: continuation.execution,
-        promise: continuation.promise,
         next: { kind: "value", value: invocation.future },
       });
     } else {
@@ -540,7 +539,7 @@ class Scheduler {
     }
   }
 
-  private applyFuture({ execution, promise }: Continuation<any>, future: Future<any>) {
+  private applyFuture({ execution }: Continuation<any>, future: Future<any>) {
     if (execution.invocation.future.root !== future.root) {
       this.yeet(
         `yielded future originates from ${future.root.id}, but this execution originates from ${execution.invocation.future.root.id}`,
@@ -560,7 +559,7 @@ class Scheduler {
       this.awaiting = this.awaiting.filter((e) => e !== execution);
 
       // add to runnable
-      this.runnable.push({ execution, promise, next });
+      this.runnable.push({ execution, next });
 
       // tick again
       this.tick();

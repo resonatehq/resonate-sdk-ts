@@ -65,39 +65,48 @@ export class OrdinaryExecution<T> extends Execution<T> {
   }
 
   protected async fork() {
-    try {
-      // create a durable promise
-      const promise = await DurablePromise.create<T>(
-        this.invocation.opts.store.promises,
-        this.invocation.opts.encoder,
-        this.invocation.id,
-        this.invocation.timeout,
-        {
-          idempotencyKey: this.invocation.idempotencyKey,
-          headers: this.invocation.headers,
-          param: this.invocation.param,
-          tags: this.tags(),
-        },
-      );
+    if (this.invocation.opts.durable) {
+      // create a durable promise if the invocation is durable
+      try {
+        const promise = await DurablePromise.create<T>(
+          this.invocation.opts.store.promises,
+          this.invocation.opts.encoder,
+          this.invocation.id,
+          this.invocation.timeout,
+          {
+            idempotencyKey: this.invocation.idempotencyKey,
+            headers: this.invocation.headers,
+            param: this.invocation.param,
+            tags: this.tags(),
+          },
+        );
 
-      if (promise.pending) {
-        // if pending, invoke the function and resolve/reject the durable promise
-        try {
-          await promise.resolve(await this.run(), { idempotencyKey: this.invocation.idempotencyKey });
-        } catch (e) {
-          await promise.reject(e, { idempotencyKey: this.invocation.idempotencyKey });
+        if (promise.pending) {
+          // if pending, invoke the function and resolve/reject the durable promise
+          try {
+            await promise.resolve(await this.run(), { idempotencyKey: this.invocation.idempotencyKey });
+          } catch (e) {
+            await promise.reject(e, { idempotencyKey: this.invocation.idempotencyKey });
+          }
         }
-      }
 
-      // resolve/reject the invocation
-      if (promise.resolved) {
-        this.invocation.resolve(promise.value());
-      } else if (promise.rejected || promise.canceled || promise.timedout) {
-        this.invocation.reject(promise.error());
+        // resolve/reject the invocation
+        if (promise.resolved) {
+          this.invocation.resolve(promise.value());
+        } else if (promise.rejected || promise.canceled || promise.timedout) {
+          this.invocation.reject(promise.error());
+        }
+      } catch (e) {
+        // if an error occurs, kill the execution
+        this.kill(e);
       }
-    } catch (e) {
-      // if an error occurs, kill the execution
-      this.kill(e);
+    } else {
+      // if not durable, invoke the function and resolve/reject the invocation
+      try {
+        this.invocation.resolve(await this.run());
+      } catch (e) {
+        this.invocation.reject(e);
+      }
     }
 
     return this.invocation.future;
@@ -169,6 +178,8 @@ export class DeferredExecution<T> extends Execution<T> {
 }
 
 export class GeneratorExecution<T> extends Execution<T> {
+  private durablePromise: DurablePromise<T> | null = null;
+
   constructor(
     invocation: Invocation<T>,
     public generator: Generator<any, T>,
@@ -177,70 +188,80 @@ export class GeneratorExecution<T> extends Execution<T> {
   }
 
   async create() {
-    try {
-      // create a durable promise
-      const promise = await DurablePromise.create<T>(
-        this.invocation.opts.store.promises,
-        this.invocation.opts.encoder,
-        this.invocation.id,
-        this.invocation.timeout,
-        {
-          idempotencyKey: this.invocation.idempotencyKey,
-          headers: this.invocation.headers,
-          param: this.invocation.param,
-          tags: this.tags(),
-        },
-      );
+    if (this.invocation.opts.durable) {
+      // create a durable promise if the invocation is durable
+      try {
+        // create a durable promise
+        this.durablePromise = await DurablePromise.create<T>(
+          this.invocation.opts.store.promises,
+          this.invocation.opts.encoder,
+          this.invocation.id,
+          this.invocation.timeout,
+          {
+            idempotencyKey: this.invocation.idempotencyKey,
+            headers: this.invocation.headers,
+            param: this.invocation.param,
+            tags: this.tags(),
+          },
+        );
 
-      // resolve/reject the invocation if already completed
-      if (promise.resolved) {
-        this.invocation.resolve(promise.value());
-      } else if (promise.rejected || promise.canceled || promise.timedout) {
-        this.invocation.reject(promise.error());
+        // resolve/reject the invocation if already completed
+        if (this.durablePromise.resolved) {
+          this.invocation.resolve(this.durablePromise.value());
+        } else if (this.durablePromise.rejected || this.durablePromise.canceled || this.durablePromise.timedout) {
+          this.invocation.reject(this.durablePromise.error());
+        }
+      } catch (e) {
+        // if an error occurs, kill the execution
+        this.kill(e);
       }
-      return promise;
-    } catch (e) {
-      // if an error occurs, kill the execution
-      this.kill(e);
     }
   }
 
-  async resolve(promise: DurablePromise<T>, value: T) {
-    try {
-      // resolve the durable promise
-      await promise.resolve(value, { idempotencyKey: this.invocation.idempotencyKey });
+  async resolve(value: T) {
+    if (this.durablePromise) {
+      // resolve the durable promise if the invocation is durable
+      try {
+        // resolve the durable promise
+        await this.durablePromise.resolve(value, { idempotencyKey: this.invocation.idempotencyKey });
 
-      // resolve/reject the invocation
-      if (promise.resolved) {
-        this.invocation.resolve(promise.value());
-      } else if (promise.rejected || promise.canceled || promise.timedout) {
-        this.invocation.reject(promise.error());
+        // resolve/reject the invocation
+        if (this.durablePromise.resolved) {
+          this.invocation.resolve(this.durablePromise.value());
+        } else if (this.durablePromise.rejected || this.durablePromise.canceled || this.durablePromise.timedout) {
+          this.invocation.reject(this.durablePromise.error());
+        }
+      } catch (e) {
+        // if an error occurs, kill the execution
+        this.kill(e);
       }
-    } catch (e) {
-      // if an error occurs, kill the execution
-      this.kill(e);
+    } else {
+      // if not durbale, just resolve the invocation
+      this.invocation.resolve(value);
     }
-
-    return promise;
   }
 
-  async reject(promise: DurablePromise<T>, error: any) {
-    try {
-      // reject the durable promise
-      await promise.reject(error, { idempotencyKey: this.invocation.idempotencyKey });
+  async reject(error: any) {
+    if (this.durablePromise) {
+      // reject the durable promise if the invocation is durable
+      try {
+        // reject the durable promise
+        await this.durablePromise.reject(error, { idempotencyKey: this.invocation.idempotencyKey });
 
-      // resolve/reject the invocation
-      if (promise.resolved) {
-        this.invocation.resolve(promise.value());
-      } else if (promise.rejected || promise.canceled || promise.timedout) {
-        this.invocation.reject(promise.error());
+        // resolve/reject the invocation
+        if (this.durablePromise.resolved) {
+          this.invocation.resolve(this.durablePromise.value());
+        } else if (this.durablePromise.rejected || this.durablePromise.canceled || this.durablePromise.timedout) {
+          this.invocation.reject(this.durablePromise.error());
+        }
+      } catch (e) {
+        // if an error occurs, kill the execution
+        this.kill(e);
       }
-    } catch (e) {
-      // if an error occurs, kill the execution
-      this.kill(e);
+    } else {
+      // if not durbale, just reject the invocation
+      this.invocation.reject(error);
     }
-
-    return promise;
   }
 
   protected async fork() {
