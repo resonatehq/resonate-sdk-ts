@@ -26,10 +26,11 @@ export class RemoteStore implements IStore {
     pid: string,
     logger: ILogger = new Logger(),
     encoder: IEncoder<string, string> = new Base64Encoder(),
+    heartbeatFrequency?: number,
   ) {
     this.promises = new RemotePromiseStore(url, logger, encoder);
     this.schedules = new RemoteScheduleStore(url, logger, encoder);
-    this.locks = new RemoteLockStore(url, pid, logger);
+    this.locks = new RemoteLockStore(url, pid, logger, heartbeatFrequency);
   }
 }
 
@@ -389,19 +390,23 @@ export class RemoteScheduleStore implements IScheduleStore {
 }
 
 export class RemoteLockStore implements ILockStore {
-  private heartbeatDelay: number;
-  private hearbeatInterval: number | null = null;
+  private heartbeatInterval: number | null = null;
 
   constructor(
     private url: string,
     private pid: string,
     private logger: ILogger = new Logger(),
-    private lockTimeout: number = 60000,
-  ) {
-    this.heartbeatDelay = this.lockTimeout / 4;
-  }
+    private heartbeatFrequency: number = 15000,
+  ) {}
 
-  async tryAcquire(resourceId: string, executionId: string): Promise<boolean> {
+  async tryAcquire(
+    resourceId: string,
+    executionId: string,
+    expiry: number = this.heartbeatFrequency * 4,
+  ): Promise<boolean> {
+    // lock expiry cannot be less than heartbeat frequency
+    expiry = Math.max(expiry, this.heartbeatFrequency);
+
     const acquired = call<boolean>(
       `${this.url}/locks/acquire`,
       (b: unknown): b is any => true,
@@ -411,7 +416,7 @@ export class RemoteLockStore implements ILockStore {
           resourceId: resourceId,
           processId: this.pid,
           executionId: executionId,
-          expiryInMilliseconds: this.lockTimeout,
+          expiryInMilliseconds: expiry,
         }),
       },
       this.logger,
@@ -446,16 +451,16 @@ export class RemoteLockStore implements ILockStore {
   }
 
   private startHeartbeat(): void {
-    if (this.hearbeatInterval === null) {
+    if (this.heartbeatInterval === null) {
       // the + converts to a number
-      this.hearbeatInterval = +setInterval(() => this.heartbeat(), this.heartbeatDelay);
+      this.heartbeatInterval = +setInterval(() => this.heartbeat(), this.heartbeatFrequency);
     }
   }
 
   private stopHeartbeat(): void {
-    if (this.hearbeatInterval !== null) {
-      clearInterval(this.hearbeatInterval);
-      this.hearbeatInterval = null;
+    if (this.heartbeatInterval !== null) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
   }
 

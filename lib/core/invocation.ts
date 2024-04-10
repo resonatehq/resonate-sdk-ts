@@ -11,6 +11,9 @@ export class Invocation<T> {
   resolve: (v: T) => void;
   reject: (e: unknown) => void;
 
+  idempotencyKey: string | undefined;
+  timeout: number;
+
   killed: boolean = false;
 
   createdAt: number = Date.now();
@@ -48,16 +51,11 @@ export class Invocation<T> {
 
     this.root = parent?.root ?? this;
     this.parent = parent ?? null;
-  }
 
-  get idempotencyKey(): string | undefined {
-    return typeof this.opts.idempotencyKey === "function"
-      ? this.opts.idempotencyKey(this.id)
-      : this.opts.idempotencyKey;
-  }
+    this.idempotencyKey =
+      typeof this.opts.idempotencyKey === "function" ? this.opts.idempotencyKey(this.id) : this.opts.idempotencyKey;
 
-  get timeout(): number {
-    return Math.min(this.createdAt + this.opts.timeout, this.parent?.timeout ?? Infinity);
+    this.timeout = Math.min(this.createdAt + this.opts.timeout, this.parent?.timeout ?? Infinity);
   }
 
   addChild(child: Invocation<any>) {

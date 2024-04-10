@@ -211,7 +211,6 @@ export class GeneratorExecution<T> extends Execution<T> {
     if (this.invocation.opts.durable) {
       // create a durable promise if the invocation is durable
       try {
-        // create a durable promise
         this.durablePromise = await DurablePromise.create<T>(
           this.invocation.opts.store.promises,
           this.invocation.opts.encoder,
@@ -251,7 +250,6 @@ export class GeneratorExecution<T> extends Execution<T> {
     if (this.durablePromise) {
       // resolve the durable promise if the invocation is durable
       try {
-        // resolve the durable promise
         await this.durablePromise.resolve(value, { idempotencyKey: this.invocation.idempotencyKey });
 
         // resolve/reject the invocation
@@ -283,7 +281,6 @@ export class GeneratorExecution<T> extends Execution<T> {
     if (this.durablePromise) {
       // reject the durable promise if the invocation is durable
       try {
-        // reject the durable promise
         await this.durablePromise.reject(error, { idempotencyKey: this.invocation.idempotencyKey });
 
         // resolve/reject the invocation
