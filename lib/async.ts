@@ -41,9 +41,10 @@ export class Resonate extends ResonateBase {
     func: F,
     args: Params<F>,
     opts: Options,
+    defaults: Options,
     durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
-    return this.scheduler.add(name, id, func, args, opts, durablePromise);
+    return this.scheduler.add(name, id, func, args, opts, defaults, durablePromise);
   }
 
   /**
@@ -203,11 +204,14 @@ export class Context {
     // opts are optional and can be provided as the last arg
     const { args, opts } = this.invocation.split(argsWithOpts);
 
+    // default opts never change
+    const defaults = this.invocation.defaults;
+
     // param is only required for deferred executions
     const param = typeof func === "string" ? args[0] : undefined;
 
     // create a new invocation
-    const invocation = new Invocation(name, id, undefined, param, opts, parent);
+    const invocation = new Invocation(name, id, undefined, param, opts, defaults, undefined, parent);
 
     let execution: Execution<any>;
     if (typeof func === "string") {
@@ -391,6 +395,7 @@ class Scheduler {
     func: F,
     args: Params<F>,
     opts: Options,
+    defaults: Options,
     durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
@@ -407,8 +412,11 @@ class Scheduler {
       args,
     };
 
+    // if a durable promise already exists, this timeout takes precedence
+    const timeout = durablePromise?.timeout;
+
     // create a new invocation
-    const invocation = new Invocation<Return<F>>(name, id, undefined, param, opts);
+    const invocation = new Invocation<Return<F>>(name, id, undefined, param, opts, defaults, timeout);
 
     // create a new execution
     const ctx = new Context(this.resonate, invocation);

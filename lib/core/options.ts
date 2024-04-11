@@ -75,7 +75,7 @@ export type Options = {
   /**
    * A unique id for this execution, defaults to a random id.
    */
-  eid: string;
+  eid: string | ((id: string) => string);
 
   /**
    * Overrides the default encoder.
@@ -85,12 +85,12 @@ export type Options = {
   /**
    * Overrides the default idempotency key.
    */
-  idempotencyKey: string | ((id: string) => string) | undefined;
+  idempotencyKey: string | ((id: string) => string);
 
   /**
    * Acquire a lock for the execution.
    */
-  lock: boolean;
+  lock: boolean | undefined;
 
   /**
    * Overrides the default polling frequency.

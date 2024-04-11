@@ -78,9 +78,10 @@ export class Resonate extends ResonateBase {
     func: F,
     args: Params<F>,
     opts: Options,
+    defaults: Options,
     durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
-    return this.scheduler.add(name, id, func, args, opts, durablePromise);
+    return this.scheduler.add(name, id, func, args, opts, defaults, durablePromise);
   }
 
   /**
@@ -345,6 +346,7 @@ class Scheduler {
     func: F,
     args: Params<F>,
     opts: Options,
+    defaults: Options,
     durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
@@ -360,8 +362,11 @@ class Scheduler {
       args,
     };
 
+    // if a durable promise already exists, this timeout takes precedence
+    const timeout = durablePromise?.timeout;
+
     // create a new invocation
-    const invocation = new Invocation(name, id, undefined, param, opts);
+    const invocation = new Invocation(name, id, undefined, param, opts, defaults, timeout);
 
     // create a new execution
     const generator = func(new Context(invocation), ...args);
@@ -482,11 +487,14 @@ class Scheduler {
     // human readable name of the function
     const name = value.kind === "deferred" ? value.func : value.func.name;
 
+    // default opts never change
+    const defaults = parent.defaults;
+
     // param is only required for deferred executions
     const param = value.kind === "deferred" ? value.args[0] : undefined;
 
     // create a new invocation
-    const invocation = new Invocation(name, id, undefined, param, value.opts, parent);
+    const invocation = new Invocation(name, id, undefined, param, value.opts, defaults, undefined, parent);
 
     // add child and increment counter
     parent.addChild(invocation);

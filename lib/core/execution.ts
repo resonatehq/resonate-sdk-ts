@@ -48,14 +48,6 @@ export abstract class Execution<T> {
     // reject only the root invocation
     this.invocation.root.reject(new ResonateError("Resonate function killed", ErrorCodes.KILLED, error, true));
   }
-
-  protected tags() {
-    if (this.invocation.parent === null) {
-      return { ...this.invocation.opts.tags, "resonate:invocation": "true" };
-    }
-
-    return this.invocation.opts.tags;
-  }
 }
 
 export class OrdinaryExecution<T> extends Execution<T> {
@@ -83,7 +75,7 @@ export class OrdinaryExecution<T> extends Execution<T> {
               idempotencyKey: this.invocation.idempotencyKey,
               headers: this.invocation.headers,
               param: this.invocation.param,
-              tags: this.tags(),
+              tags: this.invocation.opts.tags,
             },
           ));
 
@@ -123,18 +115,19 @@ export class OrdinaryExecution<T> extends Execution<T> {
   }
 
   private async run(): Promise<T> {
-    const opts = this.invocation.opts;
-
     // acquire lock if necessary
-    while (opts.lock && !(await this.resonate.store.locks.tryAcquire(this.invocation.id, opts.eid))) {
-      await new Promise((resolve) => setTimeout(resolve, opts.poll));
+    while (
+      this.invocation.lock &&
+      !(await this.resonate.store.locks.tryAcquire(this.invocation.id, this.invocation.eid))
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
     }
 
     return this._run().finally(async () => {
       // release lock if necessary
-      if (opts.lock) {
+      if (this.invocation.lock) {
         try {
-          await this.resonate.store.locks.release(this.invocation.id, opts.eid);
+          await this.resonate.store.locks.release(this.invocation.id, this.invocation.eid);
         } catch (e) {
           this.resonate.logger.warn("Failed to release lock", e);
         }
@@ -177,7 +170,7 @@ export class DeferredExecution<T> extends Execution<T> {
           idempotencyKey: this.invocation.idempotencyKey,
           headers: this.invocation.headers,
           param: this.invocation.param,
-          tags: this.tags(),
+          tags: this.invocation.opts.tags,
           poll: this.invocation.opts.poll,
         },
       );
@@ -200,6 +193,8 @@ export class DeferredExecution<T> extends Execution<T> {
 }
 
 export class GeneratorExecution<T> extends Execution<T> {
+  private lock: boolean;
+
   constructor(
     resonate: ResonateBase,
     invocation: Invocation<T>,
@@ -207,6 +202,13 @@ export class GeneratorExecution<T> extends Execution<T> {
     private durablePromise?: DurablePromise<T> | undefined,
   ) {
     super(resonate, invocation);
+
+    // TODO
+    // For the time being we can only acquire a lock for the generator execution
+    // if it is the root invocation. This is because we "stop the world" to create
+    // a durable promise, which currently includes acquiring a lock. This could
+    // cause the event loop to deadlock.
+    this.lock = this.invocation.parent ? false : this.invocation.opts.lock ?? false;
   }
 
   async create() {
@@ -224,7 +226,7 @@ export class GeneratorExecution<T> extends Execution<T> {
               idempotencyKey: this.invocation.idempotencyKey,
               headers: this.invocation.headers,
               param: this.invocation.param,
-              tags: this.tags(),
+              tags: this.invocation.opts.tags,
             },
           ));
 
@@ -237,9 +239,9 @@ export class GeneratorExecution<T> extends Execution<T> {
 
         // acquire lock if necessary
         while (
-          this.invocation.opts.lock &&
+          this.lock &&
           this.durablePromise.pending &&
-          !(await this.resonate.store.locks.tryAcquire(this.invocation.id, this.invocation.opts.eid))
+          !(await this.resonate.store.locks.tryAcquire(this.invocation.id, this.invocation.eid))
         ) {
           await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
         }
@@ -267,9 +269,9 @@ export class GeneratorExecution<T> extends Execution<T> {
         this.kill(e);
       } finally {
         // release lock if necessary
-        if (this.invocation.opts.lock) {
+        if (this.lock) {
           try {
-            await this.resonate.store.locks.release(this.invocation.id, this.invocation.opts.eid);
+            await this.resonate.store.locks.release(this.invocation.id, this.invocation.eid);
           } catch (e) {
             this.resonate.logger.warn("Failed to release lock", e);
           }
@@ -298,9 +300,9 @@ export class GeneratorExecution<T> extends Execution<T> {
         this.kill(e);
       } finally {
         // release lock if necessary
-        if (this.invocation.opts.lock) {
+        if (this.lock) {
           try {
-            await this.resonate.store.locks.release(this.invocation.id, this.invocation.opts.eid);
+            await this.resonate.store.locks.release(this.invocation.id, this.invocation.eid);
           } catch (e) {
             this.resonate.logger.warn("Failed to release lock", e);
           }

@@ -10,7 +10,9 @@ export class Invocation<T> {
   resolve: (v: T) => void;
   reject: (e: unknown) => void;
 
-  idempotencyKey: string | undefined;
+  lock: boolean;
+  eid: string;
+  idempotencyKey: string;
   timeout: number;
 
   killed: boolean = false;
@@ -41,8 +43,11 @@ export class Invocation<T> {
     public readonly headers: Record<string, string> | undefined,
     public readonly param: unknown,
     public readonly opts: Options,
+    public readonly defaults: Options,
+    timeout?: number,
     parent?: Invocation<any>,
   ) {
+    // create a future and hold on to its resolvers
     const { future, resolve, reject } = Future.deferred<T>(this);
     this.future = future;
     this.resolve = resolve;
@@ -51,10 +56,27 @@ export class Invocation<T> {
     this.root = parent?.root ?? this;
     this.parent = parent ?? null;
 
+    // if the lock option is specified on the root, it will be propagated to children
+    // otherwise, locking is enabled on the root invocation only
+    this.lock = this.parent && this.opts.lock === undefined ? true : this.opts.lock ?? false;
+
+    // get the execution id from either:
+    // - a hard coded string
+    // - a function that returns a string given the invocation id
+    this.eid = typeof this.opts.eid === "function" ? this.opts.eid(this.id) : this.opts.eid;
+
+    // get the idempotency key from either:
+    // - a hard coded string
+    // - a function that returns a string given the invocation id
     this.idempotencyKey =
       typeof this.opts.idempotencyKey === "function" ? this.opts.idempotencyKey(this.id) : this.opts.idempotencyKey;
 
-    this.timeout = Math.min(this.createdAt + this.opts.timeout, this.parent?.timeout ?? Infinity);
+    // calculate the timeout, which is either:
+    // - a hard coded number, this is passed in when a durable promise already exists
+    // - min of:
+    //   - the current time plus the user provided relative time
+    //   - the parent timeout
+    this.timeout = timeout ?? Math.min(this.createdAt + this.opts.timeout, this.parent?.timeout ?? Infinity);
   }
 
   addChild(child: Invocation<any>) {
@@ -76,20 +98,12 @@ export class Invocation<T> {
   split(args: [...any, PartialOptions?]): { args: any[]; opts: Options } {
     let opts = args[args.length - 1];
 
-    // defaults are specified on the root invocation
-    // this means that overrides only apply to the current invocation
-    // and do no propagate to children
-    const defaults = this.root.opts;
-
-    // by default, lock is only applied to the root
-    defaults.lock = false;
-
     // merge opts
     if (isOptions(opts)) {
       args = args.slice(0, -1);
-      opts = { ...defaults, ...opts, tags: { ...defaults.tags, ...opts.tags } };
+      opts = { ...this.defaults, ...opts, tags: { ...this.defaults.tags, ...opts.tags } };
     } else {
-      opts = defaults;
+      opts = this.defaults;
     }
 
     // if durable is false, disable lock
