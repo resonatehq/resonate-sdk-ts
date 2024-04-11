@@ -93,11 +93,6 @@ export type Options = {
   lock: boolean;
 
   /**
-   * Overrides the default logger.
-   */
-  logger: ILogger;
-
-  /**
    * Overrides the default polling frequency.
    */
   poll: number;
@@ -106,11 +101,6 @@ export type Options = {
    * Overrides the default retry policy.
    */
   retry: IRetry;
-
-  /**
-   * Overrides the default store.
-   */
-  store: IStore;
 
   /**
    * Additional tags to add to the durable promise.

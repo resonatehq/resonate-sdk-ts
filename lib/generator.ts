@@ -1,8 +1,8 @@
 import { DeferredExecution, Execution, GeneratorExecution, OrdinaryExecution } from "./core/execution";
 import { Future, ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
-import { ILogger } from "./core/logger";
 import { ResonateOptions, Options, PartialOptions } from "./core/options";
+import { DurablePromise } from "./core/promises/promises";
 import * as schedules from "./core/schedules/schedules";
 import { ResonateBase } from "./resonate";
 
@@ -69,7 +69,7 @@ export class Resonate extends ResonateBase {
    */
   constructor(opts: Partial<ResonateOptions> = {}) {
     super(opts);
-    this.scheduler = new Scheduler(this.logger);
+    this.scheduler = new Scheduler(this);
   }
 
   protected execute<F extends GFunc>(
@@ -78,8 +78,9 @@ export class Resonate extends ResonateBase {
     func: F,
     args: Params<F>,
     opts: Options,
+    durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
-    return this.scheduler.add(name, id, func, args, opts);
+    return this.scheduler.add(name, id, func, args, opts, durablePromise);
   }
 
   /**
@@ -336,9 +337,16 @@ class Scheduler {
   // executions that have been killed
   private killed: Execution<any>[] = [];
 
-  constructor(private logger: ILogger) {}
+  constructor(private resonate: Resonate) {}
 
-  add<F extends GFunc>(name: string, id: string, func: F, args: Params<F>, opts: Options): ResonatePromise<Return<F>> {
+  add<F extends GFunc>(
+    name: string,
+    id: string,
+    func: F,
+    args: Params<F>,
+    opts: Options,
+    durablePromise?: DurablePromise<any>,
+  ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
     if (opts.durable && this.cache[id] && !this.cache[id].killed) {
@@ -357,7 +365,7 @@ class Scheduler {
 
     // create a new execution
     const generator = func(new Context(invocation), ...args);
-    const execution = new GeneratorExecution(invocation, generator);
+    const execution = new GeneratorExecution(this.resonate, invocation, generator, durablePromise);
 
     // once the durable promise has been created,
     // add the execution to runnable if the future is pending
@@ -387,7 +395,7 @@ class Scheduler {
       const continuation = this.runnable.shift();
 
       // step through the generator if in debug mode
-      if (this.logger.level === "debug" && (await this.keypress()) === "\u001b") {
+      if (this.resonate.logger.level === "debug" && (await this.keypress()) === "\u001b") {
         // kill when escape key is pressed
         continuation?.execution.kill("manual kill");
       }
@@ -489,7 +497,7 @@ class Scheduler {
     if (value.kind === "resonate") {
       // create a generator execution
       const ctx = new Context(invocation);
-      execution = new GeneratorExecution(invocation, value.func(ctx, ...value.args));
+      execution = new GeneratorExecution(this.resonate, invocation, value.func(ctx, ...value.args));
 
       await execution.create();
 
@@ -500,11 +508,11 @@ class Scheduler {
     } else if (value.kind === "ordinary") {
       // create an ordinary execution
       const info = new Info(invocation);
-      execution = new OrdinaryExecution(invocation, () => value.func(info, ...value.args));
+      execution = new OrdinaryExecution(this.resonate, invocation, () => value.func(info, ...value.args));
       execution.execute().catch(() => {});
     } else if (value.kind === "deferred") {
       // create a deferred execution
-      execution = new DeferredExecution(invocation);
+      execution = new DeferredExecution(this.resonate, invocation);
       execution.execute().catch(() => {});
     } else {
       this.yeet(`permitted call values are (resonate, ordinary, deferred), received ${value}`);
@@ -569,7 +577,7 @@ class Scheduler {
   }
 
   private async keypress(): Promise<string> {
-    this.logger.debug("Press any key to continue...");
+    this.resonate.logger.debug("Press any key to continue...");
 
     return new Promise((resolve) => {
       const onData = (data: Buffer) => {
@@ -579,7 +587,7 @@ class Scheduler {
 
         const c = data.toString();
         if (c === "\u0003") {
-          this.logger.debug("^C");
+          this.resonate.logger.debug("^C");
           process.exit(1);
         }
         resolve(c);
@@ -592,8 +600,8 @@ class Scheduler {
   }
 
   private print() {
-    this.logger.debug("Executions");
-    this.logger.table(
+    this.resonate.logger.debug("Executions");
+    this.resonate.logger.table(
       this.executions.map((e) => ({
         name: e.invocation.name,
         id: e.invocation.id,
@@ -609,7 +617,7 @@ class Scheduler {
 
   private yeet(msg: string): never {
     // an unrecoverable error has occurred, log and exit
-    this.logger.error(msg);
+    this.resonate.logger.error(msg);
     process.exit(1);
   }
 }

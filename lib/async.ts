@@ -2,6 +2,7 @@ import { Execution, OrdinaryExecution, DeferredExecution } from "./core/executio
 import { ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
 import { ResonateOptions, Options, PartialOptions } from "./core/options";
+import { DurablePromise } from "./core/promises/promises";
 import { Retry } from "./core/retries/retry";
 import * as schedules from "./core/schedules/schedules";
 import { ResonateBase } from "./resonate";
@@ -40,8 +41,9 @@ export class Resonate extends ResonateBase {
     func: F,
     args: Params<F>,
     opts: Options,
+    durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
-    return this.scheduler.add(name, id, func, args, opts);
+    return this.scheduler.add(name, id, func, args, opts, durablePromise);
   }
 
   /**
@@ -211,12 +213,12 @@ export class Context {
     if (typeof func === "string") {
       // create a deferred execution
       // this execution will be fulfilled out-of-process
-      execution = new DeferredExecution(invocation);
+      execution = new DeferredExecution(this.resonate, invocation);
     } else {
       // create an ordinary execution
       // this execution wraps a user-provided function
       const ctx = new Context(this.resonate, invocation);
-      execution = new OrdinaryExecution(invocation, () => func(ctx, ...args));
+      execution = new OrdinaryExecution(this.resonate, invocation, () => func(ctx, ...args));
     }
 
     // bump the counter
@@ -383,7 +385,14 @@ class Scheduler {
 
   constructor(private resonate: Resonate) {}
 
-  add<F extends Func>(name: string, id: string, func: F, args: Params<F>, opts: Options): ResonatePromise<Return<F>> {
+  add<F extends Func>(
+    name: string,
+    id: string,
+    func: F,
+    args: Params<F>,
+    opts: Options,
+    durablePromise?: DurablePromise<any>,
+  ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
     if (opts.durable && this.cache[id] && !this.cache[id].killed) {
@@ -403,7 +412,7 @@ class Scheduler {
 
     // create a new execution
     const ctx = new Context(this.resonate, invocation);
-    const execution = new OrdinaryExecution(invocation, () => func(ctx, ...args));
+    const execution = new OrdinaryExecution(this.resonate, invocation, () => func(ctx, ...args), durablePromise);
 
     // store the execution,
     // will be used if run is called again with the same id

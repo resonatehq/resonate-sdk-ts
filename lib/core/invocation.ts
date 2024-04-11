@@ -1,6 +1,5 @@
 import { Future } from "./future";
 import { Options, PartialOptions, isOptions } from "./options";
-import * as utils from "./utils";
 
 /////////////////////////////////////////////////////////////////////
 // Invocation
@@ -84,12 +83,6 @@ export class Invocation<T> {
 
     // by default, lock is only applied to the root
     defaults.lock = false;
-
-    // if idempotencyKey is overriden on the root with a string,
-    // revert to hash function
-    if (typeof defaults.idempotencyKey === "string") {
-      defaults.idempotencyKey = utils.hash;
-    }
 
     // merge opts
     if (isOptions(opts)) {

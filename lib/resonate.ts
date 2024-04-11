@@ -34,10 +34,10 @@ export abstract class ResonateBase {
   public readonly timeout: number;
   public readonly tags: Record<string, string>;
 
-  protected readonly encoder: IEncoder<unknown, string | undefined>;
-  protected readonly logger: ILogger;
-  protected readonly retry: IRetry;
-  protected readonly store: IStore;
+  public readonly encoder: IEncoder<unknown, string | undefined>;
+  public readonly logger: ILogger;
+  public readonly retry: IRetry;
+  public readonly store: IStore;
 
   private interval: NodeJS.Timeout | undefined;
 
@@ -104,7 +104,14 @@ export abstract class ResonateBase {
     };
   }
 
-  protected abstract execute(name: string, id: string, func: Func, args: any[], opts: Options): ResonatePromise<any>;
+  protected abstract execute(
+    name: string,
+    id: string,
+    func: Func,
+    args: any[],
+    opts: Options,
+    durablePromise?: promises.DurablePromise<any>,
+  ): ResonatePromise<any>;
 
   register(name: string, func: Func, opts: Partial<Options> = {}): (id: string, ...args: any) => ResonatePromise<any> {
     // set default version
@@ -185,7 +192,7 @@ export abstract class ResonateBase {
     }
 
     const {
-      opts: { timeout, version },
+      opts: { version, timeout },
     } = this.functions[funcName][opts.version];
 
     const idempotencyKey =
@@ -236,10 +243,8 @@ export abstract class ResonateBase {
     encoder = this.encoder,
     idempotencyKey = utils.hash,
     lock = true,
-    logger = this.logger,
     poll = this.poll,
     retry = this.retry,
-    store = this.store,
     tags = this.tags,
     timeout = this.timeout,
     version = 0,
@@ -257,10 +262,8 @@ export abstract class ResonateBase {
       encoder,
       idempotencyKey,
       lock,
-      logger,
       poll,
       retry,
-      store,
       tags,
       timeout,
       version,
@@ -283,9 +286,7 @@ export abstract class ResonateBase {
             Array.isArray(param.args)
           ) {
             const { func, opts } = this.functions[param.func][param.version];
-            opts.idempotencyKey = promise.idempotencyKeyForCreate;
-
-            this.execute(param.func, promise.id, func, param.args, opts);
+            this.execute(param.func, promise.id, func, param.args, opts, promise);
           }
         }
       }

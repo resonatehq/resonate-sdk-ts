@@ -1,8 +1,8 @@
+import { ResonateBase } from "../resonate";
 import { ErrorCodes, ResonateError } from "./errors";
 import { Future, ResonatePromise } from "./future";
 import { Invocation } from "./invocation";
 import { DurablePromise } from "./promises/promises";
-import { IRetry } from "./retry";
 
 /////////////////////////////////////////////////////////////////////
 // Execution
@@ -17,7 +17,10 @@ export abstract class Execution<T> {
    * @constructor
    * @param invocation - An invocation correpsonding to the Resonate function.
    */
-  constructor(public invocation: Invocation<T>) {}
+  constructor(
+    public resonate: ResonateBase,
+    public invocation: Invocation<T>,
+  ) {}
 
   execute(): ResonatePromise<T> {
     if (this.promise) {
@@ -57,29 +60,32 @@ export abstract class Execution<T> {
 
 export class OrdinaryExecution<T> extends Execution<T> {
   constructor(
+    resonate: ResonateBase,
     invocation: Invocation<T>,
     private func: () => T,
-    private retry: IRetry = invocation.opts.retry,
+    private durablePromise?: DurablePromise<T>,
   ) {
-    super(invocation);
+    super(resonate, invocation);
   }
 
   protected async fork() {
     if (this.invocation.opts.durable) {
       // create a durable promise if the invocation is durable
       try {
-        const promise = await DurablePromise.create<T>(
-          this.invocation.opts.store.promises,
-          this.invocation.opts.encoder,
-          this.invocation.id,
-          this.invocation.timeout,
-          {
-            idempotencyKey: this.invocation.idempotencyKey,
-            headers: this.invocation.headers,
-            param: this.invocation.param,
-            tags: this.tags(),
-          },
-        );
+        const promise =
+          this.durablePromise ??
+          (await DurablePromise.create<T>(
+            this.resonate.store.promises,
+            this.invocation.opts.encoder,
+            this.invocation.id,
+            this.invocation.timeout,
+            {
+              idempotencyKey: this.invocation.idempotencyKey,
+              headers: this.invocation.headers,
+              param: this.invocation.param,
+              tags: this.tags(),
+            },
+          ));
 
         if (promise.pending) {
           // if pending, invoke the function and resolve/reject the durable promise
@@ -120,7 +126,7 @@ export class OrdinaryExecution<T> extends Execution<T> {
     const opts = this.invocation.opts;
 
     // acquire lock if necessary
-    while (opts.lock && !(await opts.store.locks.tryAcquire(this.invocation.id, opts.eid))) {
+    while (opts.lock && !(await this.resonate.store.locks.tryAcquire(this.invocation.id, opts.eid))) {
       await new Promise((resolve) => setTimeout(resolve, opts.poll));
     }
 
@@ -128,9 +134,9 @@ export class OrdinaryExecution<T> extends Execution<T> {
       // release lock if necessary
       if (opts.lock) {
         try {
-          await opts.store.locks.release(this.invocation.id, opts.eid);
+          await this.resonate.store.locks.release(this.invocation.id, opts.eid);
         } catch (e) {
-          opts.logger.warn("Failed to release lock", e);
+          this.resonate.logger.warn("Failed to release lock", e);
         }
       }
     });
@@ -140,7 +146,7 @@ export class OrdinaryExecution<T> extends Execution<T> {
     let error;
 
     // invoke the function according to the retry policy
-    for (const delay of this.retry.iterator(this.invocation)) {
+    for (const delay of this.invocation.opts.retry.iterator(this.invocation)) {
       await new Promise((resolve) => setTimeout(resolve, delay));
 
       try {
@@ -159,15 +165,11 @@ export class OrdinaryExecution<T> extends Execution<T> {
 }
 
 export class DeferredExecution<T> extends Execution<T> {
-  constructor(invocation: Invocation<T>) {
-    super(invocation);
-  }
-
   protected async fork() {
     try {
       // create a durable promise
       const promise = await DurablePromise.create<T>(
-        this.invocation.opts.store.promises,
+        this.resonate.store.promises,
         this.invocation.opts.encoder,
         this.invocation.id,
         this.invocation.timeout,
@@ -198,31 +200,33 @@ export class DeferredExecution<T> extends Execution<T> {
 }
 
 export class GeneratorExecution<T> extends Execution<T> {
-  private durablePromise: DurablePromise<T> | null = null;
-
   constructor(
+    resonate: ResonateBase,
     invocation: Invocation<T>,
     public generator: Generator<any, T>,
+    private durablePromise?: DurablePromise<T> | undefined,
   ) {
-    super(invocation);
+    super(resonate, invocation);
   }
 
   async create() {
     if (this.invocation.opts.durable) {
       // create a durable promise if the invocation is durable
       try {
-        this.durablePromise = await DurablePromise.create<T>(
-          this.invocation.opts.store.promises,
-          this.invocation.opts.encoder,
-          this.invocation.id,
-          this.invocation.timeout,
-          {
-            idempotencyKey: this.invocation.idempotencyKey,
-            headers: this.invocation.headers,
-            param: this.invocation.param,
-            tags: this.tags(),
-          },
-        );
+        this.durablePromise =
+          this.durablePromise ??
+          (await DurablePromise.create<T>(
+            this.resonate.store.promises,
+            this.invocation.opts.encoder,
+            this.invocation.id,
+            this.invocation.timeout,
+            {
+              idempotencyKey: this.invocation.idempotencyKey,
+              headers: this.invocation.headers,
+              param: this.invocation.param,
+              tags: this.tags(),
+            },
+          ));
 
         // resolve/reject the invocation if already completed
         if (this.durablePromise.resolved) {
@@ -235,7 +239,7 @@ export class GeneratorExecution<T> extends Execution<T> {
         while (
           this.invocation.opts.lock &&
           this.durablePromise.pending &&
-          !(await this.invocation.opts.store.locks.tryAcquire(this.invocation.id, this.invocation.opts.eid))
+          !(await this.resonate.store.locks.tryAcquire(this.invocation.id, this.invocation.opts.eid))
         ) {
           await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
         }
@@ -265,9 +269,9 @@ export class GeneratorExecution<T> extends Execution<T> {
         // release lock if necessary
         if (this.invocation.opts.lock) {
           try {
-            await this.invocation.opts.store.locks.release(this.invocation.id, this.invocation.opts.eid);
+            await this.resonate.store.locks.release(this.invocation.id, this.invocation.opts.eid);
           } catch (e) {
-            this.invocation.opts.logger.warn("Failed to release lock", e);
+            this.resonate.logger.warn("Failed to release lock", e);
           }
         }
       }
@@ -296,9 +300,9 @@ export class GeneratorExecution<T> extends Execution<T> {
         // release lock if necessary
         if (this.invocation.opts.lock) {
           try {
-            await this.invocation.opts.store.locks.release(this.invocation.id, this.invocation.opts.eid);
+            await this.resonate.store.locks.release(this.invocation.id, this.invocation.opts.eid);
           } catch (e) {
-            this.invocation.opts.logger.warn("Failed to release lock", e);
+            this.resonate.logger.warn("Failed to release lock", e);
           }
         }
       }
