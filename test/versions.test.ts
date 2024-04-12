@@ -52,7 +52,7 @@ describe("Functions: versions", () => {
         expect(r2).toMatchObject({ v: "v3", c: 3 });
 
         const r3 = await resonate.run("test", "e");
-        expect(r2).toMatchObject({ v: "v3", c: 3 });
+        expect(r3).toMatchObject({ v: "v3", c: 3 });
       });
     });
   }
