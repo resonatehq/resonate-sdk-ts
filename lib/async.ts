@@ -218,7 +218,7 @@ export class Context {
     const param = typeof func === "string" ? args[0] : undefined;
 
     // create a new invocation
-    const invocation = new Invocation(name, id, undefined, param, opts, defaults, undefined, parent);
+    const invocation = new Invocation(name, id, undefined, param, opts, defaults, parent);
 
     let execution: Execution<any>;
     if (typeof func === "string") {
@@ -419,11 +419,8 @@ class Scheduler {
       args,
     };
 
-    // if a durable promise already exists, this timeout takes precedence
-    const timeout = durablePromise?.timeout;
-
     // create a new invocation
-    const invocation = new Invocation<Return<F>>(name, id, undefined, param, opts, defaults, timeout);
+    const invocation = new Invocation<Return<F>>(name, id, undefined, param, opts, defaults);
 
     // create a new execution
     const ctx = new Context(this.resonate, invocation);

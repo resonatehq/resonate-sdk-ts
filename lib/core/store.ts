@@ -200,5 +200,5 @@ export interface ILockStore {
    * @param id Id of lock.
    * @param eid Execution id of lock.
    */
-  release(id: string, eid: string): Promise<void>;
+  release(id: string, eid: string): Promise<boolean>;
 }

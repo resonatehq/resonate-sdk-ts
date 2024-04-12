@@ -124,7 +124,7 @@ export class DurablePromise<T> {
         opts.strict ?? false,
         opts.headers,
         encoder.encode(opts.param),
-        Date.now() + timeout,
+        timeout,
         opts.tags,
       ),
       opts.poll,

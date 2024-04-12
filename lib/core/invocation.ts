@@ -43,7 +43,6 @@ export class Invocation<T> {
     public readonly param: unknown,
     public readonly opts: Options,
     public readonly defaults: Options,
-    timeout?: number,
     parent?: Invocation<any>,
   ) {
     // create a future and hold on to its resolvers
@@ -66,12 +65,10 @@ export class Invocation<T> {
     this.idempotencyKey =
       typeof this.opts.idempotencyKey === "function" ? this.opts.idempotencyKey(this.id) : this.opts.idempotencyKey;
 
-    // calculate the timeout, which is either:
-    // - a hard coded number, this is passed in when a durable promise already exists
-    // - min of:
-    //   - the current time plus the user provided relative time
-    //   - the parent timeout
-    this.timeout = timeout ?? Math.min(this.createdAt + this.opts.timeout, this.parent?.timeout ?? Infinity);
+    // the timeout is the minimum of:
+    // - the current time plus the user provided relative time
+    // - the parent timeout
+    this.timeout = Math.min(this.createdAt + this.opts.timeout, this.parent?.timeout ?? Infinity);
   }
 
   addChild(child: Invocation<any>) {

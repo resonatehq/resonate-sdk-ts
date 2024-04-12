@@ -391,6 +391,7 @@ export class RemoteScheduleStore implements IScheduleStore {
 
 export class RemoteLockStore implements ILockStore {
   private heartbeatInterval: number | null = null;
+  private locksHeld: number = 0;
 
   constructor(
     private url: string,
@@ -407,7 +408,7 @@ export class RemoteLockStore implements ILockStore {
     // lock expiry cannot be less than heartbeat frequency
     expiry = Math.max(expiry, this.heartbeatFrequency);
 
-    const acquired = call<boolean>(
+    await call<boolean>(
       `${this.url}/locks/acquire`,
       (b: unknown): b is any => true,
       {
@@ -422,18 +423,17 @@ export class RemoteLockStore implements ILockStore {
       this.logger,
     );
 
+    // increment the number of locks held
+    this.locksHeld++;
+
     // lazily start the heartbeat
     this.startHeartbeat();
 
-    if (await acquired) {
-      return true;
-    }
-
-    return false;
+    return true;
   }
 
-  async release(resourceId: string, executionId: string): Promise<void> {
-    return call<void>(
+  async release(resourceId: string, executionId: string): Promise<boolean> {
+    await call<void>(
       `${this.url}/locks/release`,
       (b: unknown): b is void => b === undefined,
       {
@@ -448,6 +448,15 @@ export class RemoteLockStore implements ILockStore {
       },
       this.logger,
     );
+
+    // decrement the number of locks held
+    this.locksHeld = Math.max(this.locksHeld - 1, 0);
+
+    if (this.locksHeld === 0) {
+      this.stopHeartbeat();
+    }
+
+    return true;
   }
 
   private startHeartbeat(): void {
@@ -464,7 +473,7 @@ export class RemoteLockStore implements ILockStore {
     }
   }
 
-  private async heartbeat(): Promise<number> {
+  private async heartbeat() {
     const res = await call<{ locksAffected: number }>(
       `${this.url}/locks/heartbeat`,
       (b: unknown): b is { locksAffected: number } =>
@@ -481,11 +490,12 @@ export class RemoteLockStore implements ILockStore {
       this.logger,
     );
 
-    if (res.locksAffected === 0) {
+    // set the number of locks held
+    this.locksHeld = res.locksAffected;
+
+    if (this.locksHeld === 0) {
       this.stopHeartbeat();
     }
-
-    return res.locksAffected;
   }
 }
 

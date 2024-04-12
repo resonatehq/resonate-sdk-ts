@@ -376,11 +376,8 @@ class Scheduler {
       args,
     };
 
-    // if a durable promise already exists, this timeout takes precedence
-    const timeout = durablePromise?.timeout;
-
     // create a new invocation
-    const invocation = new Invocation(name, id, undefined, param, opts, defaults, timeout);
+    const invocation = new Invocation(name, id, undefined, param, opts, defaults);
 
     // create a new execution
     const generator = func(new Context(invocation), ...args);
@@ -508,7 +505,7 @@ class Scheduler {
     const param = value.kind === "deferred" ? value.args[0] : undefined;
 
     // create a new invocation
-    const invocation = new Invocation(name, id, undefined, param, value.opts, defaults, undefined, parent);
+    const invocation = new Invocation(name, id, undefined, param, value.opts, defaults, parent);
 
     // add child and increment counter
     parent.addChild(invocation);

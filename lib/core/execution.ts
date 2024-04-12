@@ -48,6 +48,27 @@ export abstract class Execution<T> {
     // reject only the root invocation
     this.invocation.root.reject(new ResonateError("Resonate function killed", ErrorCodes.KILLED, error, true));
   }
+
+  protected async acquireLock() {
+    try {
+      return await this.resonate.store.locks.tryAcquire(this.invocation.id, this.invocation.eid);
+    } catch (e: unknown) {
+      // if lock is already acquired, return false so we can poll
+      if (e instanceof ResonateError && e.code === ErrorCodes.STORE_FORBIDDEN) {
+        return false;
+      }
+
+      throw e;
+    }
+  }
+
+  protected async releaseLock() {
+    try {
+      await this.resonate.store.locks.release(this.invocation.id, this.invocation.eid);
+    } catch (e) {
+      this.resonate.logger.warn("Failed to release lock", e);
+    }
+  }
 }
 
 export class OrdinaryExecution<T> extends Execution<T> {
@@ -61,9 +82,14 @@ export class OrdinaryExecution<T> extends Execution<T> {
   }
 
   protected async fork() {
-    if (this.invocation.opts.durable) {
-      // create a durable promise if the invocation is durable
-      try {
+    try {
+      // acquire lock if necessary
+      while (this.invocation.opts.lock && !(await this.acquireLock())) {
+        await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
+      }
+
+      if (this.invocation.opts.durable) {
+        // if durable, create a durable promise
         const promise =
           this.durablePromise ??
           (await DurablePromise.create<T>(
@@ -78,6 +104,9 @@ export class OrdinaryExecution<T> extends Execution<T> {
               tags: this.invocation.opts.tags,
             },
           ));
+
+        // override the invocation timeout
+        this.invocation.timeout = promise.timeout;
 
         if (promise.pending) {
           // if pending, invoke the function and resolve/reject the durable promise
@@ -94,17 +123,22 @@ export class OrdinaryExecution<T> extends Execution<T> {
         } else if (promise.rejected || promise.canceled || promise.timedout) {
           this.invocation.reject(promise.error());
         }
-      } catch (e) {
-        // if an error occurs, kill the execution
-        this.kill(e);
+      } else {
+        // if not durable, invoke the function and resolve/reject the invocation
+        try {
+          this.invocation.resolve(await this.run());
+        } catch (e) {
+          this.invocation.reject(e);
+        }
       }
-    } else {
-      // if not durable, invoke the function and resolve/reject the invocation
-      try {
-        this.invocation.resolve(await this.run());
-      } catch (e) {
-        this.invocation.reject(e);
+
+      // release lock if necessary
+      if (this.invocation.opts.lock) {
+        await this.releaseLock();
       }
+    } catch (e) {
+      // if an error occurs, kill the execution
+      this.kill(e);
     }
 
     return this.invocation.future;
@@ -115,27 +149,6 @@ export class OrdinaryExecution<T> extends Execution<T> {
   }
 
   private async run(): Promise<T> {
-    // acquire lock if necessary
-    while (
-      this.invocation.opts.lock &&
-      !(await this.resonate.store.locks.tryAcquire(this.invocation.id, this.invocation.eid))
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
-    }
-
-    return this._run().finally(async () => {
-      // release lock if necessary
-      if (this.invocation.opts.lock) {
-        try {
-          await this.resonate.store.locks.release(this.invocation.id, this.invocation.eid);
-        } catch (e) {
-          this.resonate.logger.warn("Failed to release lock", e);
-        }
-      }
-    });
-  }
-
-  private async _run(): Promise<T> {
     let error;
 
     // invoke the function according to the retry policy
@@ -175,6 +188,9 @@ export class DeferredExecution<T> extends Execution<T> {
         },
       );
 
+      // override the invocation timeout
+      this.invocation.timeout = promise.timeout;
+
       // poll the completion of the durable promise
       promise.completed.then((p) =>
         p.resolved ? this.invocation.resolve(p.value()) : this.invocation.reject(p.error()),
@@ -193,8 +209,6 @@ export class DeferredExecution<T> extends Execution<T> {
 }
 
 export class GeneratorExecution<T> extends Execution<T> {
-  private lock: boolean;
-
   constructor(
     resonate: ResonateBase,
     invocation: Invocation<T>,
@@ -202,19 +216,12 @@ export class GeneratorExecution<T> extends Execution<T> {
     private durablePromise?: DurablePromise<T> | undefined,
   ) {
     super(resonate, invocation);
-
-    // TODO
-    // For the time being we can only acquire a lock for the generator execution
-    // if it is the root execution. This is because we "stop the world" to create
-    // a durable promise, which currently includes acquiring a lock. This could
-    // cause the event loop to deadlock.
-    this.lock = this.invocation.parent ? false : this.invocation.opts.lock ?? false;
   }
 
   async create() {
-    if (this.invocation.opts.durable) {
-      // create a durable promise if the invocation is durable
-      try {
+    try {
+      if (this.invocation.opts.durable) {
+        // create a durable promise
         this.durablePromise =
           this.durablePromise ??
           (await DurablePromise.create<T>(
@@ -230,32 +237,26 @@ export class GeneratorExecution<T> extends Execution<T> {
             },
           ));
 
+        // override the invocation timeout
+        this.invocation.timeout = this.durablePromise.timeout;
+
         // resolve/reject the invocation if already completed
         if (this.durablePromise.resolved) {
           this.invocation.resolve(this.durablePromise.value());
         } else if (this.durablePromise.rejected || this.durablePromise.canceled || this.durablePromise.timedout) {
           this.invocation.reject(this.durablePromise.error());
         }
-
-        // acquire lock if necessary
-        while (
-          this.lock &&
-          this.durablePromise.pending &&
-          !(await this.resonate.store.locks.tryAcquire(this.invocation.id, this.invocation.eid))
-        ) {
-          await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
-        }
-      } catch (e) {
-        // if an error occurs, kill the execution
-        this.kill(e);
       }
+    } catch (e) {
+      // if an error occurs, kill the execution
+      this.kill(e);
     }
   }
 
   async resolve(value: T) {
-    if (this.durablePromise) {
-      // resolve the durable promise if the invocation is durable
-      try {
+    try {
+      if (this.durablePromise) {
+        // resolve the durable promise if the invocation is durable
         await this.durablePromise.resolve(value, { idempotencyKey: this.invocation.idempotencyKey });
 
         // resolve/reject the invocation
@@ -264,29 +265,20 @@ export class GeneratorExecution<T> extends Execution<T> {
         } else if (this.durablePromise.rejected || this.durablePromise.canceled || this.durablePromise.timedout) {
           this.invocation.reject(this.durablePromise.error());
         }
-      } catch (e) {
-        // if an error occurs, kill the execution
-        this.kill(e);
-      } finally {
-        // release lock if necessary
-        if (this.lock) {
-          try {
-            await this.resonate.store.locks.release(this.invocation.id, this.invocation.eid);
-          } catch (e) {
-            this.resonate.logger.warn("Failed to release lock", e);
-          }
-        }
+      } else {
+        // if not durable, just resolve the invocation
+        this.invocation.resolve(value);
       }
-    } else {
-      // if not durbale, just resolve the invocation
-      this.invocation.resolve(value);
+    } catch (e) {
+      // if an error occurs, kill the execution
+      this.kill(e);
     }
   }
 
   async reject(error: any) {
-    if (this.durablePromise) {
-      // reject the durable promise if the invocation is durable
-      try {
+    try {
+      if (this.durablePromise) {
+        // reject the durable promise if the invocation is durable
         await this.durablePromise.reject(error, { idempotencyKey: this.invocation.idempotencyKey });
 
         // resolve/reject the invocation
@@ -295,22 +287,13 @@ export class GeneratorExecution<T> extends Execution<T> {
         } else if (this.durablePromise.rejected || this.durablePromise.canceled || this.durablePromise.timedout) {
           this.invocation.reject(this.durablePromise.error());
         }
-      } catch (e) {
-        // if an error occurs, kill the execution
-        this.kill(e);
-      } finally {
-        // release lock if necessary
-        if (this.lock) {
-          try {
-            await this.resonate.store.locks.release(this.invocation.id, this.invocation.eid);
-          } catch (e) {
-            this.resonate.logger.warn("Failed to release lock", e);
-          }
-        }
+      } else {
+        // if not durable, just reject the invocation
+        this.invocation.reject(error);
       }
-    } else {
-      // if not durbale, just reject the invocation
-      this.invocation.reject(error);
+    } catch (e) {
+      // if an error occurs, kill the execution
+      this.kill(e);
     }
   }
 
