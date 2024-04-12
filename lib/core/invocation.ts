@@ -10,7 +10,6 @@ export class Invocation<T> {
   resolve: (v: T) => void;
   reject: (e: unknown) => void;
 
-  lock: boolean;
   eid: string;
   idempotencyKey: string;
   timeout: number;
@@ -56,10 +55,6 @@ export class Invocation<T> {
     this.root = parent?.root ?? this;
     this.parent = parent ?? null;
 
-    // if the lock option is specified on the root, it will be propagated to children
-    // otherwise, locking is enabled on the root invocation only
-    this.lock = this.parent && this.opts.lock === undefined ? true : this.opts.lock ?? false;
-
     // get the execution id from either:
     // - a hard coded string
     // - a function that returns a string given the invocation id
@@ -101,13 +96,23 @@ export class Invocation<T> {
     // merge opts
     if (isOptions(opts)) {
       args = args.slice(0, -1);
-      opts = { ...this.defaults, ...opts, tags: { ...this.defaults.tags, ...opts.tags } };
+      opts = {
+        ...this.defaults,
+        ...opts,
+        tags: { ...this.defaults.tags, ...opts.tags }, // tags are merged
+      };
     } else {
       opts = this.defaults;
     }
 
+    // lock is false by default
+    opts.lock = opts.lock ?? false;
+
     // if durable is false, disable lock
     opts.lock = opts.durable ? opts.lock : false;
+
+    // version cannot be overridden
+    opts.version = this.defaults.version;
 
     return { args, opts };
   }

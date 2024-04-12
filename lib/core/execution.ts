@@ -117,7 +117,7 @@ export class OrdinaryExecution<T> extends Execution<T> {
   private async run(): Promise<T> {
     // acquire lock if necessary
     while (
-      this.invocation.lock &&
+      this.invocation.opts.lock &&
       !(await this.resonate.store.locks.tryAcquire(this.invocation.id, this.invocation.eid))
     ) {
       await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
@@ -125,7 +125,7 @@ export class OrdinaryExecution<T> extends Execution<T> {
 
     return this._run().finally(async () => {
       // release lock if necessary
-      if (this.invocation.lock) {
+      if (this.invocation.opts.lock) {
         try {
           await this.resonate.store.locks.release(this.invocation.id, this.invocation.eid);
         } catch (e) {
@@ -205,7 +205,7 @@ export class GeneratorExecution<T> extends Execution<T> {
 
     // TODO
     // For the time being we can only acquire a lock for the generator execution
-    // if it is the root invocation. This is because we "stop the world" to create
+    // if it is the root execution. This is because we "stop the world" to create
     // a durable promise, which currently includes acquiring a lock. This could
     // cause the event loop to deadlock.
     this.lock = this.invocation.parent ? false : this.invocation.opts.lock ?? false;

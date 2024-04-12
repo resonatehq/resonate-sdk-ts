@@ -176,21 +176,21 @@ export abstract class ResonateBase {
     // in the durable promise and therefore not required on the recovery path
     const override: Partial<Options> = {};
 
-    if (durable) {
+    if (durable !== undefined) {
       override.durable = durable;
     }
 
-    if (idempotencyKey) {
+    if (idempotencyKey !== undefined) {
       override.idempotencyKey = idempotencyKey;
     }
 
-    if (tags) {
+    if (tags !== undefined) {
       override.tags = { ...defaults.tags, ...tags, "resonate:invocation": "true" };
     } else {
-      override.tags = { "resonate:invocation": "true" };
+      override.tags = { ...defaults.tags, "resonate:invocation": "true" };
     }
 
-    if (timeout) {
+    if (timeout !== undefined) {
       override.timeout = timeout;
     }
 
@@ -199,6 +199,9 @@ export abstract class ResonateBase {
       ...defaults,
       ...override,
     };
+
+    // lock on top level is true by default
+    opts.lock = opts.lock ?? true;
 
     return this.execute(name, id, func, args, opts, defaults);
   }

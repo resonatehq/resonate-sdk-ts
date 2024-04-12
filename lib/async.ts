@@ -146,6 +146,13 @@ export class Context {
   }
 
   /**
+   * All configured options for this context.
+   */
+  get opts() {
+    return this.invocation.opts;
+  }
+
+  /**
    * The timestamp in ms, once this time elapses the function invocation will timeout.
    */
   get timeout() {

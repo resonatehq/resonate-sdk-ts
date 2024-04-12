@@ -174,6 +174,13 @@ export class Info {
   }
 
   /**
+   * All configured options for this info.
+   */
+  get opts() {
+    return this.invocation.opts;
+  }
+
+  /**
    * The timestamp in ms, once this time elapses the function invocation will timeout.
    */
   get timeout() {
@@ -210,6 +217,13 @@ export class Context {
    */
   get idempotencyKey() {
     return this.invocation.idempotencyKey;
+  }
+
+  /**
+   * All configured options for this context.
+   */
+  get opts() {
+    return this.invocation.opts;
   }
 
   /**
