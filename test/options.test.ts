@@ -54,16 +54,17 @@ describe("Options", () => {
     version: 2,
   };
 
+  // Note: we are disabling durable for all tests here
+  // so that value returned from the run is not serialized.
+
   const rA = new a.Resonate(resonateOpts);
   rA.register("test.1", aTest, { durable: false });
   rA.register("test.1", aTest, { durable: false, version: 2 });
-  rA.register("test.1", aTest, { version: 3 });
   rA.register("test.2", aTest, overrides);
 
   const rG = new g.Resonate(resonateOpts);
   rG.register("test.1", gTest, { durable: false });
   rG.register("test.1", gTest, { durable: false, version: 2 });
-  rG.register("test.1", gTest, { version: 3 });
   rG.register("test.2", gTest, overrides);
 
   for (const { name, resonate } of [
@@ -83,12 +84,15 @@ describe("Options", () => {
           expect(opts.eid).toBe(utils.randomId);
           expect(opts.encoder).toBe(resonateOpts.encoder);
           expect(opts.idempotencyKey).toBe(utils.hash);
-          expect(opts.lock).toBe(false);
           expect(opts.poll).toBe(resonateOpts.poll);
           expect(opts.retry).toBe(resonateOpts.retry);
           expect(opts.timeout).toBe(resonateOpts.timeout);
           expect(opts.version).toBe(1);
         }
+
+        expect(top.lock).toBe(true);
+        expect(middle.lock).toBe(false);
+        expect(bottom.lock).toBe(false);
 
         expect(top.tags).toEqual({ ...resonateOpts.tags, "resonate:invocation": "true" });
         expect(middle.tags).toEqual(resonateOpts.tags);
@@ -122,12 +126,15 @@ describe("Options", () => {
           resonate.options(overrides),
         );
 
+        // Note: only some options are valid at the top level
+        // this is because we would lose this information on the recovery path.
+
         // top level options
         expect(top.durable).toBe(false);
         expect(top.eid).toBe(utils.randomId);
         expect(top.encoder).toBe(resonateOpts.encoder);
         expect(top.idempotencyKey).toBe(overrides.idempotencyKey);
-        expect(top.lock).toBe(false);
+        expect(top.lock).toBe(true);
         expect(top.poll).toBe(resonateOpts.poll);
         expect(top.retry).toBe(resonateOpts.retry);
         expect(top.tags).toEqual({ ...resonateOpts.tags, ...overrides.tags, "resonate:invocation": "true" });
@@ -175,47 +182,17 @@ describe("Options", () => {
           expect(opts.eid).toBe(utils.randomId);
           expect(opts.encoder).toBe(resonateOpts.encoder);
           expect(opts.idempotencyKey).toBe(utils.hash);
-          expect(opts.lock).toBe(false);
           expect(opts.poll).toBe(resonateOpts.poll);
           expect(opts.retry).toBe(resonateOpts.retry);
           expect(opts.timeout).toBe(resonateOpts.timeout);
           expect(opts.version).toBe(1);
         }
 
+        expect(top.lock).toBe(true);
+        expect(bottom.lock).toBe(false);
+
         expect(top.tags).toEqual({ ...resonateOpts.tags, "resonate:invocation": "true" });
         expect(bottom.tags).toEqual(resonateOpts.tags);
-      });
-
-      test("only top level is locked by default", async () => {
-        const [top, middle, bottom] = await resonate.run<[Options, Options, Options]>(
-          "test.1",
-          `test.1.${name}.4`,
-          resonate.options({ version: 3 }),
-        );
-
-        expect(top.lock).toBe(true);
-        expect(middle.lock).toBe(false);
-        expect(bottom.lock).toBe(false);
-
-        expect(top.durable).toBe(true);
-        expect(middle.durable).toBe(true);
-        expect(bottom.durable).toBe(true);
-      });
-
-      test("non durable disables locking", async () => {
-        const [top, middle, bottom] = await resonate.run<[Options, Options, Options]>(
-          "test.1",
-          `test.1.${name}.5`,
-          resonate.options({ durable: false, lock: true, version: 3 }),
-        );
-
-        expect(top.durable).toBe(false);
-        expect(middle.durable).toBe(true);
-        expect(bottom.durable).toBe(true);
-
-        expect(top.lock).toBe(false);
-        expect(middle.lock).toBe(false);
-        expect(bottom.lock).toBe(false);
       });
     });
   }

@@ -99,14 +99,12 @@ export class Invocation<T> {
         tags: { ...this.defaults.tags, ...opts.tags }, // tags are merged
       };
     } else {
-      opts = this.defaults;
+      // copy defaults
+      opts = { ...this.defaults };
     }
 
     // lock is false by default
     opts.lock = opts.lock ?? false;
-
-    // if durable is false, disable lock
-    opts.lock = opts.durable ? opts.lock : false;
 
     // version cannot be overridden
     opts.version = this.defaults.version;

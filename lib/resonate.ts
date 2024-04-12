@@ -289,9 +289,6 @@ export abstract class ResonateBase {
     // merge tags
     tags = { ...this.tags, ...tags };
 
-    // if durable is false, disable lock
-    lock = durable ? lock : false;
-
     return {
       __resonate: true,
       eid,
