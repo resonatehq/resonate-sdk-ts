@@ -27,7 +27,15 @@ export abstract class Execution<T> {
       return this.promise;
     }
 
+    // each execution has a fork phase and a join phase
+
+    // fork phase is responsible for spawning the invocation,
+    // which in general means creating a durable promise (if necessary)
     const forkPromise = this.fork();
+
+    // join phase is responsible for awaiting the invocation,
+    // if the invocation is backed by a durable promise the durable
+    // promise is completed before the invocation is completed
     const joinPromise = forkPromise.then((f) => this.join(f));
 
     this.promise = new ResonatePromise(this.invocation.id, forkPromise, joinPromise);
@@ -82,15 +90,10 @@ export class OrdinaryExecution<T> extends Execution<T> {
   }
 
   protected async fork() {
-    try {
-      // acquire lock if necessary
-      while (this.invocation.opts.lock && !(await this.acquireLock())) {
-        await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
-      }
-
-      if (this.invocation.opts.durable) {
-        // if durable, create a durable promise
-        const promise =
+    if (this.invocation.opts.durable) {
+      // if durable, create a durable promise
+      try {
+        this.durablePromise =
           this.durablePromise ??
           (await DurablePromise.create<T>(
             this.resonate.store.promises,
@@ -104,24 +107,59 @@ export class OrdinaryExecution<T> extends Execution<T> {
               tags: this.invocation.opts.tags,
             },
           ));
+      } catch (e) {
+        // if an error occurs, kill the execution
+        this.kill(e);
+      }
+    }
 
-        // override the invocation timeout
-        this.invocation.timeout = promise.timeout;
+    if (this.durablePromise) {
+      // override the invocation creation time
+      this.invocation.createdOn = this.durablePromise.createdOn;
 
-        if (promise.pending) {
-          // if pending, invoke the function and resolve/reject the durable promise
+      // override the invocation timeout
+      this.invocation.timeout = this.durablePromise.timeout;
+    }
+
+    return this.invocation.future;
+  }
+
+  protected async join(future: Future<T>) {
+    try {
+      // acquire lock if necessary
+      while (this.invocation.opts.lock && !(await this.acquireLock())) {
+        await new Promise((resolve) => setTimeout(resolve, this.invocation.opts.poll));
+      }
+
+      if (this.durablePromise) {
+        if (this.durablePromise.pending) {
+          // if durable and pending, invoke the function and resolve/reject the durable promise
+          let value!: T;
+          let error: any;
+
+          // we need to hold on to a boolean to determine if the function was successful,
+          // we cannot rely on the value or error as these values could be undefined
+          let success = true;
+
           try {
-            await promise.resolve(await this.run(), { idempotencyKey: this.invocation.idempotencyKey });
+            value = await this.run();
           } catch (e) {
-            await promise.reject(e, { idempotencyKey: this.invocation.idempotencyKey });
+            error = e;
+            success = false;
+          }
+
+          if (success) {
+            await this.durablePromise.resolve(value, { idempotencyKey: this.invocation.idempotencyKey });
+          } else {
+            await this.durablePromise.reject(error, { idempotencyKey: this.invocation.idempotencyKey });
           }
         }
 
-        // resolve/reject the invocation
-        if (promise.resolved) {
-          this.invocation.resolve(promise.value());
-        } else if (promise.rejected || promise.canceled || promise.timedout) {
-          this.invocation.reject(promise.error());
+        // if durable resolve/reject the invocation
+        if (this.durablePromise.resolved) {
+          this.invocation.resolve(this.durablePromise.value());
+        } else if (this.durablePromise.rejected || this.durablePromise.canceled || this.durablePromise.timedout) {
+          this.invocation.reject(this.durablePromise.error());
         }
       } else {
         // if not durable, invoke the function and resolve/reject the invocation
@@ -141,10 +179,6 @@ export class OrdinaryExecution<T> extends Execution<T> {
       this.kill(e);
     }
 
-    return this.invocation.future;
-  }
-
-  protected async join(future: Future<T>) {
     return await future.promise;
   }
 
@@ -171,10 +205,12 @@ export class OrdinaryExecution<T> extends Execution<T> {
 }
 
 export class DeferredExecution<T> extends Execution<T> {
+  private durablePromise: DurablePromise<T> | null = null;
+
   protected async fork() {
     try {
       // create a durable promise
-      const promise = await DurablePromise.create<T>(
+      this.durablePromise = await DurablePromise.create<T>(
         this.resonate.store.promises,
         this.invocation.opts.encoder,
         this.invocation.id,
@@ -188,13 +224,11 @@ export class DeferredExecution<T> extends Execution<T> {
         },
       );
 
-      // override the invocation timeout
-      this.invocation.timeout = promise.timeout;
+      // override the invocation creation time
+      this.invocation.createdOn = this.durablePromise.createdOn;
 
-      // poll the completion of the durable promise
-      promise.completed.then((p) =>
-        p.resolved ? this.invocation.resolve(p.value()) : this.invocation.reject(p.error()),
-      );
+      // override the invocation timeout
+      this.invocation.timeout = this.durablePromise.timeout;
     } catch (e) {
       // if an error occurs, kill the execution
       this.kill(e);
@@ -204,6 +238,17 @@ export class DeferredExecution<T> extends Execution<T> {
   }
 
   protected async join(future: Future<T>) {
+    if (this.durablePromise) {
+      // poll the completion of the durable promise
+      await this.durablePromise.completed;
+
+      if (this.durablePromise.resolved) {
+        this.invocation.resolve(this.durablePromise.value());
+      } else {
+        this.invocation.reject(this.durablePromise.error());
+      }
+    }
+
     return await future.promise;
   }
 }
@@ -237,15 +282,20 @@ export class GeneratorExecution<T> extends Execution<T> {
             },
           ));
 
-        // override the invocation timeout
-        this.invocation.timeout = this.durablePromise.timeout;
-
         // resolve/reject the invocation if already completed
         if (this.durablePromise.resolved) {
           this.invocation.resolve(this.durablePromise.value());
         } else if (this.durablePromise.rejected || this.durablePromise.canceled || this.durablePromise.timedout) {
           this.invocation.reject(this.durablePromise.error());
         }
+      }
+
+      if (this.durablePromise) {
+        // override the invocation creation time
+        this.invocation.createdOn = this.durablePromise.createdOn;
+
+        // override the invocation timeout
+        this.invocation.timeout = this.durablePromise.timeout;
       }
     } catch (e) {
       // if an error occurs, kill the execution

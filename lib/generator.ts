@@ -135,7 +135,6 @@ export class Resonate extends ResonateBase {
    * @param name The schedule name.
    * @param cron The schedule cron expression.
    * @param func The registered function name.
-   * @param version The registered function version.
    * @param args The function arguments.
    * @returns The schedule object.
    */
@@ -203,6 +202,13 @@ export class Context {
    */
   get counter() {
     return this.invocation.counter;
+  }
+
+  /**
+   * The time the invocation was created. Will use the durable promise creation time if available.
+   */
+  get createdOn() {
+    return this.invocation.createdOn;
   }
 
   /**

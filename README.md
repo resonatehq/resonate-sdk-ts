@@ -1,10 +1,3 @@
-> Resonate is in the **Design Phase**
-> 
-> Our code base is constantly evolving as we are exploring Resonate's programming model. If you are passionate about a dead simple developer experience, join us on this journey of discovery and share your thoughts.
->
-> [Join our slack](https://resonatehqcommunity.slack.com)
-
-<br /><br />
 <p align="center">
    <img height="170"src="https://raw.githubusercontent.com/resonatehq/resonate/main/docs/img/echo.png">
 </p>
@@ -38,7 +31,7 @@ Resonate's Distributed Async Await is a new programming model that simplifies co
 
 ## Why Resonate?
 
-- **Cloud Computing Made Dead Simple**: Resonate offers a dead simple programming model that simplifies coding for the cloud using an intuitive paradigm you already know — async await.
+- **Cloud Computing Made Dead Simple**: Resonate simplifies coding for the cloud using an intuitive paradigm you already know — async await.
 
 - **Single Binary**: Resonate simplifies your deployment and operations with a single binary.
 

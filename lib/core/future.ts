@@ -23,7 +23,7 @@ export class ResonatePromise<T> extends Promise<T> {
    */
   constructor(
     public id: string,
-    created: Promise<any>,
+    created: Promise<Future<T>>,
     completed: Promise<T>,
   ) {
     // bind the promise to the completed promise
@@ -32,7 +32,7 @@ export class ResonatePromise<T> extends Promise<T> {
     });
 
     // expose the id when the durable promise has been created
-    this.created = created.then(() => this.id);
+    this.created = created.then((future) => future.id);
   }
 }
 
@@ -40,14 +40,17 @@ export class ResonatePromise<T> extends Promise<T> {
 // Future
 /////////////////////////////////////////////////////////////////////
 
-export type Value<T> = { kind: "pending" } | { kind: "resolved"; value: T } | { kind: "rejected"; error: unknown };
+export type FutureValue<T> =
+  | { kind: "pending" }
+  | { kind: "resolved"; value: T }
+  | { kind: "rejected"; error: unknown };
 
 export class Future<T> {
   // a discriminate property
   readonly kind = "future";
 
   // initial value
-  private _value: Value<T> = { kind: "pending" };
+  private _value: FutureValue<T> = { kind: "pending" };
 
   /**
    * Represents the eventual return value of a Resonate function.
