@@ -161,6 +161,14 @@ export abstract class ResonateBase {
    * @returns A promise that resolve to the function return value.
    */
   run<T>(name: string, id: string, ...argsWithOpts: [...any, PartialOptions?]): ResonatePromise<T>;
+
+  /**
+   * Invoke a function.
+   *
+   * @template T The return type of the remote function.
+   * @param fc An instance of a function call.
+   * @returns A promise that resolve to the function return value.
+   */
   run<T>(fc: TFC): ResonatePromise<T>;
   run(nameOrFc: string | TFC, ...argsWithOpts: [...any, PartialOptions?]): ResonatePromise<any> {
     // extract id

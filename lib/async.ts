@@ -207,7 +207,7 @@ export class Context {
    *
    * @template T The return type of the remote function.
    * @param fc An instance of a function call.
-   * @returns A promise that resolves to the resolved value of the remote function.
+   * @returns A promise that resolves to the return value of the function or the resolved value of the remote function.
    */
   run<T>(fc: LFC | RFC): ResonatePromise<T>;
 
