@@ -146,6 +146,14 @@ export class DurablePromise<T> {
     return this.promise.state === "REJECTED_TIMEDOUT";
   }
 
+  get paramHeaders() {
+    return this.promise.param.headers ?? {};
+  }
+
+  get valueHeaders() {
+    return this.promise.value.headers ?? {};
+  }
+
   /**
    * Returns the decoded promise param data.
    */

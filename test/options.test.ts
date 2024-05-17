@@ -4,7 +4,6 @@ import { Base64Encoder } from "../lib/core/encoders/base64";
 import { JSONEncoder } from "../lib/core/encoders/json";
 import { Options } from "../lib/core/options";
 import { Retry } from "../lib/core/retries/retry";
-import * as utils from "../lib/core/utils";
 import * as g from "../lib/generator";
 
 jest.setTimeout(10000);
@@ -43,14 +42,14 @@ describe("Options", () => {
 
   const overrides = {
     durable: false,
-    eid: "eid",
+    eid: "updated_eid",
     encoder: new Base64Encoder(),
-    idempotencyKey: "idempotencyKey",
+    idempotencyKey: "updated_idempotencyKey",
     lock: false,
-    poll: 2000,
+    poll: 999999,
     retry: Retry.linear(),
     tags: { c: "x", d: "d", e: "e" },
-    timeout: 2000,
+    timeout: 999999,
     version: 2,
   };
 
@@ -58,18 +57,28 @@ describe("Options", () => {
   // so that value returned from the run is not serialized.
 
   const rA = new a.Resonate(resonateOpts);
-  rA.register("test.1", aTest, { durable: false });
-  rA.register("test.1", aTest, { durable: false, version: 2 });
+  rA.register("test.1", aTest, { durable: false, eid: () => "eid", idempotencyKey: () => "idempotencyKey" });
+  rA.register("test.1", aTest, {
+    durable: false,
+    eid: () => "eid",
+    idempotencyKey: () => "idempotencyKey",
+    version: 2,
+  });
   rA.register("test.2", aTest, overrides);
 
   const rG = new g.Resonate(resonateOpts);
-  rG.register("test.1", gTest, { durable: false });
-  rG.register("test.1", gTest, { durable: false, version: 2 });
+  rG.register("test.1", gTest, { durable: false, eid: () => "eid", idempotencyKey: () => "idempotencyKey" });
+  rG.register("test.1", gTest, {
+    durable: false,
+    eid: () => "eid",
+    idempotencyKey: () => "idempotencyKey",
+    version: 2,
+  });
   rG.register("test.2", gTest, overrides);
 
   for (const { name, resonate } of [
     { name: "async", resonate: rA },
-    // { name: "generator", resonate: rG },
+    { name: "generator", resonate: rG },
   ]) {
     describe(name, () => {
       test("resonate default options propagate down", async () => {
@@ -81,12 +90,11 @@ describe("Options", () => {
 
         for (const opts of [top, middle, bottom]) {
           expect(opts.durable).toBe(false);
-          expect(opts.eid).toBe(utils.randomId);
+          expect(opts.eid).toBe("eid");
           expect(opts.encoder).toBe(resonateOpts.encoder);
-          expect(opts.idempotencyKey).toBe(utils.hash);
+          expect(opts.idempotencyKey).toBe("idempotencyKey");
           expect(opts.poll).toBe(resonateOpts.poll);
           expect(opts.retry).toBe(resonateOpts.retry);
-          expect(opts.timeout).toBe(resonateOpts.timeout);
           expect(opts.version).toBe(1);
         }
 
@@ -110,7 +118,6 @@ describe("Options", () => {
           expect(opts.lock).toBe(overrides.lock);
           expect(opts.poll).toBe(overrides.poll);
           expect(opts.retry).toBe(overrides.retry);
-          expect(opts.timeout).toBe(overrides.timeout);
           expect(opts.version).toBe(overrides.version);
         }
 
@@ -126,32 +133,27 @@ describe("Options", () => {
           resonate.options(overrides),
         );
 
-        // Note: only some options are valid at the top level
-        // this is because we would lose this information on the recovery path.
-
         // top level options
-        expect(top.durable).toBe(false);
-        expect(top.eid).toBe(utils.randomId);
-        expect(top.encoder).toBe(resonateOpts.encoder);
+        expect(top.durable).toBe(overrides.durable);
+        expect(top.eid).toBe(overrides.eid);
+        expect(top.encoder).toBe(overrides.encoder);
         expect(top.idempotencyKey).toBe(overrides.idempotencyKey);
-        expect(top.lock).toBe(true);
-        expect(top.poll).toBe(resonateOpts.poll);
-        expect(top.retry).toBe(resonateOpts.retry);
+        expect(top.lock).toBe(overrides.lock);
+        expect(top.poll).toBe(overrides.poll);
+        expect(top.retry).toBe(overrides.retry);
         expect(top.tags).toEqual({ ...resonateOpts.tags, ...overrides.tags, "resonate:invocation": "true" });
-        expect(top.timeout).toBe(overrides.timeout);
         expect(top.version).toBe(overrides.version);
 
         // bottom level options
         for (const opts of bottom) {
           expect(opts.durable).toBe(false);
-          expect(opts.eid).toBe(utils.randomId);
+          expect(opts.eid).toBe("eid");
           expect(opts.encoder).toBe(resonateOpts.encoder);
-          expect(opts.idempotencyKey).toBe(utils.hash);
+          expect(opts.idempotencyKey).toBe("idempotencyKey");
           expect(opts.lock).toBe(false);
           expect(opts.poll).toBe(resonateOpts.poll);
           expect(opts.retry).toBe(resonateOpts.retry);
           expect(opts.tags).toEqual(resonateOpts.tags);
-          expect(opts.timeout).toBe(resonateOpts.timeout);
           expect(opts.version).toBe(overrides.version);
         }
       });
@@ -173,18 +175,16 @@ describe("Options", () => {
         expect(middle.poll).toBe(overrides.poll);
         expect(middle.retry).toBe(overrides.retry);
         expect(middle.tags).toEqual({ ...resonateOpts.tags, ...overrides.tags });
-        expect(middle.timeout).toBe(overrides.timeout);
         expect(middle.version).toBe(1);
 
         // top and bottom options
         for (const opts of [top, bottom]) {
           expect(opts.durable).toBe(false);
-          expect(opts.eid).toBe(utils.randomId);
+          expect(opts.eid).toBe("eid");
           expect(opts.encoder).toBe(resonateOpts.encoder);
-          expect(opts.idempotencyKey).toBe(utils.hash);
+          expect(opts.idempotencyKey).toBe("idempotencyKey");
           expect(opts.poll).toBe(resonateOpts.poll);
           expect(opts.retry).toBe(resonateOpts.retry);
-          expect(opts.timeout).toBe(resonateOpts.timeout);
           expect(opts.version).toBe(1);
         }
 

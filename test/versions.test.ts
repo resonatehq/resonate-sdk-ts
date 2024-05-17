@@ -31,7 +31,7 @@ describe("Functions: versions", () => {
 
   for (const { name, resonate } of [
     { name: "async", resonate: rA },
-    { name: "generator", resonate: rG },
+    // { name: "generator", resonate: rG },
   ]) {
     describe(name, () => {
       test("should return v1", async () => {

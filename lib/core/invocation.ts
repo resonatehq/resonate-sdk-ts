@@ -1,5 +1,8 @@
+import { LFC, TFC, RFC } from "./calls";
+import { IEncoder } from "./encoder";
 import { Future } from "./future";
-import { Options, PartialOptions, isOptions } from "./options";
+import { Options } from "./options";
+import { IRetry } from "./retry";
 
 /////////////////////////////////////////////////////////////////////
 // Invocation
@@ -10,16 +13,25 @@ export class Invocation<T> {
   resolve: (v: T) => void;
   reject: (e: unknown) => void;
 
+  // opts
+  durable: boolean;
   eid: string;
+  encoder: IEncoder<unknown, string | undefined>;
   idempotencyKey: string;
+  lock: boolean;
+  poll: number;
+  retry: IRetry;
+  tags: Record<string, string>;
   timeout: number;
+  version: number;
 
+  // state
   killed: boolean = false;
 
+  // metadata
   createdOn: number = Date.now();
   counter: number = 0;
   attempt: number = 0;
-
   awaited: Future<any>[] = [];
   blocked: Future<any> | null = null;
 
@@ -37,11 +49,10 @@ export class Invocation<T> {
    * @param parent - The parent invocation.
    */
   constructor(
-    public readonly name: string,
     public readonly id: string,
+    public readonly fc: TFC | LFC | RFC,
     public readonly headers: Record<string, string> | undefined,
     public readonly param: unknown,
-    public readonly opts: Options,
     public readonly defaults: Options,
     parent?: Invocation<any>,
   ) {
@@ -54,21 +65,64 @@ export class Invocation<T> {
     this.root = parent?.root ?? this;
     this.parent = parent ?? null;
 
+    // merge defaults and overrides
+    const opts = { ...defaults, ...fc.opts };
+
+    this.durable = opts.durable;
+
     // get the execution id from either:
     // - a hard coded string
     // - a function that returns a string given the invocation id
-    this.eid = typeof this.opts.eid === "function" ? this.opts.eid(this.id) : this.opts.eid;
+    this.eid = typeof opts.eid === "function" ? opts.eid(this.id) : opts.eid;
+
+    this.encoder = opts.encoder;
 
     // get the idempotency key from either:
     // - a hard coded string
     // - a function that returns a string given the invocation id
     this.idempotencyKey =
-      typeof this.opts.idempotencyKey === "function" ? this.opts.idempotencyKey(this.id) : this.opts.idempotencyKey;
+      typeof opts.idempotencyKey === "function" ? opts.idempotencyKey(this.id) : opts.idempotencyKey;
+
+    // if undefined lock is:
+    // - true for TFC
+    // - false for LFC and RFC
+    this.lock = opts.lock ?? fc instanceof TFC;
+
+    this.poll = opts.poll;
+
+    this.retry = opts.retry;
+
+    // tags are merged
+    this.tags = { ...this.defaults.tags, ...opts.tags };
+
+    // if the function is a TFC, add the "resonate:invocation" tag
+    if (fc instanceof TFC) {
+      this.tags["resonate:invocation"] = "true";
+    }
 
     // the timeout is the minimum of:
     // - the current time plus the user provided relative time
     // - the parent timeout
-    this.timeout = Math.min(this.createdOn + this.opts.timeout, this.parent?.timeout ?? Infinity);
+    this.timeout = Math.min(this.createdOn + opts.timeout, this.parent?.timeout ?? Infinity);
+
+    // version cannot be overridden
+    this.version = this.defaults.version;
+  }
+
+  get opts(): Options {
+    return {
+      __resonate: true,
+      durable: this.durable,
+      eid: this.eid,
+      encoder: this.encoder,
+      idempotencyKey: this.idempotencyKey,
+      lock: this.lock,
+      poll: this.poll,
+      retry: this.retry,
+      tags: this.tags,
+      timeout: this.timeout,
+      version: this.version,
+    };
   }
 
   addChild(child: Invocation<any>) {
@@ -85,30 +139,5 @@ export class Invocation<T> {
 
   unblock() {
     this.blocked = null;
-  }
-
-  split(args: [...any, PartialOptions?]): { args: any[]; opts: Options } {
-    let opts = args[args.length - 1];
-
-    // merge opts
-    if (isOptions(opts)) {
-      args = args.slice(0, -1);
-      opts = {
-        ...this.defaults,
-        ...opts,
-        tags: { ...this.defaults.tags, ...opts.tags }, // tags are merged
-      };
-    } else {
-      // copy defaults
-      opts = { ...this.defaults };
-    }
-
-    // lock is false by default
-    opts.lock = opts.lock ?? false;
-
-    // version cannot be overridden
-    opts.version = this.defaults.version;
-
-    return { args, opts };
   }
 }

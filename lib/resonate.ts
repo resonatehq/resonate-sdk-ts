@@ -1,6 +1,9 @@
+import { TFC } from "./core/calls";
 import { IEncoder } from "./core/encoder";
+import { CallEncoder } from "./core/encoders/call";
 import { JSONEncoder } from "./core/encoders/json";
 import { ResonatePromise } from "./core/future";
+import { Invocation } from "./core/invocation";
 import { ILogger } from "./core/logger";
 import { Logger } from "./core/loggers/logger";
 import { ResonateOptions, Options, PartialOptions, isOptions } from "./core/options";
@@ -38,6 +41,9 @@ export abstract class ResonateBase {
   public readonly logger: ILogger;
   public readonly retry: IRetry;
   public readonly store: IStore;
+
+  // TODO: get name right and make configurable
+  public readonly callEncoder = new CallEncoder();
 
   private interval: NodeJS.Timeout | undefined;
 
@@ -105,12 +111,8 @@ export abstract class ResonateBase {
   }
 
   protected abstract execute(
-    name: string,
-    id: string,
     func: Func,
-    args: any[],
-    opts: Options,
-    defaults: Options,
+    invocation: Invocation<any>,
     durablePromise?: promises.DurablePromise<any>,
   ): ResonatePromise<any>;
 
@@ -158,52 +160,36 @@ export abstract class ResonateBase {
    * @param argsWithOpts The function arguments.
    * @returns A promise that resolve to the function return value.
    */
-  run<T>(name: string, id: string, ...argsWithOpts: [...any, PartialOptions?]): ResonatePromise<T> {
-    const {
-      args,
-      opts: { version },
-      part: { durable, idempotencyKey, tags, timeout },
-    } = this.split(argsWithOpts);
+  run<T>(name: string, id: string, ...argsWithOpts: [...any, PartialOptions?]): ResonatePromise<T>;
+  run<T>(fc: TFC): ResonatePromise<T>;
+  run(nameOrFc: string | TFC, ...argsWithOpts: [...any, PartialOptions?]): ResonatePromise<any> {
+    // extract id
+    const id = typeof nameOrFc === "string" ? <string>argsWithOpts.shift() : nameOrFc.id;
 
-    if (!this.functions[name] || !this.functions[name][version]) {
-      throw new Error(`Function ${name} version ${version} not registered`);
+    // extract args and opts
+    const { args, opts } = this.split(argsWithOpts);
+
+    // construct the function call
+    const fc = typeof nameOrFc === "string" ? new TFC(nameOrFc, id, args, opts) : nameOrFc;
+
+    // if version is not provided, use the latest
+    const version = fc.opts.version ?? 0;
+
+    // throw error if function is not registered
+    if (!this.functions[fc.func] || !this.functions[fc.func][version]) {
+      throw new Error(`Function ${fc.func} version ${version} not registered`);
     }
 
-    // the options registered with the function are the defaults
-    const { func, opts: defaults } = this.functions[name][version];
+    // grab the registered function and default options
+    const { func, opts: defaults } = this.functions[fc.func][version];
 
-    // only the following options can be overridden, this information is persisted
-    // in the durable promise and therefore not required on the recovery path
-    const override: Partial<Options> = {};
+    // encode the call
+    const { headers, param } = this.callEncoder.encode({ fc, version: defaults.version });
 
-    if (durable !== undefined) {
-      override.durable = durable;
-    }
+    // construct the invocation
+    const invocation = new Invocation(id, fc, headers, param, defaults);
 
-    if (idempotencyKey !== undefined) {
-      override.idempotencyKey = idempotencyKey;
-    }
-
-    if (tags !== undefined) {
-      override.tags = { ...defaults.tags, ...tags, "resonate:invocation": "true" };
-    } else {
-      override.tags = { ...defaults.tags, "resonate:invocation": "true" };
-    }
-
-    if (timeout !== undefined) {
-      override.timeout = timeout;
-    }
-
-    // merge defaults with override to get opts
-    const opts = {
-      ...defaults,
-      ...override,
-    };
-
-    // lock on top level is true by default
-    opts.lock = opts.lock ?? true;
-
-    return this.execute(name, id, func, args, opts, defaults);
+    return this.execute(func, invocation);
   }
 
   schedule(
@@ -212,7 +198,9 @@ export abstract class ResonateBase {
     func: Func | string,
     ...argsWithOpts: [...any, PartialOptions?]
   ): Promise<schedules.Schedule> {
-    const { args, opts } = this.split(argsWithOpts);
+    const { args, opts: partial } = this.split(argsWithOpts);
+
+    const opts = this.defaults(partial);
 
     if (typeof func === "function") {
       // if function is provided, the default version is 1
@@ -234,14 +222,13 @@ export abstract class ResonateBase {
     const idempotencyKey =
       typeof opts.idempotencyKey === "function" ? opts.idempotencyKey(funcName) : opts.idempotencyKey;
 
-    const promiseParam = {
-      func: funcName,
-      version,
-      args,
-    };
+    const fc = new TFC(funcName, "{{.id}}.{{.timestamp}}", args, opts);
+
+    const { headers: promiseHeaders, param: promiseParam } = this.callEncoder.encode({ fc, version });
 
     return this.schedules.create(name, cron, "{{.id}}.{{.timestamp}}", timeout, {
       idempotencyKey,
+      promiseHeaders,
       promiseParam,
       promiseTags,
     });
@@ -308,19 +295,20 @@ export abstract class ResonateBase {
     try {
       for await (const promises of this.promises.search("*", "pending", { "resonate:invocation": "true" })) {
         for (const promise of promises) {
+          const headers = promise.paramHeaders;
           const param = promise.param();
-          if (
-            param &&
-            typeof param === "object" &&
-            "func" in param &&
-            typeof param.func === "string" &&
-            "version" in param &&
-            typeof param.version === "number" &&
-            "args" in param &&
-            Array.isArray(param.args)
-          ) {
-            const { func, opts } = this.functions[param.func][param.version];
-            this.execute(param.func, promise.id, func, param.args, opts, opts, promise);
+
+          const { fc, version } = this.callEncoder.decode({
+            id: promise.id,
+            headers,
+            param,
+          });
+
+          if (fc instanceof TFC) {
+            const { func, opts } = this.functions[fc.func][version];
+            const invocation = new Invocation(promise.id, fc, headers, param, opts);
+
+            this.execute(func, invocation, promise);
           }
         }
       }
@@ -331,11 +319,9 @@ export abstract class ResonateBase {
     }
   }
 
-  private split(args: [...any, PartialOptions?]): { args: any[]; opts: Options; part: Partial<Options> } {
-    const part = args[args.length - 1];
-    return isOptions(part)
-      ? { args: args.slice(0, -1), opts: this.defaults(part), part }
-      : { args, opts: this.defaults(), part: {} };
+  private split(args: [...any, PartialOptions?]): { args: any[]; opts: Partial<Options> } {
+    const opts = args[args.length - 1];
+    return isOptions(opts) ? { args: args.slice(0, -1), opts } : { args, opts: {} };
   }
 }
 

@@ -1,3 +1,4 @@
+import { LFC, RFC } from "./core/calls";
 import { Execution, OrdinaryExecution, DeferredExecution } from "./core/execution";
 import { ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
@@ -5,6 +6,7 @@ import { ResonateOptions, Options, PartialOptions } from "./core/options";
 import { DurablePromise } from "./core/promises/promises";
 import { Retry } from "./core/retries/retry";
 import * as schedules from "./core/schedules/schedules";
+import * as utils from "./core/utils";
 import { ResonateBase } from "./resonate";
 
 /////////////////////////////////////////////////////////////////////
@@ -36,15 +38,11 @@ export class Resonate extends ResonateBase {
   }
 
   protected execute<F extends Func>(
-    name: string,
-    id: string,
     func: F,
-    args: Params<F>,
-    opts: Options,
-    defaults: Options,
+    invocation: Invocation<Return<F>>,
     durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
-    return this.scheduler.add(name, id, func, args, opts, defaults, durablePromise);
+    return this.scheduler.add(func, invocation, durablePromise);
   }
 
   /**
@@ -170,7 +168,7 @@ export class Context {
    * The resonate function version.
    */
   get version() {
-    return this.invocation.root.opts.version;
+    return this.invocation.version;
   }
 
   /**
@@ -203,46 +201,57 @@ export class Context {
    * @returns A promise that resolves to the resolved value of the remote function.
    */
   run<T>(func: string, opts?: PartialOptions): ResonatePromise<T>;
-  run(func: string | ((...args: any[]) => any), ...argsWithOpts: any[]): ResonatePromise<any> {
+
+  /**
+   * Invoke a function.
+   *
+   * @template T The return type of the remote function.
+   * @param fc An instance of a function call.
+   * @returns A promise that resolves to the resolved value of the remote function.
+   */
+  run<T>(fc: LFC | RFC): ResonatePromise<T>;
+
+  run(funcOrFc: string | ((...args: any[]) => any) | LFC | RFC, ...argsWithOpts: any[]): ResonatePromise<any> {
+    // opts are optional and can be provided as the last arg
+    const { args: a, opts: o } = utils.split(argsWithOpts);
+
+    // construct the function call
+    const fc =
+      typeof funcOrFc === "function"
+        ? new LFC(funcOrFc, a, o)
+        : typeof funcOrFc === "string"
+          ? new RFC(funcOrFc, a, o)
+          : funcOrFc;
+
     // the parent is the current invocation
     const parent = this.invocation;
-
-    // the id is either:
-    // 1. a provided string in the case of a deferred execution
-    // 2. a generated string in the case of an ordinary execution
-    const id = typeof func === "string" ? func : `${parent.id}.${parent.counter}`;
-
-    // human readable name of the function
-    const name = typeof func === "string" ? func : func.name;
-
-    // opts are optional and can be provided as the last arg
-    const { args, opts } = this.invocation.split(argsWithOpts);
 
     // default opts never change
     const defaults = this.invocation.defaults;
 
-    // param is only required for deferred executions
-    const param = typeof func === "string" ? args[0] : undefined;
+    // the id is either:
+    // 1. a generated string in the case of an LFC
+    // 2. a provided string in the case of an RFC
+    const id = fc instanceof LFC ? `${parent.id}.${parent.counter}` : fc.func;
 
-    // create a new invocation
-    const invocation = new Invocation(name, id, undefined, param, opts, defaults, parent);
+    // encode the function call
+    const { headers, param } = this.resonate.callEncoder.encode({ fc, version: this.version });
 
+    // construct the invocation
+    const invocation = new Invocation(id, fc, headers, param, defaults, parent);
+
+    // construct the execution
     let execution: Execution<any>;
-    if (typeof func === "string") {
-      // create a deferred execution
-      // this execution will be fulfilled out-of-process
-      execution = new DeferredExecution(this.resonate, invocation);
-    } else {
-      // create an ordinary execution
-      // this execution wraps a user-provided function
+    if (fc instanceof LFC) {
       const ctx = new Context(this.resonate, invocation);
-      execution = new OrdinaryExecution(this.resonate, invocation, () => func(ctx, ...args));
+      execution = new OrdinaryExecution(this.resonate, invocation, () => fc.func(ctx, ...fc.args));
+    } else {
+      execution = new DeferredExecution(this.resonate, invocation);
     }
 
     // bump the counter
     parent.counter++;
 
-    // return a resonate promise
     return execution.execute();
   }
 
@@ -374,7 +383,7 @@ export class Context {
     }
 
     // tight loop in case the promise is not yet resolved
-    await promise.wait(Infinity, this.invocation.opts.poll);
+    await promise.wait(Infinity, this.invocation.poll);
   }
 
   /**
@@ -429,38 +438,29 @@ class Scheduler {
   constructor(private resonate: Resonate) {}
 
   add<F extends Func>(
-    name: string,
-    id: string,
     func: F,
-    args: Params<F>,
-    opts: Options,
-    defaults: Options,
+    invocation: Invocation<any>,
     durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
-    if (opts.durable && this.cache[id] && !this.cache[id].killed) {
+    if (invocation.durable && this.cache[invocation.id] && !this.cache[invocation.id].killed) {
       // execute is idempotent
-      return this.cache[id].execute();
+      return this.cache[invocation.id].execute();
     }
-
-    // params, used for recovery
-    const param = {
-      func: name,
-      version: opts.version,
-      args,
-    };
-
-    // create a new invocation
-    const invocation = new Invocation<Return<F>>(name, id, undefined, param, opts, defaults);
 
     // create a new execution
     const ctx = new Context(this.resonate, invocation);
-    const execution = new OrdinaryExecution(this.resonate, invocation, () => func(ctx, ...args), durablePromise);
+    const execution = new OrdinaryExecution(
+      this.resonate,
+      invocation,
+      () => func(ctx, ...invocation.fc.args),
+      durablePromise,
+    );
 
     // store the execution,
     // will be used if run is called again with the same id
-    this.cache[id] = execution;
+    this.cache[invocation.id] = execution;
 
     return execution.execute();
   }

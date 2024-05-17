@@ -1,9 +1,11 @@
+import { LFC, RFC } from "./core/calls";
 import { DeferredExecution, Execution, GeneratorExecution, OrdinaryExecution } from "./core/execution";
 import { Future, ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
 import { ResonateOptions, Options, PartialOptions } from "./core/options";
 import { DurablePromise } from "./core/promises/promises";
 import * as schedules from "./core/schedules/schedules";
+import * as utils from "./core/utils";
 import { ResonateBase } from "./resonate";
 
 /////////////////////////////////////////////////////////////////////
@@ -30,21 +32,21 @@ type ResonateFunction = {
   kind: "resonate";
   func: GFunc;
   args: any[];
-  opts: Options;
+  opts: Partial<Options>;
 };
 
 type OrdinaryFunction = {
   kind: "ordinary";
   func: IFunc;
   args: any[];
-  opts: Options;
+  opts: Partial<Options>;
 };
 
 type DeferredFunction = {
   kind: "deferred";
   func: string;
   args: any;
-  opts: Options;
+  opts: Partial<Options>;
 };
 
 type Continuation<T> = {
@@ -73,15 +75,11 @@ export class Resonate extends ResonateBase {
   }
 
   protected execute<F extends GFunc>(
-    name: string,
-    id: string,
     func: F,
-    args: Params<F>,
-    opts: Options,
-    defaults: Options,
+    invocation: Invocation<Return<F>>,
     durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
-    return this.scheduler.add(name, id, func, args, opts, defaults, durablePromise);
+    return this.scheduler.add(func, invocation, durablePromise);
   }
 
   /**
@@ -190,7 +188,7 @@ export class Info {
    * The resonate function version.
    */
   get version() {
-    return this.invocation.root.opts.version;
+    return this.invocation.root.version;
   }
 }
 
@@ -243,7 +241,7 @@ export class Context {
    * The resonate function version.
    */
   get version() {
-    return this.invocation.root.opts.version;
+    return this.invocation.version;
   }
 
   /**
@@ -313,7 +311,7 @@ export class Context {
   }
 
   private _call(func: string | ((...args: any[]) => any), argsWithOpts: any[], yieldFuture: boolean): Call {
-    const { args, opts } = this.invocation.split(argsWithOpts);
+    const { args, opts } = utils.split(argsWithOpts);
 
     if (typeof func === "string") {
       return { kind: "call", value: { kind: "deferred", func, args, opts }, yieldFuture };
@@ -361,32 +359,18 @@ class Scheduler {
   constructor(private resonate: Resonate) {}
 
   add<F extends GFunc>(
-    name: string,
-    id: string,
     func: F,
-    args: Params<F>,
-    opts: Options,
-    defaults: Options,
+    invocation: Invocation<Return<F>>,
     durablePromise?: DurablePromise<any>,
   ): ResonatePromise<Return<F>> {
     // if the execution is already running, and not killed,
     // return the promise
-    if (opts.durable && this.cache[id] && !this.cache[id].killed) {
-      return this.cache[id].execute();
+    if (invocation.durable && this.cache[invocation.id] && !this.cache[invocation.id].killed) {
+      return this.cache[invocation.id].execute();
     }
 
-    // params, used for recovery
-    const param = {
-      func: name,
-      version: opts.version,
-      args,
-    };
-
-    // create a new invocation
-    const invocation = new Invocation(name, id, undefined, param, opts, defaults);
-
     // create a new execution
-    const generator = func(new Context(invocation), ...args);
+    const generator = func(new Context(invocation), ...invocation.fc.args);
     const execution = new GeneratorExecution(this.resonate, invocation, generator, durablePromise);
 
     // once the durable promise has been created,
@@ -400,7 +384,7 @@ class Scheduler {
 
     // store the invocation and execution,
     // will be used if run is called again with the same id
-    this.cache[id] = execution;
+    this.cache[invocation.id] = execution;
     this.executions.push(execution);
 
     return execution.execute();
@@ -501,17 +485,20 @@ class Scheduler {
     // 2. a generated string in the case of an ordinary execution
     const id = value.kind === "deferred" ? value.func : `${parent.id}.${parent.counter}`;
 
-    // human readable name of the function
-    const name = value.kind === "deferred" ? value.func : value.func.name;
-
     // default opts never change
     const defaults = parent.defaults;
 
-    // param is only required for deferred executions
-    const param = value.kind === "deferred" ? value.args[0] : undefined;
+    // construct a function call
+    const fc =
+      value.kind === "deferred"
+        ? new RFC(value.func, value.args, value.opts)
+        : new LFC(value.func, value.args, value.opts);
+
+    // encode the call
+    const { headers, param } = this.resonate.callEncoder.encode({ fc, version: parent.version });
 
     // create a new invocation
-    const invocation = new Invocation(name, id, undefined, param, value.opts, defaults, parent);
+    const invocation = new Invocation(id, fc, headers, param, defaults, parent);
 
     // add child and increment counter
     parent.addChild(invocation);
@@ -628,7 +615,6 @@ class Scheduler {
     this.resonate.logger.debug("Executions");
     this.resonate.logger.table(
       this.executions.map((e) => ({
-        name: e.invocation.name,
         id: e.invocation.id,
         idempotencyKey: e.invocation.idempotencyKey,
         parent: e.invocation.parent ? e.invocation.parent.id : undefined,

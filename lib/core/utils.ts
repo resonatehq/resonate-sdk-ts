@@ -1,3 +1,5 @@
+import { Options, PartialOptions, isOptions } from "./options";
+
 export function randomId(): string {
   return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(16);
 }
@@ -12,4 +14,9 @@ export function hash(s: string): string {
   const hashString = (Math.abs(h) >>> 0).toString(16); // Convert to unsigned int and then to hexadecimal
   const maxLength = 8;
   return "0".repeat(Math.max(0, maxLength - hashString.length)) + hashString;
+}
+
+export function split(args: [...any, PartialOptions?]): { args: any[]; opts: Partial<Options> } {
+  const opts = args[args.length - 1];
+  return isOptions(opts) ? { args: args.slice(0, -1), opts } : { args, opts: {} };
 }
