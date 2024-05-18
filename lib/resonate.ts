@@ -175,13 +175,13 @@ export abstract class ResonateBase {
     const id = typeof nameOrFc === "string" ? <string>argsWithOpts.shift() : nameOrFc.id;
 
     // extract args and opts
-    const { args, opts } = this.split(argsWithOpts);
+    const { args, opts } = utils.split(argsWithOpts);
 
     // construct the function call
     const fc = typeof nameOrFc === "string" ? new TFC(nameOrFc, id, args, opts) : nameOrFc;
 
     // if version is not provided, use the latest
-    const version = fc.opts.version ?? 0;
+    const version = fc.opts.version || 0;
 
     // throw error if function is not registered
     if (!this.functions[fc.func] || !this.functions[fc.func][version]) {
@@ -206,9 +206,7 @@ export abstract class ResonateBase {
     func: Func | string,
     ...argsWithOpts: [...any, PartialOptions?]
   ): Promise<schedules.Schedule> {
-    const { args, opts: partial } = this.split(argsWithOpts);
-
-    const opts = this.defaults(partial);
+    const { args, opts } = utils.split(argsWithOpts);
 
     if (typeof func === "function") {
       // if function is provided, the default version is 1
@@ -219,13 +217,13 @@ export abstract class ResonateBase {
 
     const funcName = typeof func === "string" ? func : name;
 
-    if (!this.functions[funcName] || !this.functions[funcName][opts.version]) {
-      throw new Error(`Function ${funcName} version ${opts.version} not registered`);
+    if (!this.functions[funcName] || !this.functions[funcName][opts.version || 0]) {
+      throw new Error(`Function ${funcName} version ${opts.version || 0} not registered`);
     }
 
     const {
       opts: { version, timeout, tags: promiseTags },
-    } = this.functions[funcName][opts.version];
+    } = this.functions[funcName][opts.version || 0];
 
     const idempotencyKey =
       typeof opts.idempotencyKey === "function" ? opts.idempotencyKey(funcName) : opts.idempotencyKey;
@@ -325,11 +323,6 @@ export abstract class ResonateBase {
       // transient errors will be ironed out in the next interval
       this.logger.error(e);
     }
-  }
-
-  private split(args: [...any, PartialOptions?]): { args: any[]; opts: Partial<Options> } {
-    const opts = args[args.length - 1];
-    return isOptions(opts) ? { args: args.slice(0, -1), opts } : { args, opts: {} };
   }
 }
 
