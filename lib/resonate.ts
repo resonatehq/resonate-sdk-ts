@@ -6,7 +6,7 @@ import { ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
 import { ILogger } from "./core/logger";
 import { Logger } from "./core/loggers/logger";
-import { ResonateOptions, Options, PartialOptions, isOptions } from "./core/options";
+import { ResonateOptions, Options, PartialOptions } from "./core/options";
 import * as promises from "./core/promises/promises";
 import { Retry } from "./core/retries/retry";
 import { IRetry } from "./core/retry";
@@ -169,7 +169,7 @@ export abstract class ResonateBase {
    * @param fc An instance of a function call.
    * @returns A promise that resolve to the function return value.
    */
-  run<T>(fc: TFC): ResonatePromise<T>;
+  run<T, A extends any[]>(fc: TFC<T, A>): ResonatePromise<T>;
   run(nameOrFc: string | TFC, ...argsWithOpts: [...any, PartialOptions?]): ResonatePromise<any> {
     // extract id
     const id = typeof nameOrFc === "string" ? <string>argsWithOpts.shift() : nameOrFc.id;

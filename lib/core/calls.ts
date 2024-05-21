@@ -1,32 +1,32 @@
 import { Options } from "./options";
 
-export class TFC {
+export class TFC<T = any, A extends any[] = any[]> {
   public func: string;
 
   constructor(
-    func: ((...args: any[]) => any) | string,
+    func: ((...args: [any, ...A]) => T) | string,
     public id: string,
-    public args: any[] = [],
+    public args: A,
     public opts: Partial<Options> = {},
   ) {
     this.func = typeof func === "string" ? func : func.name;
   }
 }
 
-export class LFC {
+export class LFC<T = any, A extends any[] = any[]> {
   constructor(
-    public func: (...args: any[]) => any,
-    public args: any[] = [],
+    public func: (...args: [any, ...A]) => T,
+    public args: A,
     public opts: Partial<Options> = {},
   ) {}
 }
 
-export class RFC {
+export class RFC<T = any, A extends any[] = any[]> {
   public func: string;
 
   constructor(
-    func: ((...args: any[]) => any) | string,
-    public args: any = undefined,
+    func: ((...args: [any, ...A]) => T) | string,
+    public args: A,
     public opts: Partial<Options> = {},
   ) {
     this.func = typeof func === "string" ? func : func.name;

@@ -209,7 +209,7 @@ export class Context {
    * @param fc An instance of a function call.
    * @returns A promise that resolves to the return value of the function or the resolved value of the remote function.
    */
-  run<T>(fc: LFC | RFC): ResonatePromise<T>;
+  run<T, A extends any[]>(fc: LFC<T, A> | RFC<T, A>): ResonatePromise<T>;
 
   run(funcOrFc: string | ((...args: any[]) => any) | LFC | RFC, ...argsWithOpts: any[]): ResonatePromise<any> {
     // opts are optional and can be provided as the last arg
