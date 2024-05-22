@@ -20,10 +20,9 @@ import { Schedule } from "../schedules/types";
 import { IStorage } from "../storage";
 import { MemoryStorage } from "../storages/memory";
 import { WithTimeout } from "../storages/withTimeout";
-import { IStore, IPromiseStore, IScheduleStore, ILockStore, IAuth } from "../store";
+import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
 
 export class LocalStore implements IStore {
-  public auth: LocalStoreAuth;
   public promises: LocalPromiseStore;
   public schedules: LocalScheduleStore;
   public locks: LocalLockStore;
@@ -39,7 +38,6 @@ export class LocalStore implements IStore {
     scheduleStorage: IStorage<Schedule> = new MemoryStorage<Schedule>(),
     lockStorage: IStorage<{ id: string; eid: string }> = new MemoryStorage<{ id: string; eid: string }>(),
   ) {
-    this.auth = new LocalStoreAuth();
     this.promises = new LocalPromiseStore(this, promiseStorage);
     this.schedules = new LocalScheduleStore(this, scheduleStorage);
     this.locks = new LocalLockStore(this, lockStorage);
@@ -119,11 +117,6 @@ export class LocalStore implements IStore {
       .replace("{{.id}}", schedule.id)
       .replace("{{.timestamp}}", schedule.nextRunTime.toString());
   }
-}
-
-export class LocalStoreAuth implements IAuth {
-  // noop
-  basic(): void {}
 }
 
 export class LocalPromiseStore implements IPromiseStore {

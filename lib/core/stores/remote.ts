@@ -15,11 +15,15 @@ import {
   isCompletedPromise,
 } from "../promises/types";
 import { Schedule, isSchedule } from "../schedules/types";
-import { IStore, IPromiseStore, IScheduleStore, ILockStore, IAuth } from "../store";
+import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
 import * as utils from "../utils";
 
 export class RemoteStore implements IStore {
-  public readonly auth: RemoteStoreAuth;
+  private readonly headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+
   public readonly promises: RemotePromiseStore;
   public readonly schedules: RemoteScheduleStore;
   public readonly locks: RemoteLockStore;
@@ -34,28 +38,29 @@ export class RemoteStore implements IStore {
     public readonly url: string,
     opts: Partial<StoreOptions> = {},
   ) {
-    this.auth = new RemoteStoreAuth();
+    // store components
     this.promises = new RemotePromiseStore(this);
     this.schedules = new RemoteScheduleStore(this);
     this.locks = new RemoteLockStore(this);
 
+    // store options
     this.encoder = opts.encoder ?? new Base64Encoder();
     this.logger = opts.logger ?? new Logger();
     this.heartbeat = opts.heartbeat ?? 15000;
     this.pid = opts.pid ?? utils.randomId();
     this.retries = opts.retries ?? 2;
+
+    // auth
+    if (opts.auth?.basic) {
+      this.headers["Authorization"] = `Basic ${btoa(`${opts.auth.basic.username}:${opts.auth.basic.password}`)}`;
+    }
   }
 
   async call<T>(path: string, guard: (b: unknown) => b is T, options: RequestInit): Promise<T> {
     let error: unknown;
 
-    const defaultHeaders = {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    };
-
     // add auth headers
-    options.headers = { ...defaultHeaders, ...options.headers, ...this.auth.getHeaders() };
+    options.headers = { ...this.headers, ...options.headers };
 
     for (let i = 0; i < this.retries + 1; i++) {
       try {
@@ -106,18 +111,6 @@ export class RemoteStore implements IStore {
     }
 
     throw ResonateError.fromError(error);
-  }
-}
-
-export class RemoteStoreAuth implements IAuth {
-  private headers: Record<string, string> = {};
-
-  basic(username: string, password: string): void {
-    this.headers["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
-  }
-
-  getHeaders(): Record<string, string> {
-    return this.headers;
   }
 }
 

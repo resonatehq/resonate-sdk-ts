@@ -42,6 +42,7 @@ export abstract class ResonateBase {
   private interval: NodeJS.Timeout | undefined;
 
   constructor({
+    auth = undefined,
     encoder = new JSONEncoder(),
     heartbeat = 15000, // 15s
     logger = new Logger(),
@@ -61,18 +62,22 @@ export abstract class ResonateBase {
     this.tags = tags;
     this.timeout = timeout;
 
-    const storeOpts = {
-      logger: this.logger,
-      heartbeat: heartbeat,
-      pid: this.pid,
-    };
-
     if (store) {
       this.store = store;
     } else if (url) {
-      this.store = new RemoteStore(url, storeOpts);
+      this.store = new RemoteStore(url, {
+        auth,
+        heartbeat,
+        logger,
+        pid,
+      });
     } else {
-      this.store = new LocalStore(storeOpts);
+      this.store = new LocalStore({
+        auth,
+        heartbeat,
+        logger,
+        pid,
+      });
     }
 
     // promises

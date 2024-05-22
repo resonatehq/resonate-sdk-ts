@@ -13,23 +13,9 @@ import { Schedule } from "./schedules/types";
  * Store Interface
  */
 export interface IStore {
-  readonly auth: IAuth;
   readonly promises: IPromiseStore;
   readonly schedules: IScheduleStore;
   readonly locks: ILockStore;
-}
-
-/**
- * Store Auth
- */
-export interface IAuth {
-  /**
-   * Enable basic authentication.
-   *
-   * @param username Username.
-   * @param password Password.
-   */
-  basic(username: string, password: string): void;
 }
 
 /**

@@ -8,6 +8,11 @@ import { IStore } from "./store";
  */
 export type ResonateOptions = {
   /**
+   * Store authentication options.
+   */
+  auth: AuthOptions;
+
+  /**
    * An encoder instance used for encoding and decoding values
    * returned (or thrown) by registered functions. If not provided,
    * a default JSON encoder will be used.
@@ -48,8 +53,8 @@ export type ResonateOptions = {
   tags: Record<string, string>;
 
   /**
-   * A store instance, if provided this will take precedence over a
-   * remote store.
+   * A store instance, if provided will take predence over the
+   * default store.
    */
   store: IStore;
 
@@ -132,6 +137,11 @@ export function isOptions(o: unknown): o is PartialOptions {
 
 export type StoreOptions = {
   /**
+   * The store authentication options.
+   */
+  auth: AuthOptions;
+
+  /**
    * The store encoder, defaults to a base64 encoder.
    */
   encoder: IEncoder<string, string>;
@@ -158,4 +168,14 @@ export type StoreOptions = {
    * provided, a default value will be used.
    */
   retries: number;
+};
+
+export type AuthOptions = {
+  /**
+   * Basic auth credentials.
+   */
+  basic: {
+    password: string;
+    username: string;
+  };
 };

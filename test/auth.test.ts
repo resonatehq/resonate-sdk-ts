@@ -10,6 +10,7 @@ describe("Auth", () => {
   global.fetch = fetchMock;
 
   const store = new RemoteStore("http://localhost:8080", {
+    auth: { basic: { username: "foo", password: "bar" } },
     retries: 0,
   });
 
@@ -39,8 +40,6 @@ describe("Auth", () => {
   });
 
   describe("basic auth", () => {
-    store.auth.basic("foo", "bar");
-
     for (const { name, func } of funcs) {
       test(name, async () => {
         await func().catch(() => {});
