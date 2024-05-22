@@ -2,6 +2,7 @@ import * as cronParser from "cron-parser";
 import { ErrorCodes, ResonateError } from "../errors";
 import { ILogger } from "../logger";
 import { Logger } from "../loggers/logger";
+import { StoreOptions } from "../options";
 import {
   DurablePromise,
   PendingPromise,
@@ -19,25 +20,31 @@ import { Schedule } from "../schedules/types";
 import { IStorage } from "../storage";
 import { MemoryStorage } from "../storages/memory";
 import { WithTimeout } from "../storages/withTimeout";
-import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
+import { IStore, IPromiseStore, IScheduleStore, ILockStore, IAuth } from "../store";
 
 export class LocalStore implements IStore {
+  public auth: LocalStoreAuth;
   public promises: LocalPromiseStore;
   public schedules: LocalScheduleStore;
   public locks: LocalLockStore;
+
+  public readonly logger: ILogger;
 
   private toSchedule: Schedule[] = [];
   private next: number | undefined = undefined;
 
   constructor(
-    private logger: ILogger = new Logger(),
+    opts: Partial<StoreOptions> = {},
     promiseStorage: IStorage<DurablePromise> = new WithTimeout(new MemoryStorage<DurablePromise>()),
     scheduleStorage: IStorage<Schedule> = new MemoryStorage<Schedule>(),
     lockStorage: IStorage<{ id: string; eid: string }> = new MemoryStorage<{ id: string; eid: string }>(),
   ) {
-    this.promises = new LocalPromiseStore(promiseStorage);
-    this.schedules = new LocalScheduleStore(scheduleStorage, this);
-    this.locks = new LocalLockStore(lockStorage);
+    this.auth = new LocalStoreAuth();
+    this.promises = new LocalPromiseStore(this, promiseStorage);
+    this.schedules = new LocalScheduleStore(this, scheduleStorage);
+    this.locks = new LocalLockStore(this, lockStorage);
+
+    this.logger = opts.logger ?? new Logger();
 
     this.init();
   }
@@ -114,8 +121,20 @@ export class LocalStore implements IStore {
   }
 }
 
+export class LocalStoreAuth implements IAuth {
+  // noop
+  basic(): void {}
+
+  getHeaders(): Record<string, string> {
+    return {};
+  }
+}
+
 export class LocalPromiseStore implements IPromiseStore {
-  constructor(private storage: IStorage<DurablePromise> = new MemoryStorage<DurablePromise>()) {}
+  constructor(
+    private store: LocalStore,
+    private storage: IStorage<DurablePromise>,
+  ) {}
 
   async create(
     id: string,
@@ -327,8 +346,8 @@ export class LocalPromiseStore implements IPromiseStore {
 
 export class LocalScheduleStore implements IScheduleStore {
   constructor(
-    private storage: IStorage<Schedule> = new MemoryStorage<Schedule>(),
-    private store: LocalStore | undefined = undefined,
+    private store: LocalStore,
+    private storage: IStorage<Schedule>,
   ) {}
 
   async create(
@@ -456,7 +475,8 @@ export class LocalScheduleStore implements IScheduleStore {
 
 export class LocalLockStore implements ILockStore {
   constructor(
-    private storage: IStorage<{ id: string; eid: string }> = new MemoryStorage<{ id: string; eid: string }>(),
+    private store: LocalStore,
+    private storage: IStorage<{ id: string; eid: string }>,
   ) {}
 
   async tryAcquire(id: string, eid: string): Promise<boolean> {

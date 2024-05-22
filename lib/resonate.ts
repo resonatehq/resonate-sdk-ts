@@ -43,6 +43,7 @@ export abstract class ResonateBase {
 
   constructor({
     encoder = new JSONEncoder(),
+    heartbeat = 15000, // 15s
     logger = new Logger(),
     pid = utils.randomId(),
     poll = 5000, // 5s
@@ -60,12 +61,18 @@ export abstract class ResonateBase {
     this.tags = tags;
     this.timeout = timeout;
 
+    const storeOpts = {
+      logger: this.logger,
+      heartbeat: heartbeat,
+      pid: this.pid,
+    };
+
     if (store) {
       this.store = store;
     } else if (url) {
-      this.store = new RemoteStore(url, this.pid, this.logger);
+      this.store = new RemoteStore(url, storeOpts);
     } else {
-      this.store = new LocalStore(this.logger);
+      this.store = new LocalStore(storeOpts);
     }
 
     // promises

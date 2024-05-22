@@ -15,6 +15,11 @@ export type ResonateOptions = {
   encoder: IEncoder<unknown, string | undefined>;
 
   /**
+   * The frequency in ms to heartbeat locks.
+   */
+  heartbeat: number;
+
+  /**
    * A process id that can be used to uniquely identify this Resonate
    * instance. If not provided a default value will be generated.
    */
@@ -124,3 +129,27 @@ export type PartialOptions = Partial<Options> & { __resonate: true };
 export function isOptions(o: unknown): o is PartialOptions {
   return typeof o === "object" && o !== null && (o as PartialOptions).__resonate === true;
 }
+
+export type StoreOptions = {
+  /**
+   * The store encoder, defaults to a base64 encoder.
+   */
+  encoder: IEncoder<string, string>;
+
+  /**
+   * The frequency in ms to heartbeat locks.
+   */
+  heartbeat: number;
+
+  /**
+   * A logger instance, if not provided a default logger will be
+   * used.
+   */
+  logger: ILogger;
+
+  /**
+   * A process id that can be used to uniquely identify this Resonate
+   * instance. If not provided a default value will be generated.
+   */
+  pid: string;
+};
