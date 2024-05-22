@@ -124,10 +124,6 @@ export class LocalStore implements IStore {
 export class LocalStoreAuth implements IAuth {
   // noop
   basic(): void {}
-
-  getHeaders(): Record<string, string> {
-    return {};
-  }
 }
 
 export class LocalPromiseStore implements IPromiseStore {
