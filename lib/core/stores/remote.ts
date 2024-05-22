@@ -24,10 +24,11 @@ export class RemoteStore implements IStore {
   public readonly schedules: RemoteScheduleStore;
   public readonly locks: RemoteLockStore;
 
-  public readonly logger: ILogger;
   public readonly encoder: IEncoder<string, string>;
-  public readonly pid: string;
   public readonly heartbeat: number;
+  public readonly logger: ILogger;
+  public readonly pid: string;
+  public readonly retries: number;
 
   constructor(
     public readonly url: string,
@@ -38,13 +39,14 @@ export class RemoteStore implements IStore {
     this.schedules = new RemoteScheduleStore(this);
     this.locks = new RemoteLockStore(this);
 
+    this.encoder = opts.encoder ?? new Base64Encoder();
     this.logger = opts.logger ?? new Logger();
     this.heartbeat = opts.heartbeat ?? 15000;
-    this.encoder = opts.encoder ?? new Base64Encoder();
     this.pid = opts.pid ?? utils.randomId();
+    this.retries = opts.retries ?? 2;
   }
 
-  async call<T>(path: string, guard: (b: unknown) => b is T, options: RequestInit, retries: number = 3): Promise<T> {
+  async call<T>(path: string, guard: (b: unknown) => b is T, options: RequestInit): Promise<T> {
     let error: unknown;
 
     const defaultHeaders = {
@@ -55,7 +57,7 @@ export class RemoteStore implements IStore {
     // add auth headers
     options.headers = { ...defaultHeaders, ...options.headers, ...this.auth.getHeaders() };
 
-    for (let i = 0; i < retries; i++) {
+    for (let i = 0; i < this.retries + 1; i++) {
       try {
         this.logger.debug("store:req", {
           url: this.url,

@@ -152,4 +152,10 @@ export type StoreOptions = {
    * instance. If not provided a default value will be generated.
    */
   pid: string;
+
+  /**
+   * Number of retries to attempt before throwing an error. If not
+   * provided, a default value will be used.
+   */
+  retries: number;
 };
