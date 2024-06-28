@@ -1,3 +1,4 @@
+import { Func, Params, Return } from "./core/calls";
 import { Execution, OrdinaryExecution, DeferredExecution } from "./core/execution";
 import { ResonatePromise } from "./core/future";
 import { Invocation } from "./core/invocation";
@@ -11,12 +12,6 @@ import { ResonateBase } from "./resonate";
 /////////////////////////////////////////////////////////////////////
 // Types
 /////////////////////////////////////////////////////////////////////
-
-export type Func = (ctx: Context, ...args: any[]) => any;
-
-export type Params<F> = F extends (ctx: any, ...args: infer P) => any ? P : never;
-
-export type Return<F> = F extends (...args: any[]) => infer T ? Awaited<T> : never;
 
 /////////////////////////////////////////////////////////////////////
 // Resonate

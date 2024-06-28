@@ -63,6 +63,11 @@ describe("Functions: async", () => {
       await resonate.run("run", "run.c", deferredSuccess),
       await resonate.run("success", "run.d"),
       await resonate.run("successAsync", "run.e"),
+      await resonate.run({ funcName: "run", id: "run.a", args: [ordinarySuccess] }),
+      await resonate.run({ funcName: "run", id: "run.b", args: [ordinarySuccessAsync] }),
+      await resonate.run({ funcName: "run", id: "run.c", args: [deferredSuccess] }),
+      await resonate.run({ funcName: "success", id: "run.d" }),
+      await resonate.run({ funcName: "successAsync", id: "run.e" }),
     ];
 
     expect(results.every((r) => r === "foo")).toBe(true);
@@ -91,6 +96,11 @@ describe("Functions: async", () => {
       () => resonate.run("run", "run.c", deferredFailure),
       () => resonate.run("failure", "run.d"),
       () => resonate.run("failureAsync", "run.e"),
+      () => resonate.run({ funcName: "run", id: "run.a", args: [ordinaryFailure] }),
+      () => resonate.run({ funcName: "run", id: "run.b", args: [ordinaryFailureAsync] }),
+      () => resonate.run({ funcName: "run", id: "run.c", args: [deferredFailure] }),
+      () => resonate.run({ funcName: "failure", id: "run.d" }),
+      () => resonate.run({ funcName: "failureAsync", id: "run.e" }),
     ];
 
     for (const f of functions) {
