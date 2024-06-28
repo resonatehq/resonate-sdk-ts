@@ -27,4 +27,26 @@ export type TFC = {
 };
 
 // Remote function call
-export type RFC = never;
+export type RFC = {
+  funcName: string;
+  args?: any;
+  opts?: Partial<Options>;
+};
+
+// Remote function call
+export type LFC<F extends Func> = {
+  func: F;
+  args?: any[];
+  opts?: Partial<Options>;
+};
+
+// Type guard for RFC
+export function isRFC(obj: any): obj is RFC {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    typeof obj.funcName === "string" &&
+    (obj.args === undefined || typeof obj.args === "object") &&
+    (obj.opts === undefined || (typeof obj.opts === "object" && obj.opts !== null))
+  );
+}
