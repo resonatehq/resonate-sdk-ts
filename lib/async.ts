@@ -206,12 +206,12 @@ export class Context {
    *
    * @description
    * This function takes a Remote Function Call (RFC) configuration and executes the specified function
-   * remotely with the provided options. It returns a ResonatePromise that resolves .
+   * remotely with the provided options.
    */
   run<T>(rfc: RFC): ResonatePromise<T>;
 
   /**
-   * Invoke a remote function.
+   * Invoke a remote function without arguments.
    *
    * @template T The return type of the remote function.
    * @param func The id of the remote function.
