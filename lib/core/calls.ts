@@ -10,7 +10,7 @@ export type Params<F> = F extends (ctx: any, ...args: infer P) => any ? P : neve
 // The return type of a resonate function
 export type Return<F> = F extends (...args: any[]) => infer T ? Awaited<T> : never;
 
-// A top level functio call, to be used in the with `resonate.run`
+// A top level function call, to be used in the with `resonate.run`
 export type TFC = {
   // Fuction Name of the function to be called, has to be previously registered
   funcName: string;
