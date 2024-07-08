@@ -133,6 +133,13 @@ export type Options = {
 
 export type PartialOptions = Partial<Options> & { __resonate: true };
 
+/**
+ * A subset of configuration options for overriding when invocating a top level function.
+ */
+export type InvocationOverrides = Partial<
+  Pick<Options, "eidFn" | "idempotencyKeyFn" | "retryPolicy" | "tags" | "timeout" | "version">
+> & { __resonate: true };
+
 export function isOptions(o: unknown): o is PartialOptions {
   return typeof o === "object" && o !== null && (o as PartialOptions).__resonate === true;
 }

@@ -4,6 +4,9 @@ export * from "./resonate";
 // async
 export * from "./async";
 
+// invok
+export * as invok from "./resonate_invok";
+
 // errors
 export * from "./core/errors";
 

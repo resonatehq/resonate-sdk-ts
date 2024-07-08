@@ -20,6 +20,9 @@ export enum ErrorCodes {
   STORE_ALREADY_EXISTS = 45,
   STORE_INVALID_STATE = 46,
   STORE_ENCODER = 47,
+
+  // error in user function
+  USER = 60,
 }
 
 export class ResonateError extends Error {

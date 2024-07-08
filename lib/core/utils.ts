@@ -52,3 +52,32 @@ export function mergeObjects<T extends object, U extends object>(obj1: T, obj2: 
     return acc;
   }, {} as any);
 }
+
+/**
+ * Creates a promise that resolves after a specified delay.
+ *
+ * @param ms - The delay in milliseconds.
+ * @returns A promise that resolves after the specified delay.
+ *
+ * @example
+ * // Basic usage
+ * await sleep(1000); // Pauses execution for 1 second
+ *
+ * @example
+ * // Using in an async function
+ * async function example() {
+ *   console.log('Start');
+ *   await sleep(2000);
+ *   console.log('2 seconds later');
+ * }
+ *
+ * @example
+ * // Using with .then()
+ * sleep(3000).then(() => console.log('3 seconds have passed'));
+ */
+export async function sleep(ms: number): Promise<void> {
+  if (ms < 0) {
+    throw new Error("ms should be a positive integer");
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

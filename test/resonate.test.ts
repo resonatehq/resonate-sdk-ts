@@ -1,8 +1,28 @@
 import { describe, test, expect, jest } from "@jest/globals";
 
 import { Resonate } from "../lib/async";
+import { Resonate as ResonateI } from "../lib/resonate_invok";
 
 jest.setTimeout(10000);
+
+describe("ResonateInvoke", () => {
+  test("Register without options", async () => {
+    const resonate = new ResonateI();
+
+    resonate.register("foo", () => "foo.1");
+    resonate.register("foo", () => "foo.2", { version: 2 });
+    resonate.register("bar", () => "bar.1", { version: 1 });
+    resonate.register("bar", () => "bar.2", { version: 2 });
+
+    expect(await resonate.run("foo", "foo.0", [], resonate.options({ durable: false }))).toBe("foo.2");
+    expect(await resonate.run("foo", "foo.1", [], resonate.options({ version: 1 }))).toBe("foo.1");
+    expect(await resonate.run("foo", "foo.2", [], resonate.options({ version: 2 }))).toBe("foo.2");
+
+    expect(await resonate.run("bar", "bar.0", [], resonate.options())).toBe("bar.2");
+    expect(await resonate.run("bar", "bar.1", [], resonate.options({ version: 1 }))).toBe("bar.1");
+    expect(await resonate.run("bar", "bar.2", [], resonate.options({ version: 2 }))).toBe("bar.2");
+  });
+});
 
 describe("Resonate", () => {
   test("Register without options", async () => {
