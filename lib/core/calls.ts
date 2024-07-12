@@ -1,4 +1,4 @@
-import { Context } from "..";
+import { Context } from "../async";
 import { Options } from "./options";
 
 // The type of a resonate function

@@ -81,3 +81,42 @@ export async function sleep(ms: number): Promise<void> {
   }
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/**
+ * Determines the current state of a Promise.
+ *
+ * @param p - The Promise whose state is to be determined.
+ *
+ * @returns {Promise<'pending' | 'resolved' | 'rejected'>} A Promise that resolves to a string
+ * representing the state of the input Promise:
+ *   - 'pending': The input Promise has not settled yet.
+ *   - 'resolved': The input Promise has resolved successfully.
+ *   - 'rejected': The input Promise has been rejected.
+ *
+ * @throws {TypeError} If the input is not a Promise.
+ *
+ * @example
+ * const myPromise = new Promise(resolve => setTimeout(() => resolve('done'), 1000));
+ *
+ * // Check state immediately
+ * promiseState(myPromise).then(state => console.log(state)); // Logs: 'pending'
+ *
+ * // Check state after 2 seconds
+ * setTimeout(() => {
+ *   promiseState(myPromise).then(state => console.log(state)); // Logs: 'resolved'
+ * }, 2000);
+ *
+ * @remarks
+ * This function uses `Promise.race()` internally to determine the state of the input Promise.
+ * It does not affect the execution or result of the input Promise in any way.
+ *
+ * Note that the state of a Promise can change from 'pending' to either 'resolved' or 'rejected',
+ * but once it's settled (either 'resolved' or 'rejected'), it cannot change again.
+ */
+export function promiseState(p: Promise<any>): Promise<"pending" | "resolved" | "rejected"> {
+  const t = {};
+  return Promise.race([p, t]).then(
+    (v) => (v === t ? "pending" : "resolved"), // Resolved branch
+    () => "rejected", // Rejected branch
+  );
+}

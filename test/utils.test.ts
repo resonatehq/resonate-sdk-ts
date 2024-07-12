@@ -1,5 +1,5 @@
 import { describe, test, expect, jest } from "@jest/globals";
-import { mergeObjects, sleep } from "../lib/core/utils";
+import { mergeObjects, sleep, promiseState } from "../lib/core/utils";
 
 jest.setTimeout(2000);
 
@@ -88,5 +88,45 @@ describe("sleep function", () => {
 
   test("should reject for negative milliseconds", async () => {
     await expect(sleep(-100)).rejects.toThrow();
+  });
+});
+
+describe("promiseState", () => {
+  test('returns "pending" for a pending promise', async () => {
+    const pendingPromise = new Promise(() => {});
+    const result = await promiseState(pendingPromise);
+    expect(result).toBe("pending");
+  });
+
+  test('returns "fulfilled" for a resolved promise', async () => {
+    const fulfilledPromise = Promise.resolve("success");
+    const result = await promiseState(fulfilledPromise);
+    expect(result).toBe("resolved");
+  });
+
+  test('returns "rejected" for a rejected promise', async () => {
+    const rejectedPromise = Promise.reject("error");
+    const result = await promiseState(rejectedPromise);
+    expect(result).toBe("rejected");
+  });
+
+  test("handles promises that resolve after a delay", async () => {
+    const delayedPromise = new Promise((resolve) => setTimeout(() => resolve("delayed success"), 100));
+    const immediatePendingResult = await promiseState(delayedPromise);
+    expect(immediatePendingResult).toBe("pending");
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const laterFulfilledResult = await promiseState(delayedPromise);
+    expect(laterFulfilledResult).toBe("resolved");
+  });
+
+  test("handles promises that reject after a delay", async () => {
+    const delayedRejection = new Promise((_, reject) => setTimeout(() => reject("delayed error"), 100));
+    const immediatePendingResult = await promiseState(delayedRejection);
+    expect(immediatePendingResult).toBe("pending");
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const laterRejectedResult = await promiseState(delayedRejection);
+    expect(laterRejectedResult).toBe("rejected");
   });
 });

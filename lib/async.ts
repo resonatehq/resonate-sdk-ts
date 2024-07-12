@@ -487,7 +487,7 @@ export class Context {
    * @returns PartialOptions.
    */
   options(opts: Partial<Options> = {}): PartialOptions {
-    return this.resonate.options(opts);
+    return this.options(opts);
   }
 }
 
