@@ -653,13 +653,11 @@ export class Context {
             opts.retryPolicy,
             storedPromise.timeout,
           );
-          console.log("executed ", id, "and got value ", value);
         } catch (e) {
           // We need to capture the error to be able to reject the durable promise,
           // after that we will then propagate this error by rejecting the result promise
           error = e;
           success = false;
-          console.log("executed ", id, "and got error ", error.message);
         }
 
         let completedPromiseRecord!: DurablePromiseRecord;
