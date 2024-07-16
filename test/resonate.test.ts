@@ -1,6 +1,6 @@
 import { describe, test, expect, jest } from "@jest/globals";
-import { Resonate } from "../lib/resonate_invok";
-import { options } from "../lib";
+import { options } from "../lib/core/options";
+import { Context, Resonate } from "../lib/resonate_invok";
 
 jest.setTimeout(10000);
 
@@ -69,72 +69,72 @@ describe("Resonate", () => {
     expect(await resonate.run("bar", "bar.0")).toBe("bar");
   });
 
-  // test("Schedule", async () => {
-  //   const resonate = new Resonate();
+  test("Schedule", async () => {
+    const resonate = new Resonate();
 
-  //   const fooPromise = new Promise((resolve) => {
-  //     resonate.schedule("foo", "* * * * * *", () => resolve("foo"));
-  //   });
+    const fooPromise = new Promise((resolve) => {
+      resonate.schedule("foo", "* * * * * *", () => resolve("foo"));
+    });
 
-  //   const barPromise = new Promise((resolve) => {
-  //     resonate.schedule("bar", "* * * * * *", (c: any, v: string) => resolve(v), "bar");
-  //   });
+    const barPromise = new Promise((resolve) => {
+      resonate.schedule("bar", "* * * * * *", (c: Context, v: string) => resolve(v), "bar");
+    });
 
-  //   const bazPromise = new Promise((resolve) => {
-  //     resonate.register("baz", () => resolve("baz"));
-  //     resonate.schedule("baz", "* * * * * *", "baz");
-  //   });
+    const bazPromise = new Promise((resolve) => {
+      resonate.register("baz", () => resolve("baz"));
+      resonate.schedule("baz", "* * * * * *", "baz");
+    });
 
-  //   const quxPromise = new Promise((resolve) => {
-  //     resonate.register("qux", () => resolve("qux"), { version: 1 });
-  //     resonate.schedule("qux", "* * * * * *", "qux", options({ version: 1 }));
-  //   });
+    const quxPromise = new Promise((resolve) => {
+      resonate.register("qux", () => resolve("qux"), { version: 1 });
+      resonate.schedule("qux", "* * * * * *", "qux", options({ version: 1 }));
+    });
 
-  //   const foo = await resonate.schedules.get("foo");
-  //   const bar = await resonate.schedules.get("bar");
-  //   const baz = await resonate.schedules.get("baz");
-  //   const qux = await resonate.schedules.get("qux");
+    const foo = await resonate.schedules.get("foo");
+    const bar = await resonate.schedules.get("bar");
+    const baz = await resonate.schedules.get("baz");
+    const qux = await resonate.schedules.get("qux");
 
-  //   resonate.start(0); // no delay for tests
+    resonate.start(1000); // no delay for tests
 
-  //   expect(await fooPromise).toBe("foo");
-  //   expect(await barPromise).toBe("bar");
-  //   expect(await bazPromise).toBe("baz");
-  //   expect(await quxPromise).toBe("qux");
+    expect(await fooPromise).toBe("foo");
+    expect(await barPromise).toBe("bar");
+    expect(await bazPromise).toBe("baz");
+    expect(await quxPromise).toBe("qux");
 
-  //   resonate.stop();
+    resonate.stop();
 
-  //   // delete the schedules in order to stop the local
-  //   // store interval that creates promises
-  //   await foo.delete();
-  //   await bar.delete();
-  //   await baz.delete();
-  //   await qux.delete();
-  // });
+    // delete the schedules in order to stop the local
+    // store interval that creates promises
+    await foo.delete();
+    await bar.delete();
+    await baz.delete();
+    await qux.delete();
+  });
 
-  // test("Schedule throws error", async () => {
-  //   const resonate = new Resonate();
+  test("Schedule throws error", async () => {
+    const resonate = new Resonate();
 
-  //   expect(() => resonate.schedule("foo", "", "foo")).toThrow("Function foo version 0 not registered");
-  //   expect(() => resonate.schedule("foo", "", "foo", options({ version: 1 }))).toThrow(
-  //     "Function foo version 1 not registered",
-  //   );
-  //   expect(() => resonate.schedule("foo", "", "foo", options({ version: 2 }))).toThrow(
-  //     "Function foo version 2 not registered",
-  //   );
+    expect(resonate.schedule("foo", "", "foo")).rejects.toThrow("Function foo version 0 not registered");
+    expect(resonate.schedule("foo", "", "foo", options({ version: 1 }))).rejects.toThrow(
+      "Function foo version 1 not registered",
+    );
+    expect(resonate.schedule("foo", "", "foo", options({ version: 2 }))).rejects.toThrow(
+      "Function foo version 2 not registered",
+    );
 
-  //   resonate.register("bar", () => {});
-  //   expect(() => resonate.schedule("bar", "", () => {})).toThrow("Function bar version 1 already registered");
+    resonate.register("bar", () => {});
+    expect(resonate.schedule("bar", "", () => {})).rejects.toThrow("Function bar version 1 already registered");
 
-  //   const baz = await resonate.schedule("baz", "", () => {});
-  //   expect(() => resonate.schedule("baz", "", () => {})).toThrow("Function baz version 1 already registered");
+    const baz = await resonate.schedule("baz", "", () => {});
+    expect(resonate.schedule("baz", "", () => {})).rejects.toThrow("Function baz version 1 already registered");
 
-  //   resonate.register("qux", () => {});
-  //   expect(resonate.schedule("qux", "x", "qux")).rejects.toThrow();
-  //   expect(resonate.schedule("qux", "* * * * * * *", "qux")).rejects.toThrow();
+    resonate.register("qux", () => {});
+    expect(resonate.schedule("qux", "x", "qux")).rejects.toThrow();
+    expect(resonate.schedule("qux", "* * * * * * *", "qux")).rejects.toThrow();
 
-  //   // delete the schedules in order to stop the local
-  //   // store interval that creates promises
-  //   await baz.delete();
-  // });
+    // delete the schedules in order to stop the local
+    // store interval that creates promises
+    await baz.delete();
+  });
 });

@@ -1,5 +1,6 @@
 import { JSONEncoder } from "./core/encoders/json";
 import { ErrorCodes, ResonateError } from "./core/errors";
+import { ILogger } from "./core/logger";
 import { Logger } from "./core/loggers/logger";
 import { PartialOptions, Options, InvocationOverrides, ResonateOptions, options } from "./core/options";
 import * as durablePromises from "./core/promises/promises";
@@ -7,7 +8,7 @@ import { DurablePromiseRecord } from "./core/promises/types";
 import * as retryPolicies from "./core/retry";
 import { runWithRetry } from "./core/retry";
 import * as schedules from "./core/schedules/schedules";
-import { IPromiseStore, IStore } from "./core/store";
+import { IStore } from "./core/store";
 import { LocalStore } from "./core/stores/local";
 import { RemoteStore } from "./core/stores/remote";
 import * as utils from "./core/utils";
@@ -34,12 +35,14 @@ export type Params<F> = F extends (ctx: any, ...args: infer P) => any ? P : neve
 export type Return<F> = F extends (...args: any[]) => infer T ? Awaited<T> : never;
 
 export class Resonate {
-  #store: IStore;
   #registeredFunctions: Record<string, Record<number, { func: Func; opts: Options }>> = {};
   #invocationHandles: Map<string, InvocationHandle<any>>;
-  defaultInvocationOptions: Options;
-  public readonly promises: ResonatePromises;
-  public readonly schedules: ResonateSchedules;
+  #interval: NodeJS.Timeout | undefined;
+  readonly store: IStore;
+  readonly logger: ILogger;
+  readonly defaultInvocationOptions: Options;
+  readonly promises: ResonatePromises;
+  readonly schedules: ResonateSchedules;
 
   constructor({
     auth = undefined,
@@ -55,16 +58,16 @@ export class Resonate {
     url = undefined,
   }: Partial<ResonateOptions> = {}) {
     if (store) {
-      this.#store = store;
+      this.store = store;
     } else if (url) {
-      this.#store = new RemoteStore(url, {
+      this.store = new RemoteStore(url, {
         auth,
         heartbeat,
         logger,
         pid,
       });
     } else {
-      this.#store = new LocalStore({
+      this.store = new LocalStore({
         auth,
         heartbeat,
         logger,
@@ -72,6 +75,7 @@ export class Resonate {
       });
     }
 
+    this.logger = logger;
     this.#invocationHandles = new Map();
 
     this.defaultInvocationOptions = {
@@ -116,20 +120,20 @@ export class Resonate {
         promiseId: string,
         promiseTimeout: number,
         opts: Partial<schedules.Options> = {},
-      ) => schedules.Schedule.create(this.#store.schedules, encoder, id, cron, promiseId, promiseTimeout, opts),
+      ) => schedules.Schedule.create(this.store.schedules, encoder, id, cron, promiseId, promiseTimeout, opts),
 
-      get: (id: string) => schedules.Schedule.get(this.#store.schedules, encoder, id),
+      get: (id: string) => schedules.Schedule.get(this.store.schedules, encoder, id),
       search: (id: string, tags?: Record<string, string>, limit?: number) =>
-        schedules.Schedule.search(this.#store.schedules, encoder, id, tags, limit),
+        schedules.Schedule.search(this.store.schedules, encoder, id, tags, limit),
     };
   }
 
   get promisesStore() {
-    return this.#store.promises;
+    return this.store.promises;
   }
 
   get locksStore() {
-    return this.#store.locks;
+    return this.store.locks;
   }
 
   registeredFunction(funcName: string, version: number): { func: Func; opts: Options } {
@@ -174,6 +178,71 @@ export class Resonate {
   registerModule(module: Record<string, Func>, opts: Partial<Options> = {}) {
     for (const key in module) {
       this.register(key, module[key], opts);
+    }
+  }
+
+  /**
+   * Start the resonate service which continually checks for pending promises
+   * every `delay` ms.
+   *
+   * @param delay Frequency in ms to check for pending promises.
+   */
+  async start(delay: number = 5000) {
+    clearInterval(this.#interval);
+    this.#_start();
+    this.#interval = setInterval(this.#_start.bind(this), delay);
+  }
+
+  /**
+   * Stop the resonate service.
+   */
+  async stop() {
+    // TODO: await all the invocation handles here
+    clearInterval(this.#interval);
+  }
+
+  async #_start() {
+    try {
+      for await (const promises of this.promisesStore.search("*", "pending", { "resonate:invocation": "true" })) {
+        for (const promiseRecord of promises) {
+          const param = this.defaultInvocationOptions.encoder.decode(promiseRecord.param.data);
+          if (
+            param &&
+            typeof param === "object" &&
+            "func" in param &&
+            typeof param.func === "string" &&
+            "version" in param &&
+            typeof param.version === "number" &&
+            "args" in param &&
+            Array.isArray(param.args) &&
+            "retryPolicy" in param &&
+            retryPolicies.isRetryPolicy(param.retryPolicy)
+          ) {
+            // Since the promise is already created on the server, we should use that idempotencyKey.
+            // If for whatever reason it is not, we should recalculate it using our defaults.
+            const idempotencyKeyFn = (_: string) => {
+              return (
+                promiseRecord.idempotencyKeyForCreate ??
+                this.defaultInvocationOptions.idempotencyKeyFn(promiseRecord.id)
+              );
+            };
+            await this.invokeLocal(
+              param.func,
+              promiseRecord.id,
+              ...param.args,
+              options({
+                retryPolicy: param.retryPolicy,
+                version: param.version,
+                idempotencyKeyFn,
+              }),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      // squash all errors and log,
+      // transient errors will be ironed out in the next interval
+      this.logger.error(e);
     }
   }
 
@@ -273,7 +342,7 @@ export class Resonate {
         if (opts.shouldLock) {
           const acquireLock = async (): Promise<boolean> => {
             try {
-              return await this.#store.locks.tryAcquire(id, eid);
+              return await this.store.locks.tryAcquire(id, eid);
             } catch (e: unknown) {
               // if lock is already acquired, return false so we can poll
               if (e instanceof ResonateError && e.code === ErrorCodes.STORE_FORBIDDEN) {
@@ -375,9 +444,75 @@ export class Resonate {
     };
 
     const resultPromise: Promise<R> = runFunc();
-    const handle = new InvocationHandle(resultPromise, id, this.promisesStore);
+    const handle = new InvocationHandle(resultPromise, id);
     this.#invocationHandles.set(id, handle);
     return handle;
+  }
+
+  /**
+   * Schedule a resonate function.
+   *
+   * @param name The schedule name.
+   * @param cron The schedule cron expression.
+   * @param func The function to schedule.
+   * @param args The function arguments.
+   * @returns The schedule object.
+   */
+  async schedule<F extends Func>(
+    name: string,
+    cron: string,
+    func: F,
+    ...args: [...Params<F>, PartialOptions?]
+  ): Promise<schedules.Schedule>;
+
+  /**
+   * Schedule a resonate function that is already registered.
+   *
+   * @param name The schedule name.
+   * @param cron The schedule cron expression.
+   * @param func The registered function name.
+   * @param args The function arguments.
+   * @returns The schedule object.
+   */
+  async schedule(
+    name: string,
+    cron: string,
+    func: string,
+    ...args: [...any, PartialOptions?]
+  ): Promise<schedules.Schedule>;
+
+  async schedule(name: string, cron: string, func: Func | string, ...argsWithOpts: any[]): Promise<schedules.Schedule> {
+    const { args, opts: givenOpts } = utils.split(argsWithOpts);
+
+    const opts = this.withDefaultOpts(givenOpts);
+
+    if (typeof func === "function") {
+      // if function is provided, the default version is 1
+      // as opposed to 0 (alias for latest version)
+      opts.version = opts.version || 1;
+      this.register(name, func, opts);
+    }
+
+    const funcName = typeof func === "string" ? func : name;
+
+    const {
+      opts: { retryPolicy: retry, version, timeout, tags: promiseTags },
+    } = this.registeredFunction(funcName, opts.version);
+
+    const idempotencyKey = opts.idempotencyKeyFn(funcName);
+
+    const promiseParam = {
+      func: funcName,
+      version,
+      retryPolicy: retry,
+      args,
+    };
+
+    return await this.schedules.create(name, cron, "{{.id}}.{{.timestamp}}", timeout, {
+      idempotencyKey,
+      promiseParam,
+      promiseTags,
+    });
   }
 
   withDefaultOpts(givenOpts: Partial<Options> = {}): Options {
@@ -522,7 +657,7 @@ export class Context {
       throw new Error(`Polling of remote invocation with ${funcId} was stopped`);
     };
     const resultPromise: Promise<R> = runFunc();
-    const invocationHandle = new InvocationHandle(resultPromise, funcId, this.#resonate.promisesStore);
+    const invocationHandle = new InvocationHandle(resultPromise, funcId);
     this.#invocationHandles.set(funcId, invocationHandle);
 
     return invocationHandle;
@@ -547,7 +682,7 @@ export class Context {
     opts.shouldLock = opts.shouldLock ?? false;
 
     this.childrenCount++;
-    // If it is an anonymous function give at anon name nested with the current invocation name
+    // If it is an anonymous function give at anon name nested within the current invocation name
     const name = func.name ? func.name : `${this.invocationData.name}__anon${this.childrenCount}`;
     const id = `${this.invocationData.id}.${this.childrenCount}.${name}`;
 
@@ -571,7 +706,7 @@ export class Context {
         )) as R;
       };
       const resultPromise = runFunc();
-      const handle = new InvocationHandle<R>(resultPromise, id, this.#resonate.promisesStore);
+      const handle = new InvocationHandle<R>(resultPromise, id);
       this.#invocationHandles.set(id, handle);
       return handle;
     }
@@ -726,7 +861,7 @@ export class Context {
     };
 
     const resultPromise: Promise<R> = runFunc();
-    const invocationHandle = new InvocationHandle(resultPromise, id, this.#resonate.promisesStore);
+    const invocationHandle = new InvocationHandle(resultPromise, id);
     this.#invocationHandles.set(id, invocationHandle);
 
     return invocationHandle;
@@ -845,52 +980,6 @@ export class Context {
       retryPolicy: retryPolicies.never(),
       ...opts,
     }));
-  }
-}
-
-export class InvocationHandle<R> {
-  constructor(
-    readonly resultPromise: Promise<R>,
-    readonly invocationId: string,
-    readonly promiseStore: IPromiseStore,
-  ) {}
-
-  /**
-   * Retrieves the current state of the durable promise.
-   *
-   * @returns A Promise that resolves to the state of the durable promise.
-   * The state can be one of the following:
-   * - "PENDING": The promise is still in progress.
-   * - "RESOLVED": The promise has been successfully fulfilled.
-   * - "REJECTED": The promise has been rejected due to an error.
-   * - "REJECTED_CANCELED": The promise was canceled before completion.
-   * - "REJECTED_TIMEDOUT": The promise exceeded its time limit.
-   *
-   * @remarks
-   * IMPORTANT: Users of this function should assume that it performs a direct database
-   * query to fetch the current state.
-   * It might not use cached data or in-memory state. Each call to this function will result
-   * in a potential database read operation to ensure the most up-to-date state is returned.
-   *
-   * Due to the database dependency, consider the following:
-   * - The function may have latency based on database performance and network conditions.
-   * - Frequent calls to this function may impact database load and application performance.
-   * - Ensure proper error handling for potential database connection issues.
-   *
-   * @example
-   * while (await handle.state() === "PENDING") {
-   *  console.log("promise pending");
-   *  await sleep(1000);
-   * }
-   */
-  async state(): Promise<"PENDING" | "RESOLVED" | "REJECTED" | "REJECTED_CANCELED" | "REJECTED_TIMEDOUT"> {
-    // TODO: USE promiseState to return the state of the promise if it had been fulfilled already or if the promise is not durable
-    const promiseRecord: DurablePromiseRecord = await this.promiseStore.get(this.invocationId);
-    return promiseRecord.state;
-  }
-
-  async result(): Promise<R> {
-    return this.resultPromise;
   }
 }
 
@@ -1021,4 +1110,23 @@ export interface ResonateSchedules {
     tags: Record<string, string> | undefined,
     limit?: number,
   ): AsyncGenerator<schedules.Schedule[], void>;
+}
+
+export class InvocationHandle<R> {
+  constructor(
+    readonly resultPromise: Promise<R>,
+    readonly invocationId: string,
+  ) {}
+
+  /**
+   * get the current state of the resultPromise.
+   *
+   */
+  async state(): Promise<"pending" | "resolved" | "rejected"> {
+    return await utils.promiseState(this.resultPromise);
+  }
+
+  async result(): Promise<R> {
+    return this.resultPromise;
+  }
 }
