@@ -4,7 +4,7 @@ import { JSONEncoder } from "../lib/core/encoders/json";
 import { Options, options } from "../lib/core/options";
 import * as retry from "../lib/core/retry";
 import * as utils from "../lib/core/utils";
-import * as a from "../lib/resonate_invok";
+import * as a from "../lib/resonate";
 
 jest.setTimeout(10000);
 

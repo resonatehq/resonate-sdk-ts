@@ -2,7 +2,7 @@ import { describe, test, expect, jest } from "@jest/globals";
 import { IStore } from "../lib/core/store";
 import { LocalStore } from "../lib/core/stores/local";
 import { RemoteStore } from "../lib/core/stores/remote";
-import { Resonate, Context } from "../lib/resonate_invok";
+import { Resonate, Context } from "../lib/resonate";
 
 jest.setTimeout(10000);
 

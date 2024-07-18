@@ -2,7 +2,7 @@ import { describe, expect, test } from "@jest/globals";
 import { options } from "../lib/core/options";
 import { never } from "../lib/core/retry";
 import { sleep } from "../lib/core/utils";
-import { Resonate, Context } from "../lib/resonate_invok";
+import { Resonate, Context } from "../lib/resonate";
 
 describe("Detached tests", () => {
   test("A detached function does not get implicitly awaited at the end of a context", async () => {

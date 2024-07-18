@@ -1,5 +1,5 @@
 // invok
-export * from "./resonate_invok";
+export * from "./resonate";
 
 // errors
 export * from "./core/errors";

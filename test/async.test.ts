@@ -2,7 +2,7 @@ import { describe, test, expect, jest } from "@jest/globals";
 import { options } from "../lib/core/options";
 import * as retry from "../lib/core/retry";
 import * as utils from "../lib/core/utils";
-import { Resonate, Context } from "../lib/resonate_invok";
+import { Resonate, Context } from "../lib/resonate";
 
 jest.setTimeout(10000);
 
