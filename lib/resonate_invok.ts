@@ -318,11 +318,7 @@ export class Resonate {
         case "RESOLVED":
           return opts.encoder.decode(storedPromise.value.data) as R;
         case "REJECTED":
-          throw new ResonateError(
-            "Error in user function",
-            ErrorCodes.USER,
-            opts.encoder.decode(storedPromise.value.data),
-          );
+          throw opts.encoder.decode(storedPromise.value.data);
         case "REJECTED_CANCELED":
           throw new ResonateError(
             "Resonate function canceled",
@@ -373,10 +369,15 @@ export class Resonate {
             storedPromise.timeout,
           );
         } catch (e) {
+          if (ctx.aborted) {
+            throw e;
+          }
           // We need to capture the error to be able to reject the durable promise
           // after that we will then propagate this error by rejecting the result promise
           error = e;
           success = false;
+        } finally {
+          await ctx.finalize();
         }
 
         let completedPromiseRecord!: DurablePromiseRecord;
@@ -405,7 +406,7 @@ export class Resonate {
           case "RESOLVED":
             return value as R;
           case "REJECTED":
-            throw new ResonateError("Resonate function errror", ErrorCodes.USER, error);
+            throw error;
           case "REJECTED_CANCELED":
             throw new ResonateError("Resonate function canceled", ErrorCodes.CANCELED, error);
           case "REJECTED_TIMEDOUT":
@@ -417,20 +418,17 @@ export class Resonate {
             throw new Error("Unreachable");
         }
       } catch (err) {
-        if (err instanceof ResonateError && err.code === ErrorCodes.USER) {
-          // When it is an error in the function provided by the error unwrap the error and return it as is
-          throw err.cause;
-        } else if (
-          err instanceof ResonateError &&
-          (err.code === ErrorCodes.CANCELED || err.code === ErrorCodes.TIMEDOUT)
-        ) {
+        if (err instanceof ResonateError && (err.code === ErrorCodes.CANCELED || err.code === ErrorCodes.TIMEDOUT)) {
           // Cancel and timeout errors just forward them
           throw err;
+        } else if (err instanceof ResonateError && err.code !== ErrorCodes.ABORT) {
+          // All other resonate errors we wrap them in an abort.
+          throw new ResonateError("Unrecoverable Error: Aborting", ErrorCodes.ABORT, err);
         } else {
-          // All other errors, including resonte STORE errors and UNKNOWN errors or
-          // errors that happened during fetch, for example the server was unreachable.
-
-          // Kill this top level invocation and throw the error
+          // - The error was already an abort error, for example, the unrecoverable error happened in one
+          // of the children invocations
+          // - Error in the user function.
+          // Either way, just forward it.
           throw err;
         }
       } finally {
@@ -530,6 +528,7 @@ export class Context {
   #resonate: Resonate;
   #stopAllPolling: boolean = false;
   #invocationHandles: Map<string, InvocationHandle<any>>;
+  #aborted: boolean;
   childrenCount: number;
   readonly invocationData: InvocationData;
   parent: Context | undefined;
@@ -538,6 +537,7 @@ export class Context {
   private constructor(resonate: Resonate, invocationData: InvocationData, parent: Context | undefined) {
     this.#resonate = resonate;
     this.#invocationHandles = new Map();
+    this.#aborted = false;
     this.parent = parent;
     this.root = !parent ? this : parent.root;
     this.invocationData = invocationData;
@@ -556,8 +556,16 @@ export class Context {
     this.childrenCount = 0;
   }
 
-  finalize() {
-    // TODO: await all the invocation handles
+  async finalize() {
+    await Promise.allSettled(Array.from(this.#invocationHandles, ([_, handle]) => handle.result()));
+  }
+
+  abort() {
+    this.root.#aborted = true;
+  }
+
+  get aborted() {
+    return this.#aborted;
   }
 
   /**
@@ -734,11 +742,7 @@ export class Context {
         case "RESOLVED":
           return opts.encoder.decode(storedPromise.value.data) as R;
         case "REJECTED":
-          throw new ResonateError(
-            "Error in user function",
-            ErrorCodes.USER,
-            opts.encoder.decode(storedPromise.value.data),
-          );
+          throw opts.encoder.decode(storedPromise.value.data);
         case "REJECTED_CANCELED":
           throw new ResonateError(
             "Resonate function canceled",
@@ -789,10 +793,16 @@ export class Context {
             storedPromise.timeout,
           );
         } catch (e) {
+          if (this.root.aborted) {
+            throw e;
+          }
+
           // We need to capture the error to be able to reject the durable promise,
           // after that we will then propagate this error by rejecting the result promise
           error = e;
           success = false;
+        } finally {
+          await ctx.finalize();
         }
 
         let completedPromiseRecord!: DurablePromiseRecord;
@@ -821,7 +831,7 @@ export class Context {
           case "RESOLVED":
             return value as R;
           case "REJECTED":
-            throw new ResonateError("Resonate function error", ErrorCodes.USER, error);
+            throw error;
           case "REJECTED_CANCELED":
             throw new ResonateError("Resonate function canceled", ErrorCodes.CANCELED, error);
           case "REJECTED_TIMEDOUT":
@@ -833,21 +843,14 @@ export class Context {
             throw new Error("Unreachable");
         }
       } catch (err) {
-        if (err instanceof ResonateError && err.code === ErrorCodes.USER) {
-          // When it is an error in the function provided by the user, unwrap the error
-          throw err.cause;
-        } else if (
-          err instanceof ResonateError &&
-          (err.code === ErrorCodes.CANCELED || err.code === ErrorCodes.TIMEDOUT)
-        ) {
+        if (err instanceof ResonateError && (err.code === ErrorCodes.CANCELED || err.code === ErrorCodes.TIMEDOUT)) {
           // Cancel and timeout errors, just forward them
           throw err;
+        } else if (err instanceof ResonateError && err.code !== ErrorCodes.ABORT) {
+          // Any other instance of ResonateError we must abort the current execution.
+          this.abort();
+          throw new ResonateError("Unrecoverable Error: Aborting", ErrorCodes.ABORT, err);
         } else {
-          // All other errors, including resonte STORE errors and UNKNOWN errors or
-          // errors that happened during fetch, for example the server was unreachable.
-
-          // Kill the top level invocation and throw the error as is
-          // kill(id)
           throw err;
         }
       } finally {

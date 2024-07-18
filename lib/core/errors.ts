@@ -1,6 +1,8 @@
 export enum ErrorCodes {
   // unknown
   UNKNOWN = 0,
+  FETCH = 1,
+  ABORT = 2,
 
   // canceled
   CANCELED = 10,
