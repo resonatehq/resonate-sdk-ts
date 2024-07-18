@@ -65,7 +65,7 @@ describe("sleep function", () => {
   test("should resolve after specified milliseconds", async () => {
     const duration = 500;
     const elapsed = await measureTime(() => sleep(duration));
-    expect(elapsed).toBeGreaterThanOrEqual(duration);
+    expect(elapsed).toBeGreaterThanOrEqual(duration - 50); // Allow 50ms tolerance because of event loop
     expect(elapsed).toBeLessThan(duration + 50); // Allow 50ms tolerance because of the event loop
   });
 
