@@ -529,6 +529,7 @@ export class Context {
   #stopAllPolling: boolean = false;
   #invocationHandles: Map<string, InvocationHandle<any>>;
   #aborted: boolean;
+  #abortCause: any;
   childrenCount: number;
   readonly invocationData: InvocationData;
   parent: Context | undefined;
@@ -560,12 +561,17 @@ export class Context {
     await Promise.allSettled(Array.from(this.#invocationHandles, ([_, handle]) => handle.result()));
   }
 
-  abort() {
+  abort(cause: any) {
     this.root.#aborted = true;
+    this.root.#abortCause = cause;
   }
 
   get aborted() {
     return this.#aborted;
+  }
+
+  get abortCause() {
+    return this.#abortCause;
   }
 
   /**
@@ -793,16 +799,18 @@ export class Context {
             storedPromise.timeout,
           );
         } catch (e) {
-          if (this.root.aborted) {
-            throw e;
-          }
-
           // We need to capture the error to be able to reject the durable promise,
           // after that we will then propagate this error by rejecting the result promise
           error = e;
           success = false;
         } finally {
+          // Resonate will implicitly await all the invocationHandles as the last
+          // thing it does with the context before it goes out of scope
           await ctx.finalize();
+        }
+
+        if (this.root.aborted) {
+          throw new ResonateError("Unrecoverable Error: Aborting", ErrorCodes.ABORT, this.root.abortCause);
         }
 
         let completedPromiseRecord!: DurablePromiseRecord;
@@ -848,7 +856,7 @@ export class Context {
           throw err;
         } else if (err instanceof ResonateError && err.code !== ErrorCodes.ABORT) {
           // Any other instance of ResonateError we must abort the current execution.
-          this.abort();
+          this.abort(err);
           throw new ResonateError("Unrecoverable Error: Aborting", ErrorCodes.ABORT, err);
         } else {
           throw err;
@@ -983,6 +991,25 @@ export class Context {
       retryPolicy: retryPolicies.never(),
       ...opts,
     }));
+  }
+
+  /**
+   * Invoke a Resonate function in detached mode. Functions must first be registered with Resonate.
+   * a detached invocation will not be implecitly awaited at the end of the current context, instead
+   * it will be "supervised" as a top level invocation.
+   *
+   * @template R The return type of the function.
+   * @param id A unique id for the function invocation.
+   * @param name The function name.
+   * @param argsWithOverrides The function arguments and options overrides.
+   * @returns A Res.
+   */
+  async detached<R>(
+    name: string,
+    id: string,
+    ...argsWithOverrides: [...any, InvocationOverrides?]
+  ): Promise<InvocationHandle<R>> {
+    return await this.#resonate.invokeLocal(name, id, ...argsWithOverrides);
   }
 }
 

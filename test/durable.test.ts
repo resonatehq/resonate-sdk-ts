@@ -70,6 +70,7 @@ describe("Durability tests", () => {
     expect(await resonate.run("default", "default.b", "b")).toBe("b");
 
     // Test the store was called
+    // TODO(avillega): test that it has been called more than once, since the top level is always durable
     expect(createSpy).toHaveBeenCalled();
     expect(resolveSpy).toHaveBeenCalled();
   });
@@ -81,6 +82,7 @@ describe("Durability tests", () => {
     await expect(resonate.run("fails-durable", "fails-durable.a", "a")).rejects.toThrow("a");
 
     // Test the store was called
+    // TODO(avillega): test that it has been called more than once, since the top level is always durable
     expect(createSpy).toHaveBeenCalled();
     expect(resolveSpy).toHaveBeenCalled();
     expect(rejectSpy).toHaveBeenCalled();
