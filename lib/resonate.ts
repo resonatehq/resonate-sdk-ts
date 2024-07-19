@@ -197,7 +197,6 @@ export class Resonate {
    * Stop the resonate service.
    */
   async stop() {
-    // TODO: await all the invocation handles here
     clearInterval(this.#interval);
   }
 
@@ -705,7 +704,6 @@ export class Context {
     }
 
     if (!opts.durable) {
-      // TODO: Test durability better
       const eid = opts.eidFn(id);
       const runFunc = async () => {
         const ctx = Context.createChildrenContext(this, { name, id, eid, opts });
