@@ -2,6 +2,7 @@ import { fail } from "assert";
 import { describe, test, expect, jest } from "@jest/globals";
 import { ErrorCodes, never, options, ResonateError } from "../lib";
 import { Context, Resonate } from "../lib/resonate";
+import { sleep } from "../lib/core/utils";
 
 jest.setTimeout(10000);
 
@@ -199,9 +200,10 @@ describe("Errors", () => {
         await ctx.run((ctx: Context) => "all good here");
         await ctx.run(
           async (ctx: Context) => {
+            await sleep(12);
             return "all good here too";
           },
-          options({ timeout: 1 }),
+          options({ timeout: 10 }),
         );
       },
       options({ retryPolicy: never() }),
