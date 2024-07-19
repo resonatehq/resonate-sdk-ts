@@ -1,8 +1,8 @@
 import { fail } from "assert";
 import { describe, test, expect, jest } from "@jest/globals";
 import { ErrorCodes, never, options, ResonateError } from "../lib";
-import { Context, Resonate } from "../lib/resonate";
 import { sleep } from "../lib/core/utils";
+import { Context, Resonate } from "../lib/resonate";
 
 jest.setTimeout(10000);
 
