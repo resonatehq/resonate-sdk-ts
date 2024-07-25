@@ -34,6 +34,8 @@ export type Params<F> = F extends (ctx: any, ...args: infer P) => any ? P : neve
 // The return type of a resonate function
 export type Return<F> = F extends (...args: any[]) => infer T ? Awaited<T> : never;
 
+//////////////////////////////////////////////////////////////////////
+
 export class Resonate {
   #registeredFunctions: Record<string, Record<number, { func: Func; opts: Options }>> = {};
   #invocationHandles: Map<string, InvocationHandle<any>>;
@@ -356,14 +358,12 @@ export class Resonate {
         const ctx = Context.createRootContext(this, { id, eid, name, opts });
 
         // we need to hold on to a boolean to determine if the function was successful,
-        // we cannot rely on the value or error as these values could be undefined
+        // we cannot rely on the value or error since func could return undefined.
         let success = true;
         try {
           value = await runWithRetry(
-            async () => {
-              ctx.reset();
-              return await func(ctx, ...args);
-            },
+            async () => await func(ctx, ...args), //func
+            async () => await ctx.onRetry(), //onRetry
             opts.retryPolicy,
             storedPromise.timeout,
           );
@@ -529,6 +529,8 @@ export class Context {
   #invocationHandles: Map<string, InvocationHandle<any>>;
   #aborted: boolean;
   #abortCause: any;
+  #resources: Map<string, any>;
+  #finalizers: (() => Promise<void>)[];
   childrenCount: number;
   readonly invocationData: InvocationData;
   parent: Context | undefined;
@@ -537,6 +539,9 @@ export class Context {
   private constructor(resonate: Resonate, invocationData: InvocationData, parent: Context | undefined) {
     this.#resonate = resonate;
     this.#invocationHandles = new Map();
+    this.#resources = new Map();
+    // Use a map to preserve insertion order
+    this.#finalizers = [];
     this.#aborted = false;
     this.parent = parent;
     this.root = !parent ? this : parent.root;
@@ -552,12 +557,24 @@ export class Context {
     return new Context(parentCtx.#resonate, invocationData, parentCtx);
   }
 
-  reset() {
+  async onRetry(): Promise<void> {
     this.childrenCount = 0;
+    await this.finalize();
   }
 
   async finalize() {
+    // It is important to await all promises before finalizing the resources
+    // doing it the other way around could cause problems
     await Promise.allSettled(Array.from(this.#invocationHandles, ([_, handle]) => handle.result()));
+
+    // We need to run the finalizers in reverse insertion order since later set finalizers might have
+    // a dependency in early set resources
+    for (const finalizer of this.#finalizers.reverse()) {
+      await finalizer();
+    }
+
+    this.#resources.clear();
+    this.#finalizers = [];
   }
 
   abort(cause: any) {
@@ -571,6 +588,37 @@ export class Context {
 
   get abortCause() {
     return this.#abortCause;
+  }
+
+  /**
+   * Adds a finalizer function to be executed at the end of the current context.
+   * Finalizers are run in reverse order of their definition (last-in, first-out).
+   *
+   * @param fn - An asynchronous function to be executed as a finalizer.
+   *             It should return a Promise that resolves to void.
+   */
+  addFinalizer(fn: () => Promise<void>) {
+    this.#finalizers.push(fn);
+  }
+
+  setResource(name: string, resource: any, finalizer?: () => Promise<void>): void {
+    if (this.#resources.has(name)) {
+      throw new Error("Resource already set for this context");
+    }
+
+    this.#resources.set(name, resource);
+    if (finalizer) {
+      this.#finalizers.push(finalizer);
+    }
+  }
+
+  getResource<R>(name: string): R | undefined {
+    const resource = this.#resources.get(name);
+    if (resource) {
+      return resource as R;
+    }
+
+    return this.parent ? this.parent.getResource<R>(name) : undefined;
   }
 
   /**
@@ -709,10 +757,8 @@ export class Context {
         const ctx = Context.createChildrenContext(this, { name, id, eid, opts });
         const timeout = Date.now() + opts.timeout;
         return (await runWithRetry(
-          async () => {
-            ctx.reset();
-            return await func(ctx, ...args);
-          },
+          async () => await func(ctx, ...args),
+          async () => await ctx.onRetry(),
           opts.retryPolicy,
           timeout,
         )) as R;
@@ -789,10 +835,8 @@ export class Context {
         let success = true;
         try {
           value = await runWithRetry(
-            async () => {
-              ctx.reset();
-              return await func(ctx, ...args);
-            },
+            async () => await func(ctx, ...args),
+            async () => await ctx.onRetry(),
             opts.retryPolicy,
             storedPromise.timeout,
           );
