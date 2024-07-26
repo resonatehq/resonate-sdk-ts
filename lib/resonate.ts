@@ -601,6 +601,19 @@ export class Context {
     this.#finalizers.push(fn);
   }
 
+  /**
+   * Sets a named resource for the current context and optionally adds a finalizer.
+   *
+   * @param name - A unique string identifier for the resource.
+   * @param resource - The resource to be stored. Can be of any type.
+   * @param finalizer - Optional. An asynchronous function to be executed when the context ends.
+   *                    Finalizers are run in reverse order of their addition to the context.
+   * @throws {Error} Throws an error if a resource with the same name already exists in the current context.
+   *
+   * This method associates a resource with a unique name in the current context.
+   * If a finalizer is provided, it will be executed when the context ends.
+   * Finalizers are useful for cleanup operations, such as closing connections or freeing resources.
+   */
   setResource(name: string, resource: any, finalizer?: () => Promise<void>): void {
     if (this.#resources.has(name)) {
       throw new Error("Resource already set for this context");
@@ -612,6 +625,23 @@ export class Context {
     }
   }
 
+  /**
+   * Retrieves a resource by name from the current context or its parent contexts.
+   *
+   * @template R - The expected type of the resource.
+   * @param name - The unique string identifier of the resource to retrieve.
+   * @returns The resource of type R if found, or undefined if not found.
+   *
+   * This method searches for a resource in the following order:
+   * 1. In the current context.
+   * 2. If not found, it recursively searches in parent contexts.
+   * 3. Returns undefined if the resource is not found in any context.
+   *
+   * @remarks
+   * The method uses type assertion to cast the resource to type R.
+   * Ensure that the type parameter R matches the actual type of the stored resource
+   * to avoid runtime type errors.
+   */
   getResource<R>(name: string): R | undefined {
     const resource = this.#resources.get(name);
     if (resource) {
