@@ -596,6 +596,9 @@ export class Context {
    *
    * @param fn - An asynchronous function to be executed as a finalizer.
    *             It should return a Promise that resolves to void.
+   *
+   * @remarks
+   * Finalizer functions must be non fallible.
    */
   addFinalizer(fn: () => Promise<void>) {
     this.#finalizers.push(fn);
@@ -607,7 +610,8 @@ export class Context {
    * @param name - A unique string identifier for the resource.
    * @param resource - The resource to be stored. Can be of any type.
    * @param finalizer - Optional. An asynchronous function to be executed when the context ends.
-   *                    Finalizers are run in reverse order of their addition to the context.
+   *                    Finalizers are run in reverse order of their addition to the context and
+   *                    must not fail.
    * @throws {Error} Throws an error if a resource with the same name already exists in the current context.
    *
    * This method associates a resource with a unique name in the current context.

@@ -171,4 +171,85 @@ describe("User Defined Resources", () => {
       expect((err as Error).message).toEqual("Some Error");
     }
   });
+
+  test("Trying to Overwrite a resource throws", async () => {
+    const resonate = new Resonate();
+
+    resonate.register(
+      "overwrite",
+      async (ctx: Context) => {
+        ctx.setResource("test", "original");
+        ctx.setResource("test", "overwritten");
+        return ctx.getResource("test");
+      },
+      options({ retryPolicy: never() }),
+    );
+
+    const handle = await resonate.invokeLocal<string>("overwrite", "overwrite.0");
+    await expect(handle.result()).rejects.toThrowError(Error);
+  });
+
+  test("Accessing a non-existent resource", async () => {
+    const resonate = new Resonate();
+
+    resonate.register("nonexistent", async (ctx: Context) => {
+      return ctx.getResource("doesNotExist");
+    });
+
+    const handle = await resonate.invokeLocal<unknown>("nonexistent", "nonexistent.0");
+    await expect(handle.result()).resolves.toBeUndefined();
+  });
+
+  test("Setting and getting resources of different types", async () => {
+    const resonate = new Resonate();
+
+    resonate.register("multipleTypes", async (ctx: Context) => {
+      ctx.setResource("string", "Hello");
+      ctx.setResource("number", 42);
+      ctx.setResource("boolean", true);
+      ctx.setResource("object", { key: "value" });
+      ctx.setResource("array", [1, 2, 3]);
+
+      return {
+        string: ctx.getResource("string"),
+        number: ctx.getResource("number"),
+        boolean: ctx.getResource("boolean"),
+        object: ctx.getResource("object"),
+        array: ctx.getResource("array"),
+      };
+    });
+
+    const handle = await resonate.invokeLocal<Record<string, unknown>>("multipleTypes", "multipleTypes.0");
+    await expect(handle.result()).resolves.toEqual({
+      string: "Hello",
+      number: 42,
+      boolean: true,
+      object: { key: "value" },
+      array: [1, 2, 3],
+    });
+  });
+
+  test("Resource are correctly set across retries", async () => {
+    const resonate = new Resonate();
+    let attempts = 0;
+
+    resonate.register(
+      "persistentResource",
+      async (ctx: Context) => {
+        attempts++;
+        if (!ctx.getResource("persistent")) {
+          ctx.setResource("persistent", "I persist");
+        }
+        if (attempts < 3) {
+          throw new Error("Retry me");
+        }
+        return ctx.getResource("persistent");
+      },
+      options({ retryPolicy: linear(10, 3) }),
+    );
+
+    const handle = await resonate.invokeLocal<string>("persistentResource", "persistentResource.0");
+    await expect(handle.result()).resolves.toBe("I persist");
+    expect(attempts).toBe(3);
+  });
 });
