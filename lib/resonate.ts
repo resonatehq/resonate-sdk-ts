@@ -540,7 +540,6 @@ export class Context {
     this.#resonate = resonate;
     this.#invocationHandles = new Map();
     this.#resources = new Map();
-    // Use a map to preserve insertion order
     this.#finalizers = [];
     this.#aborted = false;
     this.parent = parent;
