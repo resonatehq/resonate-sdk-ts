@@ -1,6 +1,7 @@
 import { DurablePromiseRecord } from "./promises/types";
 
 import { Schedule } from "./schedules/types";
+import { ResumeBody } from "./tasks";
 
 /**
  * Store Interface
@@ -9,6 +10,13 @@ export interface IStore {
   readonly promises: IPromiseStore;
   readonly schedules: IScheduleStore;
   readonly locks: ILockStore;
+  readonly callbacks: ICallbackStore;
+  readonly tasks: ITaskStore;
+
+  /**
+   * Do neccesary clean up and free of resources on stop
+   */
+  stop(): void;
 }
 
 /**
@@ -194,4 +202,35 @@ export interface ILockStore {
    * @param eid Execution id of lock.
    */
   release(id: string, eid: string): Promise<boolean>;
+}
+
+/**
+ * Task Store API
+ */
+export interface ITaskStore {
+  /**
+   * Claims a task.
+   *
+   * @param tasId Id of the task to claim.
+   * @param count Count of the task to claim.
+   * @returns A boolean indicating whether or not the task was claim.
+   *
+   */
+  claim(taskId: string, count: number): Promise<ResumeBody>;
+
+  /**
+   * Completes the task.
+   *
+   * @param taskId Id of the task to complete.
+   * @param count Count of the task to claim.
+   *
+   */
+  complete(taskId: string, count: number): Promise<boolean>;
+}
+
+/**
+ * Callback Store API
+ */
+export interface ICallbackStore {
+  create(promiseId: string, recv: string, timeout: number, data: string | undefined): Promise<boolean>;
 }

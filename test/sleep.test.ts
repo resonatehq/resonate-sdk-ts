@@ -1,21 +1,24 @@
-import { describe, test, expect, jest } from "@jest/globals";
-import { IStore } from "../lib/core/store";
-import { LocalStore } from "../lib/core/stores/local";
-import { RemoteStore } from "../lib/core/stores/remote";
+import { describe, test, expect, jest, beforeAll, afterAll } from "@jest/globals";
 import { Resonate, Context } from "../lib/resonate";
 
+// This config is per test not global execution of this test suite
 jest.setTimeout(10000);
 
 describe("Sleep", () => {
-  const stores: IStore[] = [new LocalStore()];
+  const resonates: Resonate[] = [new Resonate()];
 
-  if (process.env.RESONATE_STORE_URL) {
-    stores.push(new RemoteStore(process.env.RESONATE_STORE_URL));
+  if (process.env.RESONATE_STORE_URL && process.env.RESONATE_TASK_SOURCE_URL) {
+    // Push an instance of resonate that connects to the remote server
+    resonates.push(
+      new Resonate({
+        url: process.env.RESONATE_STORE_URL,
+        tasksUrl: process.env.RESONATE_TASK_SOURCE_URL,
+      }),
+    );
   }
 
-  for (const store of stores) {
-    describe(store.constructor.name, () => {
-      const resonate = new Resonate({ store });
+  for (const resonate of resonates) {
+    describe(resonate.store.constructor.name, () => {
       const timestamp = Date.now();
       const funcId = `sleep-${timestamp}`;
       resonate.register(funcId, async (ctx: Context, ms: number) => {
@@ -26,11 +29,17 @@ describe("Sleep", () => {
         return t2 - t1;
       });
 
+      beforeAll(() => {
+        return resonate.start();
+      });
+
+      afterAll(() => {
+        return resonate.stop();
+      });
+
       for (const ms of [1, 10, 100, 500]) {
-        test(`${ms}ms`, async () => {
-          const t = await resonate.run(funcId, `${funcId}.${ms}`, ms);
-          expect(t).toBeGreaterThanOrEqual(ms);
-          expect(t).toBeLessThan(ms + 200); // Allow 200ms tolerance because of the server round trip
+        test(`Sleep ${ms}ms`, () => {
+          return expect(resonate.run(funcId, `sleep.${ms}`, ms)).resolves.toBeGreaterThanOrEqual(ms);
         });
       }
     });

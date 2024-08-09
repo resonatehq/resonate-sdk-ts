@@ -76,7 +76,10 @@ describe("Combinators", () => {
   });
 
   describe("race", () => {
-    resonate.register("race", (c: Context, v: any[]) => c.race(v.map((v) => c.run(() => throwOrReturn(v)))));
+    resonate.register("race", (ctx: Context, v: any[]) => {
+      const promises = v.map((v) => ctx.run(() => throwOrReturn(v), ctx.options({ retryPolicy: retry.never() })));
+      return ctx.race(promises);
+    });
 
     for (const { name, args } of [
       { name: "one", args: [1] },
@@ -96,10 +99,14 @@ describe("Combinators", () => {
       { name: "three", args: [new Error("1"), 2, 3] },
     ]) {
       test(`rejected: ${name}`, async () => {
-        const r = resonate.run("race", `race.rejected.${name}`, args);
-        const e = await Promise.race(args.map(throwOrReturn)).catch((e) => e);
-        expect(r).rejects.toThrow(e);
-        expect(r).rejects.toThrow(args[0]);
+        expect.assertions(2);
+        try {
+          await resonate.run("race", `race.rejected.${name}`, args);
+        } catch (raceError) {
+          const e = await Promise.race(args.map(throwOrReturn)).catch((e) => e);
+          expect(raceError).toBe(args[0]);
+          expect(raceError).toBe(e);
+        }
       });
     }
   });

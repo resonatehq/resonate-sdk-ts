@@ -67,8 +67,15 @@ export type ResonateOptions = {
   /**
    * The remote promise store url. If not provided, an in-memory
    * promise store will be used.
+   * Must be set if `tasksUrl` is set.
    */
   url: string;
+
+  /**
+   * Tasks Url to listen for tasks from the server, must be a valid http url.
+   * Default port 3000. Must be set if `url` is set.
+   */
+  tasksUrl: string;
 };
 
 /**

@@ -11,6 +11,10 @@ import * as schedules from "./core/schedules/schedules";
 import { ILockStore, IPromiseStore, IStore } from "./core/store";
 import { LocalStore } from "./core/stores/local";
 import { RemoteStore } from "./core/stores/remote";
+import { TasksHandler } from "./core/tasks";
+import { TasksSource } from "./core/tasksSource";
+import { HttpTaskSource } from "./core/tasksSources/http";
+import { LocalTasksSource } from "./core/tasksSources/local";
 import * as utils from "./core/utils";
 import { sleep } from "./core/utils";
 
@@ -18,10 +22,12 @@ import { sleep } from "./core/utils";
 // Types
 /////////////////////////////////////////////////////////////////////
 
+// The relevant information of an invocation, it is used for the recovery paths and tasks.
 type InvocationData = {
   id: string;
   eid: string;
   name: string;
+  args: any[];
   opts: Options;
 };
 
@@ -45,6 +51,7 @@ export class Resonate {
   readonly defaultInvocationOptions: Options;
   readonly promises: ResonatePromises;
   readonly schedules: ResonateSchedules;
+  readonly tasksHandler: TasksHandler;
 
   constructor({
     auth = undefined,
@@ -58,7 +65,14 @@ export class Resonate {
     tags = {},
     timeout = 10000, // 10s
     url = undefined,
+    tasksUrl = undefined,
   }: Partial<ResonateOptions> = {}) {
+    if ((url && !tasksUrl) || (!url && tasksUrl)) {
+      throw new Error("url and taskUrl options should be both set or unset");
+    }
+
+    let tasksSource: TasksSource | undefined = undefined;
+
     if (store) {
       this.store = store;
     } else if (url) {
@@ -69,12 +83,21 @@ export class Resonate {
         pid,
       });
     } else {
-      this.store = new LocalStore({
+      // When running in local mode, the taskSource passed by the user is ignored and the LocalTasksSource is used
+      tasksSource = new LocalTasksSource();
+      this.store = new LocalStore(tasksSource as LocalTasksSource, {
         auth,
         heartbeat,
         logger,
         pid,
       });
+    }
+
+    if (tasksSource) {
+      this.tasksHandler = new TasksHandler(this, tasksSource);
+    } else {
+      // At this point we are sure that the local case has been handled when creating the store.
+      this.tasksHandler = new TasksHandler(this, new HttpTaskSource(tasksUrl!));
     }
 
     this.logger = logger;
@@ -138,6 +161,12 @@ export class Resonate {
     return this.store.locks;
   }
 
+  // Returns the InvocationHandle associated with the `invocationId` from the cache.
+  // returns undefined if the is no InvocationHandle with such id
+  getInvocationHandle<R>(invocationId: string): InvocationHandle<R> | undefined {
+    return this.#invocationHandles.get(invocationId);
+  }
+
   options(opts: Partial<Options>): PartialOptions {
     return options(opts);
   }
@@ -194,6 +223,7 @@ export class Resonate {
    * @param delay Frequency in ms to check for pending promises.
    */
   async start(delay: number = 5000) {
+    this.tasksHandler?.start();
     clearInterval(this.#interval);
     // await the first run of the recovery path to avoid races with the normal flow of the program
     await this.#_start();
@@ -205,6 +235,9 @@ export class Resonate {
    */
   async stop() {
     clearInterval(this.#interval);
+    // Most of the time tasks will come from the store either remote or local, so stop it first
+    this.store.stop();
+    this.tasksHandler.stop();
   }
 
   async #_start() {
@@ -315,7 +348,7 @@ export class Resonate {
       opts.tags,
     );
 
-    const ctx = Context.createRootContext(this, { id, name, opts, eid: opts.eidFn(id) });
+    const ctx = Context.createRootContext(this, { id, name, opts, args, eid: opts.eidFn(id) });
     const resultPromise: Promise<R> = _runFunc<R>(
       func,
       ctx,
@@ -614,17 +647,51 @@ export class Context {
     );
 
     const runFunc = async (): Promise<R> => {
-      while (!this.#stopAllPolling) {
-        const durablePromiseRecord: DurablePromiseRecord = await this.#resonate.promisesStore.get(storedPromise.id);
-        if (durablePromiseRecord.state !== "PENDING") {
-          return handleCompletedPromise(durablePromiseRecord, opts.encoder);
-        }
-        // TODO: Consider using exponential backoff instead.
-        sleep(opts.pollFrequency);
+      switch (storedPromise.state) {
+        case "RESOLVED":
+          return opts.encoder.decode(storedPromise.value.data) as R;
+        case "REJECTED":
+          throw opts.encoder.decode(storedPromise.value.data);
+        case "REJECTED_CANCELED":
+          throw new ResonateError(
+            "Resonate function canceled",
+            ErrorCodes.CANCELED,
+            opts.encoder.decode(storedPromise.value.data),
+          );
+        case "REJECTED_TIMEDOUT":
+          throw new ResonateError(
+            `Resonate function timedout at ${new Date(storedPromise.timeout).toISOString()}`,
+            ErrorCodes.TIMEDOUT,
+          );
       }
 
-      throw new Error(`Polling of remote invocation with ${funcId} was stopped`);
+      // case PENDING:
+
+      const resumeMessage = {
+        promiseId: storedPromise.id,
+        topLevelParent: {
+          id: this.root.invocationData.id,
+          name: this.root.invocationData.name,
+          version: this.root.invocationData.opts.version,
+          args: this.root.invocationData.args,
+          retryPolicy: this.root.invocationData.opts.retryPolicy,
+        },
+      };
+
+      try {
+        await this.#resonate.store.callbacks.create(
+          storedPromise.id,
+          this.#resonate.tasksHandler.callbackUrl(),
+          storedPromise.timeout + 1000,
+          opts.encoder.encode(resumeMessage),
+        );
+      } catch (e) {
+        console.error("Error creating callback", e);
+      }
+
+      return await this.#resonate.tasksHandler.localCallback(storedPromise.id);
     };
+
     const resultPromise: Promise<R> = runFunc();
     const invocationHandle = new InvocationHandle(funcId, resultPromise);
     this.#invocationHandles.set(funcId, invocationHandle);
@@ -658,7 +725,7 @@ export class Context {
     if (this.#invocationHandles.has(id)) {
       return this.#invocationHandles.get(id) as InvocationHandle<R>;
     }
-    const ctx = Context.createChildrenContext(this, { name, id, eid: opts.eidFn(id), opts });
+    const ctx = Context.createChildrenContext(this, { name, id, args, eid: opts.eidFn(id), opts });
 
     if (!opts.durable) {
       const runFunc = async () => {
@@ -744,8 +811,8 @@ export class Context {
 
     // prettier-ignore
     return this.run(() => Promise.all(values), options({
-      retryPolicy: retryPolicies.never(),
       ...opts,
+      retryPolicy: retryPolicies.never(),
     }));
   }
 
@@ -767,8 +834,8 @@ export class Context {
 
     // prettier-ignore
     return this.run(() => Promise.any(values), options({
-      retryPolicy: retryPolicies.never(),
       ...opts,
+      retryPolicy: retryPolicies.never(),
     }));
   }
 
@@ -790,8 +857,8 @@ export class Context {
 
     // prettier-ignore
     return this.run(() => Promise.race(values), options({
-      retryPolicy: retryPolicies.never(),
       ...opts,
+      retryPolicy: retryPolicies.never(),
     }));
   }
 
@@ -816,8 +883,8 @@ export class Context {
 
     // prettier-ignore
     return this.run(() => Promise.allSettled(values), options({
-      retryPolicy: retryPolicies.never(),
       ...opts,
+      retryPolicy: retryPolicies.never(),
     }));
   }
 

@@ -3,11 +3,12 @@ import { Schedule } from "../lib/core/schedules/types";
 import { IStore } from "../lib/core/store";
 import { LocalStore } from "../lib/core/stores/local";
 import { RemoteStore } from "../lib/core/stores/remote";
+import { LocalTasksSource } from "../lib/core/tasksSources/local";
 
 jest.setTimeout(10000);
 
 describe("Store: Schedules", () => {
-  const stores: IStore[] = [new LocalStore()];
+  const stores: IStore[] = [new LocalStore(new LocalTasksSource())];
 
   if (process.env.RESONATE_STORE_URL) {
     stores.push(new RemoteStore(process.env.RESONATE_STORE_URL));

@@ -3,11 +3,12 @@ import { jest, describe, test, expect } from "@jest/globals";
 import { IStore } from "../lib/core/store";
 import { LocalStore } from "../lib/core/stores/local";
 import { RemoteStore } from "../lib/core/stores/remote";
+import { LocalTasksSource } from "../lib/core/tasksSources/local";
 
 jest.setTimeout(10000);
 
 describe("Store: Promise", () => {
-  const stores: IStore[] = [new LocalStore()];
+  const stores: IStore[] = [new LocalStore(new LocalTasksSource())];
 
   if (process.env.RESONATE_STORE_URL) {
     stores.push(new RemoteStore(process.env.RESONATE_STORE_URL));

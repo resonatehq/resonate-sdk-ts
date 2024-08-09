@@ -6,7 +6,8 @@ import { Logger } from "../loggers/logger";
 import { StoreOptions } from "../options";
 import { DurablePromiseRecord, isDurablePromiseRecord, isCompletedPromise } from "../promises/types";
 import { Schedule, isSchedule } from "../schedules/types";
-import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
+import { IStore, IPromiseStore, IScheduleStore, ILockStore, ICallbackStore, ITaskStore } from "../store";
+import { ResumeBody, isResumeBody } from "../tasks";
 import * as utils from "../utils";
 
 export class RemoteStore implements IStore {
@@ -18,6 +19,8 @@ export class RemoteStore implements IStore {
   public readonly promises: RemotePromiseStore;
   public readonly schedules: RemoteScheduleStore;
   public readonly locks: RemoteLockStore;
+  public readonly callbacks: ICallbackStore;
+  public readonly tasks: ITaskStore;
 
   public readonly encoder: IEncoder<string, string>;
   public readonly heartbeat: number;
@@ -33,6 +36,8 @@ export class RemoteStore implements IStore {
     this.promises = new RemotePromiseStore(this);
     this.schedules = new RemoteScheduleStore(this);
     this.locks = new RemoteLockStore(this);
+    this.callbacks = new RemoteCallbackStore(this);
+    this.tasks = new RemoteTasksStore(this);
 
     // store options
     this.encoder = opts.encoder ?? new Base64Encoder();
@@ -47,6 +52,10 @@ export class RemoteStore implements IStore {
     }
   }
 
+  stop(): void {
+    // Intentionally nop
+  }
+
   async call<T>(path: string, guard: (b: unknown) => b is T, options: RequestInit): Promise<T> {
     let error: unknown;
 
@@ -56,7 +65,7 @@ export class RemoteStore implements IStore {
     for (let i = 0; i < this.retries + 1; i++) {
       try {
         this.logger.debug("store:req", {
-          url: this.url,
+          url: `${this.url}/${path}`,
           method: options.method,
           headers: options.headers,
           body: options.body,
@@ -79,6 +88,7 @@ export class RemoteStore implements IStore {
         const body: unknown = r.status !== 204 ? await r.json() : undefined;
 
         this.logger.debug("store:res", {
+          url: `${this.url}/${path}`,
           status: r.status,
           body: body,
         });
@@ -475,6 +485,98 @@ export class RemoteLockStore implements ILockStore {
     if (this.locksHeld === 0) {
       this.stopHeartbeat();
     }
+  }
+}
+
+export class RemoteTasksStore implements ITaskStore {
+  #heartbeatInterval: NodeJS.Timeout | undefined = undefined;
+  #activeTasks: number = 0;
+
+  constructor(private store: RemoteStore) {}
+
+  async claim(taskId: string, counter: number): Promise<ResumeBody> {
+    const resumeBody = await this.store.call<ResumeBody>("tasks/claim", isResumeBody, {
+      method: "POST",
+      body: JSON.stringify({
+        id: taskId,
+        counter: counter,
+        processId: this.store.pid,
+        frequency: this.store.heartbeat * 4,
+      }),
+    });
+
+    this.#activeTasks++;
+
+    this.startHeartbeat();
+    return resumeBody;
+  }
+
+  private async startHeartbeat(): Promise<void> {
+    if (!this.#heartbeatInterval) {
+      this.#heartbeatInterval = setInterval(() => this.heartbeat(), this.store.heartbeat);
+    }
+  }
+
+  private async stopHeartbeat(): Promise<void> {
+    if (this.#heartbeatInterval) {
+      clearInterval(this.#heartbeatInterval);
+      this.#heartbeatInterval = undefined;
+    }
+  }
+
+  private async heartbeat(): Promise<void> {
+    const res = await this.store.call<{ activeTasks: number }>(
+      `tasks/heartbeat`,
+      (b: unknown): b is { activeTasks: number } =>
+        typeof b === "object" && b !== null && "activeTasks" in b && typeof b.activeTasks === "number",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          processId: this.store.pid,
+        }),
+      },
+    );
+
+    this.#activeTasks = res.activeTasks;
+    if (res.activeTasks === 0) {
+      this.stopHeartbeat();
+    }
+  }
+
+  async complete(taskId: string, counter: number): Promise<boolean> {
+    await this.store.call<void>(`tasks/complete`, (b: unknown): b is void => b === null, {
+      method: "POST",
+      body: JSON.stringify({
+        id: taskId,
+        counter: counter,
+      }),
+    });
+
+    // decrement the number of active tasks
+    this.#activeTasks = Math.max(this.#activeTasks - 1, 0);
+
+    if (this.#activeTasks === 0) {
+      this.stopHeartbeat();
+    }
+
+    return true;
+  }
+}
+
+export class RemoteCallbackStore implements ICallbackStore {
+  constructor(private store: RemoteStore) {}
+
+  async create(promiseId: string, recv: string, timeout: number, data: string | undefined): Promise<boolean> {
+    await this.store.call("callbacks", (b: unknown): b is any => true, {
+      method: "POST",
+      body: JSON.stringify({
+        promiseId,
+        recv,
+        timeout,
+        data: data ? encode(data, this.store.encoder) : undefined,
+      }),
+    });
+    return true;
   }
 }
 
