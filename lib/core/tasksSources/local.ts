@@ -1,9 +1,10 @@
 import { TaskMessage, TasksSource } from "../tasksSource";
+import * as utils from "../utils";
 
 export class LocalTasksSource implements TasksSource {
   private taskQueue: TaskMessage[] = [];
   private resolver: ((taskMessage: TaskMessage) => void) | undefined;
-  private stopPromise: PromiseWithResolvers<void> = Promise.withResolvers();
+  private stopPromise: utils.PromiseWithResolvers<void> = utils.promiseWithResolvers<void>();
   readonly generator: AsyncGenerator<TaskMessage, void, unknown>;
 
   constructor() {

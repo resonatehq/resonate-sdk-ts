@@ -1,13 +1,14 @@
 import * as http from "node:http";
 import { Logger } from "../loggers/logger";
 import { TasksSource, TaskMessage, isTaskMessage } from "../tasksSource";
+import * as utils from "../utils";
 
 const STOP = "stop";
 
 export class HttpTaskSource implements TasksSource {
   readonly url: URL;
   readonly generator: AsyncGenerator<TaskMessage, void, unknown>;
-  readonly stopPromise: PromiseWithResolvers<void> = Promise.withResolvers();
+  readonly stopPromise: utils.PromiseWithResolvers<void> = utils.promiseWithResolvers<void>();
 
   /**
    * Constructs a new instance of the HttpTaskSource with the provided URL and an optional logger.

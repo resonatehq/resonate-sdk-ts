@@ -3,6 +3,7 @@ import { Resonate } from "../resonate";
 import { ErrorCodes, ResonateError } from "./errors";
 import { RetryPolicy, isRetryPolicy } from "./retry";
 import { TaskMessage, TasksSource } from "./tasksSource";
+import * as utils from "./utils";
 
 export type ResumeBody = {
   promiseId: string;
@@ -121,7 +122,7 @@ export class TasksHandler {
   }
 
   localCallback<R>(promiseId: string): Promise<R> {
-    const { promise, resolve, reject } = Promise.withResolvers();
+    const { promise, resolve, reject } = utils.promiseWithResolvers();
     this.#callbackPromises.set(promiseId, { resolve, reject });
     return promise as Promise<R>;
   }

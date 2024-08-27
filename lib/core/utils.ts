@@ -120,3 +120,38 @@ export function promiseState(p: Promise<any>): Promise<"pending" | "resolved" | 
     () => "rejected", // Rejected branch
   );
 }
+
+export type PromiseWithResolvers<T> = {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: any) => void;
+};
+
+/**
+ * Creates a Promise with externalized resolve and reject functions.
+ *
+ * @returns An object containing:
+ *   - promise: A new Promise
+ *   - resolve: A function to resolve the Promise
+ *   - reject: A function to reject the Promise
+ *
+ * @example
+ * const { promise, resolve, reject } = promiseWithResolvers<string>();
+ *
+ * // Later in your code:
+ * resolve('Hello, World!');
+ *
+ * // Or if an error occurs:
+ * reject(new Error('Something went wrong'));
+ */
+export function promiseWithResolvers<T>(): PromiseWithResolvers<T> {
+  let resolve: (value: T | PromiseLike<T>) => void;
+  let reject: (reason?: any) => void;
+
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve: resolve!, reject: reject! };
+}
