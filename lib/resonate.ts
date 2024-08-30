@@ -646,26 +646,10 @@ export class Context {
       opts.tags,
     );
 
-    const runFunc = async (): Promise<R> => {
-      switch (storedPromise.state) {
-        case "RESOLVED":
-          return opts.encoder.decode(storedPromise.value.data) as R;
-        case "REJECTED":
-          throw opts.encoder.decode(storedPromise.value.data);
-        case "REJECTED_CANCELED":
-          throw new ResonateError(
-            "Resonate function canceled",
-            ErrorCodes.CANCELED,
-            opts.encoder.decode(storedPromise.value.data),
-          );
-        case "REJECTED_TIMEDOUT":
-          throw new ResonateError(
-            `Resonate function timedout at ${new Date(storedPromise.timeout).toISOString()}`,
-            ErrorCodes.TIMEDOUT,
-          );
+    const localRunFunc = async (): Promise<R> => {
+      if (storedPromise.state !== "PENDING") {
+        return handleCompletedPromise<R>(storedPromise, opts.encoder);
       }
-
-      // case PENDING:
 
       const resumeMessage = {
         promiseId: storedPromise.id,
@@ -692,7 +676,7 @@ export class Context {
       return await this.#resonate.tasksHandler.localCallback(storedPromise.id);
     };
 
-    const resultPromise: Promise<R> = runFunc();
+    const resultPromise: Promise<R> = localRunFunc();
     const invocationHandle = new InvocationHandle(funcId, resultPromise);
     this.#invocationHandles.set(funcId, invocationHandle);
 
@@ -728,7 +712,7 @@ export class Context {
     const ctx = Context.createChildrenContext(this, { name, id, args, eid: opts.eidFn(id), opts });
 
     if (!opts.durable) {
-      const runFunc = async () => {
+      const localRunFunc = async () => {
         const timeout = Date.now() + opts.timeout;
         return (await runWithRetry(
           async () => await func(ctx, ...args),
@@ -737,7 +721,7 @@ export class Context {
           timeout,
         )) as R;
       };
-      const resultPromise = runFunc();
+      const resultPromise = localRunFunc();
       const handle = new InvocationHandle<R>(id, resultPromise);
       this.#invocationHandles.set(id, handle);
       return handle;
