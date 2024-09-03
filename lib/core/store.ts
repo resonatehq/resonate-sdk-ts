@@ -1,7 +1,7 @@
 import { DurablePromiseRecord } from "./promises/types";
 
 import { Schedule } from "./schedules/types";
-import { ResumeBody } from "./tasks";
+import { CallbackRecord, ResumeBody } from "./tasks";
 
 /**
  * Store Interface
@@ -12,11 +12,6 @@ export interface IStore {
   readonly locks: ILockStore;
   readonly callbacks: ICallbackStore;
   readonly tasks: ITaskStore;
-
-  /**
-   * Do neccesary clean up and free of resources on stop
-   */
-  stop(): void;
 }
 
 /**
@@ -232,5 +227,5 @@ export interface ITaskStore {
  * Callback Store API
  */
 export interface ICallbackStore {
-  create(promiseId: string, recv: string, timeout: number, data: string | undefined): Promise<boolean>;
+  create(promiseId: string, recv: string, timeout: number, data: string | undefined): Promise<CallbackRecord>;
 }

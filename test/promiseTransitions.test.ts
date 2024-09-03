@@ -3,13 +3,12 @@ import { jest, describe, test, expect } from "@jest/globals";
 import { IStore } from "../lib/core/store";
 import { LocalStore } from "../lib/core/stores/local";
 import { RemoteStore } from "../lib/core/stores/remote";
-import { LocalTasksSource } from "../lib/core/tasksSources/local";
 
 // Set a larger timeout for hooks (e.g., 10 seconds)
 jest.setTimeout(10000);
 
 describe("Store: Promise Transitions", () => {
-  const stores: IStore[] = [new LocalStore(new LocalTasksSource())];
+  const stores: IStore[] = [new LocalStore()];
 
   if (process.env.RESONATE_STORE_URL) {
     stores.push(new RemoteStore(process.env.RESONATE_STORE_URL));

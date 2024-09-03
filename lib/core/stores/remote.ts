@@ -7,7 +7,7 @@ import { StoreOptions } from "../options";
 import { DurablePromiseRecord, isDurablePromiseRecord, isCompletedPromise } from "../promises/types";
 import { Schedule, isSchedule } from "../schedules/types";
 import { IStore, IPromiseStore, IScheduleStore, ILockStore, ICallbackStore, ITaskStore } from "../store";
-import { ResumeBody, isResumeBody } from "../tasks";
+import { CallbackRecord, ResumeBody, isCallbackRecord, isResumeBody } from "../tasks";
 import * as utils from "../utils";
 
 export class RemoteStore implements IStore {
@@ -50,10 +50,6 @@ export class RemoteStore implements IStore {
     if (opts.auth?.basic) {
       this.headers["Authorization"] = `Basic ${btoa(`${opts.auth.basic.username}:${opts.auth.basic.password}`)}`;
     }
-  }
-
-  stop(): void {
-    // Intentionally nop
   }
 
   async call<T>(path: string, guard: (b: unknown) => b is T, options: RequestInit): Promise<T> {
@@ -566,8 +562,8 @@ export class RemoteTasksStore implements ITaskStore {
 export class RemoteCallbackStore implements ICallbackStore {
   constructor(private store: RemoteStore) {}
 
-  async create(promiseId: string, recv: string, timeout: number, data: string | undefined): Promise<boolean> {
-    await this.store.call("callbacks", (b: unknown): b is any => true, {
+  async create(promiseId: string, recv: string, timeout: number, data: string | undefined): Promise<CallbackRecord> {
+    return this.store.call("callbacks", isCallbackRecord, {
       method: "POST",
       body: JSON.stringify({
         promiseId,
@@ -576,7 +572,6 @@ export class RemoteCallbackStore implements ICallbackStore {
         data: data ? encode(data, this.store.encoder) : undefined,
       }),
     });
-    return true;
   }
 }
 

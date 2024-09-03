@@ -1,6 +1,6 @@
 import assert from "assert";
 import { Resonate } from "../resonate";
-import { ErrorCodes, ResonateError } from "./errors";
+import { DurablePromiseRecord, handleCompletedPromise, isDurablePromiseRecord } from "./promises/types";
 import { RetryPolicy, isRetryPolicy } from "./retry";
 import { TaskMessage, TasksSource } from "./tasksSource";
 import * as utils from "./utils";
@@ -39,6 +39,43 @@ export function isResumeBody(value: unknown): value is ResumeBody {
   );
 }
 
+export type CallbackRecord = {
+  callback: {
+    id: string;
+    promiseId: string;
+    message: {
+      recv: string;
+      // base64 encoded
+      data: any;
+    };
+    timeout: number;
+    createdOn: number;
+  };
+  promise: DurablePromiseRecord;
+};
+
+export function isCallbackRecord(obj: unknown): obj is CallbackRecord {
+  if (typeof obj !== "object" || obj === null) {
+    return false;
+  }
+
+  const record = obj as CallbackRecord;
+
+  return (
+    typeof record.callback === "object" &&
+    record.callback !== null &&
+    typeof record.callback.id === "string" &&
+    typeof record.callback.promiseId === "string" &&
+    typeof record.callback.message === "object" &&
+    record.callback.message !== null &&
+    typeof record.callback.message.recv === "string" &&
+    // We don't check the type of data as it's 'any'
+    typeof record.callback.timeout === "number" &&
+    typeof record.callback.createdOn === "number" &&
+    isDurablePromiseRecord(record.promise)
+  );
+}
+
 export class TasksHandler {
   #resonate: Resonate;
   #source: TasksSource;
@@ -51,74 +88,64 @@ export class TasksHandler {
   }
 
   async start(): Promise<void> {
+    await this.#source.start();
+    this.listenTasks();
+  }
+
+  async listenTasks(): Promise<void> {
     for await (const task of this.#source.generator) {
-      // Generator only gets us bytes back, we need to encode those into an object
       // Don't await so we can process more events concurrently
-      await this.handleTask(task);
+      this.handleTask(task);
     }
   }
 
   private async handleTask(task: TaskMessage): Promise<void> {
-    const resumeBody = await this.#resonate.store.tasks.claim(task.id, task.counter);
+    try {
+      const resumeBody = await this.#resonate.store.tasks.claim(task.id, task.counter);
 
-    const opts = this.#resonate.defaultInvocationOptions;
+      const opts = this.#resonate.defaultInvocationOptions;
 
-    const { promiseId, topLevelParent } = resumeBody;
-    const parentInvocation = this.#resonate.getInvocationHandle(topLevelParent.id);
+      const { promiseId, topLevelParent } = resumeBody;
+      const parentInvocation = this.#resonate.getInvocationHandle(topLevelParent.id);
 
-    if (!parentInvocation) {
-      this.#resonate.invokeLocal(
-        topLevelParent.name,
-        topLevelParent.id,
-        ...topLevelParent.args,
-        this.#resonate.options({
-          retryPolicy: topLevelParent.retryPolicy,
-          version: topLevelParent.version,
-        }),
-      );
-    } else {
-      const callbackResolvers = this.#callbackPromises.get(promiseId);
-      if (!callbackResolvers) {
-        assert(false, "Callback promise not found");
-        return;
-      }
+      if (!parentInvocation) {
+        this.#resonate.invokeLocal(
+          topLevelParent.name,
+          topLevelParent.id,
+          ...topLevelParent.args,
+          this.#resonate.options({
+            retryPolicy: topLevelParent.retryPolicy,
+            version: topLevelParent.version,
+          }),
+        );
+      } else {
+        const callbackResolvers = this.#callbackPromises.get(promiseId);
+        if (!callbackResolvers) {
+          this.#resonate.logger.warn(`There was no local callback registered for ${promiseId}`);
+          return;
+        }
 
-      const { resolve: callbackResolve, reject: callbackReject } = callbackResolvers;
-      const storedPromise = await this.#resonate.store.promises.get(promiseId);
+        const { resolve: callbackResolve, reject: callbackReject } = callbackResolvers;
+        const storedPromise = await this.#resonate.store.promises.get(promiseId);
 
-      switch (storedPromise.state) {
-        case "RESOLVED":
-          callbackResolve(opts.encoder.decode(storedPromise.value.data));
-          break;
-        case "REJECTED":
-          callbackReject(opts.encoder.decode(storedPromise.value.data));
-          break;
-        case "REJECTED_CANCELED":
-          callbackReject(
-            new ResonateError(
-              "Resonate function canceled",
-              ErrorCodes.CANCELED,
-              opts.encoder.decode(storedPromise.value.data),
-            ),
-          );
-          break;
-        case "REJECTED_TIMEDOUT":
-          callbackReject(
-            new ResonateError(
-              `Resonate function timedout at ${new Date(storedPromise.timeout).toISOString()}`,
-              ErrorCodes.TIMEDOUT,
-            ),
-          );
-          break;
-        case "PENDING":
-          // unreachable
+        if (storedPromise.state === "PENDING") {
           assert(
             false,
-            "Stored promise is pending after a callback has been created for it, please report this bug to resonate mantainers",
+            "Stored promise is pending after a task was created to resume it, please report this bug to resonate mantainers",
           );
+        }
+
+        try {
+          const data = handleCompletedPromise(storedPromise, opts.encoder);
+          callbackResolve(data);
+        } catch (err) {
+          callbackReject(err);
+        }
       }
+      await this.#resonate.store.tasks.complete(task.id, task.counter);
+    } catch (err) {
+      this.#resonate.logger.warn("Error happened while trying to process a task:", err);
     }
-    await this.#resonate.store.tasks.complete(task.id, task.counter);
   }
 
   localCallback<R>(promiseId: string): Promise<R> {

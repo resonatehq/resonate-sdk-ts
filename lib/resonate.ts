@@ -83,14 +83,15 @@ export class Resonate {
         pid,
       });
     } else {
-      // When running in local mode, the taskSource passed by the user is ignored and the LocalTasksSource is used
-      tasksSource = new LocalTasksSource();
-      this.store = new LocalStore(tasksSource as LocalTasksSource, {
+      this.store = new LocalStore({
         auth,
         heartbeat,
         logger,
         pid,
       });
+
+      // When running in local mode, the taskSource passed by the user is ignored and the LocalTasksSource is used
+      tasksSource = new LocalTasksSource(this.store as LocalStore);
     }
 
     if (tasksSource) {
@@ -223,7 +224,7 @@ export class Resonate {
    * @param delay Frequency in ms to check for pending promises.
    */
   async start(delay: number = 5000) {
-    this.tasksHandler?.start();
+    await this.tasksHandler.start();
     clearInterval(this.#interval);
     // await the first run of the recovery path to avoid races with the normal flow of the program
     await this.#_start();
@@ -235,8 +236,6 @@ export class Resonate {
    */
   async stop() {
     clearInterval(this.#interval);
-    // Most of the time tasks will come from the store either remote or local, so stop it first
-    this.store.stop();
     this.tasksHandler.stop();
   }
 
@@ -662,18 +661,18 @@ export class Context {
         },
       };
 
-      try {
-        await this.#resonate.store.callbacks.create(
-          storedPromise.id,
-          this.#resonate.tasksHandler.callbackUrl(),
-          storedPromise.timeout + 1000,
-          opts.encoder.encode(resumeMessage),
-        );
-      } catch (e) {
-        console.error("Error creating callback", e);
+      const { promise: durablePromise } = await this.#resonate.store.callbacks.create(
+        storedPromise.id,
+        this.#resonate.tasksHandler.callbackUrl(),
+        storedPromise.timeout + 1000,
+        opts.encoder.encode(resumeMessage),
+      );
+
+      if (durablePromise.state !== "PENDING") {
+        return handleCompletedPromise(durablePromise, opts.encoder);
       }
 
-      return await this.#resonate.tasksHandler.localCallback(storedPromise.id);
+      return await this.#resonate.tasksHandler.localCallback(durablePromise.id);
     };
 
     const resultPromise: Promise<R> = localRunFunc();

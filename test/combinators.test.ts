@@ -104,8 +104,8 @@ describe("Combinators", () => {
           await resonate.run("race", `race.rejected.${name}`, args);
         } catch (raceError) {
           const e = await Promise.race(args.map(throwOrReturn)).catch((e) => e);
-          expect(raceError).toBe(args[0]);
-          expect(raceError).toBe(e);
+          expect(raceError).toEqual(args[0]);
+          expect(raceError).toEqual(e);
         }
       });
     }

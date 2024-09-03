@@ -9,6 +9,7 @@ export class HttpTaskSource implements TasksSource {
   readonly url: URL;
   readonly generator: AsyncGenerator<TaskMessage, void, unknown>;
   readonly stopPromise: utils.PromiseWithResolvers<void> = utils.promiseWithResolvers<void>();
+  private server: http.Server<typeof http.IncomingMessage, typeof http.ServerResponse> | undefined;
 
   /**
    * Constructs a new instance of the HttpTaskSource with the provided URL and an optional logger.
@@ -36,6 +37,14 @@ export class HttpTaskSource implements TasksSource {
     this.stopPromise.reject(STOP);
   }
 
+  start(): Promise<void> {
+    // The generator will assing the server we can assume the server is not null
+    this.server!.listen(+this.url.port || 3000, "0.0.0.0", () => {
+      this.logger.info(`HTTP tasks source is running on '0.0.0.0' and port ${+this.url.port}`);
+    });
+    return Promise.resolve();
+  }
+
   callbackUrl(): string {
     return this.url.href;
   }
@@ -46,7 +55,7 @@ export class HttpTaskSource implements TasksSource {
     const requestQueue: string[] = []; // Queue of the bodies of the requests.
     let requestListener: (() => void) | undefined = undefined;
 
-    const server = http.createServer(async (req, res) => {
+    this.server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       if (req.url !== this.url.pathname) {
         res.writeHead(400, { "Content-Type": "text/plain" });
@@ -61,10 +70,6 @@ export class HttpTaskSource implements TasksSource {
         res.writeHead(202, { "Content-Type": "text/plain" });
         return res.end("Request received");
       }
-    });
-
-    server.listen(+this.url.port || 3000, "0.0.0.0", () => {
-      this.logger.info(`HTTP tasks source is running on '0.0.0.0' and port ${+this.url.port}`);
     });
 
     const waitForRequest = (): Promise<string> => {
@@ -95,7 +100,7 @@ export class HttpTaskSource implements TasksSource {
       }
     } finally {
       this.logger.info("Stoping server tasks source server.");
-      server.close();
+      this.server.close();
     }
   }
 }

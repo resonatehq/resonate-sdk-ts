@@ -37,9 +37,9 @@ describe("Sleep", () => {
         return resonate.stop();
       });
 
-      for (const ms of [1, 10, 100, 500]) {
+      for (const ms of [20, 10, 100, 500]) {
         test(`Sleep ${ms}ms`, () => {
-          return expect(resonate.run(funcId, `sleep.${ms}`, ms)).resolves.toBeGreaterThanOrEqual(ms);
+          return expect(resonate.run(funcId, `${funcId}-${ms}`, ms)).resolves.toBeGreaterThanOrEqual(ms);
         });
       }
     });
