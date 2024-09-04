@@ -26,7 +26,7 @@ describe("Sleep", () => {
         await ctx.sleep(ms);
         const t2 = Date.now();
 
-        return t2 - t1;
+        return { actual: t2 - t1, expected: ms };
       });
 
       beforeAll(() => {
@@ -37,11 +37,19 @@ describe("Sleep", () => {
         return resonate.stop();
       });
 
-      for (const ms of [20, 10, 100, 500]) {
-        test(`Sleep ${ms}ms`, () => {
-          return expect(resonate.run(funcId, `${funcId}-${ms}`, ms)).resolves.toBeGreaterThanOrEqual(ms);
-        });
-      }
+      test(`Sleep several milliseconds`, async () => {
+        const handles = [];
+        // Keep this array ordered in descending order to make sure we just await the longest promises
+        for (const ms of [2000, 1500, 1000, 500, 200]) {
+          handles.push(await resonate.invokeLocal(funcId, `${funcId}-${ms}`, ms));
+        }
+
+        const results = await Promise.all(handles.map((handle) => handle.result()));
+        for (const result of results) {
+          const res = result as { actual: number; expected: number };
+          expect(res.actual).toBeGreaterThanOrEqual(res.expected);
+        }
+      });
     });
   }
 });
