@@ -47,11 +47,6 @@ export interface TasksSource {
   callbackUrl(): string;
 
   /**
-   * Starts the task source
-   */
-  start(): Promise<void>;
-
-  /**
    * Stops the task source, finishes the generator and releases any associated resources.
    */
   stop(): void;

@@ -37,14 +37,6 @@ export class HttpTaskSource implements TasksSource {
     this.stopPromise.reject(STOP);
   }
 
-  start(): Promise<void> {
-    // The generator will assing the server we can assume the server is not null
-    this.server!.listen(+this.url.port || 3000, "0.0.0.0", () => {
-      this.logger.info(`HTTP tasks source is running on '0.0.0.0' and port ${+this.url.port}`);
-    });
-    return Promise.resolve();
-  }
-
   callbackUrl(): string {
     return this.url.href;
   }
@@ -70,6 +62,10 @@ export class HttpTaskSource implements TasksSource {
         res.writeHead(202, { "Content-Type": "text/plain" });
         return res.end("Request received");
       }
+    });
+
+    this.server!.listen(+this.url.port || 3000, () => {
+      this.logger.info(`HTTP tasks source is running on '0.0.0.0' and port ${+this.url.port}`);
     });
 
     const waitForRequest = (): Promise<string> => {

@@ -79,7 +79,7 @@ export function isCallbackRecord(obj: unknown): obj is CallbackRecord {
 export class TasksHandler {
   #resonate: Resonate;
   #source: TasksSource;
-  #callbackPromises: Map<string, { resolve: (value: any) => void; reject: (reason?: any) => void }>;
+  #callbackPromises: Map<string, utils.PromiseWithResolvers<unknown>>;
 
   constructor(resonate: Resonate, source: TasksSource) {
     this.#resonate = resonate;
@@ -88,7 +88,6 @@ export class TasksHandler {
   }
 
   async start(): Promise<void> {
-    await this.#source.start();
     this.listenTasks();
   }
 
@@ -149,8 +148,14 @@ export class TasksHandler {
   }
 
   localCallback<R>(promiseId: string): Promise<R> {
+    // If we have created a callback for this promise already just return it.
+    const callbackPromise = this.#callbackPromises.get(promiseId);
+    if (callbackPromise) {
+      return callbackPromise.promise as Promise<R>;
+    }
+
     const { promise, resolve, reject } = utils.promiseWithResolvers();
-    this.#callbackPromises.set(promiseId, { resolve, reject });
+    this.#callbackPromises.set(promiseId, { promise, resolve, reject });
     return promise as Promise<R>;
   }
 

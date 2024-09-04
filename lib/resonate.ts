@@ -664,7 +664,7 @@ export class Context {
       const { promise: durablePromise } = await this.#resonate.store.callbacks.create(
         storedPromise.id,
         this.#resonate.tasksHandler.callbackUrl(),
-        storedPromise.timeout + 1000,
+        storedPromise.timeout + 2000,
         opts.encoder.encode(resumeMessage),
       );
 

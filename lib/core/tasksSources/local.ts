@@ -25,8 +25,17 @@ export class LocalTasksSource implements TasksSource {
     return "";
   }
 
-  async start(): Promise<void> {
-    clearTimeout(this.pollingTimeout);
+  private async *_generator(): AsyncGenerator<TaskMessage, void, unknown> {
+    const waitForTask = (): Promise<TaskMessage> => {
+      const taskPromise = new Promise((resolve) => {
+        if (this.tasksQueue.length > 0) {
+          resolve(this.tasksQueue.shift()!);
+        } else {
+          this.resolver = (taskMessage: TaskMessage) => resolve(taskMessage);
+        }
+      });
+      return Promise.race([taskPromise, this.stopPromise.promise]) as Promise<TaskMessage>;
+    };
 
     this.pollingTimeout = setInterval(async () => {
       for (const { callback } of await this.store.callbacks.getAll()) {
@@ -40,19 +49,6 @@ export class LocalTasksSource implements TasksSource {
         }
       }
     }, 500);
-  }
-
-  private async *_generator(): AsyncGenerator<TaskMessage, void, unknown> {
-    const waitForTask = (): Promise<TaskMessage> => {
-      const taskPromise = new Promise((resolve) => {
-        if (this.tasksQueue.length > 0) {
-          resolve(this.tasksQueue.shift()!);
-        } else {
-          this.resolver = (taskMessage: TaskMessage) => resolve(taskMessage);
-        }
-      });
-      return Promise.race([taskPromise, this.stopPromise.promise]) as Promise<TaskMessage>;
-    };
 
     try {
       while (true) {
