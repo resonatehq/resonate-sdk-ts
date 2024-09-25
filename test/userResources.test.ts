@@ -5,6 +5,51 @@ import { Context, Resonate } from "../lib/resonate";
 
 jest.setTimeout(10000);
 describe("User Defined Resources", () => {
+  test("Set a resource at the Resonate level and get the resource", async () => {
+    const resonate = new Resonate();
+
+    const resource = {
+      a: "a",
+      b: "b",
+    };
+    resonate.setResource("mock", resource);
+
+    resonate.register("resource-fn", async (ctx: Context) => {
+      expect(ctx.getResource("mock")).toBe(resource);
+      await ctx.run(async (ctx: Context) => {
+        expect(ctx.getResource("mock")).toBe(resource);
+        await ctx.run(async (ctx: Context) => {
+          expect(ctx.getResource("mock")).toBe(resource);
+          await ctx.run(async (ctx: Context) => {
+            expect(ctx.getResource("mock")).toBe(resource);
+            await ctx.run((ctx: Context) => {
+              expect(ctx.getResource("mock")).toBe(resource);
+            });
+          });
+        });
+      });
+    });
+
+    resonate.register("resource-fn2", async (ctx: Context, resourceVal: unknown) => {
+      expect(ctx.getResource("mock")).toBe(resource);
+      await ctx.run(async (ctx: Context) => {
+        expect(ctx.getResource("mock")).toBe(resource);
+        await ctx.run(async (ctx: Context) => {
+          expect(ctx.getResource("mock")).toBe(resource);
+          await ctx.run(async (ctx: Context) => {
+            expect(ctx.getResource("mock")).toBe(resource);
+            await ctx.run((ctx: Context) => {
+              expect(ctx.getResource("mock")).toBe(resource);
+            });
+          });
+        });
+      });
+    });
+
+    await resonate.invokeLocal<void>("resource-fn", "resource.0");
+    await resonate.invokeLocal<void>("resource-fn2", "resource.1");
+  });
+
   test("Set and get a resource", async () => {
     const resonate = new Resonate();
 
