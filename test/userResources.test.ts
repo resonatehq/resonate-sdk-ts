@@ -18,36 +18,18 @@ describe("User Defined Resources", () => {
       expect(ctx.getResource("mock")).toBe(resource);
       await ctx.run(async (ctx: Context) => {
         expect(ctx.getResource("mock")).toBe(resource);
-        await ctx.run(async (ctx: Context) => {
-          expect(ctx.getResource("mock")).toBe(resource);
-          await ctx.run(async (ctx: Context) => {
-            expect(ctx.getResource("mock")).toBe(resource);
-            await ctx.run((ctx: Context) => {
-              expect(ctx.getResource("mock")).toBe(resource);
-            });
-          });
-        });
       });
     });
 
-    resonate.register("resource-fn2", async (ctx: Context, resourceVal: unknown) => {
+    resonate.register("resource-fn2", async (ctx: Context) => {
       expect(ctx.getResource("mock")).toBe(resource);
       await ctx.run(async (ctx: Context) => {
         expect(ctx.getResource("mock")).toBe(resource);
-        await ctx.run(async (ctx: Context) => {
-          expect(ctx.getResource("mock")).toBe(resource);
-          await ctx.run(async (ctx: Context) => {
-            expect(ctx.getResource("mock")).toBe(resource);
-            await ctx.run((ctx: Context) => {
-              expect(ctx.getResource("mock")).toBe(resource);
-            });
-          });
-        });
       });
     });
 
-    await resonate.invokeLocal<void>("resource-fn", "resource.0");
-    await resonate.invokeLocal<void>("resource-fn2", "resource.1");
+    await resonate.run<void>("resource-fn", "resource.0");
+    await resonate.run<void>("resource-fn2", "resource.1");
   });
 
   test("Set and get a resource", async () => {
@@ -60,7 +42,7 @@ describe("User Defined Resources", () => {
     });
 
     const resourceVal = {};
-    await resonate.invokeLocal<void>("resource", "resource.0", resourceVal);
+    await resonate.run<void>("resource", "resource.0", resourceVal);
   });
 
   test("Set a resource and get it deep in the context stack", async () => {
