@@ -59,7 +59,7 @@ export function isRetryPolicy(value: unknown): value is RetryPolicy {
 export function exponential(
   initialDelayMs: number = 100,
   backoffFactor: number = 2,
-  maxAttempts: number = Infinity,
+  maxAttempts: number = -1,
   maxDelayMs: number = 60000,
 ): Exponential {
   return {
@@ -71,7 +71,7 @@ export function exponential(
   };
 }
 
-export function linear(delayMs: number = 1000, maxAttempts: number = Infinity): Linear {
+export function linear(delayMs: number = 1000, maxAttempts: number = -1): Linear {
   return {
     kind: "linear",
     delayMs,
@@ -157,25 +157,30 @@ export async function runWithRetry<T>(
   throw error;
 }
 
+// Maps every of the supported retry policies to have the same
+// fields so we can reuse the same function for retries
 function retryDefaults(retryPolicy: RetryPolicy): {
   initialDelay: number;
   backoffFactor: number;
   maxAttempts: number;
   maxDelay: number;
 } {
+  let maxAttemps;
   switch (retryPolicy.kind) {
     case "exponential":
+      maxAttemps = retryPolicy.maxAttempts === -1 ? Infinity : retryPolicy.maxAttempts;
       return {
         initialDelay: retryPolicy.initialDelayMs,
         backoffFactor: retryPolicy.backoffFactor,
-        maxAttempts: retryPolicy.maxAttempts,
+        maxAttempts: maxAttemps,
         maxDelay: retryPolicy.maxDelayMs,
       };
     case "linear":
+      maxAttemps = retryPolicy.maxAttempts === -1 ? Infinity : retryPolicy.maxAttempts;
       return {
         initialDelay: retryPolicy.delayMs,
         backoffFactor: 1,
-        maxAttempts: retryPolicy.maxAttempts,
+        maxAttempts: maxAttemps,
         maxDelay: retryPolicy.delayMs,
       };
     case "never":

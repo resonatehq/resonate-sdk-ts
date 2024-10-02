@@ -11,6 +11,10 @@ import * as schedules from "./core/schedules/schedules";
 import { ILockStore, IPromiseStore, IStore } from "./core/store";
 import { LocalStore } from "./core/stores/local";
 import { RemoteStore } from "./core/stores/remote";
+import { TasksHandler } from "./core/tasks";
+import { TasksSource } from "./core/tasksSource";
+import { HttpTaskSource } from "./core/tasksSources/http";
+import { LocalTasksSource } from "./core/tasksSources/local";
 import * as utils from "./core/utils";
 import { sleep } from "./core/utils";
 
@@ -18,10 +22,12 @@ import { sleep } from "./core/utils";
 // Types
 /////////////////////////////////////////////////////////////////////
 
+// The relevant information of an invocation, it is used for the recovery paths and tasks.
 type InvocationData = {
   id: string;
   eid: string;
   name: string;
+  args: any[];
   opts: Options;
 };
 
@@ -46,6 +52,7 @@ export class Resonate {
   readonly defaultInvocationOptions: Options;
   readonly promises: ResonatePromises;
   readonly schedules: ResonateSchedules;
+  readonly tasksHandler: TasksHandler;
 
   constructor({
     auth = undefined,
@@ -59,7 +66,14 @@ export class Resonate {
     tags = {},
     timeout = 10000, // 10s
     url = undefined,
+    tasksUrl = undefined,
   }: Partial<ResonateOptions> = {}) {
+    if ((url && !tasksUrl) || (!url && tasksUrl)) {
+      throw new Error("url and taskUrl options should be both set or unset");
+    }
+
+    let tasksSource: TasksSource | undefined = undefined;
+
     if (store) {
       this.store = store;
     } else if (url) {
@@ -76,6 +90,16 @@ export class Resonate {
         logger,
         pid,
       });
+
+      // When running in local mode, the taskSource passed by the user is ignored and the LocalTasksSource is used
+      tasksSource = new LocalTasksSource(this.store as LocalStore);
+    }
+
+    if (tasksSource) {
+      this.tasksHandler = new TasksHandler(this, tasksSource);
+    } else {
+      // At this point we are sure that the local case has been handled when creating the store.
+      this.tasksHandler = new TasksHandler(this, new HttpTaskSource(tasksUrl!));
     }
 
     this.logger = logger;
@@ -138,6 +162,12 @@ export class Resonate {
 
   get locksStore() {
     return this.store.locks;
+  }
+
+  // Returns the InvocationHandle associated with the `invocationId` from the cache.
+  // returns undefined if the is no InvocationHandle with such id
+  getInvocationHandle<R>(invocationId: string): InvocationHandle<R> | undefined {
+    return this.#invocationHandles.get(invocationId);
   }
 
   options(opts: Partial<Options>): PartialOptions {
@@ -231,6 +261,7 @@ export class Resonate {
    * @param delay Frequency in ms to check for pending promises.
    */
   async start(delay: number = 5000) {
+    await this.tasksHandler.start();
     clearInterval(this.#interval);
     // await the first run of the recovery path to avoid races with the normal flow of the program
     await this.#_start();
@@ -242,6 +273,7 @@ export class Resonate {
    */
   async stop() {
     clearInterval(this.#interval);
+    this.tasksHandler.stop();
   }
 
   async #_start() {
@@ -352,7 +384,7 @@ export class Resonate {
       opts.tags,
     );
 
-    const ctx = Context.createRootContext(this, { id, name, opts, eid: opts.eidFn(id) });
+    const ctx = Context.createRootContext(this, { id, name, opts, args, eid: opts.eidFn(id) });
     const resultPromise: Promise<R> = _runFunc<R>(
       func,
       ctx,
@@ -655,19 +687,37 @@ export class Context {
       opts.tags,
     );
 
-    const runFunc = async (): Promise<R> => {
-      while (!this.#stopAllPolling) {
-        const durablePromiseRecord: DurablePromiseRecord = await this.#resonate.promisesStore.get(storedPromise.id);
-        if (durablePromiseRecord.state !== "PENDING") {
-          return handleCompletedPromise(durablePromiseRecord, opts.encoder);
-        }
-        // TODO: Consider using exponential backoff instead.
-        sleep(opts.pollFrequency);
+    const localRunFunc = async (): Promise<R> => {
+      if (storedPromise.state !== "PENDING") {
+        return handleCompletedPromise<R>(storedPromise, opts.encoder);
       }
 
-      throw new Error(`Polling of remote invocation with ${funcId} was stopped`);
+      const resumeMessage = {
+        promiseId: storedPromise.id,
+        topLevelParent: {
+          id: this.root.invocationData.id,
+          name: this.root.invocationData.name,
+          version: this.root.invocationData.opts.version,
+          args: this.root.invocationData.args,
+          retryPolicy: this.root.invocationData.opts.retryPolicy,
+        },
+      };
+
+      const { promise: durablePromise } = await this.#resonate.store.callbacks.create(
+        storedPromise.id,
+        this.#resonate.tasksHandler.callbackUrl(),
+        storedPromise.timeout + 2000,
+        opts.encoder.encode(resumeMessage),
+      );
+
+      if (durablePromise.state !== "PENDING") {
+        return handleCompletedPromise(durablePromise, opts.encoder);
+      }
+
+      return await this.#resonate.tasksHandler.localCallback(durablePromise.id);
     };
-    const resultPromise: Promise<R> = runFunc();
+
+    const resultPromise: Promise<R> = localRunFunc();
     const invocationHandle = new InvocationHandle(funcId, resultPromise);
     this.#invocationHandles.set(funcId, invocationHandle);
 
@@ -700,10 +750,10 @@ export class Context {
     if (this.#invocationHandles.has(id)) {
       return this.#invocationHandles.get(id) as InvocationHandle<R>;
     }
-    const ctx = Context.createChildrenContext(this, { name, id, eid: opts.eidFn(id), opts });
+    const ctx = Context.createChildrenContext(this, { name, id, args, eid: opts.eidFn(id), opts });
 
     if (!opts.durable) {
-      const runFunc = async () => {
+      const localRunFunc = async () => {
         const timeout = Date.now() + opts.timeout;
         return (await runWithRetry(
           async () => await func(ctx, ...args),
@@ -712,7 +762,7 @@ export class Context {
           timeout,
         )) as R;
       };
-      const resultPromise = runFunc();
+      const resultPromise = localRunFunc();
       const handle = new InvocationHandle<R>(id, resultPromise);
       this.#invocationHandles.set(id, handle);
       return handle;
@@ -786,8 +836,8 @@ export class Context {
 
     // prettier-ignore
     return this.run(() => Promise.all(values), options({
-      retryPolicy: retryPolicies.never(),
       ...opts,
+      retryPolicy: retryPolicies.never(),
     }));
   }
 
@@ -809,8 +859,8 @@ export class Context {
 
     // prettier-ignore
     return this.run(() => Promise.any(values), options({
-      retryPolicy: retryPolicies.never(),
       ...opts,
+      retryPolicy: retryPolicies.never(),
     }));
   }
 
@@ -832,8 +882,8 @@ export class Context {
 
     // prettier-ignore
     return this.run(() => Promise.race(values), options({
-      retryPolicy: retryPolicies.never(),
       ...opts,
+      retryPolicy: retryPolicies.never(),
     }));
   }
 
@@ -858,8 +908,8 @@ export class Context {
 
     // prettier-ignore
     return this.run(() => Promise.allSettled(values), options({
-      retryPolicy: retryPolicies.never(),
       ...opts,
+      retryPolicy: retryPolicies.never(),
     }));
   }
 

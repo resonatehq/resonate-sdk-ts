@@ -1,5 +1,5 @@
 import { describe, test, expect, jest } from "@jest/globals";
-import { mergeObjects, sleep, promiseState } from "../lib/core/utils";
+import { mergeObjects, sleep, promiseState, promiseWithResolvers } from "../lib/core/utils";
 
 jest.setTimeout(2000);
 
@@ -128,5 +128,31 @@ describe("promiseState", () => {
     await new Promise((resolve) => setTimeout(resolve, 150));
     const laterRejectedResult = await promiseState(delayedRejection);
     expect(laterRejectedResult).toBe("rejected");
+  });
+});
+
+describe("promiseWithResolvers", () => {
+  test("resolves the promise", async () => {
+    const { promise, resolve } = promiseWithResolvers<string>();
+    resolve("Success");
+    await expect(promise).resolves.toBe("Success");
+  });
+
+  test("rejects the promise", async () => {
+    const { promise, reject } = promiseWithResolvers<string>();
+    reject(new Error("Failure"));
+    await expect(promise).rejects.toThrow("Failure");
+  });
+
+  test("resolve and reject functions are callable", () => {
+    const { resolve, reject } = promiseWithResolvers<string>();
+    expect(typeof resolve).toBe("function");
+    expect(typeof reject).toBe("function");
+  });
+
+  test("works with different types", async () => {
+    const { promise, resolve } = promiseWithResolvers<number>();
+    resolve(42);
+    await expect(promise).resolves.toBe(42);
   });
 });

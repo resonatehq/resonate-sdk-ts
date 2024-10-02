@@ -15,12 +15,15 @@ import { Schedule } from "../schedules/types";
 import { IStorage } from "../storage";
 import { MemoryStorage } from "../storages/memory";
 import { WithTimeout } from "../storages/withTimeout";
-import { IStore, IPromiseStore, IScheduleStore, ILockStore } from "../store";
+import { IStore, IPromiseStore, IScheduleStore, ILockStore, ICallbackStore, ITaskStore } from "../store";
+import { CallbackRecord, ResumeBody, isResumeBody } from "../tasks";
 
 export class LocalStore implements IStore {
   public promises: LocalPromiseStore;
   public schedules: LocalScheduleStore;
   public locks: LocalLockStore;
+  public callbacks: LocalCallbackStore;
+  public tasks: LocalTaskStore;
 
   public readonly logger: ILogger;
 
@@ -32,10 +35,13 @@ export class LocalStore implements IStore {
     promiseStorage: IStorage<DurablePromiseRecord> = new WithTimeout(new MemoryStorage<DurablePromiseRecord>()),
     scheduleStorage: IStorage<Schedule> = new MemoryStorage<Schedule>(),
     lockStorage: IStorage<{ id: string; eid: string }> = new MemoryStorage<{ id: string; eid: string }>(),
+    callbacksStorage: IStorage<CallbackRecord> = new MemoryStorage<CallbackRecord>(),
   ) {
+    this.callbacks = new LocalCallbackStore(this, callbacksStorage);
     this.promises = new LocalPromiseStore(this, promiseStorage);
     this.schedules = new LocalScheduleStore(this, scheduleStorage);
     this.locks = new LocalLockStore(this, lockStorage);
+    this.tasks = new LocalTaskStore(this);
 
     this.logger = opts.logger ?? new Logger();
 
@@ -170,7 +176,7 @@ export class LocalPromiseStore implements IPromiseStore {
     headers: Record<string, string> | undefined,
     data: string | undefined,
   ): Promise<DurablePromiseRecord> {
-    return this.storage.rmw(id, (promise) => {
+    return await this.storage.rmw(id, (promise) => {
       if (!promise) {
         throw new ResonateError("Not found", ErrorCodes.STORE_NOT_FOUND);
       }
@@ -488,6 +494,89 @@ export class LocalLockStore implements ILockStore {
       throw new ResonateError("Not found", ErrorCodes.STORE_NOT_FOUND);
     }
 
+    return true;
+  }
+}
+
+export class LocalCallbackStore implements ICallbackStore {
+  constructor(
+    private store: LocalStore,
+    private storage: IStorage<CallbackRecord>,
+  ) {}
+
+  async create(promiseId: string, recv: string, timeout: number, data: string | undefined): Promise<CallbackRecord> {
+    const promise = await this.store.promises.get(promiseId);
+    const callbackRecord = {
+      callback: {
+        id: promiseId,
+        promiseId,
+        message: {
+          data: data,
+          recv: recv,
+        },
+        timeout: timeout,
+        createdOn: Date.now(),
+      },
+      promise: promise,
+    };
+
+    if (promise.state !== "PENDING") {
+      // Returns a mock callback with the resolved promise, doesn't actually creates the callback
+      return callbackRecord;
+    }
+
+    // If the promise is pending creates the callback for it.
+    return await this.storage.rmw(promiseId, (callback) => {
+      if (!callback) {
+        return callbackRecord;
+      }
+      return callback;
+    });
+  }
+
+  async get(promiseId: string): Promise<CallbackRecord> {
+    return this.storage.rmw(promiseId, (callback) => {
+      if (!callback) {
+        throw new ResonateError("Not found", ErrorCodes.STORE_NOT_FOUND);
+      }
+      return callback;
+    });
+  }
+
+  async getAll(): Promise<CallbackRecord[]> {
+    // TODO(avillega): Migrate this loop to `Array.fromAsync` once we make node 22 our minimum version
+    const result = [];
+    for await (const callbacks of this.storage.all()) {
+      result.push(...callbacks);
+    }
+    return result;
+  }
+
+  async delete(callbackId: string): Promise<boolean> {
+    return await this.storage.rmd(callbackId, (callback) => callback.callback.id === callbackId);
+  }
+}
+
+export class LocalTaskStore implements ITaskStore {
+  constructor(private store: LocalStore) {}
+
+  // NOTE: Just for the Local Store the taskId === callbackId which allows us to
+  // claim the task by getting the data from the callback
+  async claim(taskId: string, count: number): Promise<ResumeBody> {
+    const callback = await this.store.callbacks.get(taskId);
+    if (!callback) {
+      throw new ResonateError("Task not found", ErrorCodes.STORE_NOT_FOUND);
+    }
+
+    const resumeBody = JSON.parse(callback.callback.message.data);
+    if (!isResumeBody(resumeBody)) {
+      throw new ResonateError("Invalid response", ErrorCodes.STORE_PAYLOAD, resumeBody);
+    }
+    return resumeBody;
+  }
+
+  async complete(taskId: string, count: number): Promise<boolean> {
+    await this.store.callbacks.delete(taskId);
     return true;
   }
 }
