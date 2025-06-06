@@ -95,7 +95,7 @@ describe("Resonate", () => {
     const baz = await resonate.schedules.get("baz");
     const qux = await resonate.schedules.get("qux");
 
-    resonate.start(1000); // no delay for tests
+    await resonate.start(1000); // no delay for tests
 
     expect(await fooPromise).toBe("foo");
     expect(await barPromise).toBe("bar");
