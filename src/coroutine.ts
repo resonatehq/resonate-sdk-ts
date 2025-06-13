@@ -77,11 +77,10 @@ export class Coroutine<TRet> {
     if (event instanceof Invoke || event instanceof Call) {
       const uuid = this.uuidsequ();
       this.invokes.push({ kind: event instanceof Invoke ? "invoke" : "call", uuid });
-      const kind = this.mapKind(event.type);
       return {
         type: "internal.async",
         uuid,
-        kind,
+        kind: this.mapKind(event.type),
         mode: "eager", // default, adjust if needed
         func: event.func,
         args: (event.args || []).map((arg: any, i: number) => ({
