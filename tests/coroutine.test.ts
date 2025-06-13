@@ -78,6 +78,24 @@ describe("Coroutine", () => {
     });
 
     expect(r).toMatchObject({
+      type: "internal.await",
+      promise: {
+        type: "internal.promise",
+        state: "completed",
+        value: {
+          type: "internal.literal",
+          value: 2,
+        },
+      },
+    });
+
+    r = d.next({
+      type: "internal.literal",
+      value: 2,
+      uuid: "abc",
+    });
+
+    expect(r).toMatchObject({
       type: "internal.async",
       kind: "rfi",
     });

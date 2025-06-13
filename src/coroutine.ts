@@ -19,23 +19,19 @@ export class Coroutine<TRet> {
   public next(value: Value<any>): InternalExpr<any> {
     // Handle rfc/lfc by either returning an await if the promise is not completed
     // or replacing the promise with a literal value if the promise was completed
-    let genInput = value;
     if (value.type === "internal.promise" && this.invokes.length > 0) {
       const prevInvoke = this.invokes.at(-1)!;
       if (prevInvoke.kind === "call") {
         this.invokes.pop();
-        if (value.state === "pending") {
-          return {
-            type: "internal.await",
-            uuid: prevInvoke.uuid,
-            promise: value,
-          };
-        }
-        genInput = value.value;
+        return {
+          type: "internal.await",
+          uuid: prevInvoke.uuid,
+          promise: value,
+        };
       }
     }
 
-    const result = this.generator.next(this.toExternal(genInput));
+    const result = this.generator.next(this.toExternal(value));
     if (result.done) {
       if (this.invokes.length > 0) {
         const val = this.invokes.pop()!;

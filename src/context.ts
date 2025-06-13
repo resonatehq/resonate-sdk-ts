@@ -4,7 +4,7 @@ export type AnyFun<T> = (...args: any[]) => T;
 export type Invocable<T> = AnyGen<T> | AnyFun<T>;
 export type Yieldable = Invoke<any> | Future<any> | Call<any>;
 
-export class Invoke<T> implements Iterable<Invoke<T> | T> {
+export class Invoke<T> implements Iterable<Invoke<T>> {
   public type: "lfi" | "rfi";
   public func: Invocable<T>;
   public args: any[];
@@ -21,7 +21,7 @@ export class Invoke<T> implements Iterable<Invoke<T> | T> {
   }
 }
 
-export class Call<T> implements Iterable<Call<T> | T> {
+export class Call<T> implements Iterable<Call<T>> {
   public type: "lfc" | "rfc";
   public func: Invocable<T>;
   public args: any[];
