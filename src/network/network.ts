@@ -1,8 +1,3 @@
-export interface Value {
-  headers?: { [key: string]: string };
-  data?: string;
-}
-
 export interface DurablePromiseRecord {
   id: string;
   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
@@ -16,14 +11,14 @@ export interface DurablePromiseRecord {
   completedOn?: number;
 }
 
-export interface Schedule {
+export interface ScheduleRecord {
   id: string;
-  description: string;
+  description?: string;
   cron: string;
   tags: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam: Value;
+  promiseParam: any;
   promiseTags: Record<string, string>;
   iKey?: string;
   lastRunTime?: number;
@@ -31,7 +26,7 @@ export interface Schedule {
   createdOn?: number;
 }
 
-export interface Task {
+export interface TaskRecord {
   id: string;
   counter: number;
   timeout: number;
@@ -40,7 +35,7 @@ export interface Task {
   completedOn?: number;
 }
 
-export interface Callback {
+export interface CallbackRecord {
   id: string;
   promiseId: string;
   timeout: number;
@@ -192,7 +187,7 @@ export type CreatePromiseRes = {
 export type CreatePromiseAndTaskRes = {
   kind: "createPromiseAndTask";
   promise: DurablePromiseRecord;
-  task?: Task;
+  task?: TaskRecord;
 };
 
 export type ReadPromiseRes = {
@@ -207,24 +202,24 @@ export type CompletePromiseRes = {
 
 export type CreateCallbackRes = {
   kind: "createCallback";
-  callback?: Callback;
+  callback?: CallbackRecord;
   promise: DurablePromiseRecord;
 };
 
 export type CreateSubscriptionRes = {
   kind: "createSubscription";
-  callback?: Callback;
+  callback?: CallbackRecord;
   promise: DurablePromiseRecord;
 };
 
 export type CreateScheduleRes = {
   kind: "createSchedule";
-  schedule: Schedule;
+  schedule: ScheduleRecord;
 };
 
 export type ReadScheduleRes = {
   kind: "readSchedule";
-  schedule: Schedule;
+  schedule: ScheduleRecord;
 };
 
 export type DeleteScheduleRes = {
@@ -238,7 +233,7 @@ export type ClaimTaskRes = {
 
 export type CompleteTaskRes = {
   kind: "completedtask";
-  task: Task;
+  task: TaskRecord;
 };
 
 export type DropTaskRes = {

@@ -1,4 +1,4 @@
-import type { DurablePromiseRecord, CreatePromiseRes, Network, CompletePromiseRes } from "./network/network";
+import type { CompletePromiseRes, CreatePromiseRes, DurablePromiseRecord, Network } from "./network/network";
 import * as util from "./util";
 
 interface DurablePromiseProto {
@@ -55,17 +55,20 @@ export class Handler {
           console.log("got a timeout nope out of here, what does it mean?");
           return;
         }
+        console.log(response);
 
         util.assert(response.kind === "createPromise");
-        const createPromiseRes = response as CreatePromiseRes;
-        this.promises.set(createPromiseRes.promise.id, createPromiseRes.promise);
-        callback(createPromiseRes.promise);
+        const { promise } = response as CreatePromiseRes;
+        this.promises.set(promise.id, promise);
+        callback(promise);
       },
     );
   }
 
   public resolvePromise<T>(id: string, value: T, callback: (res: DurablePromise<T>) => void): void {
+    console.log({ id });
     const promise = this.promises.get(id);
+    console.log(this.promises);
     util.assertDefined(promise);
 
     if (promise.state !== "pending") {
@@ -86,10 +89,11 @@ export class Handler {
         if (timeout) {
           console.log("got a timeout, nope out of here, what does it mean?");
         }
-        util.assert(response.kind === "completePromise");
-        const completePromiseRes = response as CompletePromiseRes;
-        this.promises.set(completePromiseRes.promise.id, completePromiseRes.promise);
-        callback(completePromiseRes.promise);
+        console.log(response);
+        util.assert(response.kind === "completePromise", "Response must be complete promise");
+        const { promise } = response as CompletePromiseRes;
+        this.promises.set(promise.id, promise);
+        callback(promise);
       },
     );
   }
