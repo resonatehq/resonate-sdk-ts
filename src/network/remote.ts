@@ -552,7 +552,6 @@ export class HttpNetwork implements Network {
       });
 
       if (!response.ok) {
-        console.log(await response.text());
         const errorData = (await response.json().catch(() => ({}))) as { message?: string };
         throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }

@@ -52,10 +52,8 @@ export class Handler {
       },
       (timeout, response) => {
         if (timeout) {
-          console.log("got a timeout nope out of here, what does it mean?");
           return;
         }
-        console.log(response);
 
         util.assert(response.kind === "createPromise");
         const { promise } = response as CreatePromiseRes;
@@ -66,9 +64,7 @@ export class Handler {
   }
 
   public resolvePromise<T>(id: string, value: T, callback: (res: DurablePromise<T>) => void): void {
-    console.log({ id });
     const promise = this.promises.get(id);
-    console.log(this.promises);
     util.assertDefined(promise);
 
     if (promise.state !== "pending") {
@@ -88,8 +84,8 @@ export class Handler {
       (timeout, response) => {
         if (timeout) {
           console.log("got a timeout, nope out of here, what does it mean?");
+          return;
         }
-        console.log(response);
         util.assert(response.kind === "completePromise", "Response must be complete promise");
         const { promise } = response as CompletePromiseRes;
         this.promises.set(promise.id, promise);

@@ -52,7 +52,7 @@ export class Coroutine<T> {
     const todos: InternalAsync<any>[] = [];
     let input: Value<any> = {
       type: "internal.nothing",
-      id: `${this.decorator.uuid}.nothing`,
+      id: `${this.decorator.id}.nothing`,
     };
 
     // next needs to be called when we want to go to the top of the loop but are inside a callback
