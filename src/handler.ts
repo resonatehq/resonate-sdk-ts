@@ -1,7 +1,7 @@
 import type { CompletePromiseRes, CreatePromiseRes, DurablePromiseRecord, Network } from "./network/network";
 import * as util from "./util";
 
-interface DurablePromiseProto {
+export interface DurablePromiseProto {
   id: string;
   timeout: number;
   tags: Record<string, string>;
@@ -9,10 +9,16 @@ interface DurablePromiseProto {
   args?: any[];
 }
 
-interface DurablePromise<T> {
+export interface DurablePromise<T> {
   id: string;
   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
   value?: T;
+}
+
+export interface Task {
+  id: string;
+  rootPromiseId: string;
+  counter: number;
 }
 
 export class Handler {

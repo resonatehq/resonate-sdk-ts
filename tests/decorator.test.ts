@@ -9,7 +9,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator("abc", foo());
-    const r = d.next({ type: "internal.nothing", id: "abc" });
+    const r = d.next({ type: "internal.nothing" });
 
     expect(r).toMatchObject({
       type: "internal.return",
@@ -26,7 +26,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator("abc", foo());
-    const r = d.next({ type: "internal.nothing", id: "abc" });
+    const r = d.next({ type: "internal.nothing" });
 
     expect(r).toMatchObject({
       type: "internal.async",
@@ -41,7 +41,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator("abc", foo());
-    const r = d.next({ type: "internal.nothing", id: "abc" });
+    const r = d.next({ type: "internal.nothing" });
 
     expect(r).toMatchObject({
       type: "internal.await",
@@ -60,7 +60,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator("abc", foo());
-    let r = d.next({ type: "internal.nothing", id: "abc" });
+    let r = d.next({ type: "internal.nothing" });
     expect(r).toMatchObject({
       type: "internal.async",
       kind: "lfi",
@@ -72,7 +72,6 @@ describe("Decorator", () => {
       id: "abc",
       value: {
         type: "internal.literal",
-        id: "abc",
         value: 2,
       },
     });
@@ -92,7 +91,6 @@ describe("Decorator", () => {
     r = d.next({
       type: "internal.literal",
       value: 2,
-      id: "abc",
     });
 
     expect(r).toMatchObject({
@@ -124,15 +122,14 @@ describe("Decorator", () => {
 
     const d = new Decorator("abc", foo());
 
-    d.next({ type: "internal.nothing", id: "abc" }); // First yield
-    d.next({ type: "internal.literal", id: "abc.1", value: 10 }); // yield a future, get a literal back
+    d.next({ type: "internal.nothing" }); // First yield
+    d.next({ type: "internal.literal", value: 10 }); // yield a future, get a literal back
     const r = d.next({
       type: "internal.promise",
       state: "completed",
       id: "abc.2",
       value: {
         type: "internal.literal",
-        id: "abc.2.lit",
         value: 42,
       },
     }); // yield an invoke, get a completed promise back
@@ -156,8 +153,8 @@ describe("Decorator", () => {
 
     const d = new Decorator("abc", foo());
 
-    d.next({ type: "internal.nothing", id: "abc" }); // First yield
-    d.next({ type: "internal.literal", id: "abc.1", value: 10 }); // A -> yield a future, get a literal back
+    d.next({ type: "internal.nothing" }); // First yield
+    d.next({ type: "internal.literal", value: 10 }); // A -> yield a future, get a literal back
     d.next({
       type: "internal.promise",
       state: "pending",
@@ -169,7 +166,6 @@ describe("Decorator", () => {
       id: "abc.2",
       value: {
         type: "internal.literal",
-        id: "abc.1.lit",
         value: 30,
       },
     }); // C -> yield an invoke, get a completed promise back
@@ -194,15 +190,14 @@ describe("Decorator", () => {
 
     const d = new Decorator("abc", foo());
 
-    d.next({ type: "internal.nothing", id: "abc" }); // First yield
-    d.next({ type: "internal.literal", id: "abc.1", value: 10 }); // A -> yield a future, get a literal back
+    d.next({ type: "internal.nothing" }); // First yield
+    d.next({ type: "internal.literal", value: 10 }); // A -> yield a future, get a literal back
     d.next({
       type: "internal.promise",
       state: "completed",
       id: "abc.1",
       value: {
         type: "internal.literal",
-        id: "abc.1.lit",
         value: 20,
       },
     }); // B -> yield an invoke, get a completed promise back
@@ -212,7 +207,6 @@ describe("Decorator", () => {
       id: "abc.2",
       value: {
         type: "internal.literal",
-        id: "abc.1.lit",
         value: 30,
       },
     }); // C -> yield an invoke, get a completed promise back

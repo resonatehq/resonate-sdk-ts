@@ -68,6 +68,8 @@ export class Future<T> implements Iterable<Future<T>> {
   }
 }
 
+export class Context {}
+
 export function lfi<R>(func: Invocable<R>, ...args: any[]): Invoke<R> {
   return new Invoke<R>("lfi", func, ...args);
 }
