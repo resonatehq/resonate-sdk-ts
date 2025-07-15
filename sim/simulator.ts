@@ -40,86 +40,23 @@ export class Message<T> {
   }
 }
 
-// export type Req<T> = {
-//     target: Address;
-//     uuid: string;
-//     data: T;
-// };
-
-// export type Res<T> = {
-//     uuid: string;
-//     type: "success" | "failure";
-//     data?: T;
-// };
-
-export class Bus {
-  sequen: number = 0;
-  outbox: Message<any>[] = [];
-
-  afterSend: ((error: Error | null) => void)[] = [];
-  afterRecv: Record<number, (error: Error | null, resp: any) => void> = {};
-
-  public onMessage?: (message: Message<any>, callback: () => void) => void;
-
-  constructor() {}
-
-  tick(time: number, messages: Message<any>[]): Message<any>[] {
-    for (const afterSend of this.afterSend) {
-      afterSend(null);
-    }
-    this.afterSend = [];
-    for (const message of messages) {
-      if (message.head.hasOwnProperty("resp")) {
-        this.afterRecv[message.head.resp](null, message.data);
-        delete this.afterRecv[message.head.requ];
-      } else {
-        if (this.onMessage) this.onMessage(message, () => {});
-      }
-    }
-    const temp = this.outbox;
-    this.outbox = [];
-    return temp;
-  }
-
-  send(message: Message<any>, callback: (error: Error | null) => void): void {
-    this.outbox.push(message);
-    this.afterSend.push(callback);
-  }
-
-  requ(
-    message: Message<any>,
-    callback: (error: Error | null, resp: any) => void,
-  ): void {
-    message.head.requ = this.sequen++;
-    this.outbox.push(message);
-    this.afterRecv[message.head.requ] = callback;
-  }
-}
 
 export class Process {
-  bus: Bus;
-
   public active: boolean = true;
 
   constructor(
     public readonly iaddr: string,
     public readonly gaddr: string[] = [],
   ) {
-    this.bus = new Bus();
   }
 
   tick(time: number, messages: Message<any>[]): Message<any>[] {
-    this.onStep();
-    return this.bus.tick(time, messages);
+    return []
   }
 
   log(...args: any[]): void {
     console.log(`proc [${this.iaddr}]`, ...args);
   }
-
-  onInit() {}
-
-  onStep() {}
 }
 
 
@@ -176,12 +113,9 @@ export class Simulator {
   }
 
   tick(): void {
-    console.log("sim tick", this.network);
+    // console.log("sim tick", this.network);
 
     if (!this.init) {
-      for (let process of this.process) {
-        process.onInit();
-      }
       this.init = true;
     }
 

@@ -777,7 +777,7 @@ export class Server {
       return { promise: record, applied: false };
     }
 
-    throw new Error("unexpected transition");
+    throw new Error(`unexpected transition: ${record} to ${to}`);
   }
 
   private transitionTask(
