@@ -1,6 +1,3 @@
-import { RequestMsg, ResponseMsg } from "../src/network/network";
-import { Server } from "../src/server";
-
 class Random {
   private state: number;
 
@@ -113,7 +110,7 @@ export class Simulator {
   }
 
   tick(): void {
-    // console.log("sim tick", this.network);
+    console.log("sim tick", this.network);
 
     if (!this.init) {
       this.init = true;

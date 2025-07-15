@@ -3,15 +3,6 @@ import { CreatePromiseReq, CreatePromiseRes, DurablePromiseRecord, RequestMsg, R
 import { Server } from "../src/server";
 import * as util from "../src/util";
 
-class Ping extends Process {
-  tick(time: number, messages: Message<any>[]): Message<any>[] {
-    for (const msg of messages){
-      this.log(msg)
-    }
-    return [new Message(anycast("g2"), `ping at ${time}`, {requ: true})]
-  }
-}
-
 class Worker extends Process{
   tick(time: number, messages: Message<ResponseMsg>[]): Message<RequestMsg>[] {
     this.log(`tick ${time}`)
@@ -20,7 +11,7 @@ class Worker extends Process{
     }
     // randomly sends a Request.
     let req: CreatePromiseReq = {kind:"createPromise", id:"foo", timeout: Number.MAX_SAFE_INTEGER, tags: {"resonate:invoke":"default"}, iKey:"foo",}  // if we remove the Ikey a weird assertion happens
-    return new Array<Message<RequestMsg>>(new Message(unicast("server"), req, {requ: true}))
+    return new Array<Message<CreatePromiseReq>>(new Message(unicast("server"), req, {requ: true}))
   }
 }
 
@@ -40,7 +31,6 @@ class Srvr extends Process{
       | { kind: "invoke" | "resume"; id: string; counter: number }
       | { kind: "notify"; promise: DurablePromiseRecord };
   }>[] {
-
     let resps: Message<ResponseMsg | {
       recv: string;
       msg:
@@ -51,10 +41,9 @@ class Srvr extends Process{
     this.log(`tick ${time}`)
 
     for (const msg of messages){
-      this.log(msg.data.kind)
       switch (msg.data.kind) {
         case "createPromise":
-          resps.push(msg.resp(anycast("w"), this.createPromise(msg.data)));
+          resps.push(msg.resp(anycast("default"), this.createPromise(msg.data)));
           break
         default:
           throw new Error(`Unsupported request kind: ${(msg.data as any).kind}`);
@@ -74,16 +63,21 @@ class Srvr extends Process{
     do {
       result = step.next(next)
       if (!result.done){
+
         let url = new URL(result.value.recv)
         util.assert((url.protocol === "local:"))
         let target: Address
-        if (url.username === "any" && url.host === "default"){
-          target = anycast(url.username)
+        if (url.username === "any"){
+          target = url.pathname === "" ? anycast(url.hostname) : anycast(url.hostname, url.pathname.slice(1))
+        } else if (url.username === "uni") {
+          target = unicast(`${url.hostname}${url.pathname}`)
         } else {
           throw new Error(`not handled ${url}`)
         }
+
+
         resps.push(new Message(target, result.value))
-        next = true
+        next = true // true or false
       }
     } while (!result.done)
 
@@ -113,10 +107,10 @@ let s = new Simulator(0);
 s.register(new Srvr("server"))
 
 // Workers
-s.register(new Worker("w1", ["w"]))
+s.register(new Worker("default/0", ["default"]))
 
 let i = 0
-while (i <= 10) {
+while (i <= 100) {
   s.tick();
   i++
 }
