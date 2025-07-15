@@ -568,7 +568,7 @@ export class Server {
             `__invoke:${id}`,
             "init",
             "invoke",
-            this.targets[recv],
+            this.targets[recv] ?? recv,
             promise.id,
             promise.id,
             time,
