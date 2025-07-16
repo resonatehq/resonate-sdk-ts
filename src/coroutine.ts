@@ -4,14 +4,15 @@ import type { Handler } from "./handler";
 import type { Value } from "./types";
 import * as util from "./util";
 
-interface LocalTodo {
+export interface LocalTodo {
   id: string;
   fn: (ctx: Context, ...args: any[]) => any;
+  ctx: Context;
   args: any[];
   // Need function to execute and id to resolve the promise
 }
 
-interface RemoteTodo {
+export interface RemoteTodo {
   id: string;
   // Probably only need the promiseId to create the callback
 }

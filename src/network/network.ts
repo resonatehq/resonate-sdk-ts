@@ -28,6 +28,7 @@ export interface ScheduleRecord {
 
 export interface TaskRecord {
   id: string;
+  rootPromiseId: string;
   counter: number;
   timeout: number;
   processId?: string;

@@ -471,6 +471,7 @@ export class Server {
     return {
       id: task.id,
       counter: task.counter,
+      rootPromiseId: task.rootPromiseId,
       timeout: 0,
       processId: task.pid,
       createdOn: task.createdOn,

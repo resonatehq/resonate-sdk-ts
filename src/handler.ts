@@ -1,4 +1,11 @@
-import type { CompletePromiseRes, CreatePromiseRes, DurablePromiseRecord, Network } from "./network/network";
+import type {
+  CallbackRecord,
+  CompletePromiseRes,
+  CreateCallbackRes,
+  CreatePromiseRes,
+  DurablePromiseRecord,
+  Network,
+} from "./network/network";
 import * as util from "./util";
 
 export interface DurablePromiseProto {
@@ -96,6 +103,41 @@ export class Handler {
         const { promise } = response as CompletePromiseRes;
         this.promises.set(promise.id, promise);
         callback(promise);
+      },
+    );
+  }
+
+  public createCallback<T>(
+    id: string,
+    rootPromiseId: string,
+    timeout: number,
+    recv: string,
+    cb: (
+      result: { kind: "callback"; callback: CallbackRecord } | { kind: "promise"; promise: DurablePromise<T> },
+    ) => void,
+  ): void {
+    this.network.send(
+      {
+        kind: "createCallback",
+        id: id,
+        rootPromiseId: rootPromiseId,
+        timeout: timeout,
+        recv: recv,
+      },
+      (timeout, response) => {
+        if (timeout) {
+          console.log("got a timeout, nope out of here, what does it mean?");
+          return;
+        }
+        util.assert(response.kind === "createCallback", "Response must be complete promise");
+        const { callback, promise } = response as CreateCallbackRes;
+        if (callback) {
+          cb({ kind: "callback", callback });
+          return;
+        }
+
+        this.promises.set(promise.id, promise);
+        cb({ kind: "promise", promise });
       },
     );
   }
