@@ -20,7 +20,7 @@ class Worker extends Process {
       kind: "createPromise",
       id: "foo",
       timeout: Number.MAX_SAFE_INTEGER,
-      tags: { "resonate:invoke": "default" },
+      tags: { "resonate:invoke": "local://any@group" },
       iKey: "foo",
     }; // if we remove the Ikey a weird assertion happens
     return new Array<Message<CreatePromiseReq>>(new Message(unicast("server"), req, { requ: true }));
@@ -88,7 +88,8 @@ class Srvr extends Process {
         util.assert(url.protocol === "local:");
         let target: Address;
         if (url.username === "any") {
-          target = url.pathname === "" ? anycast(url.hostname) : anycast(url.hostname, url.pathname.slice(1));
+          target =
+            url.pathname === "" ? anycast(url.hostname) : anycast(url.hostname, `${url.hostname}${url.pathname}`);
         } else if (url.username === "uni") {
           target = unicast(`${url.hostname}${url.pathname}`);
         } else {
@@ -124,10 +125,11 @@ const s = new Simulator(0);
 s.register(new Srvr("server"));
 
 // Workers
-s.register(new Worker("default/0", ["default"]));
+s.register(new Worker("group/1", ["group"]));
+s.register(new Worker("group/0", ["group"]));
 
 let i = 0;
-while (i <= 100) {
+while (i <= 2) {
   s.tick();
   i++;
 }
