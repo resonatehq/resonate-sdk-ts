@@ -1,3 +1,6 @@
+import { FakeNetwork } from "../sim/fakeNetwork";
+import type { Address } from "../sim/simulator";
+import { Message, Process, Simulator, anycast, unicast } from "../sim/simulator";
 import type {
   CreatePromiseReq,
   CreatePromiseRes,
@@ -7,9 +10,6 @@ import type {
 } from "../src/network/network";
 import { Server } from "../src/server";
 import * as util from "../src/util";
-import { FakeNetwork } from "../sim/fakeNetwork";
-import type { Address } from "../sim/simulator";
-import { Message, Process, Simulator, anycast, unicast } from "../sim/simulator";
 
 class WorkerProcess extends Process {
   network: FakeNetwork;
