@@ -11,9 +11,7 @@ class Random {
   }
 }
 
-export type Address =
-  | { kind: "unicast"; iaddr: string }
-  | { kind: "anycast"; gaddr: string; iaddr?: string };
+export type Address = { kind: "unicast"; iaddr: string } | { kind: "anycast"; gaddr: string; iaddr?: string };
 
 export function unicast(iaddr: string): Address {
   return { kind: "unicast", iaddr };
@@ -32,23 +30,25 @@ export class Message<T> {
   isRequest(): boolean {
     return this.head.hasOwnProperty("requ");
   }
+
+  isResponse(): boolean {
+    return !this.isRequest();
+  }
   resp<U>(target: Address, data: U) {
     return new Message(target, data, { resp: this.head.requ });
   }
 }
 
-
 export class Process {
-  public active: boolean = true;
+  public active = true;
 
   constructor(
     public readonly iaddr: string,
     public readonly gaddr: string[] = [],
-  ) {
-  }
+  ) {}
 
   tick(time: number, messages: Message<any>[]): Message<any>[] {
-    return []
+    return [];
   }
 
   log(...args: any[]): void {
@@ -56,17 +56,12 @@ export class Process {
   }
 }
 
-
 export class DeliveryOptions {
   dropProb: number;
   randomDelay: number;
   duplProb: number;
 
-  constructor(
-    dropProb: number = 0,
-    randomDelay: number = 0,
-    duplProb: number = 0,
-  ) {
+  constructor(dropProb = 0, randomDelay = 0, duplProb = 0) {
     this.dropProb = dropProb;
     this.randomDelay = randomDelay;
     this.duplProb = duplProb;
@@ -75,12 +70,13 @@ export class DeliveryOptions {
 
 export class Simulator {
   private prng: Random;
-  private time: number = 0;
-  private init: boolean = false;
+  private time = 0;
+  private init = false;
   private process: Process[] = [];
   private network: Message<any>[] = [];
   public deliveryOptions: DeliveryOptions;
 
+  addMessage(message: Message<any>): void {}
   assertAlways(condition: boolean, message: string): void {
     if (!condition) {
       console.error("Assertion failed:", message);
@@ -88,10 +84,7 @@ export class Simulator {
     }
   }
 
-  constructor(
-    seed: number,
-    deliveryOptions: DeliveryOptions = new DeliveryOptions(),
-  ) {
+  constructor(seed: number, deliveryOptions: DeliveryOptions = new DeliveryOptions()) {
     this.prng = new Random(seed);
     this.deliveryOptions = deliveryOptions;
   }
@@ -139,7 +132,6 @@ export class Simulator {
       // Duplicate?
       if (this.prng.next() < this.deliveryOptions.duplProb) {
         retained.push(message);
-        continue;
       }
     }
 
@@ -154,9 +146,7 @@ export class Simulator {
       if (target.kind === "unicast") {
         inboxes[target.iaddr].push(message);
       } else {
-        const preference = this.process.find(
-          (p) => p.active && p.iaddr === target.iaddr,
-        );
+        const preference = this.process.find((p) => p.active && p.iaddr === target.iaddr);
         if (preference) {
           inboxes[preference.iaddr].push(message);
         } else {
