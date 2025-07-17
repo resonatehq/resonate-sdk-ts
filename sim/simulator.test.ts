@@ -23,6 +23,7 @@ class Worker extends Process {
   }
 
   tick(time: number, messages: Message<ResponseMsg>[]): Message<RequestMsg>[] {
+    this.log(messages);
     return this.network.tick(time, messages);
   }
 }
@@ -64,7 +65,7 @@ class Srvr extends Process {
     for (const msg of messages) {
       switch (msg.data.kind) {
         case "createPromise":
-          resps.push(msg.resp(anycast("default"), this.createPromise(msg.data)));
+          resps.push(msg.resp(this.createPromise(msg.data)));
           break;
         default:
           throw new Error(`Unsupported request kind: ${(msg.data as any).kind}`);
@@ -96,7 +97,7 @@ class Srvr extends Process {
           throw new Error(`not handled ${url}`);
         }
 
-        resps.push(new Message(target, result.value));
+        resps.push(new Message(unicast("server"), target, result.value));
         next = true; // true or false
       }
     } while (!result.done);
@@ -130,19 +131,20 @@ s.register(new Worker("group/1", ["group"]));
 
 s.addMessage(
   new Message(
+    unicast("test"),
     unicast("server"),
     {
       kind: "createPromise",
       id: "foo",
       timeout: Number.MAX_SAFE_INTEGER,
-      tags: { "resonate:invoke": "default" },
+      tags: { "resonate:invoke": "local://any@group" },
       iKey: "foo",
     },
     { requ: true },
   ),
 );
 let i = 0;
-while (i <= 2) {
+while (i <= 5) {
   s.tick();
   i++;
 }

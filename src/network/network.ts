@@ -270,6 +270,6 @@ export type ResponseMsg =
 export type RecvMsg = any;
 
 export interface Network {
-  send(request: RequestMsg, callback: (timeout: boolean, response: ResponseMsg) => void): void;
+  send(request: RequestMsg, callback: (timeout: boolean, response?: ResponseMsg) => void): void;
   recv(msg: RecvMsg): void;
 }

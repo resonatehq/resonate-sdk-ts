@@ -23,19 +23,20 @@ export function anycast(gaddr: string, iaddr?: string): Address {
 
 export class Message<T> {
   constructor(
+    public source: Address,
     public target: Address,
     public data: T,
     public head: Record<string, any> = {},
   ) {}
   isRequest(): boolean {
-    return this.head.hasOwnProperty("requ");
+    return this.head.requ;
   }
 
   isResponse(): boolean {
     return !this.isRequest();
   }
-  resp<U>(target: Address, data: U) {
-    return new Message(target, data, { resp: this.head.requ });
+  resp<U>(data: U) {
+    return new Message(this.target, this.source, data, { resp: this.head.requ });
   }
 }
 
@@ -76,7 +77,9 @@ export class Simulator {
   private network: Message<any>[] = [];
   public deliveryOptions: DeliveryOptions;
 
-  addMessage(message: Message<any>): void {}
+  addMessage(message: Message<any>): void {
+    this.network.push(message);
+  }
   assertAlways(condition: boolean, message: string): void {
     if (!condition) {
       console.error("Assertion failed:", message);
@@ -144,7 +147,9 @@ export class Simulator {
     for (const message of consumed) {
       const target = message.target;
       if (target.kind === "unicast") {
-        inboxes[target.iaddr].push(message);
+        if (target.iaddr in inboxes) {
+          inboxes[target.iaddr].push(message);
+        }
       } else {
         const preference = this.process.find((p) => p.active && p.iaddr === target.iaddr);
         if (preference) {
