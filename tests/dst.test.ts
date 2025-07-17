@@ -7,9 +7,9 @@ import type {
 } from "../src/network/network";
 import { Server } from "../src/server";
 import * as util from "../src/util";
-import { FakeNetwork } from "./fakeNetwork";
-import type { Address } from "./simulator";
-import { Message, Process, Simulator, anycast, unicast } from "./simulator";
+import { FakeNetwork } from "../sim/fakeNetwork";
+import type { Address } from "../sim/simulator";
+import { Message, Process, Simulator, anycast, unicast } from "../sim/simulator";
 
 class Worker extends Process {
   network: FakeNetwork;
@@ -120,31 +120,50 @@ class Srvr extends Process {
   }
 }
 
-const s = new Simulator(0);
+const getArg = (name: string): string | undefined => {
+  const prefix = `--${name}=`;
+  const found = process.argv.find((arg) => arg.startsWith(prefix));
+  return found?.slice(prefix.length);
+};
 
-// Server
-s.register(new Srvr("server"));
+describe("DST", () => {
+  it("dst test", () => {
+    const seed = getArg("seed");
+    const ticks = getArg("ticks");
 
-// Workers
-s.register(new Worker("group/0", ["group"]));
-s.register(new Worker("group/1", ["group"]));
+    expect(seed).toBeDefined();
+    expect(ticks).toBeDefined();
+    console.log("seed:", seed);
+    console.log("ticks:", ticks);
 
-s.addMessage(
-  new Message(
-    unicast("test"),
-    unicast("server"),
-    {
-      kind: "createPromise",
-      id: "foo",
-      timeout: Number.MAX_SAFE_INTEGER,
-      tags: { "resonate:invoke": "local://any@group" },
-      iKey: "foo",
-    },
-    { requ: true },
-  ),
-);
-let i = 0;
-while (i <= 5) {
-  s.tick();
-  i++;
-}
+    const s = new Simulator(Number(seed!));
+
+    // Server
+    s.register(new Srvr("server"));
+
+    // Workers
+    s.register(new Worker("group/0", ["group"]));
+    s.register(new Worker("group/1", ["group"]));
+
+    s.addMessage(
+      new Message(
+        unicast("test"),
+        unicast("server"),
+        {
+          kind: "createPromise",
+          id: "foo",
+          timeout: Number.MAX_SAFE_INTEGER,
+          tags: { "resonate:invoke": "local://any@group" },
+          iKey: "foo",
+        },
+        { requ: true },
+      ),
+    );
+
+    let i = 0;
+    while (i <= Number(ticks!)) {
+      s.tick();
+      i++;
+    }
+  });
+});
