@@ -60,7 +60,9 @@ export class Coroutine<T> {
           }
         });
       } else {
-        callback({ type: "completed", value: durable.value! });
+        handler.resolvePromise(id, durable.value!, (r) => {
+          callback({ type: "completed", value: r.value! });
+        });
       }
     });
   }

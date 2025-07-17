@@ -26,6 +26,19 @@ function* foo(ctx: context.Context) {
 }
 
 const network = new HttpNetwork({});
+network.onMessage = (msg) => {
+  console.log({ msg });
+  if (msg.type === "resume" || msg.type === "invoke") {
+    // Computation.invokeUnclaimed(msg.task, registry, network);
+  } else {
+    // Get the subs handlers and complete them with the promise info
+  }
+};
+
+// Computation.invoke(network, id, fn, args, opts, etc,
+//     (durablePromise, task) => {when durable promise gets created so it can finally set the handler, if task can not be created, sub to the promise instead},
+//     (err, result) => {when computation finishes executing and root durable promise is completed}
+// )
 
 const compu = new Computation(network);
 network.send(
@@ -47,11 +60,16 @@ network.send(
     iKey: "foo.root",
     strict: false,
   },
-  (timeout, res) => {
+  (_timeout, res) => {
     const { promise, task } = res as CreatePromiseAndTaskRes;
+    if (promise.state === "resolved") {
+      console.log("got result", promise.value!);
+      return;
+    }
     if (!task) {
       console.log("got no task, should create a sub for the promise instead");
+      return;
     }
-    compu.invoke(task!, { id: promise.id, fn: foo, args: [] }, (err, result) => console.log("got result", result));
+    compu.invoke(task!, { id: promise.id, fn: foo, args: [] }, (_err, result) => console.log("got result", result));
   },
 );
