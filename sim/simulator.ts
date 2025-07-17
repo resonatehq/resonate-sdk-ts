@@ -33,7 +33,7 @@ export class Message<T> {
   }
 
   isResponse(): boolean {
-    return !this.isRequest();
+    return this.head.resp;
   }
   resp<U>(data: U) {
     return new Message(this.target, this.source, data, { resp: this.head.requ });
@@ -147,6 +147,10 @@ export class Simulator {
     for (const message of consumed) {
       const target = message.target;
       if (target.kind === "unicast") {
+        if (target.iaddr === "enviroment") {
+          console.log(message);
+        }
+
         if (target.iaddr in inboxes) {
           inboxes[target.iaddr].push(message);
         }

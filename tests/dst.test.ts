@@ -11,7 +11,7 @@ import { FakeNetwork } from "../sim/fakeNetwork";
 import type { Address } from "../sim/simulator";
 import { Message, Process, Simulator, anycast, unicast } from "../sim/simulator";
 
-class Worker extends Process {
+class WorkerProcess extends Process {
   network: FakeNetwork;
 
   constructor(
@@ -28,7 +28,7 @@ class Worker extends Process {
   }
 }
 
-class Srvr extends Process {
+class ServerProcess extends Process {
   private server: Server;
 
   constructor(
@@ -139,15 +139,15 @@ describe("DST", () => {
     const s = new Simulator(Number(seed!));
 
     // Server
-    s.register(new Srvr("server"));
+    s.register(new ServerProcess("server"));
 
     // Workers
-    s.register(new Worker("group/0", ["group"]));
-    s.register(new Worker("group/1", ["group"]));
+    s.register(new WorkerProcess("group/0", ["group"]));
+    s.register(new WorkerProcess("group/1", ["group"]));
 
     s.addMessage(
       new Message(
-        unicast("test"),
+        unicast("environment"),
         unicast("server"),
         {
           kind: "createPromise",
