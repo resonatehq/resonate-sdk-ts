@@ -4,10 +4,10 @@ import { type Message, anycast, unicast } from "./simulator";
 export class FakeNetwork implements Network {
   correlationId = 0;
   buffer: Message<any>[] = [];
-  callbacks: Record<number, { callback: (timeout: boolean, response?: ResponseMsg) => void; timeout: number }> = {};
+  callbacks: Record<number, { callback: (timeout: boolean, response: ResponseMsg) => void; timeout: number }> = {};
   currentTime = 0;
 
-  send(request: RequestMsg, callback: (timeout: boolean, response?: ResponseMsg) => void): void {
+  send(request: RequestMsg, callback: (timeout: boolean, response: ResponseMsg) => void): void {
     // const m = new Message(unicast("server"), request, { requ: true, correlationId: this.correlationId++ });
     // this.callbacks[m.head!.correlationId] = { callback: callback, timeout: this.currentTime + 5000 };
     // this.buffer.push(m);
@@ -33,7 +33,7 @@ export class FakeNetwork implements Network {
     for (const k in this.callbacks) {
       const cb = this.callbacks[k];
       if (cb.timeout < this.currentTime) {
-        cb.callback(true);
+        cb.callback(true, { kind: "error", code: "invalid_request", message: "timedout" });
         delete this.callbacks[k];
       }
     }

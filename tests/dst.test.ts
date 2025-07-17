@@ -128,8 +128,14 @@ const getArg = (name: string): string | undefined => {
 
 describe("DST", () => {
   it("dst test", () => {
-    const seed = getArg("seed");
-    const ticks = getArg("ticks");
+    let seed: number | string | undefined = getArg("seed");
+    let ticks: number | string | undefined = getArg("ticks");
+    if (seed === undefined) {
+      seed = Math.floor(Math.random() * (Number.MAX_SAFE_INTEGER - 0 + 1)) + 0;
+    }
+    if (ticks === undefined) {
+      ticks = 10000;
+    }
 
     expect(seed).toBeDefined();
     expect(ticks).toBeDefined();
