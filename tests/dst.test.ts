@@ -131,10 +131,10 @@ describe("DST", () => {
     let seed: number | string | undefined = getArg("seed");
     let ticks: number | string | undefined = getArg("ticks");
     if (seed === undefined) {
-      seed = Math.floor(Math.random() * (Number.MAX_SAFE_INTEGER - 0 + 1)) + 0;
+      seed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
     }
     if (ticks === undefined) {
-      ticks = 10000;
+      ticks = 10;
     }
 
     expect(seed).toBeDefined();

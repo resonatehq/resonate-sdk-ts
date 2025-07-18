@@ -147,7 +147,7 @@ export class Simulator {
     for (const message of consumed) {
       const target = message.target;
       if (target.kind === "unicast") {
-        if (target.iaddr === "enviroment") {
+        if (target.iaddr === "environment") {
           console.log(message);
         }
 
