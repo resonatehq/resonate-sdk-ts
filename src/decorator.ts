@@ -1,5 +1,5 @@
-import { Call, Future, Invoke, type Yieldable } from "./context";
-import type { InternalAsync, InternalAwait, InternalExpr, Literal, Value } from "./types";
+import { CallLocal, CallRemote, Future, InvokeLocal, InvokeRemote, type Yieldable } from "./context";
+import type { InternalAsyncL, InternalAsyncR, InternalAwait, InternalExpr, Literal, Value } from "./types";
 import * as util from "./util";
 
 export class Decorator<TRet> {
@@ -80,18 +80,31 @@ export class Decorator<TRet> {
   }
 
   // From external type to internal type
-  private toInternal<T>(event: Invoke<T> | Future<T> | Call<T>): InternalAsync<T> | InternalAwait<T> {
-    if (event instanceof Invoke || event instanceof Call) {
+  private toInternal<T>(
+    event: InvokeLocal<T> | InvokeRemote<T> | Future<T> | CallLocal<T> | CallRemote<T>,
+  ): InternalAsyncL<T> | InternalAsyncR<T> | InternalAwait<T> {
+    if (event instanceof InvokeLocal || event instanceof CallLocal) {
       const id = this.idsequ();
-      this.invokes.push({ kind: event instanceof Invoke ? "invoke" : "call", id });
+      this.invokes.push({ kind: event instanceof InvokeLocal ? "invoke" : "call", id });
       this.nextState = "internal.promise";
       return {
-        type: "internal.async",
+        type: "internal.async.l",
         id,
-        kind: this.mapKind(event.type),
-        mode: "eager", // default, adjust if needed
         func: event.func,
         args: event.args ?? [],
+        mode: "eager", // default, adjust if needed
+      };
+    }
+    if (event instanceof InvokeRemote || event instanceof CallRemote) {
+      const id = this.idsequ();
+      this.invokes.push({ kind: event instanceof InvokeRemote ? "invoke" : "call", id });
+      this.nextState = "internal.promise";
+      return {
+        type: "internal.async.r",
+        id,
+        func: event.func,
+        args: event.args ?? [],
+        mode: "eager", // default, adjust if needed
       };
     }
     if (event instanceof Future) {
@@ -138,16 +151,5 @@ export class Decorator<TRet> {
       type: "internal.literal",
       value: value,
     };
-  }
-
-  private mapKind(k: "lfi" | "rfi" | "lfc" | "rfc"): "lfi" | "rfi" {
-    switch (k) {
-      case "lfi":
-      case "lfc":
-        return "lfi";
-      case "rfi":
-      case "rfc":
-        return "rfi";
-    }
   }
 }

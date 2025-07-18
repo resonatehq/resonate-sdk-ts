@@ -208,6 +208,7 @@ export class HttpNetwork implements Network {
   private baseHeaders: Record<string, string>;
   private encoder: Encoder;
   private eventSource: EventSource;
+
   public onMessage?: (msg: Msg) => void;
 
   constructor(config: HttpNetworkConfig) {
@@ -289,7 +290,7 @@ export class HttpNetwork implements Network {
     const body = {
       id: req.id,
       timeout: req.timeout,
-      param: req.param,
+      param: this.encoder.encode(req.param),
       tags: req.tags,
     };
 

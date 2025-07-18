@@ -112,7 +112,7 @@ describe("Coroutine", () => {
 
     function* foo() {
       const p1 = yield* lfi(bar);
-      const p2 = yield* rfi(bar);
+      const p2 = yield* rfi("bar");
       const v1 = yield* p1;
       const vx = yield* p1;
       const v2 = yield* p2;
@@ -137,8 +137,8 @@ describe("Coroutine", () => {
     }
 
     function* foo() {
-      yield* rfi(bar);
-      yield* rfi(bar);
+      yield* rfi("bar");
+      yield* rfi("bar");
       return 99;
     }
 
@@ -169,7 +169,7 @@ describe("Coroutine", () => {
 
     function* foo() {
       const v1: number = yield* lfc(bar);
-      const v2: number = yield* rfc(bar);
+      const v2: number = yield* rfc<number>("bar");
       return v1 + v2;
     }
 

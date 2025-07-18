@@ -40,6 +40,10 @@ export class Handler {
     }
   }
 
+  public updateCache(durablePromise: DurablePromiseRecord) {
+    this.promises.set(durablePromise.id, durablePromise);
+  }
+
   public createPromise<T>(
     { id, timeout, tags, fn, args }: DurablePromiseProto,
     callback: (res: DurablePromise<T>) => void,

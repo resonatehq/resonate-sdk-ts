@@ -1,8 +1,9 @@
-import { Computation } from "./computation";
 import * as context from "./context";
-import { LocalNetwork } from "./network/local";
-import type { CreatePromiseAndTaskRes } from "./network/network";
-import { HttpNetwork } from "./network/remote";
+import { ResonateInner } from "./resonate-inner";
+
+function* bar(ctx: context.Context, name: string) {
+  return `Hello World ${name}`;
+}
 
 function* foo(ctx: context.Context) {
   const p = yield* context.lfi((ctx) => {
@@ -15,61 +16,21 @@ function* foo(ctx: context.Context) {
     return 39;
   });
 
-  const p3 = yield* context.rfi((ctx) => {
-    return 46;
-  });
+  const p3 = yield* context.rfi("bar", "Andres");
 
   const v1 = yield* p;
+  const v3 = yield* p3;
   const v2 = yield* p2;
 
-  return v1 + v2;
+  return { v1, v2, v3 };
 }
 
-const network = new HttpNetwork({});
-network.onMessage = (msg) => {
-  console.log({ msg });
-  if (msg.type === "resume" || msg.type === "invoke") {
-    // Computation.invokeUnclaimed(msg.task, registry, network);
-  } else {
-    // Get the subs handlers and complete them with the promise info
-  }
-};
+const resonate = ResonateInner.remote({});
 
-// Computation.invoke(network, id, fn, args, opts, etc,
-//     (durablePromise, task) => {when durable promise gets created so it can finally set the handler, if task can not be created, sub to the promise instead},
-//     (err, result) => {when computation finishes executing and root durable promise is completed}
-// )
+const rfoo = resonate.register("foo", foo);
+resonate.register("bar", bar);
 
-const compu = new Computation(network);
-network.send(
-  {
-    kind: "createPromiseAndTask",
-    promise: {
-      id: "foo.root",
-      timeout: Number.MAX_SAFE_INTEGER,
-      param: {
-        fn: "foo",
-        args: [],
-      },
-      tags: { "resonate:invoke": "default" },
-    },
-    task: {
-      processId: "0",
-      ttl: 300_000,
-    },
-    iKey: "foo.root",
-    strict: false,
-  },
-  (_timeout, res) => {
-    const { promise, task } = res as CreatePromiseAndTaskRes;
-    if (promise.state === "resolved") {
-      console.log("got result", promise.value!);
-      return;
-    }
-    if (!task) {
-      console.log("got no task, should create a sub for the promise instead");
-      return;
-    }
-    compu.invoke(task!, { id: promise.id, fn: foo, args: [] }, (_err, result) => console.log("got result", result));
-  },
-);
+rfoo.run("foo.1", [], async (iHandler) => {
+  const res = await iHandler.result;
+  console.log("got", res);
+});

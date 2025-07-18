@@ -79,12 +79,13 @@ export class Coroutine<T> {
       while (true) {
         const action = this.decorator.next(input);
 
-        // Handle internal.async with lfi kind
-        if (action.type === "internal.async" && action.kind === "lfi") {
+        // Handle internal.async.l (lfi/lfc)
+        if (action.type === "internal.async.l") {
           this.handler.createPromise({ id: action.id, timeout: Number.MAX_SAFE_INTEGER, tags: {} }, (durable) => {
             if (durable.state === "pending") {
               if (!util.isGeneratorFunction(action.func)) {
                 localTodos.push({
+                  ctx: this.ctx,
                   id: action.id,
                   fn: action.func,
                   args: action.args,
@@ -146,13 +147,13 @@ export class Coroutine<T> {
         }
 
         // Handle internal.async with rfi kind
-        if (action.type === "internal.async" && action.kind === "rfi") {
+        if (action.type === "internal.async.r") {
           this.handler.createPromise(
             {
               id: action.id,
               timeout: Number.MAX_SAFE_INTEGER,
               tags: { "resonate:invoke": "default" },
-              fn: action.func.name,
+              fn: action.func,
               args: action.args ?? [],
             },
             (durable) => {

@@ -14,9 +14,10 @@ interface InvocationParams {
 type Event = "invoke" | "return";
 
 export class Computation {
+  public handler: Handler;
+
   private eventQueue: Event[] = [];
   private isProcessing = false;
-  private handler: Handler;
   private network: Network;
   private processor: Processor;
   private seenTodos: Set<string>;
@@ -40,6 +41,15 @@ export class Computation {
     util.assert(this.eventQueue.length === 0, "The event queue must be empty on a new invocation");
     this.invocationParams = invocationParams;
     this.callback = cb;
+    this.eventQueue.push("invoke");
+    this.process();
+  }
+
+  // Resumes an already alive computation
+  resume(task: Task): void {
+    console.log("resuming", this.invocationParams?.id);
+
+    this.task = task;
     this.eventQueue.push("invoke");
     this.process();
   }
@@ -153,8 +163,6 @@ export class Computation {
       this.network.send({ kind: "completeTask", id: this.task.id, counter: this.task.counter }, () => {
         // Once the task is completed reset the computation
         this.task = undefined;
-        this.invocationParams = undefined;
-        this.seenTodos.clear();
       });
     }
   }
