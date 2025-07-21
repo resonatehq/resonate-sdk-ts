@@ -193,7 +193,7 @@ export class JsonEncoder implements Encoder {
 
 export interface HttpNetworkConfig {
   url?: string;
-  msg_url?: string;
+  msgUrl?: string;
   timeout?: number;
   headers?: Record<string, string>;
   encoder?: Encoder;
