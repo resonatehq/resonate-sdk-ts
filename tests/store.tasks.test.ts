@@ -8,12 +8,10 @@ let TICK_TIME = 1000;
 
 describe("tasks transitions", () => {
   function step(server: Server): { id: string; counter: number } {
-    let step = server.step();
-    let next = step.next();
-    let value = next.value!;
-    next = step.next(true);
+    let msgs = server.step();
+    expect(msgs.length).toBe(1);
+    const value = msgs[0];
     expect(value.msg.kind).toBe("invoke");
-
     return value.msg as { id: string; counter: number };
   }
 

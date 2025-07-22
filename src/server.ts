@@ -113,16 +113,10 @@ export class Server {
     return timeout!;
   }
 
-  *step(time: number = Date.now()): Generator<
-    {
-      recv: string;
-      msg:
-        | { kind: "invoke" | "resume"; id: string; counter: number }
-        | { kind: "notify"; promise: DurablePromiseRecord };
-    },
-    void,
-    boolean | undefined
-  > {
+  step(time: number = Date.now()): {
+    recv: string;
+    msg: { kind: "invoke" | "resume"; id: string; counter: number } | { kind: "notify"; promise: DurablePromiseRecord };
+  }[] {
     for (const schedule of this.schedules.values()) {
       if (time < schedule.nextRunTime!) {
         continue;
@@ -161,6 +155,13 @@ export class Server {
       }
     }
 
+    const msgs: {
+      recv: string;
+      msg:
+        | { kind: "invoke" | "resume"; id: string; counter: number }
+        | { kind: "notify"; promise: DurablePromiseRecord };
+    }[] = Array();
+
     for (const task of this.tasks.values()) {
       if (task.state !== "init") {
         continue;
@@ -181,20 +182,17 @@ export class Server {
         msg = { kind: "notify", promise: this.getPromise(task.rootPromiseId) };
       }
 
-      if (yield { recv: task.recv, msg: msg }) {
-        if (task.type === "notify") {
-          const { applied } = this.transitionTask(task.id, "completed", {}, time);
-          util.assert(applied);
-        } else {
-          const { applied } = this.transitionTask(task.id, "enqueued", {}, time);
-          util.assert(applied);
-        }
+      msgs.push({ recv: task.recv, msg });
+
+      if (task.type === "notify") {
+        const { applied } = this.transitionTask(task.id, "completed", {}, time);
+        util.assert(applied);
       } else {
-        // TODO(dfarr): implement this
-        // _, applied = self.tasks.transition(task.id, to="INIT", expiry=0)
-        // assert applied
+        const { applied } = this.transitionTask(task.id, "enqueued", {}, time);
+        util.assert(applied);
       }
     }
+    return msgs;
   }
 
   private _createPromise(
