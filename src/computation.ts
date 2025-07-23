@@ -16,6 +16,8 @@ type Event = "invoke" | "return";
 export class Computation {
   public handler: Handler;
 
+  private pid: string;
+  private group: string;
   private eventQueue: Event[] = [];
   private isProcessing = false;
   private network: Network;
@@ -25,9 +27,11 @@ export class Computation {
   private callback?: (err: any, result: any) => void;
   private invocationParams?: InvocationParams;
 
-  constructor(network: Network, processor?: Processor) {
+  constructor(network: Network, group: string, pid: string, processor?: Processor) {
     this.handler = new Handler(network);
     this.network = network;
+    this.pid = pid;
+    this.group = group;
     this.processor = processor ?? new AsyncProcessor();
     this.seenTodos = new Set();
   }
@@ -112,7 +116,7 @@ export class Computation {
         id,
         rootId,
         Number.MAX_SAFE_INTEGER, // TODO (avillega): use the promise timeout
-        "default", // TODO (avillega): use the unicast addr of this node
+        `poll://any@${this.group}/${this.pid}`,
         (result) => {
           if (result.kind === "promise") {
             this.scheduleNextProcess();

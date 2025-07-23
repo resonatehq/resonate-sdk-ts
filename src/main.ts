@@ -1,22 +1,22 @@
-import * as context from "./context";
+import type { Context } from "./context";
 import { ResonateInner } from "./resonate-inner";
 
-function* bar(ctx: context.Context, name: string) {
+function* bar(ctx: Context, name: string) {
   return `Hello World ${name}`;
 }
 
-function* foo(ctx: context.Context) {
-  const p = yield* context.lfi((ctx) => {
+function* foo(ctx: Context) {
+  const p = yield* ctx.lfi((ctx: Context, x: number) => {
     const a = 24;
     const b = 24;
-    return a + b;
-  });
+    return a + b + x;
+  }, 100);
 
-  const p2 = yield* context.lfi((ctx) => {
+  const p2 = yield* ctx.lfi((ctx) => {
     return 39;
   });
 
-  const p3 = yield* context.rfi("bar", "Andres");
+  const p3 = yield* ctx.rfi("bar", "Andres").options({ target: "poll://any@gpu/lalal" });
 
   const v1 = yield* p;
   const v3 = yield* p3;
@@ -30,7 +30,7 @@ const resonate = ResonateInner.local();
 const rfoo = resonate.register("foo", foo);
 resonate.register("bar", bar);
 
-rfoo.run("foo.1", [], async (iHandler) => {
+rfoo.run(`foo.${Date.now()}`, [], async (iHandler) => {
   const res = await iHandler.result;
   console.log("got", res);
 });

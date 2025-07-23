@@ -146,13 +146,13 @@ export class Coroutine<T> {
           return; // Exit the while loop to wait for async callback
         }
 
-        // Handle internal.async with rfi kind
+        // Handle internal.async.r
         if (action.type === "internal.async.r") {
           this.handler.createPromise(
             {
               id: action.id,
-              timeout: Number.MAX_SAFE_INTEGER,
-              tags: { "resonate:invoke": "default" },
+              timeout: action.opts.timeout,
+              tags: { "resonate:invoke": action.opts.target },
               fn: action.func,
               args: action.args ?? [],
             },
