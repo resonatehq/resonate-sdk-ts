@@ -294,11 +294,10 @@ export class HttpNetwork implements Network {
     if (req.iKey) headers["idempotency-key"] = req.iKey;
     if (req.strict !== undefined) headers.strict = req.strict.toString();
 
-    const param = this.encoder.encode(req.param);
     const body = {
       id: req.id,
       timeout: req.timeout,
-      param,
+      param: this.encoder.encode(req.param),
       tags: req.tags,
     };
 
