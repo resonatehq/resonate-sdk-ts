@@ -40,19 +40,24 @@ export class LocalNetwork implements Network {
     this.timeoutId = undefined;
   }
 
-  send(request: RequestMsg, callback: (timeout: boolean, response: ResponseMsg) => void): void {
-    const response = this.handleRequest(request);
-
+  private enqueueNext(): void {
     clearTimeout(this.timeoutId);
-
     const n = this.server.next();
 
     if (n !== undefined) {
       this.timeoutId = setTimeout((): void => {
         const msgs = this.server.step();
+        this.enqueueNext();
         this.recv(msgs);
       }, n);
     }
+  }
+
+  send(request: RequestMsg, callback: (timeout: boolean, response: ResponseMsg) => void): void {
+    const response = this.handleRequest(request);
+
+    clearTimeout(this.timeoutId);
+    this.enqueueNext();
 
     callback(false, response);
   }
