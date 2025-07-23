@@ -12,7 +12,7 @@ export class InvokeLocal<T> implements Iterable<InvokeLocal<T>> {
   public func: Func;
   public args: any[];
 
-  constructor(func: Func, ...args: any[]) {
+  constructor(func: Func, args: any[]) {
     this.func = func;
     this.args = args;
   }
@@ -51,7 +51,7 @@ export class CallLocal<T> implements Iterable<CallLocal<T>> {
   public func: Func;
   public args: any[];
 
-  constructor(func: Func, ...args: any[]) {
+  constructor(func: Func, args: any[]) {
     this.func = func;
     this.args = args;
   }
@@ -68,7 +68,7 @@ export class CallRemote<T> implements Iterable<CallRemote<T>> {
   public args: any[];
   public opts: RemoteOpts;
 
-  constructor(func: string, ...args: any[]) {
+  constructor(func: string, args: any[]) {
     this.func = func;
     this.args = args;
     this.opts = { ...defaultRemoteOpts };
@@ -116,7 +116,7 @@ export class Future<T> implements Iterable<Future<T>> {
 export class Context {
   // TODO(avillega): Allow user to define other opts
   lfi<F extends Func>(func: F, ...args: Params<F>): InvokeLocal<Ret<F>> {
-    return new InvokeLocal<Ret<F>>(func, ...args);
+    return new InvokeLocal<Ret<F>>(func, args);
   }
 
   // TODO(avillega): Allow user to define target, and opts

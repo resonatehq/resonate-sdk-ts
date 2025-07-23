@@ -52,6 +52,7 @@ export class Computation {
   // Resumes an already alive computation
   resume(task: Task): void {
     console.log("resuming", this.invocationParams?.id);
+    util.assertDefined(this.invocationParams);
 
     this.task = task;
     this.eventQueue.push("invoke");
@@ -84,10 +85,9 @@ export class Computation {
           this.network.send({ kind: "completeTask", id: this.task.id, counter: this.task.counter }, () => {
             // Clear the computation
             this.task = undefined;
-            this.invocationParams = undefined;
             this.seenTodos.clear();
 
-            this.callback!(null, durablePromise.value);
+            this.callback?.(null, durablePromise.value);
           });
         });
       } else {

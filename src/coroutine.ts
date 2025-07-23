@@ -151,8 +151,8 @@ export class Coroutine<T> {
           this.handler.createPromise(
             {
               id: action.id,
-              timeout: action.opts.timeout,
-              tags: { "resonate:invoke": action.opts.target },
+              timeout: action.opts.timeout + Date.now(), // TODO(avillega): this is not deterministic, chage it
+              tags: { "resonate:invoke": `poll://any@${action.opts.target}` }, // TODO(avillega): remove the poll assumption, might need server work
               fn: action.func,
               args: action.args ?? [],
             },
