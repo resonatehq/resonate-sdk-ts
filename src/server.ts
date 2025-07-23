@@ -1,6 +1,13 @@
 import { CronExpressionParser } from "cron-parser";
 
-import type { CallbackRecord, DurablePromiseRecord, Mesg, ScheduleRecord, TaskRecord } from "./network/network";
+import type {
+  CallbackRecord,
+  DurablePromiseRecord,
+  Mesg,
+  RecvMsg,
+  ScheduleRecord,
+  TaskRecord,
+} from "./network/network";
 import * as util from "./util";
 
 interface DurablePromise {
@@ -87,18 +94,11 @@ export class Server {
     this.targets = { default: "local://any@default" };
   }
 
-  next(time: number = Date.now()): number {
+  next(time: number = Date.now()): number | undefined {
     let timeout: number | undefined = undefined;
     for (const promise of this.promises.values()) {
       if (promise.state === "pending") {
         timeout = timeout === undefined ? promise.timeout : Math.min(promise.timeout, timeout);
-      }
-    }
-
-    for (const task of this.tasks.values()) {
-      if (["init", "enqueued", "claimed"].includes(task.state)) {
-        util.assert(task.expiry !== undefined);
-        timeout = timeout === undefined ? task.expiry : Math.min(task.expiry!, timeout);
       }
     }
 
@@ -107,16 +107,11 @@ export class Server {
       timeout = timeout === undefined ? schedule.nextRunTime : Math.min(schedule.nextRunTime!, timeout);
     }
 
-    timeout = timeout !== undefined ? Math.max(0, timeout - time) : timeout;
-
-    util.assert(timeout !== undefined);
-    return timeout!;
+    timeout = timeout !== undefined ? Math.min(Math.max(0, timeout - time), 2147483647) : timeout;
+    return timeout;
   }
 
-  step(time: number = Date.now()): {
-    recv: string;
-    msg: { kind: "invoke" | "resume"; id: string; counter: number } | { kind: "notify"; promise: DurablePromiseRecord };
-  }[] {
+  step(time: number = Date.now()): RecvMsg[] {
     for (const schedule of this.schedules.values()) {
       if (time < schedule.nextRunTime!) {
         continue;
@@ -155,34 +150,31 @@ export class Server {
       }
     }
 
-    const msgs: {
-      recv: string;
-      msg:
-        | { kind: "invoke" | "resume"; id: string; counter: number }
-        | { kind: "notify"; promise: DurablePromiseRecord };
-    }[] = Array();
+    const msgs: RecvMsg[] = Array();
 
     for (const task of this.tasks.values()) {
       if (task.state !== "init") {
         continue;
       }
-      let msg:
-        | { kind: "invoke" | "resume"; id: string; counter: number }
-        | { kind: "notify"; promise: DurablePromiseRecord };
+      let msg: RecvMsg;
       if (task.type === "invoke") {
         msg = {
-          kind: "invoke",
-          id: task.id,
-          counter: task.counter,
+          type: "invoke",
+          task: { ...task, timeout: 0 },
+          // id: task.id,
+          // counter: task.counter,
         };
       } else if (task.type === "resume") {
-        msg = { kind: "resume", id: task.id, counter: task.counter };
+        msg = {
+          type: "resume",
+          task: { ...task, timeout: 0 },
+        };
       } else {
         util.assert(task.type === "notify");
-        msg = { kind: "notify", promise: this.getPromise(task.rootPromiseId) };
+        msg = { type: "notify", promise: this.getPromise(task.rootPromiseId) };
       }
 
-      msgs.push({ recv: task.recv, msg });
+      msgs.push(msg);
 
       if (task.type === "notify") {
         const { applied } = this.transitionTask(task.id, "completed", {}, time);

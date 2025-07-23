@@ -34,3 +34,10 @@ export function isTaskRecord(obj: any): obj is TaskRecord {
     (obj.completedOn === undefined || typeof obj.completedOn === "number")
   );
 }
+
+export function truncateIf32BitOverflow(n: number | undefined): number | undefined {
+  if (n === undefined) {
+    return n;
+  }
+  return n >= 2147483647 ? 2147483647 : n;
+}

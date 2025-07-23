@@ -11,19 +11,24 @@ describe("tasks transitions", () => {
     let msgs = server.step();
     expect(msgs.length).toBe(1);
     const value = msgs[0];
-    expect(value.msg.kind).toBe("invoke");
-    return value.msg as { id: string; counter: number };
+    expect(value.type).toBe("invoke");
+    if (value.type === "invoke") {
+      return value.task as { id: string; counter: number };
+    }
+    throw new Error("unreachable path");
   }
 
   let server: Server;
+  let network: LocalNetwork;
   let promises: Promises;
   let tasks: Tasks;
   let id: string;
 
   beforeAll(() => {
     server = new Server();
-    promises = new Promises(new LocalNetwork(server));
-    tasks = new Tasks(new LocalNetwork(server));
+    network = new LocalNetwork(server);
+    promises = new Promises(network);
+    tasks = new Tasks(network);
   });
 
   beforeEach(async () => {
@@ -35,7 +40,6 @@ describe("tasks transitions", () => {
   });
 
   afterEach(async () => {
-    // resolve the promise so it’s cleaned up for the next test
     await promises.resolve(id);
   });
 
