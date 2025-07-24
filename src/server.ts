@@ -97,12 +97,20 @@ export class Server {
   next(time: number = Date.now()): number | undefined {
     let timeout: number | undefined = undefined;
     for (const promise of this.promises.values()) {
+      if (timeout === 0) {
+        return timeout;
+      }
+
       if (promise.state === "pending") {
         timeout = timeout === undefined ? promise.timeout : Math.min(promise.timeout, timeout);
       }
     }
 
     for (const task of this.tasks.values()) {
+      if (timeout === 0) {
+        return timeout;
+      }
+
       if (task.state === "init") {
         timeout = timeout === undefined ? 0 : Math.min(0, timeout);
       } else if (["claimed", "enqueued"].includes(task.state)) {
@@ -112,6 +120,10 @@ export class Server {
     }
 
     for (const schedule of this.schedules.values()) {
+      if (timeout === 0) {
+        return timeout;
+      }
+
       util.assert(schedule.nextRunTime !== undefined);
       timeout = timeout === undefined ? schedule.nextRunTime : Math.min(schedule.nextRunTime!, timeout);
     }
