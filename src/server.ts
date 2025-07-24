@@ -116,6 +116,8 @@ export class Server {
       timeout = timeout === undefined ? schedule.nextRunTime : Math.min(schedule.nextRunTime!, timeout);
     }
 
+    // we truncate to largest signed 32-bit, since it's the max number js
+    // setTimeout function can as delay
     timeout = timeout !== undefined ? Math.min(Math.max(0, timeout - time), 2147483647) : timeout;
     return timeout;
   }
