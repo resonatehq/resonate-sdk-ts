@@ -172,8 +172,6 @@ export class Server {
         msg = {
           type: "invoke",
           task: { ...task, timeout: 0 },
-          // id: task.id,
-          // counter: task.counter,
         };
       } else if (task.type === "resume") {
         msg = {
