@@ -171,12 +171,12 @@ export class Server {
       if (task.type === "invoke") {
         msg = {
           type: "invoke",
-          task: { ...task, timeout: 0 },
+          task: { ...task, timeout: this.getPromise(task.rootPromiseId).timeout },
         };
       } else if (task.type === "resume") {
         msg = {
           type: "resume",
-          task: { ...task, timeout: 0 },
+          task: { ...task, timeout: this.getPromise(task.rootPromiseId).timeout },
         };
       } else {
         util.assert(task.type === "notify");
