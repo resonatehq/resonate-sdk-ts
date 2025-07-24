@@ -102,6 +102,15 @@ export class Server {
       }
     }
 
+    for (const task of this.tasks.values()) {
+      if (task.state === "init") {
+        timeout = timeout === undefined ? 0 : Math.min(0, timeout);
+      } else if (["claimed", "enqueued"].includes(task.state)) {
+        util.assert(task.expiry !== undefined);
+        timeout = timeout === undefined ? task.expiry! : Math.min(task.expiry!, timeout);
+      }
+    }
+
     for (const schedule of this.schedules.values()) {
       util.assert(schedule.nextRunTime !== undefined);
       timeout = timeout === undefined ? schedule.nextRunTime : Math.min(schedule.nextRunTime!, timeout);

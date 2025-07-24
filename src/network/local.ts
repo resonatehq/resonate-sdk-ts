@@ -55,10 +55,8 @@ export class LocalNetwork implements Network {
 
   send(request: RequestMsg, callback: (timeout: boolean, response: ResponseMsg) => void): void {
     const response = this.handleRequest(request);
-
     clearTimeout(this.timeoutId);
     this.enqueueNext();
-
     callback(false, response);
   }
 
