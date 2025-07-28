@@ -96,6 +96,8 @@ export class Server {
 
   next(time: number = Date.now()): number | undefined {
     let timeout: number | undefined = undefined;
+
+    // Check pending promises
     for (const promise of this.promises.values()) {
       if (timeout === 0) {
         return timeout;
@@ -106,6 +108,7 @@ export class Server {
       }
     }
 
+    // Check tasks
     for (const task of this.tasks.values()) {
       if (timeout === 0) {
         return timeout;
@@ -114,23 +117,27 @@ export class Server {
       if (task.state === "init") {
         timeout = timeout === undefined ? 0 : Math.min(0, timeout);
       } else if (["claimed", "enqueued"].includes(task.state)) {
-        util.assert(task.expiry !== undefined);
+        util.assert(
+          task.expiry !== undefined,
+          `next(): 'expiry' not set for task '${task.id}' in state '${task.state}'`,
+        );
         timeout = timeout === undefined ? task.expiry! : Math.min(task.expiry!, timeout);
       }
     }
 
+    // Check schedules
     for (const schedule of this.schedules.values()) {
       if (timeout === 0) {
         return timeout;
       }
 
-      util.assert(schedule.nextRunTime !== undefined);
-      timeout = timeout === undefined ? schedule.nextRunTime : Math.min(schedule.nextRunTime!, timeout);
+      util.assert(schedule.nextRunTime !== undefined, `next(): 'nextRunTime' not set for schedule '${schedule.id}'`);
+      timeout = timeout === undefined ? schedule.nextRunTime! : Math.min(schedule.nextRunTime!, timeout);
     }
 
-    // we truncate to largest signed 32-bit, since it's the max number js
-    // setTimeout function can as delay
+    // Convert to delay relative to `time`, clamped to signed 32-bit range
     timeout = timeout !== undefined ? Math.min(Math.max(0, timeout - time), 2147483647) : timeout;
+
     return timeout;
   }
 
@@ -139,6 +146,7 @@ export class Server {
       if (time < schedule.nextRunTime!) {
         continue;
       }
+
       try {
         this.createPromise(
           schedule.promiseId.replace("{{.timestamp}}", time.toString()),
@@ -152,33 +160,39 @@ export class Server {
       } catch {}
 
       const { applied } = this.transitionSchedule(schedule.id, "created", { updating: true }, time);
-      util.assert(applied);
+      util.assert(applied, `step(): failed to transition schedule '${schedule.id}' to 'created' state`);
     }
+
+    // Reject timed-out promises
     for (const promise of this.promises.values()) {
       if (promise.state === "pending" && time >= promise.timeout) {
         const { applied } = this.transitionPromise(promise.id, "rejected_timedout", {}, time);
-        util.assert(applied, "expected promise to be timedout");
+        util.assert(applied, `step(): promise '${promise.id}' expected to be timed out but transition did not apply`);
       }
     }
 
-    // transition expired tasks to init
+    // Transition expired tasks back to init
     for (const task of this.tasks.values()) {
       if (["enqueued", "claimed"].includes(task.state)) {
-        util.assert(task.expiry !== undefined);
+        util.assert(
+          task.expiry !== undefined,
+          `step(): 'expiry' not set for task '${task.id}' in state '${task.state}'`,
+        );
 
         if (time >= task.expiry!) {
           const { applied } = this.transitionTask(task.id, "init", { force: true }, time);
-          util.assert(applied);
+          util.assert(applied, `step(): failed to force-reinit expired task '${task.id}'`);
         }
       }
     }
 
-    const msgs: RecvMsg[] = Array();
+    const msgs: RecvMsg[] = [];
 
     for (const task of this.tasks.values()) {
       if (task.state !== "init") {
         continue;
       }
+
       let msg: RecvMsg;
       if (task.type === "invoke") {
         msg = {
@@ -191,20 +205,24 @@ export class Server {
           task: { ...task, timeout: this.getPromise(task.rootPromiseId).timeout },
         };
       } else {
-        util.assert(task.type === "notify");
-        msg = { type: "notify", promise: this.getPromise(task.rootPromiseId) };
+        util.assert(task.type === "notify", `step(): unexpected task type '${task.type}' for notify message`);
+        msg = {
+          type: "notify",
+          promise: this.getPromise(task.rootPromiseId),
+        };
       }
 
       msgs.push(msg);
 
       if (task.type === "notify") {
         const { applied } = this.transitionTask(task.id, "completed", {}, time);
-        util.assert(applied);
+        util.assert(applied, `step(): failed to complete notify task '${task.id}'`);
       } else {
         const { applied } = this.transitionTask(task.id, "enqueued", {}, time);
-        util.assert(applied);
+        util.assert(applied, `step(): failed to enqueue task '${task.id}' after invoking/resuming`);
       }
     }
+
     return msgs;
   }
 
@@ -227,18 +245,25 @@ export class Server {
       { strict: opts.strict, timeout: timeout, iKey: opts.iKey, value: opts.param, tags: opts.tags },
       time,
     );
-    util.assert(!applied || ["pending", "rejected_timedout"].includes(promise.state));
+
+    util.assert(
+      !applied || ["pending", "rejected_timedout"].includes(promise.state),
+      `createPromise: unexpected promise state '${promise.state}' after transition to 'pending' for promise '${id}'`,
+    );
+
     if (applied && task !== undefined && opts.processId !== undefined) {
       const { task: newTask, applied: appliedTask } = this.transitionTask(task.id, "claimed", {
         counter: 1,
         processId: opts.processId,
         ttl: opts.ttl,
       });
-      util.assert(appliedTask);
+      util.assert(appliedTask, `createPromise: failed to claim task '${task.id}' for subsequent processing`);
       return { promise: promise, task: newTask };
     }
+
     return { promise, task };
   }
+
   createPromise(
     id: string,
     timeout: number,
@@ -281,7 +306,10 @@ export class Server {
     time: number = Date.now(),
   ): DurablePromiseRecord {
     const { promise, applied } = this.transitionPromise(id, state, { strict, iKey, value }, time);
-    util.assert(!applied || [state, "rejected_timedout"].includes(promise.state));
+    util.assert(
+      !applied || [state, "rejected_timedout"].includes(promise.state),
+      `completePromise: after transition to '${state}', promise '${id}' is in unexpected state '${promise.state}'`,
+    );
     return promise;
   }
 
@@ -370,7 +398,10 @@ export class Server {
       time,
     );
 
-    util.assert(applied);
+    util.assert(
+      applied,
+      `claimTask: failed to claim task '${id}' with counter ${counter} using processId '${processId}'`,
+    );
 
     switch (task.type) {
       case "invoke": {
@@ -398,7 +429,7 @@ export class Server {
         };
       }
       default:
-        throw new Error("unreachable");
+        throw new Error(`claimTask: unexpected task type '${task.type}' for task '${id}'`);
     }
   }
 
@@ -416,7 +447,7 @@ export class Server {
     };
   }
 
-  hearbeatTasks(processId: string, time: number = Date.now()): number {
+  heartbeatTasks(processId: string, time: number = Date.now()): number {
     let affectedTasks = 0;
 
     for (const task of this.tasks.values()) {
@@ -426,7 +457,11 @@ export class Server {
 
       const { applied } = this.transitionTask(task.id, "claimed", { force: true }, time);
 
-      util.assert(applied);
+      util.assert(
+        applied,
+        `heartbeatTasks: failed to refresh heartbeat for task '${task.id}' owned by process '${processId}'`,
+      );
+
       affectedTasks += 1;
     }
 
@@ -471,8 +506,9 @@ export class Server {
   }
 
   deleteSchedule(id: string, time: number = Date.now()): void {
-    const { applied } = this.transitionSchedule(id, "deleted", {});
-    util.assert(applied);
+    const { applied } = this.transitionSchedule(id, "deleted", {}, time);
+
+    util.assert(applied, `deleteSchedule: failed to delete schedule '${id}'`);
   }
 
   private getPromise(id: string): DurablePromise {
@@ -504,33 +540,45 @@ export class Server {
       time,
     );
 
+    // Initialize invocation tasks on pending
     if (applied && promise.state === "pending") {
       for (const router of this.routers) {
         const recv = router.route(promise);
         if (recv !== undefined) {
-          const { task, applied } = this.transitionTask(
+          const { task, applied: taskApplied } = this.transitionTask(
             `__invoke:${id}`,
             "init",
-            { type: "invoke", recv: this.targets[recv], rootPromiseId: promise.id, leafPromiseId: promise.id },
+            {
+              type: "invoke",
+              recv: this.targets[recv],
+              rootPromiseId: promise.id,
+              leafPromiseId: promise.id,
+            },
             time,
           );
-          util.assert(applied);
-          return { promise: promise, task: task, applied: applied };
+          util.assert(
+            taskApplied,
+            `transitionPromise: failed to init invoke task for promise '${id}' on route '${recv}'`,
+          );
+          return { promise, task, applied: taskApplied };
         }
       }
     }
 
+    // Complete any tasks and schedule callbacks after resolution
     if (applied && ["resolved", "rejected", "rejected_canceled", "rejected_timedout"].includes(promise.state)) {
+      // Mark existing tasks as completed
       for (const task of this.tasks.values()) {
         if (task.rootPromiseId === id && ["init", "enqueued", "claimed"].includes(task.state)) {
-          const { applied } = this.transitionTask(task.id, "completed", { force: true }, time);
-          util.assert(applied);
+          const { applied: completeApplied } = this.transitionTask(task.id, "completed", { force: true }, time);
+          util.assert(completeApplied, `transitionPromise: failed to complete task '${task.id}' for promise '${id}'`);
         }
       }
 
+      // Initialize callback tasks
       if (promise.callbacks) {
         for (const callback of promise.callbacks.values()) {
-          const { applied } = this.transitionTask(
+          const { applied: callbackApplied } = this.transitionTask(
             callback.id,
             "init",
             {
@@ -541,14 +589,16 @@ export class Server {
             },
             time,
           );
-
-          util.assert(applied);
+          util.assert(
+            callbackApplied,
+            `transitionPromise: failed to init callback task '${callback.id}' for promise '${id}'`,
+          );
         }
         promise.callbacks.clear();
       }
     }
 
-    return { promise: promise, applied: applied };
+    return { promise, applied };
   }
 
   private _transitionPromise(
@@ -565,8 +615,12 @@ export class Server {
   ): { promise: DurablePromise; applied: boolean } {
     let record = this.promises.get(id);
 
+    // Create new promise
     if (record === undefined && to === "pending") {
-      util.assert(opts.timeout !== undefined);
+      util.assert(
+        opts.timeout !== undefined,
+        `transitionPromise(pending): 'timeout' option is required to create promise '${id}'`,
+      );
 
       record = {
         id: id,
@@ -583,10 +637,12 @@ export class Server {
       return { promise: record, applied: true };
     }
 
+    // Cannot complete non-existent promise
     if (record === undefined && ["resolved", "rejected", "rejected_canceled"].includes(to)) {
-      throw new Error("promise not found");
+      throw new Error(`transitionPromise(${to}): promise '${id}' not found`);
     }
 
+    // No-op re-create pending if before timeout and same iKey
     if (
       record?.state === "pending" &&
       to === "pending" &&
@@ -596,6 +652,7 @@ export class Server {
       return { promise: record, applied: false };
     }
 
+    // Auto-timeout transition
     if (
       record?.state === "pending" &&
       to === "pending" &&
@@ -606,6 +663,7 @@ export class Server {
       return this._transitionPromise(id, "rejected_timedout", {}, time);
     }
 
+    // Resolve or reject before timeout
     if (
       record?.state === "pending" &&
       ["resolved", "rejected", "rejected_canceled"].includes(to) &&
@@ -623,6 +681,7 @@ export class Server {
       return { promise: record, applied: true };
     }
 
+    // Attempt completion after timeout without strict -> treat as timeout
     if (
       record?.state === "pending" &&
       ["resolved", "rejected", "rejected_canceled"].includes(to) &&
@@ -632,17 +691,22 @@ export class Server {
       return this._transitionPromise(id, "rejected_timedout", {}, time);
     }
 
+    // Strict completion after timeout -> error
     if (
       record?.state === "pending" &&
       ["resolved", "rejected", "rejected_canceled"].includes(to) &&
       opts.strict &&
       time >= record.timeout
     ) {
-      throw new Error("the promise is already timeout");
+      throw new Error(`transitionPromise(${to}): promise '${id}' already timed out at ${record.timeout}`);
     }
 
+    // Transition to timed-out
     if (record?.state === "pending" && to === "rejected_timedout") {
-      util.assert(time >= record.timeout);
+      util.assert(
+        time >= record.timeout,
+        `transitionPromise(rejected_timedout): cannot time out promise '${id}' before its timeout (${record.timeout})`,
+      );
 
       record = {
         ...record,
@@ -653,6 +717,7 @@ export class Server {
       return { promise: record, applied: true };
     }
 
+    // No-op re-pending or re-completing without strict and matching iKey
     if (
       record?.state !== undefined &&
       ["resolved", "rejected", "rejected_canceled", "rejected_timedout"].includes(record.state) &&
@@ -692,7 +757,8 @@ export class Server {
       return { promise: record, applied: false };
     }
 
-    throw new Error("unexpected transition");
+    // Fallback
+    throw new Error(`transitionPromise(${to}): unexpected transition for promise '${id}'`);
   }
 
   private transitionTask(
@@ -713,10 +779,16 @@ export class Server {
     let record = this.tasks.get(id);
 
     if (record === undefined && to === "init") {
-      util.assert(opts.type !== undefined);
-      util.assert(opts.recv !== undefined);
-      util.assert(opts.rootPromiseId !== undefined);
-      util.assert(opts.leafPromiseId !== undefined);
+      util.assert(opts.type !== undefined, "transitionTask(init): 'type' option is required when initializing a task");
+      util.assert(opts.recv !== undefined, "transitionTask(init): 'recv' option is required when initializing a task");
+      util.assert(
+        opts.rootPromiseId !== undefined,
+        "transitionTask(init): 'rootPromiseId' option is required when initializing a task",
+      );
+      util.assert(
+        opts.leafPromiseId !== undefined,
+        "transitionTask(init): 'leafPromiseId' option is required when initializing a task",
+      );
 
       record = {
         id: id,
@@ -743,8 +815,14 @@ export class Server {
     }
 
     if (record?.state === "init" && to === "claimed" && record.counter === opts.counter) {
-      util.assert(opts.ttl !== undefined);
-      util.assert(opts.processId !== undefined);
+      util.assert(
+        opts.ttl !== undefined,
+        "transitionTask(claimed): 'ttl' option is required when claiming a task from init state",
+      );
+      util.assert(
+        opts.processId !== undefined,
+        "transitionTask(claimed): 'processId' option is required when claiming a task from init state",
+      );
 
       record = {
         ...record,
@@ -759,8 +837,14 @@ export class Server {
     }
 
     if (record?.state === "enqueued" && to === "claimed" && record.counter === opts.counter) {
-      util.assert(opts.ttl !== undefined);
-      util.assert(opts.processId !== undefined);
+      util.assert(
+        opts.ttl !== undefined,
+        "transitionTask(claimed): 'ttl' option is required when claiming a task from enqueued state",
+      );
+      util.assert(
+        opts.processId !== undefined,
+        "transitionTask(claimed): 'processId' option is required when claiming a task from enqueued state",
+      );
 
       record = {
         ...record,
@@ -791,8 +875,14 @@ export class Server {
     }
 
     if (record !== undefined && ["enqueued", "claimed"].includes(record.state) && to === "init") {
-      util.assert(record.expiry !== undefined);
-      util.assert(time >= record.expiry!);
+      util.assert(
+        record.expiry !== undefined,
+        "transitionTask(init): 'expiry' must be set before re-initializing an expired task",
+      );
+      util.assert(
+        time >= record.expiry!,
+        `transitionTask(init): cannot re-init task '${id}' before expiry (${record.expiry})`,
+      );
 
       record = {
         ...record,
@@ -805,7 +895,7 @@ export class Server {
     }
 
     if (record?.state === "claimed" && to === "claimed" && opts.force) {
-      util.assert(record.ttl !== undefined);
+      util.assert(record.ttl !== undefined, "transitionTask(claimed): 'ttl' must be set to force-claim a task");
 
       record = {
         ...record,
@@ -879,11 +969,21 @@ export class Server {
   ): { schedule: Schedule; applied: boolean } {
     let record = this.schedules.get(id);
 
+    // Create new schedule
     if (record === undefined && to === "created") {
-      util.assert(opts.cron !== undefined);
-      util.assert(opts.promiseId !== undefined);
-      util.assert(opts.promiseTimeout !== undefined);
-      util.assert(opts.promiseTimeout! >= 0);
+      util.assert(
+        opts.cron !== undefined,
+        "transitionSchedule(created): 'cron' option is required to create a schedule",
+      );
+      util.assert(
+        opts.promiseId !== undefined,
+        "transitionSchedule(created): 'promiseId' option is required to create a schedule",
+      );
+      util.assert(
+        opts.promiseTimeout !== undefined,
+        "transitionSchedule(created): 'promiseTimeout' option is required to create a schedule",
+      );
+      util.assert(opts.promiseTimeout! >= 0, "transitionSchedule(created): 'promiseTimeout' must be non-negative");
 
       record = {
         id: id,
@@ -903,10 +1003,12 @@ export class Server {
       return { schedule: record, applied: true };
     }
 
+    // No-op if same iKey
     if (record !== undefined && to === "created" && ikeyMatch(opts.iKey, record.iKey)) {
       return { schedule: record, applied: false };
     }
 
+    // Update existing schedule
     if (record !== undefined && to === "created" && opts.updating!) {
       record = {
         ...record,
@@ -917,20 +1019,24 @@ export class Server {
       return { schedule: record, applied: true };
     }
 
+    // Schedule exists and not updating
     if (record !== undefined && to === "created") {
-      throw new Error("schedule already exists");
+      throw new Error(`transitionSchedule(created): schedule '${id}' already exists and 'updating' flag is false`);
     }
 
+    // Delete non-existent
     if (record === undefined && to === "deleted") {
-      throw new Error("schedule not found");
+      throw new Error(`transitionSchedule(deleted): schedule '${id}' not found`);
     }
 
+    // Delete existing
     if (record !== undefined && to === "deleted") {
       this.schedules.delete(id);
       return { schedule: record, applied: true };
     }
 
-    throw new Error("Unexpected transition");
+    // Fallback error
+    throw new Error(`transitionSchedule(${to}): unexpected transition for schedule '${id}'`);
   }
 }
 
