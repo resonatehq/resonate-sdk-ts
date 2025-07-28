@@ -117,11 +117,8 @@ export class Server {
       if (task.state === "init") {
         timeout = timeout === undefined ? 0 : Math.min(0, timeout);
       } else if (["claimed", "enqueued"].includes(task.state)) {
-        util.assert(
-          task.expiry !== undefined,
-          `next(): 'expiry' not set for task '${task.id}' in state '${task.state}'`,
-        );
-        timeout = timeout === undefined ? task.expiry! : Math.min(task.expiry!, timeout);
+        util.assertDefined(task.expiry);
+        timeout = timeout === undefined ? task.expiry : Math.min(task.expiry, timeout);
       }
     }
 
@@ -131,8 +128,8 @@ export class Server {
         return timeout;
       }
 
-      util.assert(schedule.nextRunTime !== undefined, `next(): 'nextRunTime' not set for schedule '${schedule.id}'`);
-      timeout = timeout === undefined ? schedule.nextRunTime! : Math.min(schedule.nextRunTime!, timeout);
+      util.assertDefined(schedule.nextRunTime);
+      timeout = timeout === undefined ? schedule.nextRunTime : Math.min(schedule.nextRunTime, timeout);
     }
 
     // Convert to delay relative to `time`, clamped to signed 32-bit range
@@ -143,7 +140,8 @@ export class Server {
 
   step(time: number = Date.now()): RecvMsg[] {
     for (const schedule of this.schedules.values()) {
-      if (time < schedule.nextRunTime!) {
+      util.assertDefined(schedule.nextRunTime);
+      if (time < schedule.nextRunTime) {
         continue;
       }
 
@@ -174,12 +172,9 @@ export class Server {
     // Transition expired tasks back to init
     for (const task of this.tasks.values()) {
       if (["enqueued", "claimed"].includes(task.state)) {
-        util.assert(
-          task.expiry !== undefined,
-          `step(): 'expiry' not set for task '${task.id}' in state '${task.state}'`,
-        );
+        util.assertDefined(task.expiry);
 
-        if (time >= task.expiry!) {
+        if (time >= task.expiry) {
           const { applied } = this.transitionTask(task.id, "init", { force: true }, time);
           util.assert(applied, `step(): failed to force-reinit expired task '${task.id}'`);
         }
@@ -550,7 +545,7 @@ export class Server {
             "init",
             {
               type: "invoke",
-              recv: this.targets[recv],
+              recv: this.targets[recv] ?? "local://any@default",
               rootPromiseId: promise.id,
               leafPromiseId: promise.id,
             },
@@ -617,15 +612,11 @@ export class Server {
 
     // Create new promise
     if (record === undefined && to === "pending") {
-      util.assert(
-        opts.timeout !== undefined,
-        `transitionPromise(pending): 'timeout' option is required to create promise '${id}'`,
-      );
-
+      util.assertDefined(opts.timeout);
       record = {
         id: id,
         state: to,
-        timeout: opts.timeout!,
+        timeout: opts.timeout,
         iKeyForCreate: opts.iKey,
         param: opts.value,
         value: undefined,
@@ -779,25 +770,19 @@ export class Server {
     let record = this.tasks.get(id);
 
     if (record === undefined && to === "init") {
-      util.assert(opts.type !== undefined, "transitionTask(init): 'type' option is required when initializing a task");
-      util.assert(opts.recv !== undefined, "transitionTask(init): 'recv' option is required when initializing a task");
-      util.assert(
-        opts.rootPromiseId !== undefined,
-        "transitionTask(init): 'rootPromiseId' option is required when initializing a task",
-      );
-      util.assert(
-        opts.leafPromiseId !== undefined,
-        "transitionTask(init): 'leafPromiseId' option is required when initializing a task",
-      );
+      util.assertDefined(opts.type);
+      util.assertDefined(opts.recv);
+      util.assertDefined(opts.rootPromiseId);
+      util.assertDefined(opts.leafPromiseId);
 
       record = {
         id: id,
         counter: 1,
         state: to,
-        type: opts.type!,
-        recv: opts.recv!,
-        rootPromiseId: opts.rootPromiseId!,
-        leafPromiseId: opts.leafPromiseId!,
+        type: opts.type,
+        recv: opts.recv,
+        rootPromiseId: opts.rootPromiseId,
+        leafPromiseId: opts.leafPromiseId,
         createdOn: time,
       };
       this.tasks.set(id, record);
@@ -815,21 +800,15 @@ export class Server {
     }
 
     if (record?.state === "init" && to === "claimed" && record.counter === opts.counter) {
-      util.assert(
-        opts.ttl !== undefined,
-        "transitionTask(claimed): 'ttl' option is required when claiming a task from init state",
-      );
-      util.assert(
-        opts.processId !== undefined,
-        "transitionTask(claimed): 'processId' option is required when claiming a task from init state",
-      );
+      util.assertDefined(opts.ttl);
+      util.assertDefined(opts.processId);
 
       record = {
         ...record,
         state: to,
-        processId: opts.processId!,
-        ttl: opts.ttl!,
-        expiry: time + opts.ttl!,
+        processId: opts.processId,
+        ttl: opts.ttl,
+        expiry: time + opts.ttl,
       };
 
       this.tasks.set(id, record);
@@ -837,21 +816,15 @@ export class Server {
     }
 
     if (record?.state === "enqueued" && to === "claimed" && record.counter === opts.counter) {
-      util.assert(
-        opts.ttl !== undefined,
-        "transitionTask(claimed): 'ttl' option is required when claiming a task from enqueued state",
-      );
-      util.assert(
-        opts.processId !== undefined,
-        "transitionTask(claimed): 'processId' option is required when claiming a task from enqueued state",
-      );
+      util.assertDefined(opts.ttl);
+      util.assertDefined(opts.processId);
 
       record = {
         ...record,
         state: to,
-        processId: opts.processId!,
-        ttl: opts.ttl!,
-        expiry: time + opts.ttl!,
+        processId: opts.processId,
+        ttl: opts.ttl,
+        expiry: time + opts.ttl,
       };
 
       this.tasks.set(id, record);
@@ -875,12 +848,9 @@ export class Server {
     }
 
     if (record !== undefined && ["enqueued", "claimed"].includes(record.state) && to === "init") {
+      util.assertDefined(record.expiry);
       util.assert(
-        record.expiry !== undefined,
-        "transitionTask(init): 'expiry' must be set before re-initializing an expired task",
-      );
-      util.assert(
-        time >= record.expiry!,
+        time >= record.expiry,
         `transitionTask(init): cannot re-init task '${id}' before expiry (${record.expiry})`,
       );
 
@@ -895,13 +865,13 @@ export class Server {
     }
 
     if (record?.state === "claimed" && to === "claimed" && opts.force) {
-      util.assert(record.ttl !== undefined, "transitionTask(claimed): 'ttl' must be set to force-claim a task");
+      util.assertDefined(record.ttl);
 
       record = {
         ...record,
-        processId: record.processId!,
-        ttl: record.ttl!,
-        expiry: time + record.ttl!,
+        processId: record.processId,
+        ttl: record.ttl,
+        expiry: time + record.ttl,
       };
 
       this.tasks.set(id, record);
@@ -971,31 +941,22 @@ export class Server {
 
     // Create new schedule
     if (record === undefined && to === "created") {
-      util.assert(
-        opts.cron !== undefined,
-        "transitionSchedule(created): 'cron' option is required to create a schedule",
-      );
-      util.assert(
-        opts.promiseId !== undefined,
-        "transitionSchedule(created): 'promiseId' option is required to create a schedule",
-      );
-      util.assert(
-        opts.promiseTimeout !== undefined,
-        "transitionSchedule(created): 'promiseTimeout' option is required to create a schedule",
-      );
-      util.assert(opts.promiseTimeout! >= 0, "transitionSchedule(created): 'promiseTimeout' must be non-negative");
+      util.assertDefined(opts.cron);
+      util.assertDefined(opts.promiseId);
+      util.assertDefined(opts.promiseTimeout);
+      util.assert(opts.promiseTimeout >= 0, "transitionSchedule(created): 'promiseTimeout' must be non-negative");
 
       record = {
         id: id,
         description: opts.description,
-        cron: opts.cron!,
+        cron: opts.cron,
         tags: opts.tags ?? {},
-        promiseId: opts.promiseId!,
-        promiseTimeout: opts.promiseTimeout!,
+        promiseId: opts.promiseId,
+        promiseTimeout: opts.promiseTimeout,
         promiseParam: opts.promiseParam,
         promiseTags: opts.promiseTags ?? {},
         lastRunTime: undefined,
-        nextRunTime: CronExpressionParser.parse(opts.cron!).next().getMilliseconds(),
+        nextRunTime: CronExpressionParser.parse(opts.cron).next().getMilliseconds(),
         iKey: opts.iKey,
         createdOn: time,
       };
@@ -1009,11 +970,11 @@ export class Server {
     }
 
     // Update existing schedule
-    if (record !== undefined && to === "created" && opts.updating!) {
+    if (record !== undefined && to === "created" && opts.updating) {
       record = {
         ...record,
         lastRunTime: record.nextRunTime,
-        nextRunTime: CronExpressionParser.parse(record.cron!).next().getMilliseconds(),
+        nextRunTime: CronExpressionParser.parse(record.cron).next().getMilliseconds(),
       };
       this.schedules.set(id, record);
       return { schedule: record, applied: true };
