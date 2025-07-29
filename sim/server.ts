@@ -6,8 +6,11 @@ import { type Address, Message, Process, anycast, unicast } from "./simulator";
 export class ServerProcess extends Process {
   server: Server = new Server();
 
-  constructor() {
-    super("server");
+  constructor(
+    public readonly iaddr: string,
+    public readonly gaddr?: string,
+  ) {
+    super(iaddr, gaddr);
   }
 
   tick(time: number, messages: Message<RequestMsg>[]): Message<ResponseMsg | RecvMsg>[] {
@@ -30,7 +33,7 @@ export class ServerProcess extends Process {
       } else {
         throw new Error(`not handled ${url}`);
       }
-      const msg = new Message<RecvMsg>(unicast("server"), target, message.msg, { requ: true });
+      const msg = new Message<RecvMsg>(unicast(this.iaddr), target, message.msg, { requ: true });
       responses.push(msg);
     }
 

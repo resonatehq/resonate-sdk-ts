@@ -1,7 +1,7 @@
 import type { Network, RecvMsg, RequestMsg, ResponseMsg } from "../src/network/network";
 import { ResonateInner } from "../src/resonate-inner";
 import { assert } from "../src/util";
-import { anycast, Message, Process, unicast } from "./simulator";
+import { type Address, anycast, Message, Process, unicast } from "./simulator";
 
 class SimulatedNetwork implements Network {
   private correlationId = 1;
@@ -10,8 +10,12 @@ class SimulatedNetwork implements Network {
     {};
   private currentTime = 0;
 
+  constructor(
+    public readonly source: Address,
+    public readonly target: Address,
+  ) {}
   send(request: RequestMsg, callback: (timeout: boolean, response: ResponseMsg) => void): void {
-    const message = new Message<RequestMsg>(anycast("worker"), unicast("server"), request, {
+    const message = new Message<RequestMsg>(this.source, this.target, request, {
       requ: true,
       correlationId: this.correlationId++,
     });
@@ -68,10 +72,14 @@ export class WorkerProcess extends Process {
   private network: SimulatedNetwork;
   resonate: ResonateInner;
 
-  constructor(public readonly iaddr: string) {
-    super(iaddr, "worker");
-    this.network = new SimulatedNetwork();
-    this.resonate = new ResonateInner(this.network, { pid: iaddr, group: "worker", ttl: 5000 });
+  constructor(
+    server: Address,
+    public readonly iaddr: string,
+    public readonly gaddr?: string,
+  ) {
+    super(iaddr, gaddr || "default");
+    this.network = new SimulatedNetwork(anycast(this.gaddr || "default", this.iaddr), server);
+    this.resonate = new ResonateInner(this.network, { pid: iaddr, group: gaddr || "default", ttl: 5000 });
   }
 
   tick(time: number, messages: Message<any>[]): Message<any>[] {

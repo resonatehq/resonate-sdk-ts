@@ -11,11 +11,18 @@ function* fib(ctx: context.Context, n: number): Generator {
   return (yield ctx.lfc(fib, n - 1)) + (yield ctx.lfc(fib, n - 2));
 }
 
+function* foo(ctx: context.Context): Generator {
+  yield ctx.lfc(bar);
+}
+function bar(ctx: context.Context): void {
+  return;
+}
 const sim = new Simulator(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-const worker = new WorkerProcess("worker-1");
+const worker = new WorkerProcess(unicast("server"), "worker-1", "worker");
 
 worker.resonate.register("fib", fib);
-sim.register(new ServerProcess());
+worker.resonate.register("foo", foo);
+sim.register(new ServerProcess("server"));
 sim.register(worker);
 
 sim.send(
@@ -40,4 +47,4 @@ while (sim.more() || i < 10) {
   i++;
 }
 
-console.log(sim.outbox);
+console.log("outbox", sim.outbox);
