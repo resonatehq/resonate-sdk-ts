@@ -96,7 +96,7 @@ export class Server {
     this.targets = { default: "local://any@default" };
   }
 
-  next(time: number = Date.now()): number | undefined {
+  next(time: number): number | undefined {
     let timeout: number | undefined = undefined;
 
     // Check pending promises
@@ -140,7 +140,7 @@ export class Server {
     return timeout;
   }
 
-  step(time: number = Date.now()): RecvMsg[] {
+  step(time: number): RecvMsg[] {
     for (const schedule of this.schedules.values()) {
       util.assertDefined(schedule.nextRunTime);
       if (time < schedule.nextRunTime) {
@@ -222,7 +222,7 @@ export class Server {
     return msgs;
   }
 
-  process(requ: RequestMsg, time: number = Date.now()): ResponseMsg {
+  process(requ: RequestMsg, time: number): ResponseMsg {
     switch (requ.kind) {
       case "createPromise": {
         return {

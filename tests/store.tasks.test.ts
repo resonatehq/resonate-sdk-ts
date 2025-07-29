@@ -8,7 +8,7 @@ let TICK_TIME = 5;
 
 describe("tasks transitions", () => {
   function step(server: Server): { id: string; counter: number } {
-    let msgs = server.step();
+    let msgs = server.step(Date.now());
     expect(msgs.length).toBe(1);
     const value = msgs[0];
     expect(value.type).toBe("invoke");

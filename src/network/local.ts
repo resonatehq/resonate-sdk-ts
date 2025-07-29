@@ -41,12 +41,13 @@ export class LocalNetwork implements Network {
   }
 
   private enqueueNext(): void {
+    const time = Date.now();
     clearTimeout(this.timeoutId);
-    const n = this.server.next();
+    const n = this.server.next(time);
 
     if (n !== undefined) {
       this.timeoutId = setTimeout((): void => {
-        const msgs = this.server.step();
+        const msgs = this.server.step(time);
         this.enqueueNext();
         this.recv(msgs);
       }, n);
@@ -54,7 +55,7 @@ export class LocalNetwork implements Network {
   }
 
   send(request: RequestMsg, callback: (timeout: boolean, response: ResponseMsg) => void): void {
-    const response = this.server.process(request);
+    const response = this.server.process(request, Date.now());
     clearTimeout(this.timeoutId);
     this.enqueueNext();
     callback(false, response);

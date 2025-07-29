@@ -1,5 +1,3 @@
-
-
 class Random {
   // Internal state of the random number generator (RNG)
   private state: number;
@@ -39,17 +37,20 @@ export class Message<T> {
   isResponse(): boolean {
     return this.head.resp;
   }
-  resp<U>(target: Address, data: U) {
-    return new Message(target, data, { resp: this.head.requ });
+  resp<U>(data: U) {
+    return new Message(unicast(this.head.replyTo), data, {
+      resp: this.head.requ,
+      correlationId: this.head.correlationId,
+    });
   }
 }
 
-class Process {
+export class Process {
   public active = true;
 
   constructor(
     public readonly iaddr: string,
-    public readonly gaddr: string[] = [],
+    public readonly gaddr?: string,
   ) {}
 
   tick(time: number, messages: Message<any>[]): Message<any>[] {
@@ -60,8 +61,6 @@ class Process {
     console.log(`proc [${this.iaddr}]`, ...args);
   }
 }
-
-
 
 export class DeliveryOptions {
   dropProb: number;
@@ -81,6 +80,7 @@ export class Simulator {
   private init = false;
   private process: Process[] = [];
   private network: Message<any>[] = [];
+  public outbox: Message<any>[] = [];
   public deliveryOptions: DeliveryOptions;
 
   constructor(seed: number, deliveryOptions: DeliveryOptions = new DeliveryOptions()) {
@@ -148,10 +148,6 @@ export class Simulator {
     for (const message of consumed) {
       const target = message.target;
       if (target.kind === "unicast") {
-        if (target.iaddr === "environment") {
-          console.log(message);
-        }
-
         if (target.iaddr in inboxes) {
           inboxes[target.iaddr].push(message);
         }
@@ -161,7 +157,7 @@ export class Simulator {
           inboxes[preference.iaddr].push(message);
         } else {
           for (const process of this.process) {
-            if (process.active && process.gaddr.includes(target.gaddr)) {
+            if (process.active && target.gaddr === process.gaddr) {
               inboxes[process.iaddr].push(message);
               break;
             }
@@ -176,7 +172,13 @@ export class Simulator {
       if (!process.active) {
         continue;
       }
-      newMessages.push(...process.tick(this.time, inboxes[process.iaddr]));
+      for (const msg of process.tick(this.time, inboxes[process.iaddr])) {
+        if (msg.target.kind === "unicast" && msg.target.iaddr === "environment") {
+          this.outbox.push(msg);
+        } else {
+          newMessages.push(msg);
+        }
+      }
     }
 
     this.network = retained.concat(newMessages);
