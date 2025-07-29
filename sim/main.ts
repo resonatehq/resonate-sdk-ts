@@ -6,6 +6,7 @@ import { WorkerProcess } from "./worker";
 const sim = new Simulator(102);
 const worker = new WorkerProcess("worker-1", "worker");
 worker.resonate.register("foo", () => {
+  console.log("FOOOOOO");
   return "hello world";
 });
 sim.register(new ServerProcess("server"));
@@ -13,6 +14,7 @@ sim.register(worker);
 
 sim.send(
   new Message<RequestMsg>(
+    unicast("environment"),
     unicast("server"),
     {
       kind: "createPromise",
@@ -21,7 +23,7 @@ sim.send(
       tags: { "resonate:invoke": "local://any@worker" },
       param: { data: { func: "foo", args: [] } },
     },
-    { requ: true, replyTo: "environment", correlationId: 0 },
+    { requ: true, correlationId: 0 },
   ),
 );
 

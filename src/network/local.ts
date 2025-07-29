@@ -1,35 +1,6 @@
 import { Server } from "../server";
 
-import type {
-  ClaimTaskReq,
-  ClaimTaskRes,
-  CompletePromiseReq,
-  CompletePromiseRes,
-  CompleteTaskReq,
-  CompleteTaskRes,
-  CreateCallbackReq,
-  CreateCallbackRes,
-  CreatePromiseAndTaskReq,
-  CreatePromiseAndTaskRes,
-  CreatePromiseReq,
-  CreatePromiseRes,
-  CreateScheduleReq,
-  CreateScheduleRes,
-  CreateSubscriptionReq,
-  CreateSubscriptionRes,
-  DeleteScheduleReq,
-  DeleteScheduleRes,
-  HeartbeatTasksReq,
-  HeartbeatTasksRes,
-  Network,
-  ReadPromiseReq,
-  ReadPromiseRes,
-  ReadScheduleReq,
-  ReadScheduleRes,
-  RecvMsg,
-  RequestMsg,
-  ResponseMsg,
-} from "./network";
+import type { Network, RecvMsg, RequestMsg, ResponseMsg } from "./network";
 
 export class LocalNetwork implements Network {
   private server: Server;
@@ -62,9 +33,9 @@ export class LocalNetwork implements Network {
   }
 
   recv(msg: any): void {
-    const msgs = msg as RecvMsg[];
+    const msgs = msg as { msg: RecvMsg; recv: string }[];
     for (const m of msgs) {
-      this.onMessage?.(m);
+      this.onMessage?.(m.msg);
     }
   }
 

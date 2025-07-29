@@ -26,6 +26,7 @@ export function anycast(gaddr: string, iaddr?: string): Address {
 
 export class Message<T> {
   constructor(
+    public source: Address,
     public target: Address,
     public data: T,
     public head: Record<string, any> = {},
@@ -38,7 +39,7 @@ export class Message<T> {
     return this.head.resp;
   }
   resp<U>(data: U) {
-    return new Message(unicast(this.head.replyTo), data, {
+    return new Message(this.target, this.source, data, {
       resp: this.head.requ,
       correlationId: this.head.correlationId,
     });
@@ -114,7 +115,6 @@ export class Simulator {
     this.network.push(message);
   }
   tick(): void {
-    console.log("sim tick", this.network);
     if (!this.init) {
       this.init = true;
     }

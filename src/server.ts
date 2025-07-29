@@ -140,7 +140,7 @@ export class Server {
     return timeout;
   }
 
-  step(time: number): RecvMsg[] {
+  step(time: number): { msg: RecvMsg; recv: string }[] {
     for (const schedule of this.schedules.values()) {
       util.assertDefined(schedule.nextRunTime);
       if (time < schedule.nextRunTime) {
@@ -182,45 +182,54 @@ export class Server {
       }
     }
 
-    const msgs: RecvMsg[] = [];
+    const msgs: { msg: RecvMsg; recv: string }[] = [];
 
     for (const task of this.tasks.values()) {
       if (task.state !== "init") {
         continue;
       }
 
-      let msg: RecvMsg;
+      let msg: { msg: RecvMsg; recv: string };
       if (task.type === "invoke") {
         msg = {
-          type: "invoke",
-          task: {
-            id: task.id,
-            rootPromiseId: task.rootPromiseId,
-            counter: task.counter,
-            timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
-            processId: task.processId,
-            createdOn: task.createdOn,
-            completedOn: task.completedOn,
+          msg: {
+            type: "invoke",
+            task: {
+              id: task.id,
+              rootPromiseId: task.rootPromiseId,
+              counter: task.counter,
+              timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
+              processId: task.processId,
+              createdOn: task.createdOn,
+              completedOn: task.completedOn,
+            },
           },
+          recv: task.recv,
         };
       } else if (task.type === "resume") {
         msg = {
-          type: "resume",
-          task: {
-            id: task.id,
-            rootPromiseId: task.rootPromiseId,
-            counter: task.counter,
-            timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
-            processId: task.processId,
-            createdOn: task.createdOn,
-            completedOn: task.completedOn,
+          msg: {
+            type: "resume",
+            task: {
+              id: task.id,
+              rootPromiseId: task.rootPromiseId,
+              counter: task.counter,
+              timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
+              processId: task.processId,
+              createdOn: task.createdOn,
+              completedOn: task.completedOn,
+            },
           },
+          recv: task.recv,
         };
       } else {
         util.assert(task.type === "notify", `step(): unexpected task type '${task.type}' for notify message`);
         msg = {
-          type: "notify",
-          promise: this.getPromise({ id: task.rootPromiseId }),
+          msg: {
+            type: "notify",
+            promise: this.getPromise({ id: task.rootPromiseId }),
+          },
+          recv: task.recv,
         };
       }
 
@@ -726,7 +735,7 @@ export class Server {
             id: `__invoke:${args.id}`,
             to: "init",
             type: "invoke",
-            recv: this.targets[recv] ?? "local://any@default",
+            recv: this.targets[recv] ?? recv,
             rootPromiseId: promise.id,
             leafPromiseId: promise.id,
             time: args.time,

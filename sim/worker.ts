@@ -1,6 +1,6 @@
 import type { Network, RecvMsg, RequestMsg, ResponseMsg } from "../src/network/network";
 import { ResonateInner } from "../src/resonate-inner";
-import { Message, Process, unicast } from "./simulator";
+import { anycast, Message, Process, unicast } from "./simulator";
 
 class SimulatedNetwork implements Network {
   private correlationId = 0;
@@ -10,8 +10,7 @@ class SimulatedNetwork implements Network {
   private currentTime = 0;
 
   send(request: RequestMsg, callback: (timeout: boolean, response: ResponseMsg) => void): void {
-    console.log("DOMINIK", request);
-    const message = new Message<RequestMsg>(unicast("server"), request, {
+    const message = new Message<RequestMsg>(anycast("worker"), unicast("server"), request, {
       requ: true,
       correlationId: this.correlationId++,
     });

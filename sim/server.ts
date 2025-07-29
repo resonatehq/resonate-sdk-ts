@@ -1,6 +1,7 @@
 import type { RecvMsg, RequestMsg, ResponseMsg } from "../src/network/network";
 import { Server } from "../src/server";
-import { Message, Process, anycast } from "./simulator";
+import { assert } from "../src/util";
+import { type Address, Message, Process, anycast, unicast } from "./simulator";
 
 export class ServerProcess extends Process {
   server: Server = new Server();
@@ -16,8 +17,17 @@ export class ServerProcess extends Process {
     }
     const taskMgs = this.server.step(time);
     for (const message of taskMgs) {
-      // TODO: THE TASK MUST LET US KNOW WHERE IT WANTST TO GO :warning:
-      const msg = new Message<RecvMsg>(anycast("worker"), message);
+      const url = new URL(message.recv);
+      assert(url.protocol === "local:");
+      let target: Address;
+      if (url.username === "any") {
+        target = url.pathname === "" ? anycast(url.hostname) : anycast(url.hostname, `${url.hostname}${url.pathname}`);
+      } else if (url.username === "uni") {
+        target = unicast(`${url.hostname}${url.pathname}`);
+      } else {
+        throw new Error(`not handled ${url}`);
+      }
+      const msg = new Message<RecvMsg>(unicast("server"), target, message.msg, { requ: true });
       responses.push(msg);
     }
 
