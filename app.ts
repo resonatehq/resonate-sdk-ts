@@ -8,7 +8,7 @@ function* fib(ctx: context.Context, n: number): Generator {
   return (yield ctx.rfc("fib", n - 1)) + (yield ctx.rfc("fib", n - 2));
 }
 
-const resonate = ResonateInner.local("default", "worker");
+const resonate = ResonateInner.local();
 
 const rib = resonate.register("fib", fib);
 
