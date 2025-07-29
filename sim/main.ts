@@ -4,19 +4,17 @@ import { Message, Simulator, unicast } from "./simulator";
 import { WorkerProcess } from "./worker";
 
 import type * as context from "../src/context";
-function* foo(ctx: context.Context, n: number): Generator {
-  const v = yield* ctx.lfc(bar);
-  return v;
-}
-
-function bar(ctx: context.Context): string {
-  return "Hello, world";
+function* fib(ctx: context.Context, n: number): Generator {
+  if (n <= 1) {
+    return n;
+  }
+  return (yield ctx.lfc(fib, n - 1)) + (yield ctx.lfc(fib, n - 2));
 }
 
 const sim = new Simulator(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
 const worker = new WorkerProcess("worker-1");
 
-worker.resonate.register("foo", foo);
+worker.resonate.register("fib", fib);
 sim.register(new ServerProcess());
 sim.register(worker);
 
@@ -30,7 +28,7 @@ sim.send(
       timeout: 10020001,
       iKey: "foo",
       tags: { "resonate:invoke": "local://any@worker" },
-      param: { fn: "foo", args: [] },
+      param: { fn: "fib", args: [10] },
     },
     { requ: true, correlationId: 0 },
   ),
