@@ -1,3 +1,4 @@
+import type { Clock } from "./clock";
 import type { Context } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo, type Suspended } from "./coroutine";
 import { Handler, type Task } from "./handler";
@@ -24,7 +25,8 @@ export class Computation {
   private processor: Processor;
   private seenTodos: Set<string>;
   private task?: Task;
-  private callback?: (err: any, result: any) => void;
+  private invokeCallback?: (err: any, result: any) => void;
+  private onMesgCallback?: () => void; // TODO(avillega): should this resumecallback take and error?
   private invocationParams?: InvocationParams;
 
   constructor(network: Network, group: string, pid: string, processor?: Processor) {
@@ -44,17 +46,18 @@ export class Computation {
     this.task = task;
     util.assert(this.eventQueue.length === 0, "The event queue must be empty on a new invocation");
     this.invocationParams = invocationParams;
-    this.callback = cb;
+    this.invokeCallback = cb;
     this.eventQueue.push("invoke");
     this.process();
   }
 
   // Resumes an already alive computation
-  resume(task: Task): void {
+  resume(task: Task, cb: () => void): void {
     console.log("resuming", this.invocationParams?.id);
     util.assertDefined(this.invocationParams);
 
     this.task = task;
+    this.onMesgCallback = cb;
     this.eventQueue.push("invoke");
     this.process();
   }
@@ -87,7 +90,11 @@ export class Computation {
             this.task = undefined;
             this.seenTodos.clear();
 
-            this.callback?.(null, durablePromise.value);
+            // NOTE: which one should we call first in this case, if the invokecallback is a long running callback, like the rest of the user code
+            // onMessageCallback might not ever be called. if we call onMessageCallback first it is possible that we never call invokeCallback, for
+            // example if we kill the process in a FaaS environmet or if the simulator does all its continuation logic in this callback.
+            this.invokeCallback?.(null, durablePromise.value);
+            this.onMesgCallback?.();
           });
         });
       } else {
@@ -163,10 +170,14 @@ export class Computation {
   private completeTask() {
     // TODO (avillega): Should the task always be defined?
     if (this.task) {
-      util.assert(this.eventQueue.length === 0, "The event queue must be empty when completing the task"); // The queue must be empty
+      util.assert(this.eventQueue.length === 0, "The event queue must be empty when completing the task");
       this.network.send({ kind: "completeTask", id: this.task.id, counter: this.task.counter }, () => {
-        // Once the task is completed reset the computation
         this.task = undefined;
+        // NOTE: In this case we don't call the invokeCallback so no problem here.
+        // We can decide to only call onMesgCallback here and not on the "complete"
+        // computation case
+        this.onMesgCallback?.();
+        this.onMesgCallback = undefined;
       });
     }
   }

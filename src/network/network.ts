@@ -277,5 +277,5 @@ export interface Network {
   recv(msg: any): void;
 
   // Provided by the user of the network, interface
-  onMessage?: (msg: RecvMsg) => void;
+  onMessage?: (msg: RecvMsg, cb: () => void) => void;
 }

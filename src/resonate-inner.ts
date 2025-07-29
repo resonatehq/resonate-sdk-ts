@@ -145,7 +145,7 @@ export class ResonateInner {
     };
   }
 
-  private onMessage = (msg: RecvMsg): void => {
+  private onMessage = (msg: RecvMsg, cb: () => void): void => {
     if (msg.type === "resume" || msg.type === "invoke") {
       this.network.send(
         {
@@ -165,7 +165,9 @@ export class ResonateInner {
               // if we already have a computation for that is very probable that we are reaciving a resume
               util.assertDefined(leaf);
               comp.handler.updateCache(leaf.data);
-              comp.resume(msg.task);
+
+              // NOTE: we set the onmessage callback here, this will be the entry point for the onmessage callback
+              comp.resume(msg.task, cb);
               return;
             }
 
@@ -181,7 +183,9 @@ export class ResonateInner {
 
             const compu = new Computation(this.network, this.group, this.pid);
             this.computations.set(root.id, compu);
-            compu.invoke(msg.task!, { id: root.data.id, fn: func, args }, () => {});
+            compu.invoke(msg.task!, { id: root.data.id, fn: func, args }, () => {
+              cb();
+            });
           }
         },
       );

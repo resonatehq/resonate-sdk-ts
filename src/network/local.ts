@@ -63,11 +63,11 @@ export class LocalNetwork implements Network {
   recv(msg: any): void {
     const msgs = msg as RecvMsg[];
     for (const m of msgs) {
-      this.onMessage?.(m);
+      this.onMessage?.(m, () => {});
     }
   }
 
-  public onMessage?: (msg: RecvMsg) => void;
+  public onMessage?: (msg: RecvMsg, cb: () => void) => void;
 
   private handleRequest(request: RequestMsg): ResponseMsg {
     switch (request.kind) {

@@ -212,7 +212,7 @@ export class HttpNetwork implements Network {
   private encoder: Encoder;
   private eventSource: EventSource;
 
-  public onMessage?: (msg: Msg) => void;
+  public onMessage?: (msg: Msg, cb: () => void) => void;
 
   constructor(config: HttpNetworkConfig) {
     const { host, storePort, msgSrcPort, pid, group } = config;
@@ -248,7 +248,7 @@ export class HttpNetwork implements Network {
     const data = JSON.parse(e.data);
 
     if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
-      this.onMessage?.({ type: data.type, task: data.task });
+      this.onMessage?.({ type: data.type, task: data.task }, () => {});
       return;
     }
 
