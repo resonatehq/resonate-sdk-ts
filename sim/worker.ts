@@ -68,13 +68,10 @@ export class WorkerProcess extends Process {
   private network: SimulatedNetwork;
   resonate: ResonateInner;
 
-  constructor(
-    public readonly iaddr: string,
-    public readonly gaddr: string,
-  ) {
-    super(iaddr, gaddr);
+  constructor(public readonly iaddr: string) {
+    super(iaddr, "worker");
     this.network = new SimulatedNetwork();
-    this.resonate = new ResonateInner(this.network, { pid: iaddr, group: gaddr, ttl: 5000 });
+    this.resonate = new ResonateInner(this.network, { pid: iaddr, group: "worker", ttl: 5000 });
   }
 
   tick(time: number, messages: Message<any>[]): Message<any>[] {

@@ -6,6 +6,10 @@ import { type Address, Message, Process, anycast, unicast } from "./simulator";
 export class ServerProcess extends Process {
   server: Server = new Server();
 
+  constructor() {
+    super("server");
+  }
+
   tick(time: number, messages: Message<RequestMsg>[]): Message<ResponseMsg | RecvMsg>[] {
     this.log(messages);
     const responses: Message<ResponseMsg | RecvMsg>[] = [];
@@ -18,7 +22,6 @@ export class ServerProcess extends Process {
     const taskMgs = this.server.step(time);
     for (const message of taskMgs) {
       const url = new URL(message.recv);
-      assert(url.protocol === "local:");
       let target: Address;
       if (url.username === "any") {
         target = url.pathname === "" ? anycast(url.hostname) : anycast(url.hostname, `${url.hostname}${url.pathname}`);
