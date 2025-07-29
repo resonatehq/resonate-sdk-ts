@@ -1,9 +1,10 @@
 import type { Network, RecvMsg, RequestMsg, ResponseMsg } from "../src/network/network";
 import { ResonateInner } from "../src/resonate-inner";
+import { assert } from "../src/util";
 import { anycast, Message, Process, unicast } from "./simulator";
 
 class SimulatedNetwork implements Network {
-  private correlationId = 0;
+  private correlationId = 1;
   private buffer: Message<RequestMsg>[] = [];
   private callbacks: Record<number, { callback: (timeout: boolean, response: ResponseMsg) => void; timeout: number }> =
     {};
@@ -18,7 +19,7 @@ class SimulatedNetwork implements Network {
     this.buffer.push(message);
   }
 
-  recv(msg: any): void {
+  recv(msg: Message<RecvMsg>): void {
     this.onMessage?.(msg.data);
   }
 
@@ -42,17 +43,17 @@ class SimulatedNetwork implements Network {
     }
   }
 
-  process(message: Message<any>): void {
+  process(message: Message<ResponseMsg | RecvMsg>): void {
     if (message.isResponse()) {
       const correlationId = message.head?.correlationId;
       const entry = correlationId && this.callbacks[correlationId];
-
       if (entry) {
+        assert(message.isResponse());
         entry.callback(false, message.data);
         delete this.callbacks[correlationId];
       }
     } else {
-      this.recv(message);
+      this.recv(message as Message<RecvMsg>);
     }
   }
   flush(): Message<any>[] {
