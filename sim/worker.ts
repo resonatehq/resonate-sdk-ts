@@ -52,7 +52,6 @@ class SimulatedNetwork implements Network {
       const correlationId = message.head?.correlationId;
       const entry = correlationId && this.callbacks[correlationId];
       if (entry) {
-        assert(message.isResponse());
         entry.callback(false, message.data);
         delete this.callbacks[correlationId];
       }
@@ -81,7 +80,7 @@ export class WorkerProcess extends Process {
     this.resonate = new ResonateInner(this.network, { pid: iaddr, group: gaddr, ttl: 5000 });
   }
 
-  tick(time: number, messages: Message<any>[]): Message<any>[] {
+  tick(time: number, messages: Message<ResponseMsg | RecvMsg>[]): Message<RequestMsg>[] {
     if (messages.length > 0) {
       this.log(time, messages);
     }

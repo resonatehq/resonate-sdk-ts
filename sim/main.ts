@@ -8,7 +8,7 @@ function* fib(ctx: context.Context, n: number): Generator {
   if (n <= 1) {
     return n;
   }
-  return (yield ctx.rpc("fib", n - 1)) + (yield ctx.run(fib, n - 2));
+  return (yield ctx.rpc("fib", n - 1)) + (yield ctx.rpc("fib", n - 2));
 }
 
 function* foo(ctx: context.Context): Generator {
@@ -17,11 +17,12 @@ function* foo(ctx: context.Context): Generator {
 function bar(ctx: context.Context): void {
   return;
 }
+
 const sim = new Simulator(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
 const server = new ServerProcess("server");
 const worker1 = new WorkerProcess("worker-1", "default");
 
-worker1.resonate.register("fib", fib);
+// worker1.resonate.register("fib", fib);
 worker1.resonate.register("foo", foo);
 
 sim.register(server);
@@ -37,7 +38,7 @@ sim.send(
       timeout: 10020001,
       iKey: "foo",
       tags: { "resonate:invoke": "local://any@default" },
-      param: { fn: "fib", args: [10] },
+      param: { fn: "foo", args: [] },
     },
     { requ: true, correlationId: 0 },
   ),

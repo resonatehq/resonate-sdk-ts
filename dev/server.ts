@@ -1068,7 +1068,7 @@ export class Server {
       record = {
         ...record,
         state: to,
-        expiry: time + 5000,
+        expiry: time + 5000, // 5 secs
       };
       this.tasks.set(id, record);
       return { task: record, applied: true };
