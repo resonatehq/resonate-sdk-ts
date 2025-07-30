@@ -8,11 +8,11 @@ function* fib(ctx: context.Context, n: number): Generator {
   if (n <= 1) {
     return n;
   }
-  return (yield ctx.rfc("fib", n - 1)) + (yield ctx.lfc(fib, n - 2));
+  return (yield ctx.rpc("fib", n - 1)) + (yield ctx.run(fib, n - 2));
 }
 
 function* foo(ctx: context.Context): Generator {
-  yield ctx.lfc(bar);
+  yield ctx.run(bar);
 }
 function bar(ctx: context.Context): void {
   return;
