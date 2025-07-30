@@ -1,6 +1,6 @@
-import { Server } from "../../dev/server";
+import { Server } from "./server";
 
-import type { Network, RecvMsg, RequestMsg, ResponseMsg } from "./network";
+import type { Network, RecvMsg, RequestMsg, ResponseMsg } from "../src/network/network";
 
 export class LocalNetwork implements Network {
   private server: Server;
