@@ -63,16 +63,10 @@ export class Process {
   }
 }
 
-export class DeliveryOptions {
-  dropProb: number;
-  randomDelay: number;
-  duplProb: number;
-
-  constructor(dropProb = 0, randomDelay = 0, duplProb = 0) {
-    this.dropProb = dropProb;
-    this.randomDelay = randomDelay;
-    this.duplProb = duplProb;
-  }
+export interface DeliveryOptions {
+  dropProb?: number;
+  randomDelay?: number;
+  duplProb?: number;
 }
 
 export class Simulator {
@@ -82,11 +76,11 @@ export class Simulator {
   private process: Process[] = [];
   private network: Message<any>[] = [];
   public outbox: Message<any>[] = [];
-  public deliveryOptions: DeliveryOptions;
+  public deliveryOptions: Required<DeliveryOptions>;
 
-  constructor(seed: number, deliveryOptions: DeliveryOptions = new DeliveryOptions()) {
+  constructor(seed: number, { dropProb = 0, randomDelay = 0, duplProb = 0 }: DeliveryOptions = {}) {
     this.prng = new Random(seed);
-    this.deliveryOptions = deliveryOptions;
+    this.deliveryOptions = { dropProb, randomDelay, duplProb };
   }
 
   addMessage(message: Message<any>): void {

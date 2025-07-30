@@ -1,13 +1,12 @@
 import type { RecvMsg, RequestMsg, ResponseMsg } from "../src/network/network";
 import { Server } from "../src/server";
-import { assert } from "../src/util";
 import { type Address, Message, Process, anycast, unicast } from "./simulator";
 
 export class ServerProcess extends Process {
   server: Server = new Server();
 
-  constructor() {
-    super("server");
+  constructor(public readonly iaddr: string) {
+    super(iaddr);
   }
 
   tick(time: number, messages: Message<RequestMsg>[]): Message<ResponseMsg | RecvMsg>[] {

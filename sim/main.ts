@@ -1,6 +1,6 @@
 import type { RequestMsg } from "../src/network/network";
 import { ServerProcess } from "./server";
-import { Message, Simulator, unicast } from "./simulator";
+import { DeliveryOptions, Message, Simulator, unicast } from "./simulator";
 import { WorkerProcess } from "./worker";
 
 import type * as context from "../src/context";
@@ -18,7 +18,7 @@ function bar(ctx: context.Context): void {
   return;
 }
 const sim = new Simulator(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-const server = new ServerProcess();
+const server = new ServerProcess("server");
 const worker1 = new WorkerProcess("worker-1", "default");
 
 worker1.resonate.register("fib", fib);
@@ -44,7 +44,7 @@ sim.send(
 );
 
 let i = 0;
-while (sim.more() || i < 20) {
+while (sim.more() || i < 10) {
   sim.tick();
   i++;
 }
