@@ -68,5 +68,10 @@ while (sim.more() || i < 10) {
 }
 
 console.log("outbox", sim.outbox);
-console.log("seed promise foo", server.server.promises.get("foo")?.state === "resolved");
-console.log("seed promise fib", server.server.promises.get("fib")?.state === "resolved");
+
+const fooState = server.server.promises.get("foo")?.state;
+const fibState = server.server.promises.get("fib")?.state;
+
+if (!(fooState === "resolved" && fibState === "resolved")) {
+  throw new Error(`Expected both promises to be resolved, but got foo=${fooState}, fib=${fibState}`);
+}
