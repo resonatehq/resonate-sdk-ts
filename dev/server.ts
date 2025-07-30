@@ -195,13 +195,8 @@ export class Server {
           msg: {
             type: "invoke",
             task: {
-              id: task.id,
-              rootPromiseId: task.rootPromiseId,
-              counter: task.counter,
+              ...task,
               timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
-              processId: task.processId,
-              createdOn: task.createdOn,
-              completedOn: task.completedOn,
             },
           },
           recv: task.recv,
@@ -353,10 +348,7 @@ export class Server {
         return {
           kind: "claimedtask",
           message: this.claimTask({
-            id: requ.id,
-            counter: requ.counter,
-            processId: requ.processId,
-            ttl: requ.ttl,
+            ...requ,
             time,
           }),
         };
