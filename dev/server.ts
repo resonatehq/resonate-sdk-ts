@@ -619,7 +619,7 @@ export class Server {
     ttl,
     time,
   }: { id: string; counter: number; processId: string; ttl: number; time: number }): Mesg {
-    const { task, applied } = this.transitionTask({
+    const { task } = this.transitionTask({
       id,
       to: "claimed",
       counter,
@@ -1031,6 +1031,9 @@ export class Server {
   }): { task: Task; applied: boolean } {
     let record = this.tasks.get(id);
 
+
+
+
     if (record === undefined && to === "init") {
       util.assertDefined(type);
       util.assertDefined(recv);
@@ -1050,6 +1053,7 @@ export class Server {
       this.tasks.set(id, record);
       return { task: record, applied: true };
     }
+
 
     if (record?.state === "init" && to === "enqueued") {
       record = {
@@ -1138,9 +1142,12 @@ export class Server {
       return { task: record, applied: true };
     }
 
-    if (record?.state === "claimed" && to === "claimed" && record.counter === counter && record.processId === processId){
-      return {task: record, applied: false}
-    }
+    // Prevent duplicate task claims caused by repeated network messages from the same process.
+    // If the task is already in the "claimed" state with the same counter and processId, treat it as a no-op.
+    // if (record?.state === "claimed" && to === "claimed" && record.counter === counter && record.processId === processId){
+    //   return {task: record, applied: false}
+    // }
+
 
     if (
       record?.state === "claimed" &&
@@ -1177,6 +1184,13 @@ export class Server {
     if (record?.state === "completed" && to === "completed") {
       return { task: record, applied: false };
     }
+
+    // Not sure why this is needed, but if you the simulator with this setup
+    // const sim = new Simulator(3205863798589208, { randomDelay: 0.5, duplProb: 0.5 });
+    // and comment out this code, the server would break
+    // if (record?.state === "completed" && to === "claimed" && record.counter === counter && !force){
+    //   return { task: record, applied: false };
+    // }
 
     if (record === undefined) {
       throw new Error("Task not found");

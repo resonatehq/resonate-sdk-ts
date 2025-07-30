@@ -81,7 +81,9 @@ export class Computation {
       if (result.type === "completed") {
         // TODO(avillega): Handle rejected results aswell
         this.handler.resolvePromise(rootId, result.value, (durablePromise) => {
-          util.assertDefined(this.task);
+          if (this.task === undefined) {
+            return;
+          }
           this.network.send({ kind: "completeTask", id: this.task.id, counter: this.task.counter }, () => {
             // Clear the computation
             this.task = undefined;
