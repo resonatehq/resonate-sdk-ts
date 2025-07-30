@@ -1144,9 +1144,9 @@ export class Server {
 
     // Prevent duplicate task claims caused by repeated network messages from the same process.
     // If the task is already in the "claimed" state with the same counter and processId, treat it as a no-op.
-    // if (record?.state === "claimed" && to === "claimed" && record.counter === counter && record.processId === processId){
-    //   return {task: record, applied: false}
-    // }
+    if (record?.state === "claimed" && to === "claimed" && record.counter === counter && record.processId === processId){
+      return {task: record, applied: false}
+    }
 
 
     if (
@@ -1186,11 +1186,11 @@ export class Server {
     }
 
     // Not sure why this is needed, but if you the simulator with this setup
-    // const sim = new Simulator(3205863798589208, { randomDelay: 0.5, duplProb: 0.5 });
+    // const sim = new Simulator(714719649468282, { randomDelay: 0.5, duplProb: 0.5 });
     // and comment out this code, the server would break
-    // if (record?.state === "completed" && to === "claimed" && record.counter === counter && !force){
-    //   return { task: record, applied: false };
-    // }
+    if (record?.state === "completed" && to === "claimed" && record.counter === counter){
+      return { task: record, applied: false };
+    }
 
     if (record === undefined) {
       throw new Error("Task not found");

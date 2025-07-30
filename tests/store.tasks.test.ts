@@ -64,10 +64,18 @@ describe("tasks transitions", () => {
     expect(count).toBe(0);
   });
 
-  test("Test Case 12: transition from claimed to claimed via claim", async () => {
+  test("Test Case 12a: transition from claimed to claimed via claim", async () => {
+    // https://github.com/resonatehq/resonate/issues/751
     let task = step(server);
     await tasks.claim(task.id, task.counter, "task12", Number.MAX_SAFE_INTEGER);
-    await expect(tasks.claim(task.id, task.counter, "task12", Number.MAX_SAFE_INTEGER)).rejects.toThrow();
+    await expect(tasks.claim(task.id, task.counter, "notTask12", Number.MAX_SAFE_INTEGER)).rejects.toThrow();
+  });
+
+  test("Test Case 12b: transition from claimed to claimed via claim", async () => {
+    // https://github.com/resonatehq/resonate/issues/751
+    let task = step(server);
+    await tasks.claim(task.id, task.counter, "task12", Number.MAX_SAFE_INTEGER);
+    await tasks.claim(task.id, task.counter, "task12", Number.MAX_SAFE_INTEGER);
   });
 
   test("Test Case 13: transition from claimed to init via claim", async () => {
