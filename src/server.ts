@@ -165,7 +165,7 @@ export class Server {
     // Reject timed-out promises
     for (const promise of this.promises.values()) {
       if (promise.state === "pending" && time >= promise.timeout) {
-        const { applied } = this.transitionPromise({ id: promise.id, to: "rejected_timedout", time: time });
+        const { applied } = this.transitionPromise({ id: promise.id, to: "rejected_timedout", time });
         util.assert(applied, `step(): promise '${promise.id}' expected to be timed out but transition did not apply`);
       }
     }
@@ -504,7 +504,7 @@ export class Server {
   }
 
   private readPromise({ id }: { id: string }): DurablePromiseRecord {
-    return this.getPromise({ id: id });
+    return this.getPromise({ id });
   }
 
   private completePromise({
@@ -672,13 +672,13 @@ export class Server {
   }
 
   private completeTask({ id, counter, time }: { id: string; counter: number; time: number }): TaskRecord {
-    const { task } = this.transitionTask({ id: id, to: "completed", counter: counter, time: time });
+    const { task } = this.transitionTask({ id, to: "completed", counter, time });
 
     return {
       id: task.id,
       counter: task.counter,
       rootPromiseId: task.rootPromiseId,
-      timeout: 0,
+      timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
       processId: task.processId,
       createdOn: task.createdOn,
       completedOn: task.completedOn,
@@ -693,7 +693,7 @@ export class Server {
         continue;
       }
 
-      const { applied } = this.transitionTask({ id: task.id, to: "claimed", force: true, time: time });
+      const { applied } = this.transitionTask({ id: task.id, to: "claimed", force: true, time });
 
       util.assert(
         applied,
@@ -753,7 +753,7 @@ export class Server {
   }
 
   private deleteSchedule({ id, time }: { id: string; time: number }): void {
-    const { applied } = this.transitionSchedule({ id: id, to: "deleted", time: time });
+    const { applied } = this.transitionSchedule({ id, to: "deleted", time });
 
     util.assert(applied, `deleteSchedule: failed to delete schedule '${id}'`);
   }
@@ -803,7 +803,7 @@ export class Server {
       for (const router of this.routers) {
         const recv = router.route(promise);
         if (recv !== undefined) {
-          const { task, applied: taskApplied } = this.transitionTask({
+          const { task, applied } = this.transitionTask({
             id: `__invoke:${id}`,
             to: "init",
             type: "invoke",
@@ -812,11 +812,8 @@ export class Server {
             leafPromiseId: promise.id,
             time,
           });
-          util.assert(
-            taskApplied,
-            `transitionPromise: failed to init invoke task for promise '${id}' on route '${recv}'`,
-          );
-          return { promise, task, applied: taskApplied };
+          util.assert(applied, `transitionPromise: failed to init invoke task for promise '${id}' on route '${recv}'`);
+          return { promise, task, applied };
         }
       }
     }
@@ -826,32 +823,29 @@ export class Server {
       // Mark existing tasks as completed
       for (const task of this.tasks.values()) {
         if (task.rootPromiseId === id && ["init", "enqueued", "claimed"].includes(task.state)) {
-          const { applied: completeApplied } = this.transitionTask({
+          const { applied } = this.transitionTask({
             id: task.id,
             to: "completed",
             force: true,
             time,
           });
-          util.assert(completeApplied, `transitionPromise: failed to complete task '${task.id}' for promise '${id}'`);
+          util.assert(applied, `transitionPromise: failed to complete task '${task.id}' for promise '${id}'`);
         }
       }
 
       // Initialize callback tasks
       if (promise.callbacks) {
         for (const callback of promise.callbacks.values()) {
-          const { applied: callbackApplied } = this.transitionTask({
+          const { applied } = this.transitionTask({
             id: callback.id,
             to: "init",
             type: callback.type,
             recv: callback.recv,
             rootPromiseId: callback.rootPromiseId,
             leafPromiseId: callback.promiseId,
-            time: time,
+            time,
           });
-          util.assert(
-            callbackApplied,
-            `transitionPromise: failed to init callback task '${callback.id}' for promise '${id}'`,
-          );
+          util.assert(applied, `transitionPromise: failed to init callback task '${callback.id}' for promise '${id}'`);
         }
         promise.callbacks.clear();
       }
@@ -922,7 +916,7 @@ export class Server {
       time >= record.timeout &&
       ikeyMatch(record.iKeyForCreate, iKey)
     ) {
-      return this._transitionPromise({ id: id, to: "rejected_timedout", time: time });
+      return this._transitionPromise({ id, to: "rejected_timedout", time });
     }
 
     // Resolve or reject before timeout
@@ -950,7 +944,7 @@ export class Server {
       !strict &&
       time >= record.timeout
     ) {
-      return this._transitionPromise({ id: id, to: "rejected_timedout", time: time });
+      return this._transitionPromise({ id, to: "rejected_timedout", time });
     }
 
     // Strict completion after timeout -> error
@@ -1150,8 +1144,6 @@ export class Server {
 
       record = {
         ...record,
-        processId: record.processId,
-        ttl: record.ttl,
         expiry: time + record.ttl,
       };
 
