@@ -10,7 +10,10 @@ export class ServerProcess extends Process {
   }
 
   tick(time: number, messages: Message<RequestMsg>[]): Message<ResponseMsg | RecvMsg>[] {
-    this.log(messages);
+    if (messages.length > 0) {
+      this.log(time, messages);
+    }
+
     const responses: Message<ResponseMsg | RecvMsg>[] = [];
 
     for (const message of messages) {

@@ -58,8 +58,8 @@ export class Process {
     throw new Error("not implemented");
   }
 
-  log(...args: any[]): void {
-    console.log(`proc [${this.iaddr}]`, ...args);
+  log(time: number, ...args: any[]): void {
+    console.log(`[tick: ${time}] [proc: ${this.iaddr}]`, ...args);
   }
 }
 
