@@ -51,7 +51,7 @@ export class Computation {
 
   // Resumes an already alive computation
   resume(task: Task): void {
-    console.log("resuming", this.invocationParams?.id);
+    // console.log("resuming", this.invocationParams?.id);
     util.assertDefined(this.invocationParams);
 
     this.task = task;

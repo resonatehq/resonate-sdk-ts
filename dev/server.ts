@@ -662,13 +662,8 @@ export class Server {
     const { task } = this.transitionTask({ id, to: "completed", counter, time });
 
     return {
-      id: task.id,
-      counter: task.counter,
-      rootPromiseId: task.rootPromiseId,
+      ...task,
       timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
-      processId: task.processId,
-      createdOn: task.createdOn,
-      completedOn: task.completedOn,
     };
   }
 
@@ -824,11 +819,8 @@ export class Server {
       if (promise.callbacks) {
         for (const callback of promise.callbacks.values()) {
           const { applied } = this.transitionTask({
-            id: callback.id,
+            ...callback,
             to: "init",
-            type: callback.type,
-            recv: callback.recv,
-            rootPromiseId: callback.rootPromiseId,
             leafPromiseId: callback.promiseId,
             time,
           });
@@ -1031,22 +1023,6 @@ export class Server {
   }): { task: Task; applied: boolean } {
     let record = this.tasks.get(id);
 
-    if (record !== undefined && record.id === "__resume:fib.0.0.0.0.0.0.0.0:fib.0.0.0.0.0.0.0.0.1"){
-      console.log({time, record}, {
-        id,
-        to,
-        type,
-        recv,
-        rootPromiseId,
-        leafPromiseId,
-        counter,
-        processId,
-        ttl,
-        force,
-        time,
-      })
-    }
-
     if (record === undefined && to === "init") {
       util.assertDefined(type);
       util.assertDefined(recv);
@@ -1210,6 +1186,8 @@ export class Server {
       return { task: record, applied: false };
     }
 
+    // Ignore any duplicate or delayed "claimed" events that arrive after the task has already transitioned to "completed".
+    // Matching on counter and processId ensures we only drop repeats from the same claim attempt.
     if (
       record?.state === "completed" && to === "claimed" && record.counter === counter && record.processId === undefined
     ) {
