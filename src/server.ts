@@ -606,7 +606,7 @@ export class Server {
       id: `__resume:${rootPromiseId}:${id}`,
       type: "resume",
       promiseId: id,
-      rootPromiseId: rootPromiseId,
+      rootPromiseId,
       recv,
       timeout,
       createdOn: time,
@@ -810,7 +810,7 @@ export class Server {
             recv: this.targets[recv] ?? recv,
             rootPromiseId: promise.id,
             leafPromiseId: promise.id,
-            time: time,
+            time,
           });
           util.assert(
             taskApplied,
@@ -830,7 +830,7 @@ export class Server {
             id: task.id,
             to: "completed",
             force: true,
-            time: time,
+            time,
           });
           util.assert(completeApplied, `transitionPromise: failed to complete task '${task.id}' for promise '${id}'`);
         }
@@ -885,9 +885,9 @@ export class Server {
     if (record === undefined && to === "pending") {
       util.assertDefined(timeout);
       record = {
-        id: id,
+        id,
         state: to,
-        timeout: timeout,
+        timeout,
         iKeyForCreate: iKey,
         param: value,
         value: undefined,
@@ -1057,13 +1057,13 @@ export class Server {
       util.assertDefined(leafPromiseId);
 
       record = {
-        id: id,
+        id,
         counter: 1,
         state: to,
-        type: type,
-        recv: recv,
-        rootPromiseId: rootPromiseId,
-        leafPromiseId: leafPromiseId,
+        type,
+        recv,
+        rootPromiseId,
+        leafPromiseId,
         createdOn: time,
       };
       this.tasks.set(id, record);
@@ -1087,8 +1087,8 @@ export class Server {
       record = {
         ...record,
         state: to,
-        processId: processId,
-        ttl: ttl,
+        processId,
+        ttl,
         expiry: time + ttl,
       };
 
@@ -1103,8 +1103,8 @@ export class Server {
       record = {
         ...record,
         state: to,
-        processId: processId,
-        ttl: ttl,
+        processId,
+        ttl,
         expiry: time + ttl,
       };
 
@@ -1239,17 +1239,17 @@ export class Server {
       util.assert(promiseTimeout >= 0, "transitionSchedule(created): 'promiseTimeout' must be non-negative");
 
       record = {
-        id: id,
-        description: description,
-        cron: cron,
+        id,
+        description,
+        cron,
         tags: tags ?? {},
-        promiseId: promiseId,
-        promiseTimeout: promiseTimeout,
-        promiseParam: promiseParam,
+        promiseId,
+        promiseTimeout,
+        promiseParam,
         promiseTags: promiseTags ?? {},
         lastRunTime: undefined,
         nextRunTime: CronExpressionParser.parse(cron).next().getMilliseconds(),
-        iKey: iKey,
+        iKey,
         createdOn: time,
       };
       this.schedules.set(id, record);
