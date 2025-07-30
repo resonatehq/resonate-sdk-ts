@@ -20,7 +20,7 @@ function* bar(ctx: context.Context): Generator {
 
 const seed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 console.log("seed: ", seed);
-const sim = new Simulator(seed, { randomDelay: 0.75, duplProb: 0.75 });
+const sim = new Simulator(seed, { randomDelay: 0.5, duplProb: 0.5 });
 const server = new ServerProcess("server");
 const worker1 = new WorkerProcess("worker-1", "default");
 
@@ -68,5 +68,5 @@ while (sim.more() || i < 10) {
 }
 
 console.log("outbox", sim.outbox);
-console.log("seed promise", server.server.promises.get("foo"));
-console.log("seed promise", server.server.promises.get("fib"));
+console.log("seed promise foo", server.server.promises.get("foo")?.state === "resolved");
+console.log("seed promise fib", server.server.promises.get("fib")?.state === "resolved");

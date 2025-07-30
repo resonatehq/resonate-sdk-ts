@@ -82,7 +82,7 @@ export class WorkerProcess extends Process {
 
   tick(time: number, messages: Message<ResponseMsg | RecvMsg>[]): Message<RequestMsg>[] {
     if (messages.length > 0) {
-      // this.log(time, messages);
+      this.log(time, messages);
     }
 
     this.network.time(time);

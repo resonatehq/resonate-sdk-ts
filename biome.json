@@ -21,7 +21,6 @@
   },
   "linter": {
     "enabled": true,
-    "ignore": ["tests/**"],
     "rules": {
       "recommended": true,
       "suspicious": {

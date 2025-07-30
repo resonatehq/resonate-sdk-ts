@@ -1031,9 +1031,6 @@ export class Server {
   }): { task: Task; applied: boolean } {
     let record = this.tasks.get(id);
 
-
-
-
     if (record === undefined && to === "init") {
       util.assertDefined(type);
       util.assertDefined(recv);
@@ -1142,12 +1139,6 @@ export class Server {
       return { task: record, applied: true };
     }
 
-    // Prevent duplicate task claims caused by repeated network messages from the same process.
-    // If the task is already in the "claimed" state with the same counter and processId, treat it as a no-op.
-    if (record?.state === "claimed" && to === "claimed" && record.counter === counter && record.processId === processId){
-      return {task: record, applied: false}
-    }
-
 
     if (
       record?.state === "claimed" &&
@@ -1186,10 +1177,21 @@ export class Server {
     }
 
     // Not sure why this is needed, but if you the simulator with this setup
-    // const sim = new Simulator(714719649468282, { randomDelay: 0.5, duplProb: 0.5 });
+    // const sim = new Simulator(1018253789392087, { randomDelay: 0.5, duplProb: 0.5 });
     // and comment out this code, the server would break
-    if (record?.state === "completed" && to === "claimed" && record.counter === counter){
+    if (
+      record?.state === "completed" && to === "claimed" && record.counter === counter && (record.processId === processId || record.processId === undefined)
+    ) {
       return { task: record, applied: false };
+    }
+
+
+
+
+    // Prevent duplicate task claims caused by repeated network messages from the same process.
+    // If the task is already in the "claimed" state with the same counter and processId, treat it as a no-op.
+    if (record?.state === "claimed" && to === "claimed" && record.counter === counter && record.processId === processId){
+      return {task: record, applied: false}
     }
 
     if (record === undefined) {
