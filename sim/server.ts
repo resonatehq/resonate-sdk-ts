@@ -1,5 +1,5 @@
 import type { RecvMsg, RequestMsg, ResponseMsg } from "../src/network/network";
-import { Server } from "../src/server";
+import { Server } from "../dev/server";
 import { type Address, Message, Process, anycast, unicast } from "./simulator";
 
 export class ServerProcess extends Process {

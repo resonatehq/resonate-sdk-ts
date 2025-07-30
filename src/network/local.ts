@@ -1,4 +1,4 @@
-import { Server } from "../server";
+import { Server } from "../../dev/server";
 
 import type { Network, RecvMsg, RequestMsg, ResponseMsg } from "./network";
 
