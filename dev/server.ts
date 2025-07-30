@@ -1031,6 +1031,22 @@ export class Server {
   }): { task: Task; applied: boolean } {
     let record = this.tasks.get(id);
 
+    if (record !== undefined && record.id === "__resume:fib.0.0.0.0.0.0.0.0:fib.0.0.0.0.0.0.0.0.1"){
+      console.log({time, record}, {
+        id,
+        to,
+        type,
+        recv,
+        rootPromiseId,
+        leafPromiseId,
+        counter,
+        processId,
+        ttl,
+        force,
+        time,
+      })
+    }
+
     if (record === undefined && to === "init") {
       util.assertDefined(type);
       util.assertDefined(recv);
@@ -1176,41 +1192,31 @@ export class Server {
       return { task: record, applied: false };
     }
 
-    // Not sure why this is needed, but if you the simulator with this setup
-    // const sim = new Simulator(1018253789392087, { randomDelay: 0.5, duplProb: 0.5 });
-    // and comment out this code, the server would break
-    if (
-      record?.state === "completed" && to === "claimed" && record.counter === counter && (record.processId === processId || record.processId === undefined)
-    ) {
-      return { task: record, applied: false };
-    }
-
-
-
-
-    // Prevent duplicate task claims caused by repeated network messages from the same process.
-    // If the task is already in the "claimed" state with the same counter and processId, treat it as a no-op.
-    if (record?.state === "claimed" && to === "claimed" && record.counter === counter && record.processId === processId){
-      return {task: record, applied: false}
-    }
-
     if (record === undefined) {
       throw new Error("Task not found");
     }
 
-    console.log({record, id,
-    to,
-    type,
-    recv,
-    rootPromiseId,
-    leafPromiseId,
-    counter,
-    processId,
-    ttl,
-    force,
-    time,})
+    // Prevent duplicate task claims caused by repeated network messages from the same process.
+    // If the task is already in the "claimed" state with the same counter and processId, treat it as a no-op.
+    if (record?.state === "claimed" && to === "claimed" && record.counter === counter && record.processId === processId){
+      return { task: record, applied: false }
+    }
 
-    throw new Error("task is already claimed, completed, or an invalid counter was provided");
+    // Ignore any duplicate or delayed "claimed" events that arrive after the task has already transitioned to "completed".
+    // Matching on counter and processId ensures we only drop repeats from the same claim attempt.
+    if (
+      record?.state === "completed" && to === "claimed" && record.counter === counter && record.processId === processId
+    ) {
+      return { task: record, applied: false };
+    }
+
+    if (
+      record?.state === "completed" && to === "claimed" && record.counter === counter && record.processId === undefined
+    ) {
+      return { task: record, applied: false };
+    }
+
+    throw new Error(`task ${id} is already claimed, completed, or an invalid counter was provided`);
   }
 
   private transitionSchedule({
