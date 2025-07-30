@@ -14,7 +14,7 @@ function* fib(ctx: context.Context, n: number): Generator {
 function* foo(ctx: context.Context): Generator {
   yield ctx.run(bar);
 }
-function bar(ctx: context.Context): void {
+function* bar(ctx: context.Context): Generator {
   return;
 }
 
