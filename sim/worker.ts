@@ -1,7 +1,7 @@
 import type { Network, RecvMsg, RequestMsg, ResponseMsg } from "../src/network/network";
 import { ResonateInner } from "../src/resonate-inner";
 import { assert } from "../src/util";
-import { type Address, anycast, Message, Process, unicast } from "./simulator";
+import { type Address, Message, Process, anycast, unicast } from "./simulator";
 
 class SimulatedNetwork implements Network {
   private correlationId = 1;
