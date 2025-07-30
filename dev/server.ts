@@ -628,11 +628,6 @@ export class Server {
       time,
     });
 
-    util.assert(
-      applied,
-      `claimTask: failed to claim task '${id}' with counter ${counter} using processId '${processId}'`,
-    );
-
     switch (task.type) {
       case "invoke": {
         const promise = this.getPromise({ id: task.rootPromiseId });
@@ -1143,6 +1138,10 @@ export class Server {
       return { task: record, applied: true };
     }
 
+    if (record?.state === "claimed" && to === "claimed" && record.counter === counter && record.processId === processId){
+      return {task: record, applied: false}
+    }
+
     if (
       record?.state === "claimed" &&
       to === "completed" &&
@@ -1182,6 +1181,18 @@ export class Server {
     if (record === undefined) {
       throw new Error("Task not found");
     }
+
+    console.log({record, id,
+    to,
+    type,
+    recv,
+    rootPromiseId,
+    leafPromiseId,
+    counter,
+    processId,
+    ttl,
+    force,
+    time,})
 
     throw new Error("task is already claimed, completed, or an invalid counter was provided");
   }

@@ -18,7 +18,9 @@ function* bar(ctx: context.Context): Generator {
   return;
 }
 
-const sim = new Simulator(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+// const seed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+// console.log("seed: ", seed);
+const sim = new Simulator(3205863798589208, { randomDelay: 0.5, duplProb: 0.5 });
 const server = new ServerProcess("server");
 const worker1 = new WorkerProcess("worker-1", "default");
 
@@ -45,7 +47,7 @@ sim.send(
 );
 
 let i = 0;
-while (sim.more() || i < 10) {
+while (sim.more() || i < 100) {
   sim.tick();
   i++;
 }
