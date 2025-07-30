@@ -73,13 +73,12 @@ export class WorkerProcess extends Process {
   resonate: ResonateInner;
 
   constructor(
-    server: Address,
     public readonly iaddr: string,
-    public readonly gaddr?: string,
+    public readonly gaddr: string,
   ) {
-    super(iaddr, gaddr || "default");
-    this.network = new SimulatedNetwork(anycast(this.gaddr || "default", this.iaddr), server);
-    this.resonate = new ResonateInner(this.network, { pid: iaddr, group: gaddr || "default", ttl: 5000 });
+    super(iaddr, gaddr);
+    this.network = new SimulatedNetwork(anycast(gaddr, iaddr), unicast("server"));
+    this.resonate = new ResonateInner(this.network, { pid: iaddr, group: gaddr, ttl: 5000 });
   }
 
   tick(time: number, messages: Message<any>[]): Message<any>[] {

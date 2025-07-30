@@ -6,11 +6,8 @@ import { type Address, Message, Process, anycast, unicast } from "./simulator";
 export class ServerProcess extends Process {
   server: Server = new Server();
 
-  constructor(
-    public readonly iaddr: string,
-    public readonly gaddr?: string,
-  ) {
-    super(iaddr, gaddr);
+  constructor() {
+    super("server");
   }
 
   tick(time: number, messages: Message<RequestMsg>[]): Message<ResponseMsg | RecvMsg>[] {

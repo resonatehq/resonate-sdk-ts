@@ -82,9 +82,9 @@ class TagRouter implements Router {
 }
 
 export class Server {
-  private promises: Map<string, DurablePromise>;
-  private tasks: Map<string, Task>;
-  private schedules: Map<string, Schedule>;
+  readonly promises: Map<string, DurablePromise>;
+  readonly tasks: Map<string, Task>;
+  readonly schedules: Map<string, Schedule>;
   private routers: Array<Router>;
   private targets: Record<string, string>;
 
