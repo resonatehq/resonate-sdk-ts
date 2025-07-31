@@ -65,7 +65,7 @@ sim.send(
       timeout: 10020001,
       iKey: "fib",
       tags: { "resonate:invoke": "local://any@default" },
-      param: { fn: "fib", args: [20, false] },
+      param: { fn: "fib", args: [15, false] },
     },
     { requ: true, correlationId: 0 },
   ),
@@ -81,7 +81,12 @@ console.log("outbox", sim.outbox);
 
 const fooState = server.server.promises.get("foo")?.state;
 const fibState = server.server.promises.get("fib")?.state;
-console.log(server.server.promises.get("fib"));
 if (!(fooState === "resolved" && fibState === "resolved")) {
   throw new Error(`Expected both promises to be resolved, but got foo=${fooState}, fib=${fibState}`);
+}
+for (const task of server.server.tasks.values()) {
+  if (task.state === "completed") {
+    continue;
+  }
+  throw new Error(`Task ${task.id} didn't complete`);
 }
