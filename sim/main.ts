@@ -5,15 +5,20 @@ import { WorkerProcess } from "./worker";
 
 import type * as context from "../src/context";
 
-function* fib(ctx: context.Context, n: number): Generator {
+function* fib(ctx: context.Context, n: number, sync: boolean): Generator {
   if (n <= 1) {
     return n;
   }
+  if (!sync) {
+    const p1 = yield* n % 2 === 0 ? ctx.beginRun(fib, n - 1, !sync) : ctx.beginRpc("fib", n - 1, !sync);
+    const p2 = yield* n % 3 === 0 ? ctx.beginRun(fib, n - 2, !sync) : ctx.beginRpc("fib", n - 2, !sync);
 
-  const a = yield* n % 2 === 0 ? ctx.beginRun(fib, n - 1) : ctx.beginRpc("fib", n - 1);
-  const b = yield* n % 3 === 0 ? ctx.beginRun(fib, n - 2) : ctx.beginRpc("fib", n - 2);
+    return (yield* p1) + (yield* p2);
+  }
+  const v1 = yield* n % 2 === 0 ? ctx.run(fib, n - 1, !sync) : ctx.rpc("fib", n - 1, !sync);
+  const v2 = yield* n % 3 === 0 ? ctx.run(fib, n - 2, !sync) : ctx.rpc("fib", n - 2, !sync);
 
-  return (yield* a) + (yield* b);
+  return v1 + v2;
 }
 
 function* foo(ctx: context.Context): Generator {
@@ -60,7 +65,7 @@ sim.send(
       timeout: 10020001,
       iKey: "fib",
       tags: { "resonate:invoke": "local://any@default" },
-      param: { fn: "fib", args: [20] },
+      param: { fn: "fib", args: [20, false] },
     },
     { requ: true, correlationId: 0 },
   ),
