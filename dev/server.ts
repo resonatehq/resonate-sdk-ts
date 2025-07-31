@@ -69,6 +69,7 @@ interface Schedule {
 interface Router {
   route(promise: DurablePromise): any;
 }
+
 class TagRouter implements Router {
   private tag: string;
 
@@ -78,6 +79,14 @@ class TagRouter implements Router {
 
   route(promise: DurablePromise): any {
     return promise.tags?.[this.tag];
+  }
+}
+
+class ServerError extends Error {
+  code: "invalid_request" | "forbidden" | "not_found" | "conflict";
+  constructor(message: string, code: "invalid_request" | "forbidden" | "not_found" | "conflict") {
+    super(message);
+    this.code = code;
   }
 }
 
@@ -204,8 +213,13 @@ export class Server {
           msg: {
             type: "resume",
             task: {
-              ...task,
+              id: task.id,
+              rootPromiseId: task.rootPromiseId,
+              counter: task.counter,
               timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
+              processId: task.processId,
+              createdOn: task.createdOn,
+              completedOn: task.completedOn,
             },
           },
           recv: task.recv,
@@ -242,7 +256,12 @@ export class Server {
           return {
             kind: requ.kind,
             promise: this.createPromise({
-              ...requ,
+              id: requ.id,
+              timeout: requ.timeout,
+              param: requ.param,
+              tags: requ.tags,
+              iKey: requ.iKey,
+              strict: requ.strict,
               time,
             }),
           };
@@ -268,7 +287,7 @@ export class Server {
         case "readPromise": {
           return {
             kind: requ.kind,
-            promise: this.readPromise({ ...requ }),
+            promise: this.readPromise({ id: requ.id }),
           };
         }
 
@@ -276,7 +295,11 @@ export class Server {
           return {
             kind: requ.kind,
             promise: this.completePromise({
-              ...requ,
+              id: requ.id,
+              state: requ.state,
+              value: requ.value,
+              iKey: requ.iKey,
+              strict: requ.strict,
               time,
             }),
           };
@@ -286,7 +309,10 @@ export class Server {
           return {
             kind: requ.kind,
             ...this.createCallback({
-              ...requ,
+              id: requ.id,
+              rootPromiseId: requ.rootPromiseId,
+              timeout: requ.timeout,
+              recv: requ.recv,
               time,
             }),
           };
@@ -295,7 +321,7 @@ export class Server {
         case "createSubscription": {
           return {
             kind: requ.kind,
-            ...this.createSubscription({ ...requ, time }),
+            ...this.createSubscription({ id: requ.id, timeout: requ.timeout, recv: requ.recv, time }),
           };
         }
 
@@ -307,18 +333,22 @@ export class Server {
               cron: requ.cron!,
               promiseId: requ.promiseId!,
               promiseTimeout: requ.promiseTimeout!,
-              ...requ,
+              iKey: requ.iKey,
+              description: requ.description,
+              tags: requ.tags,
+              promiseParam: requ.promiseParam,
+              promiseTags: requ.promiseTags,
               time,
             }),
           };
         }
 
         case "readSchedule": {
-          return { kind: requ.kind, schedule: this.readSchedule({ ...requ }) };
+          return { kind: requ.kind, schedule: this.readSchedule({ id: requ.id }) };
         }
 
         case "deleteSchedule": {
-          this.deleteSchedule({ ...requ, time });
+          this.deleteSchedule({ id: requ.id, time });
           return { kind: requ.kind };
         }
 
@@ -335,14 +365,14 @@ export class Server {
         case "completeTask": {
           return {
             kind: "completedtask",
-            task: this.completeTask({ ...requ, time }),
+            task: this.completeTask({ id: requ.id, counter: requ.counter, time }),
           };
         }
 
         case "heartbeatTasks": {
           return {
             kind: "heartbeatTasks",
-            tasksAffected: this.heartbeatTasks({ ...requ, time }),
+            tasksAffected: this.heartbeatTasks({ processId: requ.processId, time }),
           };
         }
 
@@ -353,8 +383,11 @@ export class Server {
         default:
           throw new Error(`Unsupported request kind: ${(requ as any).kind}`);
       }
-    } catch (e: any) {
-      return { kind: "error", code: "conflict", message: e.message };
+    } catch (err: any) {
+      if (!(err instanceof ServerError)) {
+        throw err;
+      }
+      return { kind: "error", message: err.message, code: err.code };
     }
   }
 
@@ -396,7 +429,7 @@ export class Server {
     );
 
     if (applied && task !== undefined && processId !== undefined) {
-      const { task: newTask, applied } = this.transitionTask({
+      const { task: newTask, applied: appliedTask } = this.transitionTask({
         id: task.id,
         to: "claimed",
         counter: 1,
@@ -404,7 +437,7 @@ export class Server {
         ttl,
         time,
       });
-      util.assert(applied, `createPromise: failed to claim task '${task.id}' for subsequent processing`);
+      util.assert(appliedTask, `createPromise: failed to claim task '${task.id}' for subsequent processing`);
       return { promise: promise, task: newTask };
     }
 
@@ -524,13 +557,13 @@ export class Server {
       const record = this.promises.get(id);
 
       if (!record) {
-        throw new Error("not found");
+        throw new ServerError("not found", "not_found");
       }
 
       const cbId = `__notify:${id}:${id}`;
 
       if (record.state !== "pending" || record.callbacks?.has(cbId)) {
-        return { promise: record };
+        return { promise: record, callback: undefined };
       }
 
       const callback: Callback = {
@@ -551,7 +584,7 @@ export class Server {
       record.callbacks.set(cbId, callback);
       return {
         promise: record,
-        callback,
+        callback: callback,
       };
     }
   }
@@ -569,11 +602,11 @@ export class Server {
     const record = this.promises.get(id);
 
     if (!record) {
-      throw new Error("not found");
+      throw new ServerError("not found", "not_found");
     }
 
     if (record.state !== "pending" || record.callbacks?.has(id)) {
-      return { promise: record };
+      return { promise: record, callback: undefined };
     }
 
     const callback: Callback = {
@@ -591,7 +624,7 @@ export class Server {
     }
 
     record.callbacks.set(callback.id, callback);
-    return { promise: record, callback };
+    return { promise: record, callback: callback };
   }
 
   private claimTask({
@@ -601,7 +634,7 @@ export class Server {
     ttl,
     time,
   }: { id: string; counter: number; processId: string; ttl: number; time: number }): Mesg {
-    const { task } = this.transitionTask({
+    const { task, applied } = this.transitionTask({
       id,
       to: "claimed",
       counter,
@@ -609,6 +642,11 @@ export class Server {
       ttl,
       time,
     });
+
+    util.assert(
+      applied,
+      `claimTask: failed to claim task '${id}' with counter ${counter} using processId '${processId}'`,
+    );
 
     switch (task.type) {
       case "invoke": {
@@ -644,8 +682,13 @@ export class Server {
     const { task } = this.transitionTask({ id, to: "completed", counter, time });
 
     return {
-      ...task,
+      id: task.id,
+      counter: task.counter,
+      rootPromiseId: task.rootPromiseId,
       timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
+      processId: task.processId,
+      createdOn: task.createdOn,
+      completedOn: task.completedOn,
     };
   }
 
@@ -711,7 +754,7 @@ export class Server {
   private readSchedule({ id }: { id: string }): ScheduleRecord {
     const schedule = this.schedules.get(id);
     if (schedule === undefined) {
-      throw new Error("schedule not found");
+      throw new ServerError("schedule not found", "not_found");
     }
     return schedule;
   }
@@ -726,7 +769,7 @@ export class Server {
     const record = this.promises.get(id);
 
     if (!record) {
-      throw new Error("not found");
+      throw new ServerError("not found", "not_found");
     }
 
     return record;
@@ -801,8 +844,11 @@ export class Server {
       if (promise.callbacks) {
         for (const callback of promise.callbacks.values()) {
           const { applied } = this.transitionTask({
-            ...callback,
+            id: callback.id,
             to: "init",
+            type: callback.type,
+            recv: callback.recv,
+            rootPromiseId: callback.rootPromiseId,
             leafPromiseId: callback.promiseId,
             time,
           });
@@ -856,7 +902,7 @@ export class Server {
 
     // Cannot complete non-existent promise
     if (record === undefined && ["resolved", "rejected", "rejected_canceled"].includes(to)) {
-      throw new Error(`transitionPromise(${to}): promise '${id}' not found`);
+      throw new ServerError(`transitionPromise(${to}): promise '${id}' not found`, "not_found");
     }
 
     // No-op re-create pending if before timeout and same iKey
@@ -890,7 +936,7 @@ export class Server {
         ...record,
         state: to,
         iKeyForComplete: iKey,
-        value,
+        value: value,
         completedOn: time,
       };
 
@@ -915,7 +961,10 @@ export class Server {
       strict &&
       time >= record.timeout
     ) {
-      throw new Error(`transitionPromise(${to}): promise '${id}' already timed out at ${record.timeout}`);
+      throw new ServerError(
+        `transitionPromise(${to}): promise '${id}' already timed out at ${record.timeout}`,
+        "forbidden",
+      );
     }
 
     // Transition to timed-out
@@ -975,7 +1024,7 @@ export class Server {
     }
 
     // Fallback
-    throw new Error(`transitionPromise(${to}): unexpected transition for promise '${id}'`);
+    throw new ServerError(`transitionPromise(${to}): unexpected transition for promise '${id}'`, "conflict");
   }
 
   private transitionTask({
@@ -1149,10 +1198,10 @@ export class Server {
     }
 
     if (record === undefined) {
-      throw new Error("Task not found");
+      throw new ServerError("Task not found", "not_found");
     }
 
-    throw new Error("task is already claimed, completed, or an invalid counter was provided");
+    throw new ServerError("task is already claimed, completed, or an invalid counter was provided", "conflict");
   }
 
   private transitionSchedule({
@@ -1200,6 +1249,7 @@ export class Server {
         promiseTimeout,
         promiseParam,
         promiseTags: promiseTags ?? {},
+        lastRunTime: undefined,
         nextRunTime: CronExpressionParser.parse(cron).next().getMilliseconds(),
         iKey,
         createdOn: time,
@@ -1226,12 +1276,15 @@ export class Server {
 
     // Schedule exists and not updating
     if (record !== undefined && to === "created") {
-      throw new Error(`transitionSchedule(created): schedule '${id}' already exists and 'updating' flag is false`);
+      throw new ServerError(
+        `transitionSchedule(created): schedule '${id}' already exists and 'updating' flag is false`,
+        "conflict",
+      );
     }
 
     // Delete non-existent
     if (record === undefined && to === "deleted") {
-      throw new Error(`transitionSchedule(deleted): schedule '${id}' not found`);
+      throw new ServerError(`transitionSchedule(deleted): schedule '${id}' not found`, "not_found");
     }
 
     // Delete existing
@@ -1241,7 +1294,7 @@ export class Server {
     }
 
     // Fallback error
-    throw new Error(`transitionSchedule(${to}): unexpected transition for schedule '${id}'`);
+    throw new ServerError(`transitionSchedule(${to}): unexpected transition for schedule '${id}'`, "conflict");
   }
 }
 

@@ -1,5 +1,5 @@
 import { Server } from "../dev/server";
-import { LocalNetwork } from "../src/network/local";
+import { LocalNetwork } from "../dev/network";
 import { Schedules } from "../src/schedules";
 
 let COUNTER = 0;
