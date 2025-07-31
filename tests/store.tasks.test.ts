@@ -63,18 +63,11 @@ describe("tasks transitions", () => {
     expect(count).toBe(0);
   });
 
-  test("Test Case 12a: transition from claimed to claimed via claim", async () => {
+  test("Test Case 12: transition from claimed to claimed via claim", async () => {
     // https://github.com/resonatehq/resonate/issues/751
     const task = step(server);
     await tasks.claim(task.id, task.counter, "task12", Number.MAX_SAFE_INTEGER);
-    await expect(tasks.claim(task.id, task.counter, "notTask12", Number.MAX_SAFE_INTEGER)).rejects.toThrow();
-  });
-
-  test("Test Case 12b: transition from claimed to claimed via claim", async () => {
-    // https://github.com/resonatehq/resonate/issues/751
-    const task = step(server);
-    await tasks.claim(task.id, task.counter, "task12", Number.MAX_SAFE_INTEGER);
-    await tasks.claim(task.id, task.counter, "task12", Number.MAX_SAFE_INTEGER);
+    await expect(tasks.claim(task.id, task.counter, "task12", Number.MAX_SAFE_INTEGER)).rejects.toThrow();
   });
 
   test("Test Case 13: transition from claimed to init via claim", async () => {
@@ -123,18 +116,11 @@ describe("tasks transitions", () => {
     expect(count).toBe(1);
   });
 
-  test("Test Case 20a: transition from completed to completed via claim", async () => {
+  test("Test Case 20: transition from completed to completed via claim", async () => {
     const task = step(server);
     await tasks.claim(task.id, task.counter, "task20", Number.MAX_SAFE_INTEGER);
     await tasks.complete(task.id, task.counter);
-    await expect(tasks.claim(task.id, task.counter, "notTask20", 0)).rejects.toThrow();
-  });
-
-  test("Test Case 20b: transition from completed to completed via claim", async () => {
-    const task = step(server);
-    await tasks.claim(task.id, task.counter, "task20", Number.MAX_SAFE_INTEGER);
-    await tasks.complete(task.id, task.counter);
-    const v = await tasks.claim(task.id, task.counter, "task20", 0);
+    await expect(tasks.claim(task.id, task.counter, "task20", 0)).rejects.toThrow();
   });
 
   test("Test Case 21: transition from completed to completed via complete", async () => {
