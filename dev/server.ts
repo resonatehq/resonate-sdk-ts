@@ -213,13 +213,8 @@ export class Server {
           msg: {
             type: "resume",
             task: {
-              id: task.id,
-              rootPromiseId: task.rootPromiseId,
-              counter: task.counter,
+              ...task,
               timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
-              processId: task.processId,
-              createdOn: task.createdOn,
-              completedOn: task.completedOn,
             },
           },
           recv: task.recv,

@@ -30,7 +30,7 @@ function* bar(ctx: context.Context): Generator {
 
 const seed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 console.log("seed: ", seed);
-const sim = new Simulator(seed, { duplProb: 0.2, randomDelay: 0.2 });
+const sim = new Simulator(seed);
 const server = new ServerProcess("server");
 const worker1 = new WorkerProcess("worker-1", "default");
 const worker2 = new WorkerProcess("worker-2", "default");
