@@ -147,16 +147,14 @@ export class Server {
         continue;
       }
 
-      try {
-        this.createPromise({
-          id: schedule.promiseId.replace("{{.timestamp}}", time.toString()),
-          timeout: time + schedule.promiseTimeout,
-          param: schedule.promiseParam,
-          tags: schedule.promiseTags,
-          strict: false,
-          time,
-        });
-      } catch {}
+      this.createPromise({
+        id: schedule.promiseId.replace("{{.timestamp}}", time.toString()),
+        timeout: time + schedule.promiseTimeout,
+        param: schedule.promiseParam,
+        tags: schedule.promiseTags,
+        strict: false,
+        time,
+      });
 
       const { applied } = this.transitionSchedule({ id: schedule.id, to: "created", updating: true, time });
       util.assert(applied, `step(): failed to transition schedule '${schedule.id}' to 'created' state`);
@@ -206,13 +204,8 @@ export class Server {
           msg: {
             type: "resume",
             task: {
-              id: task.id,
-              rootPromiseId: task.rootPromiseId,
-              counter: task.counter,
+              ...task,
               timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
-              processId: task.processId,
-              createdOn: task.createdOn,
-              completedOn: task.completedOn,
             },
           },
           recv: task.recv,
@@ -243,137 +236,125 @@ export class Server {
   }
 
   process(requ: RequestMsg, time: number): ResponseMsg {
-    switch (requ.kind) {
-      case "createPromise": {
-        return {
-          kind: requ.kind,
-          promise: this.createPromise({
-            id: requ.id,
-            timeout: requ.timeout,
-            param: requ.param,
-            tags: requ.tags,
+    try {
+      switch (requ.kind) {
+        case "createPromise": {
+          return {
+            kind: requ.kind,
+            promise: this.createPromise({
+              ...requ,
+              time,
+            }),
+          };
+        }
+        case "createPromiseAndTask": {
+          const { promise, task } = this.createPromiseAndTask({
+            id: requ.promise.id,
+            timeout: requ.promise.timeout,
+            processId: requ.task.processId,
+            ttl: requ.task.ttl,
+            param: requ.promise.param,
+            tags: requ.promise.tags,
             iKey: requ.iKey,
             strict: requ.strict,
             time,
-          }),
-        };
-      }
-      case "createPromiseAndTask": {
-        const { promise, task } = this.createPromiseAndTask({
-          id: requ.promise.id,
-          timeout: requ.promise.timeout,
-          processId: requ.task.processId,
-          ttl: requ.task.ttl,
-          param: requ.promise.param,
-          tags: requ.promise.tags,
-          iKey: requ.iKey,
-          strict: requ.strict,
-          time,
-        });
-        return {
-          kind: requ.kind,
-          promise: promise,
-          task: task,
-        };
-      }
-      case "readPromise": {
-        return {
-          kind: requ.kind,
-          promise: this.readPromise({ id: requ.id }),
-        };
-      }
+          });
+          return {
+            kind: requ.kind,
+            promise: promise,
+            task: task,
+          };
+        }
+        case "readPromise": {
+          return {
+            kind: requ.kind,
+            promise: this.readPromise({ ...requ }),
+          };
+        }
 
-      case "completePromise": {
-        return {
-          kind: requ.kind,
-          promise: this.completePromise({
-            id: requ.id,
-            state: requ.state,
-            value: requ.value,
-            iKey: requ.iKey,
-            strict: requ.strict,
-            time,
-          }),
-        };
-      }
+        case "completePromise": {
+          return {
+            kind: requ.kind,
+            promise: this.completePromise({
+              ...requ,
+              time,
+            }),
+          };
+        }
 
-      case "createCallback": {
-        return {
-          kind: requ.kind,
-          ...this.createCallback({
-            id: requ.id,
-            rootPromiseId: requ.rootPromiseId,
-            timeout: requ.timeout,
-            recv: requ.recv,
-            time,
-          }),
-        };
-      }
+        case "createCallback": {
+          return {
+            kind: requ.kind,
+            ...this.createCallback({
+              ...requ,
+              time,
+            }),
+          };
+        }
 
-      case "createSubscription": {
-        return {
-          kind: requ.kind,
-          ...this.createSubscription({ id: requ.id, timeout: requ.timeout, recv: requ.recv, time }),
-        };
-      }
+        case "createSubscription": {
+          return {
+            kind: requ.kind,
+            ...this.createSubscription({ ...requ, time }),
+          };
+        }
 
-      case "createSchedule": {
-        return {
-          kind: requ.kind,
-          schedule: this.createSchedule({
-            id: requ.id!,
-            cron: requ.cron!,
-            promiseId: requ.promiseId!,
-            promiseTimeout: requ.promiseTimeout!,
-            iKey: requ.iKey,
-            description: requ.description,
-            tags: requ.tags,
-            promiseParam: requ.promiseParam,
-            promiseTags: requ.promiseTags,
-            time,
-          }),
-        };
-      }
+        case "createSchedule": {
+          return {
+            kind: requ.kind,
+            schedule: this.createSchedule({
+              id: requ.id!,
+              cron: requ.cron!,
+              promiseId: requ.promiseId!,
+              promiseTimeout: requ.promiseTimeout!,
+              ...requ,
+              time,
+            }),
+          };
+        }
 
-      case "readSchedule": {
-        return { kind: requ.kind, schedule: this.readSchedule({ id: requ.id }) };
-      }
+        case "readSchedule": {
+          return { kind: requ.kind, schedule: this.readSchedule({ ...requ }) };
+        }
 
-      case "deleteSchedule": {
-        this.deleteSchedule({ id: requ.id, time });
-        return { kind: requ.kind };
-      }
+        case "deleteSchedule": {
+          this.deleteSchedule({ ...requ, time });
+          return { kind: requ.kind };
+        }
 
-      case "claimTask": {
-        return {
-          kind: "claimedtask",
-          message: this.claimTask({
-            ...requ,
-            time,
-          }),
-        };
-      }
+        case "claimTask": {
+          return {
+            kind: "claimedtask",
+            message: this.claimTask({
+              ...requ,
+              time,
+            }),
+          };
+        }
 
-      case "completeTask": {
-        return {
-          kind: "completedtask",
-          task: this.completeTask({ id: requ.id, counter: requ.counter, time }),
-        };
-      }
+        case "completeTask": {
+          return {
+            kind: "completedtask",
+            task: this.completeTask({ ...requ, time }),
+          };
+        }
 
-      case "heartbeatTasks": {
-        return {
-          kind: "heartbeatTasks",
-          tasksAffected: this.heartbeatTasks({ processId: requ.processId, time }),
-        };
-      }
+        case "heartbeatTasks": {
+          return {
+            kind: "heartbeatTasks",
+            tasksAffected: this.heartbeatTasks({ ...requ, time }),
+          };
+        }
 
-      case "dropTask": {
-        throw new Error("not implemented");
-      }
+        case "dropTask": {
+          throw new Error("not implemented");
+        }
 
-      default:
-        throw new Error(`Unsupported request kind: ${(requ as any).kind}`);
+        default:
+          throw new Error(`Unsupported request kind: ${(requ as any).kind}`);
+      }
+    } catch (e: any) {
+      return { kind: "error", code: "conflict", message: e.message };
     }
   }
 
@@ -415,7 +396,7 @@ export class Server {
     );
 
     if (applied && task !== undefined && processId !== undefined) {
-      const { task: newTask, applied: appliedTask } = this.transitionTask({
+      const { task: newTask, applied } = this.transitionTask({
         id: task.id,
         to: "claimed",
         counter: 1,
@@ -423,7 +404,7 @@ export class Server {
         ttl,
         time,
       });
-      util.assert(appliedTask, `createPromise: failed to claim task '${task.id}' for subsequent processing`);
+      util.assert(applied, `createPromise: failed to claim task '${task.id}' for subsequent processing`);
       return { promise: promise, task: newTask };
     }
 
@@ -479,7 +460,7 @@ export class Server {
     strict?: boolean;
     time: number;
   }): { promise: DurablePromiseRecord; task?: TaskRecord } {
-    return this._createPromise({
+    const { promise, task } = this._createPromise({
       id,
       timeout,
       processId,
@@ -489,10 +470,11 @@ export class Server {
       iKey,
       strict,
       time,
-    }) as {
-      promise: DurablePromiseRecord;
-      task?: TaskRecord;
-    };
+    });
+    if (task === undefined) {
+      return { promise };
+    }
+    return { promise, task: { ...task, timeout: promise.timeout } };
   }
 
   private readPromise({ id }: { id: string }): DurablePromiseRecord {
@@ -548,7 +530,7 @@ export class Server {
       const cbId = `__notify:${id}:${id}`;
 
       if (record.state !== "pending" || record.callbacks?.has(cbId)) {
-        return { promise: record, callback: undefined };
+        return { promise: record };
       }
 
       const callback: Callback = {
@@ -569,7 +551,7 @@ export class Server {
       record.callbacks.set(cbId, callback);
       return {
         promise: record,
-        callback: callback,
+        callback,
       };
     }
   }
@@ -591,7 +573,7 @@ export class Server {
     }
 
     if (record.state !== "pending" || record.callbacks?.has(id)) {
-      return { promise: record, callback: undefined };
+      return { promise: record };
     }
 
     const callback: Callback = {
@@ -609,7 +591,7 @@ export class Server {
     }
 
     record.callbacks.set(callback.id, callback);
-    return { promise: record, callback: callback };
+    return { promise: record, callback };
   }
 
   private claimTask({
@@ -619,7 +601,7 @@ export class Server {
     ttl,
     time,
   }: { id: string; counter: number; processId: string; ttl: number; time: number }): Mesg {
-    const { task, applied } = this.transitionTask({
+    const { task } = this.transitionTask({
       id,
       to: "claimed",
       counter,
@@ -627,11 +609,6 @@ export class Server {
       ttl,
       time,
     });
-
-    util.assert(
-      applied,
-      `claimTask: failed to claim task '${id}' with counter ${counter} using processId '${processId}'`,
-    );
 
     switch (task.type) {
       case "invoke": {
@@ -667,13 +644,8 @@ export class Server {
     const { task } = this.transitionTask({ id, to: "completed", counter, time });
 
     return {
-      id: task.id,
-      counter: task.counter,
-      rootPromiseId: task.rootPromiseId,
+      ...task,
       timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
-      processId: task.processId,
-      createdOn: task.createdOn,
-      completedOn: task.completedOn,
     };
   }
 
@@ -829,11 +801,8 @@ export class Server {
       if (promise.callbacks) {
         for (const callback of promise.callbacks.values()) {
           const { applied } = this.transitionTask({
-            id: callback.id,
+            ...callback,
             to: "init",
-            type: callback.type,
-            recv: callback.recv,
-            rootPromiseId: callback.rootPromiseId,
             leafPromiseId: callback.promiseId,
             time,
           });
@@ -921,7 +890,7 @@ export class Server {
         ...record,
         state: to,
         iKeyForComplete: iKey,
-        value: value,
+        value,
         completedOn: time,
       };
 
@@ -1231,7 +1200,6 @@ export class Server {
         promiseTimeout,
         promiseParam,
         promiseTags: promiseTags ?? {},
-        lastRunTime: undefined,
         nextRunTime: CronExpressionParser.parse(cron).next().getMilliseconds(),
         iKey,
         createdOn: time,

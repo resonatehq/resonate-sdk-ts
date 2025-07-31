@@ -14,6 +14,10 @@ class Random {
     // Convert the 32-bit integer to a float in the range [0, 1)
     return this.state / 0x100000000; // Equivalent to 2^32
   }
+
+  pick<T>(list: T[]): T {
+    return list[Math.floor(this.next() * list.length)];
+  }
 }
 
 export type Address = { kind: "unicast"; iaddr: string } | { kind: "anycast"; gaddr: string; iaddr?: string };
@@ -150,12 +154,8 @@ export class Simulator {
         if (preference) {
           inboxes[preference.iaddr].push(message);
         } else {
-          for (const process of this.process) {
-            if (process.active && target.gaddr === process.gaddr) {
-              inboxes[process.iaddr].push(message);
-              break;
-            }
-          }
+          const process = this.prng.pick(this.process.filter((p) => p.active && target.gaddr === p.gaddr));
+          inboxes[process.iaddr].push(message);
         }
       } else {
         throw new Error("unknown target.kind");
