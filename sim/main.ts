@@ -4,11 +4,16 @@ import { DeliveryOptions, Message, Simulator, unicast } from "./simulator";
 import { WorkerProcess } from "./worker";
 
 import type * as context from "../src/context";
+
 function* fib(ctx: context.Context, n: number): Generator {
   if (n <= 1) {
     return n;
   }
-  return (yield ctx.rpc("fib", n - 1)) + (yield ctx.rpc("fib", n - 2));
+
+  const a = yield* n % 2 === 0 ? ctx.beginRun(fib, n - 1) : ctx.beginRpc("fib", n - 1);
+  const b = yield* n % 3 === 0 ? ctx.beginRun(fib, n - 2) : ctx.beginRpc("fib", n - 2);
+
+  return (yield* a) + (yield* b);
 }
 
 function* foo(ctx: context.Context): Generator {
@@ -55,7 +60,7 @@ sim.send(
       timeout: 10020001,
       iKey: "fib",
       tags: { "resonate:invoke": "local://any@default" },
-      param: { fn: "fib", args: [10] },
+      param: { fn: "fib", args: [20] },
     },
     { requ: true, correlationId: 0 },
   ),
@@ -71,7 +76,7 @@ console.log("outbox", sim.outbox);
 
 const fooState = server.server.promises.get("foo")?.state;
 const fibState = server.server.promises.get("fib")?.state;
-
+console.log(server.server.promises.get("fib"));
 if (!(fooState === "resolved" && fibState === "resolved")) {
   throw new Error(`Expected both promises to be resolved, but got foo=${fooState}, fib=${fibState}`);
 }

@@ -1187,7 +1187,7 @@ export class Server {
     }
 
     // Ignore any duplicate or delayed "claimed" events that arrive after the task has already transitioned to "completed".
-    // Matching on counter and processId ensures we only drop repeats from the same claim attempt.
+    // Matching on counter. No processId must be set, meaning that the task was resolved from "init" or "enqueued" state
     if (
       record?.state === "completed" && to === "claimed" && record.counter === counter && record.processId === undefined
     ) {
