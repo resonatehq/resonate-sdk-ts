@@ -1,3 +1,5 @@
+import type { CompResult } from "../types";
+
 export interface DurablePromiseRecord {
   id: string;
   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
@@ -277,5 +279,5 @@ export interface Network {
   recv(msg: any): void;
 
   // Provided by the user of the network, interface
-  onMessage?: (msg: RecvMsg) => void;
+  onMessage?: (msg: RecvMsg, cb: (res: CompResult) => void) => void;
 }
