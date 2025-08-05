@@ -83,7 +83,7 @@ export class Resonate {
       throw new Error(`${funcName} does not exists`);
     }
 
-    return new Promise<InvocationHandler<T>>((resolve, reject) => {
+    return new Promise<InvocationHandler<T>>((resolve, _reject) => {
       this.network.send(
         {
           kind: "createPromiseAndTask",
@@ -146,5 +146,9 @@ export class Resonate {
       },
       options: () => {},
     };
+  }
+
+  public stop() {
+    this.inner.stop();
   }
 }

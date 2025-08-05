@@ -280,4 +280,5 @@ export interface Network {
 
   // Provided by the user of the network, interface
   onMessage?: (msg: RecvMsg, cb: (res: CompResult) => void) => void;
+  stop();
 }

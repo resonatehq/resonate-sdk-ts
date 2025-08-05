@@ -75,4 +75,8 @@ export class ResonateInner {
   public onComplete(listener: (data: { promiseId: string; value: any }) => void) {
     this.listeners.push(listener);
   }
+
+  public stop() {
+    this.network.stop();
+  }
 }

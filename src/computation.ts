@@ -80,7 +80,9 @@ export class Computation {
     this.task = task;
     this.callback = cb;
     this.handler.updateCache(task.rootPromise);
+    console.log(task.rootPromise);
     const fn = this.registry.get(task.rootPromise.param?.fn ?? "");
+    console.log({ regisstry: this.registry.funcs });
 
     if (!fn) {
       // TODO(avillega): drop the task here and call the callback with an error
