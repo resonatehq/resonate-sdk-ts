@@ -8,7 +8,7 @@ import type * as context from "../src/context";
 // --- Command-line argument parsing ---
 const argv = process.argv.slice(2);
 if (argv.length < 4) {
-  console.error("Usage: bun sim/main.ts --seed <number> --ticks <number>");
+  console.error("Usage: bun sim/main.ts --seed <number> --steps <number>");
   process.exit(1);
 }
 
@@ -16,15 +16,15 @@ function getArgValue(name: string): string {
   const index = argv.indexOf(name);
   if (index === -1 || index + 1 >= argv.length) {
     console.error(`Missing value for ${name}`);
-    console.error("Usage: bun sim/main.ts --seed <number> --ticks <number>");
+    console.error("Usage: bun sim/main.ts --seed <number> --steps <number>");
     process.exit(1);
   }
   return argv[index + 1];
 }
 
-// Parse required --seed and --ticks flags
+// Parse required --seed and --steps flags
 const seedArg = getArgValue("--seed");
-const ticksArg = getArgValue("--ticks");
+const stepsArg = getArgValue("--steps");
 
 const seed = Number.parseInt(seedArg, 10);
 if (Number.isNaN(seed)) {
@@ -32,25 +32,31 @@ if (Number.isNaN(seed)) {
   process.exit(1);
 }
 
-const ticks = Number.parseInt(ticksArg, 10);
-if (Number.isNaN(ticks) || ticks < 0) {
-  console.error(`Invalid ticks: ${ticksArg}`);
+const steps = Number.parseInt(stepsArg, 10);
+if (Number.isNaN(steps) || steps < 0) {
+  console.error(`Invalid steps: ${stepsArg}`);
   process.exit(1);
 }
 
 console.log("seed:", seed);
-console.log("ticks:", ticks);
+console.log("steps:", steps);
 
 function* fib(ctx: context.Context, n: number): Generator {
   if (n <= 1) {
     return n;
   }
 
-  return (yield ctx.rpc("fib", n - 1)) + (yield ctx.run(fib, n - 2));
+  const p1 = yield ctx.beginRpc("fib", n - 1);
+  const p2 = yield ctx.beginRpc("fib", n - 2);
+  return (yield p1) + (yield p2);
 }
 
 const rnd = new Random(seed);
-const sim = new Simulator(seed, { randomDelay: rnd.next(), duplProb: rnd.next(), dropProb: rnd.next() });
+const sim = new Simulator(seed, {
+  randomDelay: rnd.pick([0.1, 0.3, 0.5, 0.7]),
+  dropProb: rnd.pick([0.1, 0.3, 0.5, 0.7]),
+  duplProb: rnd.pick([0.1, 0.3, 0.5, 0.7]),
+});
 
 const server = new ServerProcess("server");
 const worker1 = new WorkerProcess("worker-1", "default");
@@ -83,7 +89,7 @@ sim.send(
 );
 
 let i = 0;
-while (i < ticks) {
+while (i < steps) {
   sim.tick();
   i++;
 }
