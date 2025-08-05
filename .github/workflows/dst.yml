@@ -47,9 +47,7 @@ jobs:
           node-version: ${{ matrix['node-version'] }}
 
       - name: Install dependencies
-        run: |
-          corepack enable
-          pnpm install # or use `npm install` if not using pnpm
+        run: npm i
 
       - name: Run DST (seed=${{ needs.values.outputs.seed }}, steps=${{ needs.values.outputs.steps }})
         run: |
