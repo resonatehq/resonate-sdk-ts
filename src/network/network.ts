@@ -277,8 +277,8 @@ export type RecvMsg =
 export interface Network {
   send(request: RequestMsg, callback: (timeout: boolean, response: ResponseMsg) => void): void;
   recv(msg: any): void;
+  stop(): void;
 
   // Provided by the user of the network, interface
   onMessage?: (msg: RecvMsg, cb: (res: CompResult) => void) => void;
-  stop();
 }

@@ -50,6 +50,7 @@ export class ResonateInner {
         this.process({ ...msg.task, kind: "unclaimed" }, cb);
         break;
       case "notify":
+        // TODO(avillega): assert that the promise is completed
         if (msg.promise.state !== "pending") {
           // TODO(avillega): handle rejection too, make the complete result be able to reject, probably just return the promise
           this.emit({ promiseId: msg.promise.id, value: msg.promise.value });

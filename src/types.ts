@@ -7,11 +7,13 @@ export type Func = (ctx: Context, ...args: any[]) => any;
 export type Params<F> = F extends (ctx: Context, ...args: infer P) => any ? P : never;
 
 export type RemoteOpts = {
+  id?: string;
   target: string;
   timeout: number;
 };
 
 export type LocalOpts = {
+  id?: string;
   target: string;
   timeout: number;
 };
