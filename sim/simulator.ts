@@ -1,4 +1,4 @@
-class Random {
+export class Random {
   // Internal state of the random number generator (RNG)
   private state: number;
 

@@ -1,6 +1,6 @@
 import type { RequestMsg } from "../src/network/network";
 import { ServerProcess } from "./server";
-import { Message, Simulator, unicast } from "./simulator";
+import { Message, Random, Simulator, unicast } from "./simulator";
 import { WorkerProcess } from "./worker";
 
 import type * as context from "../src/context";
@@ -49,7 +49,9 @@ function* fib(ctx: context.Context, n: number): Generator {
   return (yield ctx.rpc("fib", n - 1)) + (yield ctx.run(fib, n - 2));
 }
 
-const sim = new Simulator(seed, { randomDelay: 0.1, duplProb: 0.1, dropProb: 0.1 });
+const rnd = new Random(seed);
+const sim = new Simulator(seed, { randomDelay: rnd.next(), duplProb: rnd.next(), dropProb: rnd.next() });
+
 const server = new ServerProcess("server");
 const worker1 = new WorkerProcess("worker-1", "default");
 const worker2 = new WorkerProcess("worker-2", "default");
