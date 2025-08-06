@@ -58,7 +58,7 @@ export class Process {
     public readonly gaddr?: string,
   ) {}
 
-  tick(time: number, messages: Message<any>[]): Message<any>[] {
+  tick(time: number, messages: Message<any>[], callback: (messages: Message<any>[]) => void): void {
     throw new Error("not implemented");
   }
 
@@ -112,7 +112,7 @@ export class Simulator {
   send(message: Message<any>): void {
     this.network.push(message);
   }
-  tick(): void {
+  tick(callback: () => void): void {
     if (!this.init) {
       this.init = true;
     }
@@ -162,19 +162,45 @@ export class Simulator {
       }
     }
     const newMessages: Message<any>[] = [];
-    for (const process of this.process) {
-      if (!process.active) {
-        continue;
-      }
-      for (const msg of process.tick(this.time, inboxes[process.iaddr])) {
-        if (msg.target.kind === "unicast" && msg.target.iaddr === "environment") {
-          this.outbox.push(msg);
-        } else {
-          newMessages.push(msg);
-        }
-      }
-    }
 
-    this.network = retained.concat(newMessages);
+    forEachSeries(
+      this.process,
+      (process: Process, next: () => void) => {
+        process.tick(this.time, inboxes[process.iaddr], (messages) => {
+          if (!process.active) {
+            next();
+            return;
+          }
+
+          for (const msg of messages) {
+            if (msg.target.kind === "unicast" && msg.target.iaddr === "environment") {
+              this.outbox.push(msg);
+            } else {
+              newMessages.push(msg);
+            }
+          }
+
+          next();
+        });
+      },
+      (): void => {
+        this.network = retained.concat(newMessages);
+        callback();
+      },
+    );
   }
+}
+
+function forEachSeries<T>(arr: T[], fn: (item: T, next: () => void) => void, done: () => void): void {
+  let i = 0;
+
+  function iterate() {
+    if (i >= arr.length) {
+      done();
+      return;
+    }
+    fn(arr[i++], iterate);
+  }
+
+  iterate();
 }

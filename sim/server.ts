@@ -9,7 +9,11 @@ export class ServerProcess extends Process {
     super(iaddr);
   }
 
-  tick(time: number, messages: Message<RequestMsg>[]): Message<ResponseMsg | RecvMsg>[] {
+  tick(
+    time: number,
+    messages: Message<RequestMsg>[],
+    callback: (messages: Message<ResponseMsg | RecvMsg>[]) => void,
+  ): void {
     if (messages.length > 0) {
       this.log(time, messages);
     }
@@ -36,6 +40,6 @@ export class ServerProcess extends Process {
       responses.push(msg);
     }
 
-    return responses;
+    callback(responses);
   }
 }

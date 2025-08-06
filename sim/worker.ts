@@ -79,7 +79,11 @@ export class WorkerProcess extends Process {
     this.resonate = new ResonateInner(this.network, { pid: iaddr, group: gaddr, ttl: 5000 });
   }
 
-  tick(time: number, messages: Message<ResponseMsg | RecvMsg>[]): Message<RequestMsg>[] {
+  tick(
+    time: number,
+    messages: Message<ResponseMsg | RecvMsg>[],
+    callback: (messages: Message<RequestMsg>[]) => void,
+  ): void {
     if (messages.length > 0) {
       this.log(time, messages);
     }
@@ -89,6 +93,6 @@ export class WorkerProcess extends Process {
       this.network.process(message);
     }
 
-    return this.network.flush();
+    callback(this.network.flush());
   }
 }

@@ -88,10 +88,23 @@ sim.send(
   ),
 );
 
-let i = 0;
-while (i < steps) {
-  sim.tick();
-  i++;
+type Thunk = () => Thunk | undefined;
+
+function trampoline(fn: Thunk): undefined {
+  let result: Thunk | undefined = fn;
+  // as long as the result is another function, keep going
+  while (typeof result === "function") {
+    result = result();
+  }
 }
+
+// your tick function as a Thunk-producing function
+function runTick(current: number, total: number): Thunk | undefined {
+  if (current >= total) return;
+  return () => sim.tick(() => runTick(current + 1, total));
+}
+
+// kick it off
+trampoline(() => runTick(0, steps));
 
 console.log("outbox", sim.outbox);
