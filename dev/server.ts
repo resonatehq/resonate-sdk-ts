@@ -190,9 +190,14 @@ export class Server {
     }
 
     const msgs: { msg: RecvMsg; recv: string }[] = [];
+    const inFlightRootPromiseIds = new Set<string>();
 
     for (const task of this.tasks.values()) {
-      if (task.state !== "init") {
+      if (["enqueued", "claimed"].includes(task.state)) {
+        inFlightRootPromiseIds.add(task.rootPromiseId);
+      }
+
+      if (task.state !== "init" || inFlightRootPromiseIds.has(task.rootPromiseId)) {
         continue;
       }
 
@@ -238,6 +243,7 @@ export class Server {
       } else {
         const { applied } = this.transitionTask({ id: task.id, to: "enqueued", time });
         util.assert(applied, `step(): failed to enqueue task '${task.id}' after invoking/resuming`);
+        inFlightRootPromiseIds.add(task.rootPromiseId);
       }
     }
 
