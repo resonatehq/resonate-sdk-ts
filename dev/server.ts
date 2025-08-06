@@ -189,7 +189,6 @@ export class Server {
       }
     }
 
-    const msgs: { msg: RecvMsg; recv: string }[] = [];
     const inFlightRootPromiseIds = new Set<string>();
 
     for (const task of this.tasks.values()) {
@@ -198,6 +197,7 @@ export class Server {
       }
     }
 
+    const msgs: { msg: RecvMsg; recv: string }[] = [];
     for (const task of this.tasks.values()) {
       if (task.state !== "init" || inFlightRootPromiseIds.has(task.rootPromiseId)) {
         continue;
