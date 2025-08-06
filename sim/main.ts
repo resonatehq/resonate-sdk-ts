@@ -53,9 +53,9 @@ function* fib(ctx: context.Context, n: number): Generator {
 
 const rnd = new Random(seed);
 const sim = new Simulator(seed, {
-  randomDelay: 0,
-  dropProb: 0,
-  duplProb: 0,
+  randomDelay: rnd.random(0.5),
+  dropProb: rnd.random(0.5),
+  duplProb: rnd.random(0.5),
 });
 
 const server = new ServerProcess("server");

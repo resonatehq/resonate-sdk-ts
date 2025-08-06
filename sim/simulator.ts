@@ -7,6 +7,10 @@ export class Random {
     this.state = seed >>> 0;
   }
 
+  random(bound: number): number {
+    return this.next() * bound;
+  }
+
   next(): number {
     // Update the internal state using the LCG formula
     this.state = (1664525 * this.state + 1013904223) >>> 0;
