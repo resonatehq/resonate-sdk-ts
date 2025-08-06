@@ -196,7 +196,9 @@ export class Server {
       if (["enqueued", "claimed"].includes(task.state)) {
         inFlightRootPromiseIds.add(task.rootPromiseId);
       }
+    }
 
+    for (const task of this.tasks.values()) {
       if (task.state !== "init" || inFlightRootPromiseIds.has(task.rootPromiseId)) {
         continue;
       }
