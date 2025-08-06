@@ -251,12 +251,7 @@ export class Server {
           return {
             kind: requ.kind,
             promise: this.createPromise({
-              id: requ.id,
-              timeout: requ.timeout,
-              param: requ.param,
-              tags: requ.tags,
-              iKey: requ.iKey,
-              strict: requ.strict,
+              ...requ,
               time,
             }),
           };
@@ -282,7 +277,7 @@ export class Server {
         case "readPromise": {
           return {
             kind: requ.kind,
-            promise: this.readPromise({ id: requ.id }),
+            promise: this.readPromise({ ...requ }),
           };
         }
 
@@ -290,11 +285,7 @@ export class Server {
           return {
             kind: requ.kind,
             promise: this.completePromise({
-              id: requ.id,
-              state: requ.state,
-              value: requ.value,
-              iKey: requ.iKey,
-              strict: requ.strict,
+              ...requ,
               time,
             }),
           };
@@ -304,10 +295,7 @@ export class Server {
           return {
             kind: requ.kind,
             ...this.createCallback({
-              id: requ.id,
-              rootPromiseId: requ.rootPromiseId,
-              timeout: requ.timeout,
-              recv: requ.recv,
+              ...requ,
               time,
             }),
           };
@@ -316,7 +304,7 @@ export class Server {
         case "createSubscription": {
           return {
             kind: requ.kind,
-            ...this.createSubscription({ id: requ.id, timeout: requ.timeout, recv: requ.recv, time }),
+            ...this.createSubscription({ ...requ, time }),
           };
         }
 
@@ -339,11 +327,11 @@ export class Server {
         }
 
         case "readSchedule": {
-          return { kind: requ.kind, schedule: this.readSchedule({ id: requ.id }) };
+          return { kind: requ.kind, schedule: this.readSchedule({ ...requ }) };
         }
 
         case "deleteSchedule": {
-          this.deleteSchedule({ id: requ.id, time });
+          this.deleteSchedule({ ...requ, time });
           return { kind: requ.kind };
         }
 
@@ -360,14 +348,14 @@ export class Server {
         case "completeTask": {
           return {
             kind: "completedtask",
-            task: this.completeTask({ id: requ.id, counter: requ.counter, time }),
+            task: this.completeTask({ ...requ, time }),
           };
         }
 
         case "heartbeatTasks": {
           return {
             kind: "heartbeatTasks",
-            tasksAffected: this.heartbeatTasks({ processId: requ.processId, time }),
+            tasksAffected: this.heartbeatTasks({ ...requ, time }),
           };
         }
 
@@ -677,13 +665,8 @@ export class Server {
     const { task } = this.transitionTask({ id, to: "completed", counter, time });
 
     return {
-      id: task.id,
-      counter: task.counter,
-      rootPromiseId: task.rootPromiseId,
+      ...task,
       timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
-      processId: task.processId,
-      createdOn: task.createdOn,
-      completedOn: task.completedOn,
     };
   }
 
@@ -839,11 +822,8 @@ export class Server {
       if (promise.callbacks) {
         for (const callback of promise.callbacks.values()) {
           const { applied } = this.transitionTask({
-            id: callback.id,
+            ...callback,
             to: "init",
-            type: callback.type,
-            recv: callback.recv,
-            rootPromiseId: callback.rootPromiseId,
             leafPromiseId: callback.promiseId,
             time,
           });
