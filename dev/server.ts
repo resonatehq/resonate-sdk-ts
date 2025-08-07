@@ -245,8 +245,8 @@ export class Server {
       } else {
         const { applied } = this.transitionTask({ id: task.id, to: "enqueued", time });
         util.assert(applied, `step(): failed to enqueue task '${task.id}' after invoking/resuming`);
-        inFlightRootPromiseIds.add(task.rootPromiseId);
       }
+      inFlightRootPromiseIds.add(task.rootPromiseId);
     }
 
     return msgs;
