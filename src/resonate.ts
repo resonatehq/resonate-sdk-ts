@@ -147,9 +147,9 @@ export class Resonate {
             return;
           }
 
+          // if there is no task create subscription
           if (!res.task) {
-            console.log("got no task, should create a sub for the promise instead");
-            // TODO(avillega): Create sub for the promise and return
+            this.subscribe(id, promise.resolve, promise.reject);
             return;
           }
 
@@ -224,34 +224,38 @@ export class Resonate {
           }
 
           // otherwise create subscription
-          this.network.send(
-            {
-              kind: "createSubscription",
-              id: id,
-              timeout: 24 * util.HOUR + Date.now(), // TODO(avillega): use option timeout or 24h. Check the  usage of Date here, seems fine
-              recv: `poll://uni@${this.group}/${this.pid}`,
-            },
-            (timeout, response) => {
-              const res = response as CreateSubscriptionRes;
-
-              if (timeout) {
-                // TODO(avillega): Handle platform level error
-                console.error("Platform error");
-                return;
-              }
-
-              // once again check if the promise is complete and early exit
-              if (this.complete(res.promise, promise.resolve, promise.reject)) {
-                return;
-              }
-
-              // otherwise register a subscription
-              this.inner.subscribe(id, (p) => this.complete(p, promise.resolve, promise.reject));
-            },
-          );
+          this.subscribe(id, promise.resolve, promise.reject)
         },
       );
     });
+  }
+
+  private subscribe(id: string, resolve: (v: any) => void, reject: (e?: any) => void) {
+    this.network.send(
+      {
+        kind: "createSubscription",
+        id: id,
+        timeout: 24 * util.HOUR + Date.now(), // TODO(avillega): use option timeout or 24h. Check the  usage of Date here, seems fine
+        recv: `poll://uni@${this.group}/${this.pid}`,
+      },
+      (timeout, response) => {
+        const res = response as CreateSubscriptionRes;
+
+        if (timeout) {
+          // TODO(avillega): Handle platform level error
+          console.error("Platform error");
+          return;
+        }
+
+        // once again check if the promise is complete and early exit
+        if (this.complete(res.promise, resolve, reject)) {
+          return;
+        }
+
+        // otherwise register a subscription
+        this.inner.subscribe(id, (promise) => this.complete(promise, resolve, reject));
+      },
+    );
   }
 
   private complete(promise: DurablePromiseRecord, resolve: (v: any) => void, reject: (e?: any) => void) {
