@@ -1,4 +1,4 @@
-import type { Func, Params, RemoteOpts, Ret } from "./types";
+import type { Func, Params, RemoteOpts, Return } from "./types";
 import * as util from "./util";
 
 const defaultRemoteOpts: RemoteOpts = {
@@ -115,8 +115,8 @@ export class Future<T> implements Iterable<Future<T>> {
 
 export class Context {
   // TODO(avillega): Allow user to define other opts
-  beginRun<F extends Func>(func: F, ...args: Params<F>): InvokeLocal<Ret<F>> {
-    return new InvokeLocal<Ret<F>>(func, args);
+  beginRun<F extends Func>(func: F, ...args: Params<F>): InvokeLocal<Return<F>> {
+    return new InvokeLocal<Return<F>>(func, args);
   }
 
   // TODO(avillega): Allow user to define target, and opts
@@ -125,8 +125,8 @@ export class Context {
   }
 
   // TODO(avillega): Allow user to define other opts
-  run<F extends Func>(func: F, ...args: Params<F>): CallLocal<Ret<F>> {
-    return new CallLocal<Ret<F>>(func, args);
+  run<F extends Func>(func: F, ...args: Params<F>): CallLocal<Return<F>> {
+    return new CallLocal<Return<F>>(func, args);
   }
 
   // TODO(avillega): Allow user to define target and opts

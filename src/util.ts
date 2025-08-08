@@ -1,4 +1,4 @@
-import type { TaskRecord } from "./network/network";
+import type { DurablePromiseRecord, TaskRecord } from "./network/network";
 
 // Base unit: milliseconds
 export const MS = 1;
@@ -39,4 +39,9 @@ export function isTaskRecord(obj: any): obj is TaskRecord {
     (obj.createdOn === undefined || typeof obj.createdOn === "number") &&
     (obj.completedOn === undefined || typeof obj.completedOn === "number")
   );
+}
+
+export function isDurablePromiseRecord(obj: any): obj is DurablePromiseRecord {
+  // TODO(dfarr): complete this type guard
+  return typeof obj === "object" && obj !== null && typeof obj.id === "string" && typeof obj.state === "string";
 }

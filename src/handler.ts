@@ -16,17 +16,17 @@ export interface DurablePromiseProto {
   args?: any[];
 }
 
-export type DurablePromise<T> = {
-  id: string;
-  state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
-  value?: T;
-};
+// export type DurablePromise<T> = {
+//   id: string;
+//   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
+//   value?: T;
+// };
 
 export class Handler {
-  private promises: Map<string, DurablePromise<any>>;
+  private promises: Map<string, DurablePromiseRecord>;
   private network: Network;
 
-  constructor(network: Network, initialPromises?: DurablePromise<any>[]) {
+  constructor(network: Network, initialPromises?: DurablePromiseRecord[]) {
     this.network = network;
     this.promises = new Map();
     for (const p of initialPromises ?? []) {
@@ -38,9 +38,9 @@ export class Handler {
     this.promises.set(durablePromise.id, durablePromise);
   }
 
-  public createPromise<T>(
+  public createPromise(
     { id, timeout, tags, fn, args }: DurablePromiseProto,
-    callback: (res: DurablePromise<T>) => void,
+    callback: (res: DurablePromiseRecord) => void,
   ): void {
     const promise = this.promises.get(id);
     if (promise) {
@@ -74,7 +74,7 @@ export class Handler {
     );
   }
 
-  public resolvePromise<T>(id: string, value: T, callback: (res: DurablePromise<T>) => void): void {
+  public resolvePromise(id: string, value: any, callback: (res: DurablePromiseRecord) => void): void {
     const promise = this.promises.get(id);
     util.assertDefined(promise);
 
@@ -105,13 +105,13 @@ export class Handler {
     );
   }
 
-  public createCallback<T>(
+  public createCallback(
     id: string,
     rootPromiseId: string,
     timeout: number,
     recv: string,
     cb: (
-      result: { kind: "callback"; callback: CallbackRecord } | { kind: "promise"; promise: DurablePromise<T> },
+      result: { kind: "callback"; callback: CallbackRecord } | { kind: "promise"; promise: DurablePromiseRecord },
     ) => void,
   ): void {
     this.network.send(

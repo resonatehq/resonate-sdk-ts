@@ -18,7 +18,7 @@ export type LocalOpts = {
   timeout: number;
 };
 
-export type Completed = { kind: "completed"; promiseId: string; result: any };
+export type Completed = { kind: "completed"; promise: DurablePromiseRecord };
 export type Suspended = { kind: "suspended"; promiseId: string };
 export type Failure = { kind: "failure"; task: Task };
 export type PlatformError = { kind: "platformError"; cause: any; msg: string };
@@ -42,7 +42,7 @@ export type UnclaimedTask = {
 export type Task = UnclaimedTask | ClaimedTask;
 
 // Return type of a function or a generator
-export type Ret<T> = T extends (...args: any[]) => Generator<infer Y, infer R, infer N>
+export type Return<T> = T extends (...args: any[]) => Generator<infer Y, infer R, infer N>
   ? R // Return type of generator
   : T extends (...args: any[]) => infer R
     ? Awaited<R> // Return type of regular function

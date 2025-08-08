@@ -8,7 +8,7 @@ import type { ClaimedTask, CompResult, Task } from "./types";
 import * as util from "./util";
 
 interface InvocationParams {
-  fn: (ctx: Context, ...args: any[]) => any;
+  func: (ctx: Context, ...args: any[]) => any;
   args: any[];
 }
 
@@ -80,9 +80,9 @@ export class Computation {
     this.task = task;
     this.callback = cb;
     this.handler.updateCache(task.rootPromise);
-    const fn = this.registry.get(task.rootPromise.param?.fn ?? "");
+    const registered = this.registry.get(task.rootPromise.param?.func ?? "");
 
-    if (!fn) {
+    if (!registered) {
       // TODO(avillega): drop the task here and call the callback with an error
       console.warn("couldn't find fn in the registry");
       return;
@@ -90,7 +90,7 @@ export class Computation {
 
     if (!this.invocationParams) {
       this.invocationParams = {
-        fn,
+        func: registered.func,
         args: task.rootPromise.param?.args ?? [],
       };
     }
@@ -114,16 +114,15 @@ export class Computation {
     const event = this.eventQueue.shift();
     util.assertDefined(event);
 
-    const { fn, args } = this.invocationParams!;
+    const { func, args } = this.invocationParams!;
 
-    Coroutine.exec(this.promiseId, fn, args, this.handler, (result) => {
+    Coroutine.exec(this.promiseId, func, args, this.handler, (result) => {
       if (result.type === "completed") {
-        this.handler.resolvePromise(this.promiseId, result.value, (durablePromise) => {
+        this.handler.resolvePromise(this.promiseId, result.value, (promise) => {
           util.assertDefined(this.task);
           this.completeTask({
             kind: "completed",
-            promiseId: this.promiseId,
-            result: durablePromise.value,
+            promise,
           });
         });
       } else {
