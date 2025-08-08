@@ -116,7 +116,7 @@ describe("tasks transitions", () => {
 
   test("Test Case 19: transition from claimed to init via heartbeat", async () => {
     const task = step(server);
-    await tasks.claim(task.id, task.counter, "task19", 100);
+    await tasks.claim(task.id, task.counter, "task19", 1000);
     const count = await tasks.heartbeat("task19");
     expect(count).toBe(1);
   });
