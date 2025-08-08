@@ -744,7 +744,6 @@ export class Server {
     if (schedule === undefined) {
       throw new ServerError("schedule not found", "not_found");
     }
-    console.log("FOO", schedule);
     return schedule;
   }
 
