@@ -1,8 +1,14 @@
 import { LocalNetwork } from "../dev/network";
-import type { CreatePromiseAndTaskRes, CreatePromiseRes, CreateSubscriptionRes, DurablePromiseRecord, Network } from "./network/network";
+import type {
+  CreatePromiseAndTaskRes,
+  CreatePromiseRes,
+  CreateSubscriptionRes,
+  DurablePromiseRecord,
+  Network,
+} from "./network/network";
 import { HttpNetwork } from "./network/remote";
 import { ResonateInner } from "./resonate-inner";
-import type { Func, Params, Return } from "./types";
+import { type Func, type Options, type ParamsWithOptions, RESONATE_OPTIONS, type Return } from "./types";
 import * as util from "./util";
 
 export interface Handle<T> {
@@ -10,11 +16,11 @@ export interface Handle<T> {
 }
 
 export interface ResonateFunc<F extends Func> {
-  run: (id: string, ...args: Params<F>) => Promise<Return<F>>;
-  rpc: (id: string, ...args: Params<F>) => Promise<Return<F>>;
-  beginRun: (id: string, ...args: Params<F>) => Promise<Handle<Return<F>>>;
-  beginRpc: (id: string, ...args: Params<F>) => Promise<Handle<Return<F>>>;
-  options: () => void;
+  run: (id: string, ...args: ParamsWithOptions<F>) => Promise<Return<F>>;
+  rpc: (id: string, ...args: ParamsWithOptions<F>) => Promise<Return<F>>;
+  beginRun: (id: string, ...args: ParamsWithOptions<F>) => Promise<Handle<Return<F>>>;
+  beginRpc: (id: string, ...args: ParamsWithOptions<F>) => Promise<Handle<Return<F>>>;
+  options: (opts?: Partial<Options>) => Partial<Options> & { [RESONATE_OPTIONS]: true };
 }
 
 export class Resonate {
@@ -80,18 +86,20 @@ export class Resonate {
     this.inner.register(name ?? func.name, func);
 
     return {
-      run: (id: string, ...args: Params<F>): Promise<Return<F>> => this.run(id, func, ...args),
-      rpc: (id: string, ...args: Params<F>): Promise<Return<F>> => this.rpc(id, func, ...args),
-      beginRun: (id: string, ...args: Params<F>): Promise<Handle<Return<F>>> => this.beginRun(id, func, ...args),
-      beginRpc: (id: string, ...args: Params<F>): Promise<Handle<Return<F>>> => this.beginRpc(id, func, ...args),
-      options: () => {},
+      run: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> => this.run(id, func, ...args),
+      rpc: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> => this.rpc(id, func, ...args),
+      beginRun: (id: string, ...args: ParamsWithOptions<F>): Promise<Handle<Return<F>>> =>
+        this.beginRun(id, func, ...args),
+      beginRpc: (id: string, ...args: ParamsWithOptions<F>): Promise<Handle<Return<F>>> =>
+        this.beginRpc(id, func, ...args),
+      options: this.options,
     };
   }
 
   /**
    * Invoke a function and return a value
    */
-  public async run<F extends Func>(id: string, func: F, ...args: Params<F>): Promise<Return<F>>;
+  public async run<F extends Func>(id: string, func: F, ...args: ParamsWithOptions<F>): Promise<Return<F>>;
   public async run<T>(id: string, name: string, ...args: any[]): Promise<T>;
   public async run<T>(id: string, funcOrName: Func | string, ...args: any[]): Promise<T>;
   public async run(id: string, funcOrName: Func | string, ...args: any[]): Promise<any> {
@@ -101,14 +109,17 @@ export class Resonate {
   /**
    * Invoke a function and return a promise
    */
-  public async beginRun<F extends Func>(id: string, func: F, ...args: Params<F>): Promise<Handle<Return<F>>>;
+  public async beginRun<F extends Func>(id: string, func: F, ...args: ParamsWithOptions<F>): Promise<Handle<Return<F>>>;
   public async beginRun<T>(id: string, func: string, ...args: any[]): Promise<Handle<T>>;
   public async beginRun(id: string, funcOrName: Func | string, ...args: any[]): Promise<Handle<any>>;
-  public async beginRun(id: string, funcOrName: Func | string, ...args: any[]): Promise<Handle<any>> {
+  public async beginRun(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<Handle<any>> {
     const registered = this.inner.registry.get(funcOrName); // TODO(avillega): should the register be owned by Resonate?
     if (!registered) {
       throw new Error(`${funcOrName} does not exist`);
     }
+
+    // TODO(dfarr): use the options
+    const [args, _] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
     return new Promise<Handle<any>>((resolve) => {
       this.network.send(
@@ -173,7 +184,7 @@ export class Resonate {
   /**
    * Invoke a remote function and return a value
    */
-  public async rpc<F extends Func>(id: string, func: F, ...args: Params<F>): Promise<Return<F>>;
+  public async rpc<F extends Func>(id: string, func: F, ...args: ParamsWithOptions<F>): Promise<Return<F>>;
   public async rpc<T>(id: string, name: string, ...args: any[]): Promise<T>;
   public async rpc<T>(id: string, funcOrName: Func | string, ...args: any[]): Promise<T>;
   public async rpc(id: string, funcOrName: Func | string, ...args: any[]): Promise<any> {
@@ -183,14 +194,17 @@ export class Resonate {
   /**
    * Invoke a remote function and return a promise
    */
-  public async beginRpc<F extends Func>(id: string, func: F, ...args: Params<F>): Promise<Handle<Return<F>>>;
+  public async beginRpc<F extends Func>(id: string, func: F, ...args: ParamsWithOptions<F>): Promise<Handle<Return<F>>>;
   public async beginRpc<T>(id: string, func: string, ...args: any[]): Promise<Handle<T>>;
   public async beginRpc(id: string, funcOrName: Func | string, ...args: any[]): Promise<Handle<any>>;
-  public async beginRpc(id: string, funcOrName: Func | string, ...args: any[]): Promise<Handle<any>> {
+  public async beginRpc(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<Handle<any>> {
     const registered = this.inner.registry.get(funcOrName); // TODO(avillega): should the register be owned by Resonate?
     if (!registered) {
       throw new Error(`${funcOrName} does not exist`);
     }
+
+    // TODO(dfarr): use the options
+    const [args, _] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
     return new Promise<Handle<any>>((resolve) => {
       this.network.send(
@@ -223,10 +237,20 @@ export class Resonate {
           }
 
           // otherwise create subscription
-          this.subscribe(id, promise.resolve, promise.reject)
+          this.subscribe(id, promise.resolve, promise.reject);
         },
       );
     });
+  }
+
+  public options(opts: Partial<Options> = {}): Options & { [RESONATE_OPTIONS]: true } {
+    return {
+      id: "",
+      target: "default",
+      timeout: 24 * util.HOUR,
+      ...opts,
+      [RESONATE_OPTIONS]: true,
+    };
   }
 
   private subscribe(id: string, resolve: (v: any) => void, reject: (e?: any) => void) {

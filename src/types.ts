@@ -3,17 +3,14 @@ import type { DurablePromiseRecord } from "./network/network";
 
 export type Func = (ctx: Context, ...args: any[]) => any;
 
+export const RESONATE_OPTIONS: unique symbol = Symbol("ResonateOptions");
+
 // The args of a resonate function excluding the context argument
 export type Params<F> = F extends (ctx: Context, ...args: infer P) => any ? P : never;
+export type ParamsWithOptions<F> = [...Params<F>, (Partial<Options> & { [RESONATE_OPTIONS]: true })?];
 
-export type RemoteOpts = {
-  id?: string;
-  target: string;
-  timeout: number;
-};
-
-export type LocalOpts = {
-  id?: string;
+export type Options = {
+  id: string;
   target: string;
   timeout: number;
 };
@@ -56,7 +53,7 @@ export type InternalAsyncR<T> = {
   id: string;
   func: string;
   args: any[];
-  opts: RemoteOpts;
+  opts: Options;
   mode: "eager" | "defer"; // TODO(avillega): Right now it is unused, review its usage
 };
 
