@@ -42,9 +42,24 @@ export function isTaskRecord(obj: any): obj is TaskRecord {
   );
 }
 
-export function isDurablePromiseRecord(obj: any): obj is DurablePromiseRecord {
-  // TODO(dfarr): complete this type guard
-  return typeof obj === "object" && obj !== null && typeof obj.id === "string" && typeof obj.state === "string";
+export function isDurablePromiseRecord(obj: unknown): obj is DurablePromiseRecord {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    typeof (obj as any).id === "string" &&
+    typeof (obj as any).timeout === "number" &&
+    typeof (obj as any).param !== "undefined" && // allow any type
+    typeof (obj as any).value !== "undefined" && // allow any type
+    typeof (obj as any).tags === "object" &&
+    (obj as any).tags !== null &&
+    !Array.isArray((obj as any).tags) &&
+    Object.values((obj as any).tags).every((v) => typeof v === "string") &&
+    ["pending", "resolved", "rejected", "rejected_canceled", "rejected_timedout"].includes((obj as any).state) &&
+    (typeof (obj as any).iKeyForCreate === "undefined" || typeof (obj as any).iKeyForCreate === "string") &&
+    (typeof (obj as any).iKeyForComplete === "undefined" || typeof (obj as any).iKeyForComplete === "string") &&
+    (typeof (obj as any).createdOn === "undefined" || typeof (obj as any).createdOn === "number") &&
+    (typeof (obj as any).completedOn === "undefined" || typeof (obj as any).completedOn === "number")
+  );
 }
 
 export function isOptions(value: unknown): value is Options {
