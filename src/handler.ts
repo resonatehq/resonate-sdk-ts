@@ -16,12 +16,6 @@ export interface DurablePromiseProto {
   args?: any[];
 }
 
-// export type DurablePromise<T> = {
-//   id: string;
-//   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
-//   value?: T;
-// };
-
 export class Handler {
   private promises: Map<string, DurablePromiseRecord>;
   private network: Network;

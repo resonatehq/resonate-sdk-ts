@@ -23,7 +23,6 @@ export class Resonate {
   private group: string;
   private pid: string;
   private ttl: number;
-  // private handlerPromises: Map<string, PromiseWithResolvers<any>>;
 
   constructor(network: Network, config: { group: string; pid: string; ttl: number }) {
     this.network = network;
