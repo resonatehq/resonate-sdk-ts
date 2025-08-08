@@ -62,8 +62,8 @@ export function isDurablePromiseRecord(obj: unknown): obj is DurablePromiseRecor
   );
 }
 
-export function isOptions(value: unknown): value is Options {
-  return !!value && typeof value === "object" && RESONATE_OPTIONS in value;
+export function isOptions(obj: unknown): obj is Options {
+  return typeof obj === "object" && obj !== null && RESONATE_OPTIONS in obj;
 }
 
 export function splitArgsAndOpts(args: any[], defaults: Options): [any[], Options] {
