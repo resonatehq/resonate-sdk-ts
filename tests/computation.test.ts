@@ -1,10 +1,10 @@
-import { Computation } from "../src/computation";
-import { Registry } from "../src/registry";
-import type { ClaimedTask } from "../src/types";
-import type { Processor, Result } from "../src/processor/processor";
 import { LocalNetwork } from "../dev/network";
+import { Computation } from "../src/computation";
 import type { Context } from "../src/context";
 import type { CreatePromiseAndTaskRes, DurablePromiseRecord, Network, TaskRecord } from "../src/network/network";
+import type { Processor, Result } from "../src/processor/processor";
+import { Registry } from "../src/registry";
+import type { ClaimedTask } from "../src/types";
 import * as util from "../src/util";
 
 async function createPromiseAndTask(
@@ -19,12 +19,12 @@ async function createPromiseAndTask(
         kind: "createPromiseAndTask",
         promise: {
           id: id,
-          timeout: 24 * util.HOUR + Date.now(), // TODO(avillega): use option timeout or 24h. Check the  usage of Date here, seems fine
+          timeout: 24 * util.HOUR + Date.now(),
           param: {
             fn: funcName,
             args,
           },
-          tags: { "resonate:invoke": "poll://any@default/default" }, // TODO(avillega): use the real anycast address or change the server to not require `poll://`
+          tags: { "resonate:invoke": "poll://any@default/default" },
         },
         task: {
           processId: "default",
