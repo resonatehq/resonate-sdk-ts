@@ -112,90 +112,30 @@ export class Computation {
         args: task.rootPromise.param?.args ?? [],
       };
     }
-    this.eventQueue.push("invoke");
-    this.run();
+    this.enqueue(task.id, "invoke");
   }
 
-  private completeTask(result: CompResult) {
-    util.assertDefined(this.task);
-    this.network.send({ kind: "completeTask", id: this.task.id, counter: this.task.counter }, () => {
-      // Once the task is completed reset the computation
-      this.task = undefined;
-      this.eventQueue = [];
-      this.isProcessing = false;
-      this.seenTodos.clear();
-      this.callback?.(result);
-      this.callback = undefined;
-    });
-  }
-
-  private handleRemoteTodos(todos: RemoteTodo[]) {
-    let createdCallbacks = 0;
-    const totalCallbacks = todos.length;
-    // reset the event queue, if we made it here it means that all localTodos were proccesed,
-    // if there is anything else in the queue it is redundant work and we should clean it to
-    // avoid races or problems due to concurrency
-    this.eventQueue = [];
-
-    for (const remoteTodo of todos) {
-      const { id } = remoteTodo;
-      this.handler.createCallback(
-        id,
-        this.promiseId,
-        Number.MAX_SAFE_INTEGER, // TODO (avillega): use the promise timeout
-        `poll://any@${this.group}/${this.pid}`,
-        (result) => {
-          if (result.kind === "promise") {
-            this.isProcessing = false; // unset so this return can be processed
-            this.eventQueue.push("return");
-            this.run();
-            return;
-          }
-          if (result.kind === "callback") {
-            createdCallbacks++;
-            if (createdCallbacks === totalCallbacks) {
-              this.completeTask({ kind: "suspended", durablePromiseId: this.promiseId });
-              return;
-            }
-          }
-        },
-      );
+  // Enqueues work to do by the run function.
+  // Only enqueues work if the given taskId matches the current this.task.id
+  private enqueue(taskId: string, event: Event) {
+    if (this.task?.id === taskId) {
+      this.eventQueue.push(event);
+      this.run(taskId);
     }
   }
 
-  private handleLocalTodos(todos: LocalTodo[]) {
-    for (const localTodo of todos) {
-      if (this.seenTodos.has(localTodo.id)) {
-        continue;
-      }
-      this.seenTodos.add(localTodo.id);
-      const { id, fn, ctx, args } = localTodo;
-      this.processor.process(
-        id,
-        async () => {
-          return await fn(ctx, ...args);
-        },
-        (result) => {
-          const value = result.success ? result.data : result.error;
-          // TODO (avillega): Need to do a rejection too instead of resolving with error
-          this.handler.resolvePromise(id, value, (_) => {
-            this.eventQueue.push("return");
-            this.run();
-          });
-        },
-      );
-    }
-  }
-
-  private run(): void {
+  // Run needs to take a task to prevent callbacks that might complete in the future, after the task they
+  // were associated with has possible been completed, to enter the run function when another task
+  // is being run
+  private run(taskId: string): void {
     // Guard against concurrent processing of todos
-    if (this.isProcessing || this.eventQueue.length === 0) {
+    if (this.task?.id !== taskId || this.isProcessing || this.eventQueue.length === 0) {
       return;
     }
-    this.doRun();
+    this.doRun(taskId);
   }
 
-  private doRun(): void {
+  private doRun(taskId: string): void {
     util.assert(!this.isProcessing, "should not execute doRun concurrently");
     this.isProcessing = true;
 
@@ -234,6 +174,7 @@ export class Computation {
       if (result.type === "completed") {
         this.handler.resolvePromise(this.promiseId, result.value, (durablePromise) => {
           util.assertDefined(this.task);
+          util.assert(taskId === this.task.id, "Trying to complete a current task from a stale task callback");
           this.completeTask({ kind: "completed", durablePromise });
         });
         // We don't need to retrigger a run there is no more work to do for this task
@@ -246,17 +187,79 @@ export class Computation {
       );
 
       if (result.localTodos.length !== 0) {
-        this.handleLocalTodos(result.localTodos);
-
-        // This is the end of the coroutine callback, if we still have work to do we call run
-        // After sending all the todos to the processor unset isProcessing so the proccessed todos can trigger another run
-        this.isProcessing = false;
-        if (this.eventQueue.length > 0) {
-          this.run();
-        }
+        this.handleLocalTodos(taskId, result.localTodos);
       } else {
-        this.handleRemoteTodos(result.remoteTodos);
+        this.handleRemoteTodos(taskId, result.remoteTodos);
       }
+
+      // This is the end of the coroutine callback, if we still have work to do we call run
+      // After sending all the todos to the processor or creating the callbacks
+      this.isProcessing = false;
+      if (this.eventQueue.length > 0 && this.task) {
+        this.run(taskId);
+      }
+    });
+  }
+
+  private handleLocalTodos(taskId: string, todos: LocalTodo[]) {
+    for (const localTodo of todos) {
+      if (this.seenTodos.has(localTodo.id)) {
+        continue;
+      }
+      this.seenTodos.add(localTodo.id);
+      const { id, fn, ctx, args } = localTodo;
+      this.processor.process(
+        id,
+        async () => {
+          return await fn(ctx, ...args);
+        },
+        (result) => {
+          const value = result.success ? result.data : result.error;
+          // TODO (avillega): Need to do a rejection too instead of resolving with error
+          this.handler.resolvePromise(id, value, (_) => {
+            this.enqueue(taskId, "return");
+          });
+        },
+      );
+    }
+  }
+
+  private handleRemoteTodos(taskId: string, todos: RemoteTodo[]) {
+    let createdCallbacks = 0;
+    const totalCallbacks = todos.length;
+
+    for (const remoteTodo of todos) {
+      const { id } = remoteTodo;
+      this.handler.createCallback(
+        id,
+        this.promiseId,
+        Number.MAX_SAFE_INTEGER, // TODO (avillega): use the promise timeout
+        `poll://any@${this.group}/${this.pid}`,
+        (result) => {
+          if (result.kind === "promise") {
+            this.enqueue(taskId, "return");
+            return;
+          }
+          if (result.kind === "callback") {
+            createdCallbacks++;
+            if (createdCallbacks === totalCallbacks) {
+              this.completeTask({ kind: "suspended", durablePromiseId: this.promiseId });
+              return;
+            }
+          }
+        },
+      );
+    }
+  }
+
+  private completeTask(result: CompResult) {
+    util.assertDefined(this.task);
+    this.network.send({ kind: "completeTask", id: this.task.id, counter: this.task.counter }, () => {
+      // Once the task is completed reset the computation
+      this.task = undefined;
+      this.eventQueue = [];
+      this.callback?.(result);
+      this.callback = undefined;
     });
   }
 }
