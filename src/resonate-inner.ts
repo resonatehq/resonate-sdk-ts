@@ -35,7 +35,7 @@ export class ResonateInner {
     computation.process(t, (res) => {
       // notify subscribers
       if (res.kind === "completed") {
-        this.notify(res.promise);
+        this.notify(res.durablePromise);
       }
       cb(res);
     });

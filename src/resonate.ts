@@ -82,7 +82,12 @@ export class Resonate {
   /**
    * Register a function and returns a registered function
    */
-  public register<F extends Func>(func: F, name?: string): ResonateFunc<F> {
+  public register<F extends Func>(name: string, func: F): ResonateFunc<F>;
+  public register<F extends Func>(func: F): ResonateFunc<F>;
+  public register<F extends Func>(nameOrFunc: string | F, maybeFunc?: F): ResonateFunc<F> {
+    const name = typeof nameOrFunc === "string" ? nameOrFunc : nameOrFunc.name;
+    const func = typeof nameOrFunc === "string" ? maybeFunc! : nameOrFunc;
+
     this.inner.register(name ?? func.name, func);
 
     return {
@@ -172,7 +177,7 @@ export class Resonate {
             },
             (res) => {
               if (res.kind === "completed") {
-                this.complete(res.promise, promise.resolve, promise.reject);
+                this.complete(res.durablePromise, promise.resolve, promise.reject);
               }
             },
           );

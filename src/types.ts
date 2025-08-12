@@ -15,8 +15,8 @@ export type Options = {
   timeout: number;
 };
 
-export type Completed = { kind: "completed"; promise: DurablePromiseRecord };
-export type Suspended = { kind: "suspended"; promiseId: string };
+export type Completed = { kind: "completed"; durablePromise: DurablePromiseRecord };
+export type Suspended = { kind: "suspended"; durablePromiseId: string };
 export type Failure = { kind: "failure"; task: Task };
 export type PlatformError = { kind: "platformError"; cause: any; msg: string };
 export type CompResult = Completed | Suspended | Failure | PlatformError;
