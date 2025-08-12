@@ -1,58 +1,84 @@
+import { Command } from "commander";
+import type * as context from "../src/context";
 import type { RequestMsg } from "../src/network/network";
 import { ServerProcess } from "./server";
 import { Message, Random, Simulator, unicast } from "./simulator";
 import { WorkerProcess } from "./worker";
 
-import type * as context from "../src/context";
+const program = new Command();
 
-// --- Command-line argument parsing ---
-const argv = process.argv.slice(2);
-if (argv.length < 4) {
-  console.error("Usage: bun sim/main.ts --seed <number> --steps <number>");
-  process.exit(1);
-}
+program
+  .name("sim")
+  .description("Run the simulator with a given seed and steps")
+  .requiredOption("--seed <number>", "Random seed", (value) => {
+    const n = Number.parseInt(value, 10);
+    if (Number.isNaN(n)) {
+      throw new Error(`Invalid seed: ${value}`);
+    }
+    return n;
+  })
+  .requiredOption("--steps <number>", "Number of steps", (value) => {
+    const n = Number.parseInt(value, 10);
+    if (Number.isNaN(n) || n < 0) {
+      throw new Error(`Invalid steps: ${value}`);
+    }
+    return n;
+  });
 
-function getArgValue(name: string): string {
-  const index = argv.indexOf(name);
-  if (index === -1 || index + 1 >= argv.length) {
-    console.error(`Missing value for ${name}`);
-    console.error("Usage: bun sim/main.ts --seed <number> --steps <number>");
-    process.exit(1);
-  }
-  return argv[index + 1];
-}
+program.parse(process.argv);
 
-// Parse required --seed and --steps flags
-const seedArg = getArgValue("--seed");
-const stepsArg = getArgValue("--steps");
+const options = program.opts<{ seed: number; steps: number }>();
 
-const seed = Number.parseInt(seedArg, 10);
-if (Number.isNaN(seed)) {
-  console.error(`Invalid seed: ${seedArg}`);
-  process.exit(1);
-}
+const rnd = new Random(options.seed);
 
-const steps = Number.parseInt(stepsArg, 10);
-if (Number.isNaN(steps) || steps < 0) {
-  console.error(`Invalid steps: ${stepsArg}`);
-  process.exit(1);
-}
-
-console.log("seed:", seed);
-console.log("steps:", steps);
-
-function* fib(ctx: context.Context, n: number): Generator {
+function* fib(ctx: context.Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
   }
 
-  const p1 = yield ctx.beginRpc("fib", n - 1);
-  const p2 = yield ctx.beginRpc("fib", n - 2);
-  return (yield p1) + (yield p2);
+  const ps: any[] = [];
+  const vs: number[] = [];
+
+  for (let i = 1; i < 3; i++) {
+    const choice: string = rnd.pick(["lfi", "rfi", "lfc", "rfc"]);
+
+    switch (choice) {
+      case "lfi": {
+        const p = yield ctx.lfi(fib, n - i, ctx.options({ id: `fib-${n - i}` }));
+        ps.push(p);
+        break;
+      }
+      case "rfi": {
+        const p = yield ctx.rfi("fib", n - i, ctx.options({ id: `fib-${n - i}` }));
+        ps.push(p);
+        break;
+      }
+      case "lfc": {
+        const v: number = yield ctx.lfc(fib, n - i, ctx.options({ id: `fib-${n - i}` }));
+        vs.push(v);
+        break;
+      }
+      case "rfc": {
+        const v: number = yield ctx.rfc("fib", n - i, ctx.options({ id: `fib-${n - i}` }));
+        vs.push(v);
+        break;
+      }
+    }
+  }
+
+  for (const p of ps) {
+    const v: number = yield p;
+    vs.push(v);
+  }
+
+  if (vs.length !== 2) {
+    throw new Error("Assertion failed: vs.length must be 2");
+  }
+
+  return vs[0] + vs[1];
 }
 
-const rnd = new Random(seed);
-const sim = new Simulator(seed, {
+const sim = new Simulator(options.seed, {
   randomDelay: rnd.random(0.5),
   dropProb: rnd.random(0.5),
   duplProb: rnd.random(0.5),
@@ -72,24 +98,27 @@ sim.register(worker1);
 sim.register(worker2);
 sim.register(worker3);
 
-sim.send(
-  new Message<RequestMsg>(
-    unicast("environment"),
-    unicast("server"),
-    {
-      kind: "createPromise",
-      id: "fib",
-      timeout: 10020001,
-      iKey: "fib",
-      tags: { "resonate:invoke": "local://any@default" },
-      param: { fn: "fib", args: [10] },
-    },
-    { requ: true, correlationId: 0 },
-  ),
-);
-
 let i = 0;
-while (i < steps) {
+while (i < options.steps) {
+  const n = rnd.randint(0, 99);
+  const timeout = rnd.randint(0, options.steps);
+  const id = `${n}`;
+  sim.send(
+    new Message<RequestMsg>(
+      unicast("environment"),
+      unicast("server"),
+      {
+        kind: "createPromise",
+        id: id,
+        timeout: timeout,
+        iKey: id,
+        tags: { "resonate:invoke": "local://any@default" },
+        param: { func: "fib", args: [n] },
+      },
+      { requ: true, correlationId: i },
+    ),
+  );
+
   sim.tick();
   i++;
 }

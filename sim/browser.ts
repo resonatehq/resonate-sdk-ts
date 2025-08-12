@@ -36,7 +36,7 @@ sim.send(
       timeout: 10020001,
       iKey: "fib",
       tags: { "resonate:invoke": "local://any@default" },
-      param: { fn: "fib", args: [10] },
+      param: { func: "fib", args: [10] },
     },
     { requ: true, correlationId: 0 },
   ),

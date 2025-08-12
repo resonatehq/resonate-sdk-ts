@@ -102,7 +102,7 @@ export class Computation {
     const registered = this.registry.get(task.rootPromise.param?.func ?? "");
     if (!registered) {
       // TODO(avillega): drop the task here and call the callback with an error
-      console.warn("couldn't find fn in the registry");
+      console.warn("couldn't find func in the registry");
       return;
     }
 
