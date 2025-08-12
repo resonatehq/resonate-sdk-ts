@@ -184,7 +184,11 @@ export class JsonEncoder implements Encoder {
       }
 
       if (value?.__type === "error") {
-        return Object.assign(new Error(value.message), value);
+        return new Error("another error what ever");
+        // const error = new Error(value.message || "Unknown error");
+        // if (value.name) error.name = value.name;
+        // if (value.stack) error.stack = value.stack;
+        // return error;
       }
 
       return value;

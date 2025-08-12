@@ -4,7 +4,7 @@
   "description": "TypeScript SDK for Resonate",
   "author": "Resonate Developers",
   "license": "Apache-2.0",
-  "type": "commonjs",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "repository": {
