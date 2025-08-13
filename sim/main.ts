@@ -5,6 +5,75 @@ import { ServerProcess } from "./server";
 import { Message, Random, Simulator, unicast } from "./simulator";
 import { WorkerProcess } from "./worker";
 
+// Function definition
+function* fibLfi(ctx: context.Context, n: number): Generator<any, number, any> {
+  if (n <= 1) {
+    return n;
+  }
+  const p1 = yield ctx.lfi(fibLfi, n - 1, ctx.options({ id: `fibLfi-${n - 1}` }));
+  const p2 = yield ctx.lfi(fibLfi, n - 2, ctx.options({ id: `fibLfi-${n - 2}` }));
+
+  return (yield p1) + (yield p2);
+}
+
+function* fibRfi(ctx: context.Context, n: number): Generator<any, number, any> {
+  if (n <= 1) {
+    return n;
+  }
+  const p1 = yield ctx.rfi("fibRfi", n - 1, ctx.options({ id: `fibRfi-${n - 1}` }));
+  const p2 = yield ctx.rfi("fibRfi", n - 2, ctx.options({ id: `fibRfi-${n - 2}` }));
+
+  return (yield p1) + (yield p2);
+}
+
+function* fibLfc(ctx: context.Context, n: number): Generator<any, number, any> {
+  if (n <= 1) {
+    return n;
+  }
+  const v1 = yield ctx.lfc(fibLfc, n - 1, ctx.options({ id: `fibLfc-${n - 1}` }));
+  const v2 = yield ctx.lfc(fibLfc, n - 2, ctx.options({ id: `fibLfc-${n - 2}` }));
+  return v1 + v2;
+}
+
+function* fibRfc(ctx: context.Context, n: number): Generator<any, number, any> {
+  if (n <= 1) {
+    return n;
+  }
+  const v1 = yield ctx.rfc("fibRfc", n - 1, ctx.options({ id: `fibRfc-${n - 1}` }));
+  const v2 = yield ctx.rfc("fibRfc", n - 2, ctx.options({ id: `fibRfc-${n - 2}` }));
+  return v1 + v2;
+}
+
+function* foo(ctx: context.Context): Generator<any, any, any> {
+  const p1 = yield ctx.lfi(bar);
+  const p2 = yield ctx.rfi("bar");
+  yield ctx.lfi(bar);
+  yield ctx.rfi("bar");
+  yield ctx.lfc(bar);
+  yield ctx.rfc("bar");
+
+  return [yield p1, yield p2];
+}
+
+function* bar(ctx: context.Context): Generator<any, any, any> {
+  const p1 = yield ctx.lfi(baz);
+  const p2 = yield ctx.rfi("baz");
+  yield ctx.lfi(baz);
+  yield ctx.rfi("baz");
+  yield ctx.lfc(baz);
+  yield ctx.rfc("baz");
+
+  return [yield p1, yield p2];
+}
+
+function* baz(ctx: context.Context): Generator<any, any, any> {
+  return "baz";
+}
+
+const availableFuncs = { fibLfi: fibLfi, fibRfi: fibRfi, fibLfc: fibLfc, fibRfc: fibRfc, foo: foo, bar: bar, baz: baz };
+// ------------------------------------------------------------------------------------------
+
+// CLI
 const program = new Command();
 
 program
@@ -28,53 +97,57 @@ program
       return n;
     },
     10_000,
-  );
+  )
+  .option(
+    "--func <name>",
+    `Function to run (optional). Choices: ${Object.keys(availableFuncs).join(", ")}`,
+    (value) => {
+      if (!Object.keys(availableFuncs).includes(value)) {
+        throw new Error(`Invalid function: ${value}. Allowed: ${Object.keys(availableFuncs).join(", ")}`);
+      }
+      return value;
+    },
+  )
+  .option("--randomDelay <number>", "Random delay probability (0-1)", (value) => {
+    const n = Number.parseFloat(value);
+    if (Number.isNaN(n) || n < 0 || n > 1) {
+      throw new Error(`Invalid randomDelay: ${value} (must be 0–1)`);
+    }
+    return n;
+  })
+  .option("--dropProb <number>", "Drop probability (0-1)", (value) => {
+    const n = Number.parseFloat(value);
+    if (Number.isNaN(n) || n < 0 || n > 1) {
+      throw new Error(`Invalid dropProb: ${value} (must be 0–1)`);
+    }
+    return n;
+  })
+  .option("--duplProb <number>", "Duplicate probability (0-1)", (value) => {
+    const n = Number.parseFloat(value);
+    if (Number.isNaN(n) || n < 0 || n > 1) {
+      throw new Error(`Invalid duplProb: ${value} (must be 0–1)`);
+    }
+    return n;
+  });
 
 program.parse(process.argv);
 
-const options = program.opts<{ seed: number; steps: number }>();
+const options = program.opts<{
+  seed: number;
+  steps: number;
+  func?: string;
+  randomDelay?: number;
+  dropProb?: number;
+  duplProb?: number;
+}>();
+// ------------------------------------------------------------------------------------------
 
+// Run Simulation
 const rnd = new Random(options.seed);
-
-function* fibLfi(ctx: context.Context, n: number): Generator<any, number, any> {
-  if (n <= 1) {
-    return n;
-  }
-  const p1 = yield ctx.lfi(fibLfi, n - 1, ctx.options({ id: `fibLfi-${n - 1}` }));
-  const p2 = yield ctx.lfi(fibLfi, n - 2, ctx.options({ id: `fibLfi-${n - 2}` }));
-
-  return (yield p1) + (yield p2);
-}
-function* fibRfi(ctx: context.Context, n: number): Generator<any, number, any> {
-  if (n <= 1) {
-    return n;
-  }
-  const p1 = yield ctx.rfi("fibRfi", n - 1, ctx.options({ id: `fibRfi-${n - 1}` }));
-  const p2 = yield ctx.rfi("fibRfi", n - 2, ctx.options({ id: `fibRfi-${n - 2}` }));
-
-  return (yield p1) + (yield p2);
-}
-function* fibLfc(ctx: context.Context, n: number): Generator<any, number, any> {
-  if (n <= 1) {
-    return n;
-  }
-  const v1 = yield ctx.lfc(fibLfc, n - 1, ctx.options({ id: `fibLfc-${n - 1}` }));
-  const v2 = yield ctx.lfc(fibLfc, n - 2, ctx.options({ id: `fibLfc-${n - 2}` }));
-  return v1 + v2;
-}
-function* fibRfc(ctx: context.Context, n: number): Generator<any, number, any> {
-  if (n <= 1) {
-    return n;
-  }
-  const v1 = yield ctx.rfc("fibRfc", n - 1, ctx.options({ id: `fibRfc-${n - 1}` }));
-  const v2 = yield ctx.rfc("fibRfc", n - 2, ctx.options({ id: `fibRfc-${n - 2}` }));
-  return v1 + v2;
-}
-
 const sim = new Simulator(options.seed, {
-  randomDelay: rnd.random(0.5),
-  dropProb: rnd.random(0.5),
-  duplProb: rnd.random(0.5),
+  randomDelay: options.randomDelay ?? rnd.random(0.5),
+  dropProb: options.dropProb ?? rnd.random(0.5),
+  duplProb: options.duplProb ?? rnd.random(0.5),
 });
 
 const server = new ServerProcess("server");
@@ -84,14 +157,7 @@ const worker3 = new WorkerProcess("worker-3", "default");
 
 const workers = [worker1, worker2, worker3] as const;
 
-const registrations: [string, (...args: any[]) => any][] = [
-  ["fibLfi", fibLfi],
-  ["fibRfi", fibRfi],
-  ["fibLfc", fibLfc],
-  ["fibRfc", fibRfc],
-];
-
-for (const [name, func] of registrations) {
+for (const [name, func] of Object.entries(availableFuncs)) {
   for (const worker of workers) {
     worker.resonate.register(name, func);
   }
@@ -104,97 +170,60 @@ for (const worker of workers) {
 
 let i = 0;
 while (i < options.steps) {
-  let msg: Message<RequestMsg>;
-  switch (rnd.randint(0, 4)) {
-    case 0: {
-      msg = new Message<RequestMsg>(
-        unicast("environment"),
-        unicast("server"),
-        {
-          kind: "createPromise",
-          id: `fibLfi-${i}`,
-          timeout: rnd.randint(0, options.steps),
-          iKey: `fibLfi-${i}`,
-          tags: { "resonate:invoke": "local://any@default" },
-          param: { func: "fibLfi", args: [rnd.randint(0, 99)] },
-        },
-        { requ: true, correlationId: i },
-      );
-      break;
-    }
-    case 1: {
-      msg = new Message<RequestMsg>(
-        unicast("environment"),
-        unicast("server"),
-        {
-          kind: "createPromise",
-          id: `fibRfi-${i}`,
-          timeout: rnd.randint(0, options.steps),
-          iKey: `fibRfi-${i}`,
-          tags: { "resonate:invoke": "local://any@default" },
-          param: { func: "fibRfi", args: [rnd.randint(0, 99)] },
-        },
-        { requ: true, correlationId: i },
-      );
-      break;
-    }
-    case 2: {
-      msg = new Message<RequestMsg>(
-        unicast("environment"),
-        unicast("server"),
-        {
-          kind: "createPromise",
-          id: `fibLfc-${i}`,
-          timeout: rnd.randint(0, options.steps),
-          iKey: `fibLfc-${i}`,
-          tags: { "resonate:invoke": "local://any@default" },
-          param: { func: "fibLfc", args: [rnd.randint(0, 99)] },
-        },
-        { requ: true, correlationId: i },
-      );
-      break;
-    }
-    case 3: {
-      msg = new Message<RequestMsg>(
-        unicast("environment"),
-        unicast("server"),
-        {
-          kind: "createPromise",
-          id: `fibRfc-${i}`,
-          timeout: rnd.randint(0, options.steps),
-          iKey: `fibRfc-${i}`,
-          tags: { "resonate:invoke": "local://any@default" },
-          param: { func: "fibRfc", args: [rnd.randint(0, 99)] },
-        },
-        { requ: true, correlationId: i },
-      );
-      break;
-    }
-    case 4: {
-      msg = new Message<RequestMsg>(
-        unicast("environment"),
-        unicast("server"),
-        {
-          kind: "createPromise",
-          id: `fibCustom-${i}`,
-          timeout: rnd.randint(0, options.steps),
-          iKey: `fibCustom-${i}`,
-          tags: { "resonate:invoke": "local://any@default" },
-          param: { func: "fibCustom", args: [rnd.randint(0, 99)] },
-        },
-        { requ: true, correlationId: i },
-      );
-      break;
-    }
-    default: {
-      throw new Error("not impleted");
-    }
-  }
+  const useExplicit = options.func && i === 0;
 
-  sim.send(msg);
+  const funcName = useExplicit ? options.func : availableFuncs[rnd.randint(0, Object.keys(availableFuncs).length - 1)];
+
+  if (!options.func || i === 0) {
+    const id = `${funcName}-${i}`;
+    const timeout = rnd.randint(0, options.steps);
+    let msg: Message<RequestMsg>;
+    switch (funcName) {
+      case "fibLfi":
+      case "fibLfc":
+      case "fibRfi":
+      case "fibRfc": {
+        msg = new Message<RequestMsg>(
+          unicast("environment"),
+          unicast("server"),
+          {
+            kind: "createPromise",
+            id,
+            timeout,
+            iKey: id,
+            tags: { "resonate:invoke": "local://any@default" },
+            param: { func: funcName, args: [rnd.randint(0, 20)] },
+          },
+          { requ: true, correlationId: i },
+        );
+        break;
+      }
+      case "foo":
+      case "bar":
+      case "baz": {
+        msg = new Message<RequestMsg>(
+          unicast("environment"),
+          unicast("server"),
+          {
+            kind: "createPromise",
+            id,
+            timeout,
+            iKey: id,
+            tags: { "resonate:invoke": "local://any@default" },
+            param: { func: funcName, args: [] },
+          },
+          { requ: true, correlationId: i },
+        );
+        break;
+      }
+      default:
+        throw new Error(`unknown function name: ${funcName}`);
+    }
+
+    sim.send(msg);
+  }
 
   sim.tick();
   i++;
 }
-
-console.log("outbox", sim.outbox);
+// ------------------------------------------------------------------------------------------
