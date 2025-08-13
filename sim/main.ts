@@ -1,9 +1,9 @@
 import { Command } from "commander";
 import type * as context from "../src/context";
 import type { RequestMsg } from "../src/network/network";
-import { ServerProcess } from "./server";
-import { Message, Random, Simulator, unicast } from "./simulator";
-import { WorkerProcess } from "./worker";
+import { ServerProcess } from "./src/server";
+import { Message, Random, Simulator, unicast } from "./src/simulator";
+import { WorkerProcess } from "./src/worker";
 
 // Function definition
 function* fibLfi(ctx: context.Context, n: number): Generator<any, number, any> {
@@ -79,13 +79,18 @@ const program = new Command();
 program
   .name("sim")
   .description("Run the simulator with a given seed and steps")
-  .requiredOption("--seed <number>", "Random seed", (value) => {
-    const n = Number.parseInt(value, 10);
-    if (Number.isNaN(n)) {
-      throw new Error(`Invalid seed: ${value}`);
-    }
-    return n;
-  })
+  .option(
+    "--seed <number>",
+    "Random seed",
+    (value) => {
+      const n = Number.parseInt(value, 10);
+      if (Number.isNaN(n)) {
+        throw new Error(`Invalid seed: ${value}`);
+      }
+      return n;
+    },
+    0,
+  )
   .option(
     "--steps <number>",
     "Number of steps",
@@ -172,7 +177,9 @@ let i = 0;
 while (i < options.steps) {
   const useExplicit = options.func && i === 0;
 
-  const funcName = useExplicit ? options.func : availableFuncs[rnd.randint(0, Object.keys(availableFuncs).length - 1)];
+  const funcName = useExplicit
+    ? options.func
+    : Object.keys(availableFuncs)[rnd.randint(0, Object.keys(availableFuncs).length - 1)];
 
   if (!options.func || i === 0) {
     const id = `${funcName}-${i}`;
@@ -227,3 +234,4 @@ while (i < options.steps) {
   i++;
 }
 // ------------------------------------------------------------------------------------------
+console.log("[outbox]: ", sim.outbox);

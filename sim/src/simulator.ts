@@ -24,7 +24,6 @@ export class Random {
   }
 
   randint(min: number, max: number): number {
-    // Ensure inclusive range
     return Math.floor(this.next() * (max - min + 1)) + min;
   }
 }
