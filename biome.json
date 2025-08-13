@@ -37,8 +37,7 @@
       },
       "correctness": {
         "useYield": "off",
-        "noUnusedImports": "error",
-        "useImportExtensions": "error"
+        "noUnusedImports": "error"
       },
       "style": {
         "noNonNullAssertion": "off"
