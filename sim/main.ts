@@ -17,13 +17,18 @@ program
     }
     return n;
   })
-  .requiredOption("--steps <number>", "Number of steps", (value) => {
-    const n = Number.parseInt(value, 10);
-    if (Number.isNaN(n) || n < 0) {
-      throw new Error(`Invalid steps: ${value}`);
-    }
-    return n;
-  });
+  .option(
+    "--steps <number>",
+    "Number of steps",
+    (value) => {
+      const n = Number.parseInt(value, 10);
+      if (Number.isNaN(n) || n < 0) {
+        throw new Error(`Invalid steps: ${value}`);
+      }
+      return n;
+    },
+    10_000,
+  );
 
 program.parse(process.argv);
 
@@ -31,51 +36,39 @@ const options = program.opts<{ seed: number; steps: number }>();
 
 const rnd = new Random(options.seed);
 
-function* fib(ctx: context.Context, n: number): Generator<any, number, any> {
+function* fibLfi(ctx: context.Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
   }
+  const p1 = yield ctx.lfi(fibLfi, n - 1, ctx.options({ id: `fibLfi-${n - 1}` }));
+  const p2 = yield ctx.lfi(fibLfi, n - 2, ctx.options({ id: `fibLfi-${n - 2}` }));
 
-  const ps: any[] = [];
-  const vs: number[] = [];
-
-  for (let i = 1; i < 3; i++) {
-    const choice: string = rnd.pick(["lfi", "rfi", "lfc", "rfc"]);
-
-    switch (choice) {
-      case "lfi": {
-        const p = yield ctx.lfi(fib, n - i, ctx.options({ id: `fib-${n - i}` }));
-        ps.push(p);
-        break;
-      }
-      case "rfi": {
-        const p = yield ctx.rfi("fib", n - i, ctx.options({ id: `fib-${n - i}` }));
-        ps.push(p);
-        break;
-      }
-      case "lfc": {
-        const v: number = yield ctx.lfc(fib, n - i, ctx.options({ id: `fib-${n - i}` }));
-        vs.push(v);
-        break;
-      }
-      case "rfc": {
-        const v: number = yield ctx.rfc("fib", n - i, ctx.options({ id: `fib-${n - i}` }));
-        vs.push(v);
-        break;
-      }
-    }
+  return (yield p1) + (yield p2);
+}
+function* fibRfi(ctx: context.Context, n: number): Generator<any, number, any> {
+  if (n <= 1) {
+    return n;
   }
+  const p1 = yield ctx.rfi("fibRfi", n - 1, ctx.options({ id: `fibRfi-${n - 1}` }));
+  const p2 = yield ctx.rfi("fibRfi", n - 2, ctx.options({ id: `fibRfi-${n - 2}` }));
 
-  for (const p of ps) {
-    const v: number = yield p;
-    vs.push(v);
+  return (yield p1) + (yield p2);
+}
+function* fibLfc(ctx: context.Context, n: number): Generator<any, number, any> {
+  if (n <= 1) {
+    return n;
   }
-
-  if (vs.length !== 2) {
-    throw new Error("Assertion failed: vs.length must be 2");
+  const v1 = yield ctx.lfc(fibLfc, n - 1, ctx.options({ id: `fibLfc-${n - 1}` }));
+  const v2 = yield ctx.lfc(fibLfc, n - 2, ctx.options({ id: `fibLfc-${n - 2}` }));
+  return v1 + v2;
+}
+function* fibRfc(ctx: context.Context, n: number): Generator<any, number, any> {
+  if (n <= 1) {
+    return n;
   }
-
-  return vs[0] + vs[1];
+  const v1 = yield ctx.rfc("fibRfc", n - 1, ctx.options({ id: `fibRfc-${n - 1}` }));
+  const v2 = yield ctx.rfc("fibRfc", n - 2, ctx.options({ id: `fibRfc-${n - 2}` }));
+  return v1 + v2;
 }
 
 const sim = new Simulator(options.seed, {
@@ -89,35 +82,116 @@ const worker1 = new WorkerProcess("worker-1", "default");
 const worker2 = new WorkerProcess("worker-2", "default");
 const worker3 = new WorkerProcess("worker-3", "default");
 
-worker1.resonate.register("fib", fib);
-worker2.resonate.register("fib", fib);
-worker3.resonate.register("fib", fib);
+const workers = [worker1, worker2, worker3] as const;
+
+const registrations: [string, (...args: any[]) => any][] = [
+  ["fibLfi", fibLfi],
+  ["fibRfi", fibRfi],
+  ["fibLfc", fibLfc],
+  ["fibRfc", fibRfc],
+];
+
+for (const [name, func] of registrations) {
+  for (const worker of workers) {
+    worker.resonate.register(name, func);
+  }
+}
 
 sim.register(server);
-sim.register(worker1);
-sim.register(worker2);
-sim.register(worker3);
+for (const worker of workers) {
+  sim.register(worker);
+}
 
 let i = 0;
 while (i < options.steps) {
-  const n = rnd.randint(0, 99);
-  const timeout = rnd.randint(0, options.steps);
-  const id = `${n}`;
-  sim.send(
-    new Message<RequestMsg>(
-      unicast("environment"),
-      unicast("server"),
-      {
-        kind: "createPromise",
-        id: id,
-        timeout: timeout,
-        iKey: id,
-        tags: { "resonate:invoke": "local://any@default" },
-        param: { func: "fib", args: [n] },
-      },
-      { requ: true, correlationId: i },
-    ),
-  );
+  let msg: Message<RequestMsg>;
+  switch (rnd.randint(0, 4)) {
+    case 0: {
+      msg = new Message<RequestMsg>(
+        unicast("environment"),
+        unicast("server"),
+        {
+          kind: "createPromise",
+          id: `fibLfi-${i}`,
+          timeout: rnd.randint(0, options.steps),
+          iKey: `fibLfi-${i}`,
+          tags: { "resonate:invoke": "local://any@default" },
+          param: { func: "fibLfi", args: [rnd.randint(0, 99)] },
+        },
+        { requ: true, correlationId: i },
+      );
+      break;
+    }
+    case 1: {
+      msg = new Message<RequestMsg>(
+        unicast("environment"),
+        unicast("server"),
+        {
+          kind: "createPromise",
+          id: `fibRfi-${i}`,
+          timeout: rnd.randint(0, options.steps),
+          iKey: `fibRfi-${i}`,
+          tags: { "resonate:invoke": "local://any@default" },
+          param: { func: "fibRfi", args: [rnd.randint(0, 99)] },
+        },
+        { requ: true, correlationId: i },
+      );
+      break;
+    }
+    case 2: {
+      msg = new Message<RequestMsg>(
+        unicast("environment"),
+        unicast("server"),
+        {
+          kind: "createPromise",
+          id: `fibLfc-${i}`,
+          timeout: rnd.randint(0, options.steps),
+          iKey: `fibLfc-${i}`,
+          tags: { "resonate:invoke": "local://any@default" },
+          param: { func: "fibLfc", args: [rnd.randint(0, 99)] },
+        },
+        { requ: true, correlationId: i },
+      );
+      break;
+    }
+    case 3: {
+      msg = new Message<RequestMsg>(
+        unicast("environment"),
+        unicast("server"),
+        {
+          kind: "createPromise",
+          id: `fibRfc-${i}`,
+          timeout: rnd.randint(0, options.steps),
+          iKey: `fibRfc-${i}`,
+          tags: { "resonate:invoke": "local://any@default" },
+          param: { func: "fibRfc", args: [rnd.randint(0, 99)] },
+        },
+        { requ: true, correlationId: i },
+      );
+      break;
+    }
+    case 4: {
+      msg = new Message<RequestMsg>(
+        unicast("environment"),
+        unicast("server"),
+        {
+          kind: "createPromise",
+          id: `fibCustom-${i}`,
+          timeout: rnd.randint(0, options.steps),
+          iKey: `fibCustom-${i}`,
+          tags: { "resonate:invoke": "local://any@default" },
+          param: { func: "fibCustom", args: [rnd.randint(0, 99)] },
+        },
+        { requ: true, correlationId: i },
+      );
+      break;
+    }
+    default: {
+      throw new Error("not impleted");
+    }
+  }
+
+  sim.send(msg);
 
   sim.tick();
   i++;
