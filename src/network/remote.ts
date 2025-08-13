@@ -221,7 +221,7 @@ export class HttpNetwork implements Network {
 
   constructor(config: HttpNetworkConfig) {
     const { host, storePort, msgSrcPort, pid, group } = config;
-    this.url = `${host}:${storePort}/`;
+    this.url = `${host}:${storePort}`;
     this.msgUrl = new URL(`/${encodeURIComponent(group)}/${encodeURIComponent(pid)}`, `${host}:${msgSrcPort}`).href;
     console.log("poller:", this.msgUrl);
     this.timeout = config.timeout || 30 * util.SEC;
@@ -578,6 +578,7 @@ export class HttpNetwork implements Network {
     const url = `${this.url}${path}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    console.log({ url, options });
 
     try {
       const response = await fetch(url, {
