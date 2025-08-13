@@ -96,12 +96,13 @@ export class Future<T> implements Iterable<Future<T>> {
     if (this.value.success) {
       return this.value.data;
     }
-    throw this.value.error;
+    throw this.value.error; // Should be unreachble
   }
 
   *[Symbol.iterator](): Generator<Future<T>, T, undefined> {
-    yield this;
+    const c = yield this;
     util.assertDefined(this.value);
+    util.assert(this.value.success, "The value must be and ok result at this point.");
     return this.getValue();
   }
 }

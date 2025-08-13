@@ -184,11 +184,10 @@ export class JsonEncoder implements Encoder {
       }
 
       if (value?.__type === "error") {
-        return new Error("another error what ever");
-        // const error = new Error(value.message || "Unknown error");
-        // if (value.name) error.name = value.name;
-        // if (value.stack) error.stack = value.stack;
-        // return error;
+        const error = new Error(value.message || "Unknown error");
+        if (value.name) error.name = value.name;
+        if (value.stack) error.stack = value.stack;
+        return error;
       }
 
       return value;
@@ -578,7 +577,6 @@ export class HttpNetwork implements Network {
     const url = `${this.url}${path}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-    console.log({ url, options });
 
     try {
       const response = await fetch(url, {

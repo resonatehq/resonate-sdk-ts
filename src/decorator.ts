@@ -73,23 +73,22 @@ export class Decorator<TRet> {
   }
 
   // From internal type to external type
-  private toExternal<T>(value: Value<T>): Future<T> | T | undefined {
+  // Having to return a Result<> is an artifact of not being able to check
+  // the instance of "Result" at runtime
+  private toExternal<T>(value: Value<T>): Result<Future<T> | T | undefined> {
     switch (value.type) {
       case "internal.nothing":
-        return undefined;
+        return ok(undefined);
       case "internal.promise":
         if (value.state === "pending") {
-          return new Future<T>(value.id, "pending", undefined);
+          return ok(new Future<T>(value.id, "pending", undefined));
         }
         // promise === "complete"
         // We know for sure this promise relates to the last invoke inserted
         this.invokes.pop();
-        return new Future<T>(value.id, "completed", value.value.value);
+        return ok(new Future<T>(value.id, "completed", value.value.value));
       case "internal.literal":
-        if (value.value.success) {
-          return value.value.data;
-        }
-        return undefined;
+        return value.value;
     }
   }
 
@@ -169,9 +168,15 @@ export class Decorator<TRet> {
     };
   }
 
-  private safeGeneratorNext<T>(value: Future<T> | T | undefined): IteratorResult<Yieldable, Result<TRet>> {
+  private safeGeneratorNext<T>(value: Result<Future<T> | T | undefined>): IteratorResult<Yieldable, Result<TRet>> {
     try {
-      const itResult = this.generator.next(value);
+      let itResult: IteratorResult<Yieldable, TRet>;
+      if (!value.success) {
+        itResult = this.generator.throw(value.error);
+      } else {
+        itResult = this.generator.next(value.data);
+      }
+
       if (!itResult.done) {
         return itResult;
       }
