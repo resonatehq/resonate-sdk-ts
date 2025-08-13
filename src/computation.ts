@@ -207,11 +207,11 @@ export class Computation {
         continue;
       }
       this.seenTodos.add(localTodo.id);
-      const { id, fn, ctx, args } = localTodo;
+      const { id, func, ctx, args } = localTodo;
       this.processor.process(
         id,
         async () => {
-          return await fn(ctx, ...args);
+          return await func(ctx, ...args);
         },
         (result) => {
           const value = result.success ? result.data : result.error;

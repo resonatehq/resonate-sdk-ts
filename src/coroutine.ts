@@ -6,7 +6,7 @@ import * as util from "./util";
 
 export interface LocalTodo {
   id: string;
-  fn: (ctx: Context, ...args: any[]) => any;
+  func: (ctx: Context, ...args: any[]) => any;
   ctx: Context;
   args: any[];
   // Need function to execute and id to resolve the promise
@@ -87,7 +87,7 @@ export class Coroutine<T> {
                 localTodos.push({
                   ctx: this.ctx,
                   id: action.id,
-                  fn: action.func,
+                  func: action.func,
                   args: action.args,
                 });
                 input = {
