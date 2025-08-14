@@ -146,92 +146,102 @@ const options = program.opts<{
   duplProb?: number;
 }>();
 // ------------------------------------------------------------------------------------------
+export function run(options: {
+  seed: number;
+  steps: number;
+  func?: string;
+  randomDelay?: number;
+  dropProb?: number;
+  duplProb?: number;
+}) {
+  const rnd = new Random(options.seed);
+  const sim = new Simulator(options.seed, {
+    randomDelay: options.randomDelay ?? rnd.random(0.5),
+    dropProb: options.dropProb ?? rnd.random(0.5),
+    duplProb: options.duplProb ?? rnd.random(0.5),
+  });
 
-// Run Simulation
-const rnd = new Random(options.seed);
-const sim = new Simulator(options.seed, {
-  randomDelay: options.randomDelay ?? rnd.random(0.5),
-  dropProb: options.dropProb ?? rnd.random(0.5),
-  duplProb: options.duplProb ?? rnd.random(0.5),
-});
+  const server = new ServerProcess("server");
+  const worker1 = new WorkerProcess("worker-1", "default");
+  const worker2 = new WorkerProcess("worker-2", "default");
+  const worker3 = new WorkerProcess("worker-3", "default");
 
-const server = new ServerProcess("server");
-const worker1 = new WorkerProcess("worker-1", "default");
-const worker2 = new WorkerProcess("worker-2", "default");
-const worker3 = new WorkerProcess("worker-3", "default");
+  const workers = [worker1, worker2, worker3] as const;
 
-const workers = [worker1, worker2, worker3] as const;
-
-for (const [name, func] of Object.entries(availableFuncs)) {
-  for (const worker of workers) {
-    worker.resonate.register(name, func);
+  for (const [name, func] of Object.entries(availableFuncs)) {
+    for (const worker of workers) {
+      worker.resonate.register(name, func);
+    }
   }
-}
 
-sim.register(server);
-for (const worker of workers) {
-  sim.register(worker);
-}
+  sim.register(server);
+  for (const worker of workers) {
+    sim.register(worker);
+  }
 
-let i = 0;
-while (i < options.steps) {
-  const useExplicit = options.func && i === 0;
+  let i = 0;
+  while (i < options.steps) {
+    const useExplicit = options.func && i === 0;
 
-  const funcName = useExplicit
-    ? options.func
-    : Object.keys(availableFuncs)[rnd.randint(0, Object.keys(availableFuncs).length - 1)];
+    const funcName = useExplicit
+      ? options.func
+      : Object.keys(availableFuncs)[rnd.randint(0, Object.keys(availableFuncs).length - 1)];
 
-  if (!options.func || i === 0) {
-    const id = `${funcName}-${i}`;
-    const timeout = rnd.randint(0, options.steps);
-    let msg: Message<RequestMsg>;
-    switch (funcName) {
-      case "fibLfi":
-      case "fibLfc":
-      case "fibRfi":
-      case "fibRfc": {
-        msg = new Message<RequestMsg>(
-          unicast("environment"),
-          unicast("server"),
-          {
-            kind: "createPromise",
-            id,
-            timeout,
-            iKey: id,
-            tags: { "resonate:invoke": "local://any@default" },
-            param: { func: funcName, args: [rnd.randint(0, 20)] },
-          },
-          { requ: true, correlationId: i },
-        );
-        break;
+    if (!options.func || i === 0) {
+      const id = `${funcName}-${i}`;
+      const timeout = rnd.randint(0, options.steps);
+      let msg: Message<RequestMsg>;
+      switch (funcName) {
+        case "fibLfi":
+        case "fibLfc":
+        case "fibRfi":
+        case "fibRfc": {
+          msg = new Message<RequestMsg>(
+            unicast("environment"),
+            unicast("server"),
+            {
+              kind: "createPromise",
+              id,
+              timeout,
+              iKey: id,
+              tags: { "resonate:invoke": "local://any@default" },
+              param: { func: funcName, args: [rnd.randint(0, 20)] },
+            },
+            { requ: true, correlationId: i },
+          );
+          break;
+        }
+        case "foo":
+        case "bar":
+        case "baz": {
+          msg = new Message<RequestMsg>(
+            unicast("environment"),
+            unicast("server"),
+            {
+              kind: "createPromise",
+              id,
+              timeout,
+              iKey: id,
+              tags: { "resonate:invoke": "local://any@default" },
+              param: { func: funcName, args: [] },
+            },
+            { requ: true, correlationId: i },
+          );
+          break;
+        }
+        default:
+          throw new Error(`unknown function name: ${funcName}`);
       }
-      case "foo":
-      case "bar":
-      case "baz": {
-        msg = new Message<RequestMsg>(
-          unicast("environment"),
-          unicast("server"),
-          {
-            kind: "createPromise",
-            id,
-            timeout,
-            iKey: id,
-            tags: { "resonate:invoke": "local://any@default" },
-            param: { func: funcName, args: [] },
-          },
-          { requ: true, correlationId: i },
-        );
-        break;
-      }
-      default:
-        throw new Error(`unknown function name: ${funcName}`);
+
+      sim.send(msg);
     }
 
-    sim.send(msg);
+    sim.tick();
+    i++;
   }
-
-  sim.tick();
-  i++;
+  console.log("[outbox]: ", sim.outbox);
 }
-// ------------------------------------------------------------------------------------------
-console.log("[outbox]: ", sim.outbox);
+
+if (require.main === module) {
+  run(options);
+}
