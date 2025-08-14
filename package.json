@@ -5,8 +5,8 @@
   "author": "Resonate Developers",
   "license": "Apache-2.0",
   "type": "commonjs",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/resonatehq/resonate-sdk-ts.git"
@@ -20,6 +20,7 @@
   "scripts": {
     "test": "jest --config jest.config.js",
     "build": "tsc --build tsconfig.build.json",
+    "prepare": "npm run build",
     "serve:web": "esbuild sim/browser.ts --bundle --format=esm --outfile=public/main.js && npx serve public",
     "fmt": "npx @biomejs/biome format ./ --write",
     "check": "npx @biomejs/biome check ./",

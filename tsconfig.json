@@ -2,10 +2,13 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "commonjs",
-    "lib": ["esnext"],
+    "lib": [
+      "esnext"
+    ],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "baseUrl": "./src",
     "outDir": "./dist",
     "strict": true,
     "allowJs": true,
@@ -14,5 +17,8 @@
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["src/**/*", "tests/**/*"]
+  "include": [
+    "src/**/*",
+    "tests/**/*"
+  ]
 }
