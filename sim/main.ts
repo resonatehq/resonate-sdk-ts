@@ -127,33 +127,29 @@ program
     }
     return n;
   })
-  .option("--duplProb <number>", "Duplicate probability (0-1)", (value) => {
+  .option("--charFlipProb <number>", "Character flip probability for worker receive (0-1)", (value) => {
     const n = Number.parseFloat(value);
     if (Number.isNaN(n) || n < 0 || n > 1) {
-      throw new Error(`Invalid duplProb: ${value} (must be 0–1)`);
+      throw new Error(`Invalid charFlipProb: ${value} (must be 0–1)`);
     }
     return n;
   });
 
 program.parse(process.argv);
 
-const options = program.opts<{
+type Options = {
   seed: number;
   steps: number;
   func?: string;
   randomDelay?: number;
   dropProb?: number;
   duplProb?: number;
-}>();
+  charFlipProb?: number;
+};
+
+const options = program.opts<Options>();
 // ------------------------------------------------------------------------------------------
-export function run(options: {
-  seed: number;
-  steps: number;
-  func?: string;
-  randomDelay?: number;
-  dropProb?: number;
-  duplProb?: number;
-}) {
+export function run(options: Options) {
   const rnd = new Random(options.seed);
   const sim = new Simulator(options.seed, {
     randomDelay: options.randomDelay ?? rnd.random(0.5),
@@ -162,9 +158,15 @@ export function run(options: {
   });
 
   const server = new ServerProcess("server");
-  const worker1 = new WorkerProcess("worker-1", "default");
-  const worker2 = new WorkerProcess("worker-2", "default");
-  const worker3 = new WorkerProcess("worker-3", "default");
+  const worker1 = new WorkerProcess("worker-1", "default", options.seed, {
+    charFlipProb: 0,
+  });
+  const worker2 = new WorkerProcess("worker-2", "default", options.seed, {
+    charFlipProb: 0,
+  });
+  const worker3 = new WorkerProcess("worker-3", "default", options.seed, {
+    charFlipProb: 0,
+  });
 
   const workers = [worker1, worker2, worker3] as const;
 

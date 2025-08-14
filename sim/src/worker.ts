@@ -1,7 +1,7 @@
 import type { Network, RecvMsg, RequestMsg, ResponseMsg } from "../../src/network/network";
 import { ResonateInner } from "../../src/resonate-inner";
 import type { CompResult } from "../../src/types";
-import { type Address, Message, Process, anycast, unicast } from "./simulator";
+import { type Address, Message, Process, Random, anycast, unicast } from "./simulator";
 
 class SimulatedNetwork implements Network {
   private correlationId = 1;
@@ -69,20 +69,40 @@ class SimulatedNetwork implements Network {
   }
 }
 
+interface Options {
+  charFlipProb?: number;
+}
 export class WorkerProcess extends Process {
   private network: SimulatedNetwork;
+  private options: Required<Options>;
+  private prng: Random;
   resonate: ResonateInner;
 
   constructor(
     public readonly iaddr: string,
     public readonly gaddr: string,
+    seed: number,
+    { charFlipProb = 0 }: Options = {},
   ) {
     super(iaddr, gaddr);
     this.network = new SimulatedNetwork(anycast(gaddr, iaddr), unicast("server"));
+    this.options = { charFlipProb };
+    this.prng = new Random(seed);
     this.resonate = new ResonateInner(this.network, { pid: iaddr, group: gaddr, ttl: 5000 });
   }
 
   tick(time: number, messages: Message<ResponseMsg | RecvMsg>[]): Message<RequestMsg>[] {
+    if (this.options.charFlipProb > 0) {
+      for (const msg of messages) {
+        if (this.prng.next() < this.options.charFlipProb) {
+          try {
+            const json = JSON.stringify(msg.data);
+            const corrupted = this.corruptOneChar(json);
+            msg.data = JSON.parse(corrupted);
+          } catch (err) {}
+        }
+      }
+    }
     this.log(time, "[recv]", messages);
 
     this.network.time(time);
@@ -95,5 +115,11 @@ export class WorkerProcess extends Process {
     this.log(time, "[send]", responses);
 
     return responses;
+  }
+
+  private corruptOneChar(str: string): string {
+    if (!str.length) return str;
+    const idx = Math.floor(this.prng.next() * str.length);
+    return `${str.slice(0, idx)}X${str.slice(idx + 1)}`;
   }
 }

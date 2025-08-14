@@ -32,9 +32,9 @@ const sim = new Simulator(options.seed, {
 });
 
 const server = new ServerProcess("server");
-const worker1 = new WorkerProcess("worker-1", "default");
-const worker2 = new WorkerProcess("worker-2", "default");
-const worker3 = new WorkerProcess("worker-3", "default");
+const worker1 = new WorkerProcess("worker-1", "default", options.seed);
+const worker2 = new WorkerProcess("worker-2", "default", options.seed);
+const worker3 = new WorkerProcess("worker-3", "default", options.seed);
 
 const workers = [worker1, worker2, worker3] as const;
 
