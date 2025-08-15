@@ -226,6 +226,7 @@ export class Computation {
 
   private handleRemoteTodos(taskId: string, todos: RemoteTodo[]) {
     let createdCallbacks = 0;
+    let returnedTodo = false;
     const totalCallbacks = todos.length;
 
     for (const remoteTodo of todos) {
@@ -236,7 +237,8 @@ export class Computation {
         Number.MAX_SAFE_INTEGER, // TODO (avillega): use the promise timeout
         `poll://any@${this.group}/${this.pid}`,
         (result) => {
-          if (result.kind === "promise") {
+          if (result.kind === "promise" && !returnedTodo) {
+            returnedTodo = true;
             this.enqueue(taskId, "return");
             return;
           }

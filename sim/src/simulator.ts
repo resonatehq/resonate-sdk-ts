@@ -1,3 +1,5 @@
+declare const document: any;
+
 export class Random {
   // Internal state of the random number generator (RNG)
   private state: number;
@@ -71,7 +73,17 @@ export class Process {
   }
 
   log(time: number, ...args: any[]): void {
-    console.log(`[tick: ${time}] [proc: ${this.iaddr}]`, ...args);
+    const message = `[tick: ${time}] [proc: ${this.iaddr}] ${args.map(JSON.stringify as any)}`;
+
+    // Always log to console
+    console.log(message);
+
+    // Only append to the DOM if running in the browser
+    if (typeof document !== "undefined") {
+      const logEl = document.createElement("div");
+      logEl.textContent = message;
+      document.body.appendChild(logEl);
+    }
   }
 }
 
@@ -90,8 +102,8 @@ export class Simulator {
   public outbox: Message<any>[] = [];
   public deliveryOptions: Required<DeliveryOptions>;
 
-  constructor(seed: number, { dropProb = 0, randomDelay = 0, duplProb = 0 }: DeliveryOptions = {}) {
-    this.prng = new Random(seed);
+  constructor(prng: Random, { dropProb = 0, randomDelay = 0, duplProb = 0 }: DeliveryOptions = {}) {
+    this.prng = prng;
     this.deliveryOptions = { dropProb, randomDelay, duplProb };
   }
 
