@@ -7,8 +7,9 @@ export interface Heartbeat {
 
 export class AsyncHeartbeat implements Heartbeat {
   private network: Network;
-  private timeoutId: ReturnType<typeof setTimeout> | undefined;
+  private intervalId: ReturnType<typeof setInterval> | undefined;
   private pid: string;
+  private counter = 0;
 
   constructor(network: Network, pid: string) {
     this.network = network;
@@ -16,35 +17,44 @@ export class AsyncHeartbeat implements Heartbeat {
   }
 
   startHeartbeat(delay: number): void {
-    if (!this.timeoutId) {
+    this.counter++;
+    if (!this.intervalId) {
       this.heartbeat(delay);
     }
   }
 
   private heartbeat(delay: number): void {
-    console.log("heartbeating...");
-    this.timeoutId = setTimeout(() => {
-      this.network.send(
-        {
-          kind: "heartbeatTasks",
-          processId: this.pid,
-        },
-        (_timeout, response) => {
-          if (response.kind === "heartbeatTasks" && response.tasksAffected === 0) {
-            this.stopHeartbeat();
-            return;
-          }
-
-          // Ignore any errors and keep heartbeating
-          this.heartbeat(delay);
-        },
-      );
-    }, delay);
+    this.intervalId = setInterval(
+      (intervalId, counter) => {
+        this.network.send(
+          {
+            kind: "heartbeatTasks",
+            processId: this.pid,
+          },
+          (_timeout, response) => {
+            if (response.kind === "heartbeatTasks" && response.tasksAffected === 0) {
+              this.clearIntervalIfMatch(intervalId, counter);
+              return;
+            }
+            // Ignore any errors and keep heartbeating
+          },
+        );
+      },
+      delay,
+      this.intervalId,
+      this.counter,
+    );
   }
 
   stopHeartbeat(): void {
-    clearTimeout(this.timeoutId);
-    this.timeoutId = undefined;
+    this.clearIntervalIfMatch(this.intervalId, this.counter);
+  }
+
+  private clearIntervalIfMatch(interval: ReturnType<typeof setInterval> | undefined, counter: number) {
+    if (this.intervalId === interval && this.counter === counter) {
+      clearInterval(this.intervalId);
+      this.intervalId = undefined;
+    }
   }
 }
 
