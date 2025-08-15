@@ -63,7 +63,7 @@ class SimulatedNetwork implements Network {
     let jsonStr = JSON.stringify(data);
 
     // Randomly decide whether to corrupt
-    const shouldCorrupt = this.prng.next() < 0.5;
+    const shouldCorrupt = this.prng.next() < this.deliveryOptions.charFlipProb;
     if (!shouldCorrupt) return data;
 
     // Pick a random index to corrupt
