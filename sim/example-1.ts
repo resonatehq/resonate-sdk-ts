@@ -81,9 +81,14 @@ const msg = new Message<RequestMsg>(
 );
 sim.send(msg);
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 let i = 0;
 while (i < options.steps) {
   sim.tick();
+  await sleep(500);
   i++;
 }
 
