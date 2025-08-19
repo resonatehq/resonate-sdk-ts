@@ -95,12 +95,13 @@ export interface DeliveryOptions {
 
 export class Simulator {
   private prng: Random;
-  private time = 0;
+  public time = 0;
   private init = false;
   private process: Process[] = [];
   private network: Message<any>[] = [];
   public outbox: Message<any>[] = [];
   public deliveryOptions: Required<DeliveryOptions>;
+  private scheduled: { interval: number; fn: () => void }[] = [];
 
   constructor(prng: Random, { dropProb = 0, randomDelay = 0, duplProb = 0 }: DeliveryOptions = {}) {
     this.prng = prng;
@@ -138,6 +139,13 @@ export class Simulator {
     }
 
     this.time += 1;
+
+    for (const task of this.scheduled) {
+      if (this.time % task.interval === 0) {
+        task.fn();
+      }
+    }
+
     const retained: Message<any>[] = [];
     const consumed: Message<any>[] = [];
 
@@ -196,5 +204,17 @@ export class Simulator {
     }
 
     this.network = retained.concat(newMessages);
+  }
+
+  exec(steps: number): void {
+    let i = 0;
+    while (i < steps) {
+      this.tick();
+      i++;
+    }
+  }
+
+  delay(interval: number, fn: () => void): void {
+    this.scheduled.push({ interval, fn });
   }
 }
