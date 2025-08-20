@@ -102,7 +102,7 @@ export class Simulator {
   public outbox: Message<any>[] = [];
   public deliveryOptions: Required<DeliveryOptions>;
   private scheduledRepeat: { interval: number; fn: () => void }[] = [];
-  private scheduledOnce: { runAt: number; fn: () => void }[] = [];
+  private scheduledDelay: { runAt: number; fn: () => void }[] = [];
 
   constructor(prng: Random, { dropProb = 0, randomDelay = 0, duplProb = 0 }: DeliveryOptions = {}) {
     this.prng = prng;
@@ -143,24 +143,6 @@ export class Simulator {
     }
 
     this.time += 1;
-
-    for (const task of this.scheduledRepeat) {
-      if (this.time % task.interval === 0) {
-        task.fn();
-      }
-    }
-
-    if (this.scheduledOnce.length > 0) {
-      const remaining: { runAt: number; fn: () => void }[] = [];
-      for (const task of this.scheduledOnce) {
-        if (task.runAt === this.time) {
-          task.fn();
-        } else if (task.runAt > this.time) {
-          remaining.push(task);
-        }
-      }
-      this.scheduledOnce = remaining;
-    }
 
     const retained: Message<any>[] = [];
     const consumed: Message<any>[] = [];
@@ -226,6 +208,25 @@ export class Simulator {
     let i = 0;
     while (i < steps) {
       this.tick();
+
+      for (const task of this.scheduledRepeat) {
+        if (this.time % task.interval === 0) {
+          task.fn();
+        }
+      }
+
+      if (this.scheduledDelay.length > 0) {
+        const remaining: { runAt: number; fn: () => void }[] = [];
+        for (const task of this.scheduledDelay) {
+          if (task.runAt === this.time) {
+            task.fn();
+          } else if (task.runAt > this.time) {
+            remaining.push(task);
+          }
+        }
+        this.scheduledDelay = remaining;
+      }
+
       i++;
     }
   }
@@ -234,6 +235,6 @@ export class Simulator {
     this.scheduledRepeat.push({ interval, fn });
   }
   delay(runAt: number, fn: () => void): void {
-    this.scheduledOnce.push({ runAt, fn });
+    this.scheduledDelay.push({ runAt, fn });
   }
 }
