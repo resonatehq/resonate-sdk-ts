@@ -101,7 +101,8 @@ export class Simulator {
   private network: Message<any>[] = [];
   public outbox: Message<any>[] = [];
   public deliveryOptions: Required<DeliveryOptions>;
-  private scheduled: { interval: number; fn: () => void }[] = [];
+  private scheduledRepeat: { interval: number; fn: () => void }[] = [];
+  private scheduledOnce: { runAt: number; fn: () => void }[] = [];
 
   constructor(prng: Random, { dropProb = 0, randomDelay = 0, duplProb = 0 }: DeliveryOptions = {}) {
     this.prng = prng;
@@ -126,13 +127,16 @@ export class Simulator {
   register(process: Process): void {
     this.process.push(process);
   }
+
   more(): boolean {
     // Simulator can make progress if it is not initialized or if there are messages in the network
     return !this.init || this.network.length > 0;
   }
+
   send(message: Message<any>): void {
     this.network.push(message);
   }
+
   tick(): void {
     if (!this.init) {
       this.init = true;
@@ -140,10 +144,22 @@ export class Simulator {
 
     this.time += 1;
 
-    for (const task of this.scheduled) {
+    for (const task of this.scheduledRepeat) {
       if (this.time % task.interval === 0) {
         task.fn();
       }
+    }
+
+    if (this.scheduledOnce.length > 0) {
+      const remaining: { runAt: number; fn: () => void }[] = [];
+      for (const task of this.scheduledOnce) {
+        if (task.runAt === this.time) {
+          task.fn();
+        } else if (task.runAt > this.time) {
+          remaining.push(task);
+        }
+      }
+      this.scheduledOnce = remaining;
     }
 
     const retained: Message<any>[] = [];
@@ -214,7 +230,10 @@ export class Simulator {
     }
   }
 
-  delay(interval: number, fn: () => void): void {
-    this.scheduled.push({ interval, fn });
+  repeat(interval: number, fn: () => void): void {
+    this.scheduledRepeat.push({ interval, fn });
+  }
+  delay(runAt: number, fn: () => void): void {
+    this.scheduledOnce.push({ runAt, fn });
   }
 }

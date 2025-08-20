@@ -188,7 +188,7 @@ export function run(options: Options) {
     sim.register(worker);
   }
 
-  sim.delay(1, () => {
+  sim.repeat(1, () => {
     const i = sim.time - 1;
     const useExplicit = options.func && i === 0;
 
