@@ -262,12 +262,6 @@ export type HeartbeatTasksRes = {
   tasksAffected: number;
 };
 
-export type ErrorRes = {
-  kind: "error";
-  code: "invalid_request" | "forbidden" | "not_found" | "conflict";
-  message: string;
-};
-
 // Message
 
 export type Message =

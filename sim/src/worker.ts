@@ -1,3 +1,4 @@
+import type { Callback } from "types";
 import { NoHeartbeat } from "../../src/heartbeat";
 import type { Network, Message as NetworkMessage, Request, Response, ResponseFor } from "../../src/network/network";
 import { ResonateInner } from "../../src/resonate-inner";
@@ -15,7 +16,7 @@ class SimulatedNetwork implements Network {
   private prng: Random;
   private deliveryOptions: Required<DeliveryOptions>;
   private buffer: Message<Request>[] = [];
-  private callbacks: Record<number, { callback: (err: boolean, res?: Response) => void; timeout: number }> = {};
+  private callbacks: Record<number, { callback: Callback<Response>; timeout: number }> = {};
   private subscriptions: ((msg: NetworkMessage) => void)[] = [];
 
   constructor(

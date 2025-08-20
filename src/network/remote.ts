@@ -21,7 +21,6 @@ import type {
   DropTaskReq,
   DropTaskRes,
   DurablePromiseRecord,
-  ErrorRes,
   HeartbeatTasksReq,
   HeartbeatTasksRes,
   Message,
@@ -38,6 +37,7 @@ import type {
 } from "./network"; // Assuming types are in a separate file
 
 import { EventSource } from "eventsource";
+import type { Callback } from "types";
 import * as util from "../util";
 
 // API Value format from OpenAPI spec
@@ -244,7 +244,7 @@ export class HttpNetwork implements Network {
     this.eventSource.addEventListener("message", (event) => this._recv(event));
   }
 
-  send<T extends Request>(req: T, callback: (timeout: boolean, response?: ResponseFor<T>) => void): void {
+  send<T extends Request>(req: T, callback: Callback<ResponseFor<T>>): void {
     this.handleRequest(req).then(
       (res) => {
         util.assert(res.kind === req.kind, "res kind must match req kind");
@@ -686,13 +686,5 @@ export class HttpNetwork implements Network {
       default:
         throw new Error(`Unknown API state: ${apiState}`);
     }
-  }
-
-  private createErrorResponse(code: ErrorRes["code"], message: string): ErrorRes {
-    return {
-      kind: "error",
-      code,
-      message,
-    };
   }
 }

@@ -75,16 +75,14 @@ export class Computation {
             if (err) return done(true);
             util.assertDefined(res);
 
-            if (res.kind === "claimTask") {
-              const { root, leaf } = res.message.promises;
-              util.assertDefined(root);
+            const { root, leaf } = res.message.promises;
+            util.assertDefined(root);
 
-              if (leaf) {
-                this.handler.updateCache(leaf.data);
-              }
-
-              this.processClaimed({ ...task, kind: "claimed", rootPromise: root.data }, done);
+            if (leaf) {
+              this.handler.updateCache(leaf.data);
             }
+
+            this.processClaimed({ ...task, kind: "claimed", rootPromise: root.data }, done);
           },
         );
         break;

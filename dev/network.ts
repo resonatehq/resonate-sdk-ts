@@ -1,5 +1,6 @@
 import { Server } from "./server";
 
+import type { Callback } from "types";
 import type { Message, Network, Request, ResponseFor } from "../src/network/network";
 import * as util from "../src/util";
 
@@ -20,7 +21,7 @@ export class LocalNetwork implements Network {
     this.timeoutId = undefined;
   }
 
-  send<T extends Request>(req: Request, callback: (err: boolean, res?: ResponseFor<T>) => void): void {
+  send<T extends Request>(req: Request, callback: Callback<ResponseFor<T>>): void {
     setTimeout(() => {
       try {
         const res = this.server.process(req, Date.now());
