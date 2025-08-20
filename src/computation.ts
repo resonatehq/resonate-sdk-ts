@@ -75,7 +75,7 @@ export class Computation {
             if (err) return done(true);
             util.assertDefined(res);
 
-            if (res.kind === "claimedtask") {
+            if (res.kind === "claimTask") {
               const { root, leaf } = res.message.promises;
               util.assertDefined(root);
 
@@ -118,7 +118,7 @@ export class Computation {
     this.handler.updateCache(task.rootPromise);
 
     // start heartbeat
-    this.heartbeat.startHeartbeat(this.ttl / 2);
+    this.heartbeat.start(this.ttl / 2);
 
     this.nurseries.set(
       task.rootPromise.id,
