@@ -10,7 +10,7 @@ interface DeliveryOptions {
 }
 
 class SimulatedNetwork implements Network {
-  private correlationId = 0;
+  private correlationId = 1;
   private currentTime = 0;
 
   private prng: Random;
