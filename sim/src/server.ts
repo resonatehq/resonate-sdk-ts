@@ -1,7 +1,7 @@
 import { Server } from "../../dev/server";
 import type { Message as NetworkMessage, Request, Response } from "../../src/network/network";
-import { type Address, Message, Process, anycast, unicast } from "./simulator";
 import * as util from "../../src/util";
+import { type Address, Message, Process, anycast, unicast } from "./simulator";
 
 export class ServerProcess extends Process {
   server: Server = new Server();

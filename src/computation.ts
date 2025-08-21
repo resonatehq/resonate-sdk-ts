@@ -1,7 +1,7 @@
-import type { Heartbeat } from "./heartbeat";
 import { Context } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
 import { Handler } from "./handler";
+import type { Heartbeat } from "./heartbeat";
 import type { CallbackRecord, DurablePromiseRecord, Network } from "./network/network";
 import { Nursery } from "./nursery";
 import { AsyncProcessor, type Processor } from "./processor/processor";
