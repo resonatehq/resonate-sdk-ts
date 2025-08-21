@@ -1,8 +1,8 @@
-import { type Clock, WallClock } from "clock";
-import type { Heartbeat } from "heartbeat";
+import { type Clock, WallClock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
 import { Handler } from "./handler";
+import type { Heartbeat } from "./heartbeat";
 import type { CallbackRecord, DurablePromiseRecord, Network } from "./network/network";
 import { Nursery } from "./nursery";
 import { AsyncProcessor, type Processor } from "./processor/processor";

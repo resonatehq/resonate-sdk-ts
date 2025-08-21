@@ -1,5 +1,5 @@
-import type { Clock } from "clock";
-import type { CreatePromiseReq } from "network/network";
+import type { Clock } from "./clock";
+import type { CreatePromiseReq } from "./network/network";
 import { type Func, type Options, type ParamsWithOptions, RESONATE_OPTIONS, type Result, type Return } from "./types";
 import * as util from "./util";
 

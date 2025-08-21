@@ -1,7 +1,7 @@
 import { setTimeout } from "node:timers/promises";
-import { Promises } from "promises";
 import { LocalNetwork } from "../dev/network";
 import type { Context } from "../src/context";
+import { Promises } from "../src/promises";
 import { Resonate } from "../src/resonate";
 import * as util from "../src/util";
 

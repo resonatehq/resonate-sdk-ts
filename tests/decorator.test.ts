@@ -1,6 +1,6 @@
 import { Decorator } from "../src/decorator";
 
-import { WallClock } from "clock";
+import { WallClock } from "../src/clock";
 import { type Context, Future, InnerContext, type LFI, type Yieldable } from "../src/context";
 import { ok } from "../src/types";
 

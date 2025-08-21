@@ -1,4 +1,4 @@
-import { WallClock } from "clock";
+import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
 import { Coroutine, type Suspended } from "../src/coroutine";
 import { Handler } from "../src/handler";
