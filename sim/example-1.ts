@@ -61,7 +61,7 @@ for (const worker of workers) {
 const n = 10;
 const id = `fibonacci-${n}`;
 
-sim.delay(1, () => {
+sim.delay(0, () => {
   const msg = new Message<Request>(
     unicast("environment"),
     unicast("server"),
