@@ -1,4 +1,4 @@
-import type { Heartbeat } from "heartbeat";
+import type { Heartbeat } from "./heartbeat";
 import { Computation, type Status } from "./computation";
 import type { DurablePromiseRecord, Message, Network } from "./network/network";
 import { Registry } from "./registry";

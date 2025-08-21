@@ -1,4 +1,4 @@
-import type { Heartbeat } from "heartbeat";
+import type { Heartbeat } from "./heartbeat";
 import { Context } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
 import { Handler } from "./handler";
