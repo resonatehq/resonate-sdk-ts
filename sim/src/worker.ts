@@ -77,7 +77,7 @@ class SimulatedNetwork implements Network {
       if (entry) {
         const msg = message as Message<{ err?: any; res?: Response }>;
         if (msg.data.err) {
-          util.assert(msg.data === undefined);
+          util.assert(msg.data.res === undefined);
           entry.callback(true);
         } else {
           util.assertDefined(msg.data.res);
