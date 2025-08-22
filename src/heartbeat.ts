@@ -25,26 +25,24 @@ export class AsyncHeartbeat implements Heartbeat {
   }
 
   private heartbeat(delay: number): void {
-    this.intervalId = setInterval(
-      (counter) => {
-        this.network.send(
-          {
-            kind: "heartbeatTasks",
-            processId: this.pid,
-          },
-          (err, res) => {
-            if (err) return;
-            util.assertDefined(res);
+    this.intervalId = setInterval(() => {
+      const counter = this.counter;
 
-            if (res.tasksAffected === 0) {
-              this.clearIntervalIfMatch(this.intervalId, counter);
-            }
-          },
-        );
-      },
-      delay,
-      this.counter,
-    );
+      this.network.send(
+        {
+          kind: "heartbeatTasks",
+          processId: this.pid,
+        },
+        (err, res) => {
+          if (err) return;
+          util.assertDefined(res);
+
+          if (res.tasksAffected === 0) {
+            this.clearIntervalIfMatch(this.intervalId, counter);
+          }
+        },
+      );
+    }, delay);
   }
 
   stop(): void {
