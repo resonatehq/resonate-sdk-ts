@@ -172,11 +172,10 @@ export class Server {
       util.assert(applied, `step(): failed to transition schedule '${schedule.id}' to 'created' state`);
     }
 
-    // Reject or resolve timed-out promises
+    // Reject timed-out promises
     for (const promise of this.promises.values()) {
       if (promise.state === "pending" && time >= promise.timeout) {
-        const to = promise.tags["resonate:timeout"] ? "resolved" : "rejected_timedout";
-        const { applied } = this.transitionPromise({ id: promise.id, to, time });
+        const { applied } = this.transitionPromise({ id: promise.id, to: "rejected_timedout", time });
         util.assert(applied, `step(): promise '${promise.id}' expected to be timed out but transition did not apply`);
       }
     }
