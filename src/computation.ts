@@ -33,7 +33,7 @@ export class Computation {
   private registry: Registry;
   private heartbeat: Heartbeat;
   private processor: Processor;
-
+  private anyaddr: string; // TODO(avillega): this is a shortcut to test resoante in a FaaS env. There be dragons
   private seen: Set<string> = new Set();
   private nurseries: Map<string, Nursery<boolean, Status>> = new Map();
 
@@ -45,6 +45,7 @@ export class Computation {
     network: Network,
     registry: Registry,
     heartbeat: Heartbeat,
+    anyaddr: string,
     processor?: Processor,
     clock?: Clock,
   ) {
@@ -56,6 +57,7 @@ export class Computation {
     this.handler = new Handler(network);
     this.registry = registry;
     this.heartbeat = heartbeat;
+    this.anyaddr = anyaddr;
     this.processor = processor ?? new AsyncProcessor();
     this.clock = clock ?? new WallClock();
   }
@@ -229,8 +231,7 @@ export class Computation {
       boolean
     >(
       todo,
-      ({ id }, done) =>
-        this.handler.createCallback(id, this.id, Number.MAX_SAFE_INTEGER, `poll://any@${this.group}/${this.pid}`, done),
+      ({ id }, done) => this.handler.createCallback(id, this.id, Number.MAX_SAFE_INTEGER, this.anyaddr, done),
       (err, results) => {
         if (err) return done(err);
         util.assertDefined(results);

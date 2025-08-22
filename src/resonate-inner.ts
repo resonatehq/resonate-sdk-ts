@@ -16,8 +16,12 @@ export class ResonateInner {
   private heartbeat: Heartbeat;
   private notifications: Map<string, DurablePromiseRecord> = new Map();
   private subscriptions: Map<string, Array<(promise: DurablePromiseRecord) => void>> = new Map();
+  private anyaddr: string; // TODO(avillega): this is a shortcut to test resoante in a FaaS env. There be dragons
 
-  constructor(network: Network, config: { group: string; pid: string; ttl: number; heartbeat: Heartbeat }) {
+  constructor(
+    network: Network,
+    config: { group: string; pid: string; ttl: number; heartbeat: Heartbeat; anyaddr?: string },
+  ) {
     const { group, pid, ttl, heartbeat } = config;
     this.computations = new Map();
     this.group = group;
@@ -27,6 +31,7 @@ export class ResonateInner {
     this.registry = new Registry();
     this.network = network;
     this.network.subscribe(this.onMessage.bind(this));
+    this.anyaddr = config.anyaddr ?? `poll://any@${this.group}/${this.pid}`;
   }
 
   public process(task: Task, callback: Callback<Status>) {
@@ -40,6 +45,7 @@ export class ResonateInner {
         this.network,
         this.registry,
         this.heartbeat,
+        this.anyaddr,
       );
       this.computations.set(task.rootPromiseId, computation);
     }

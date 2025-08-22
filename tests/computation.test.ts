@@ -109,6 +109,7 @@ describe("Computation Event Queue Concurrency", () => {
       network,
       registry,
       new NoHeartbeat(),
+      "poll://any@test-group",
       mockProcessor,
     );
   });
