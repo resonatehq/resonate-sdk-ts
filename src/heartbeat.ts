@@ -26,7 +26,7 @@ export class AsyncHeartbeat implements Heartbeat {
 
   private heartbeat(delay: number): void {
     this.intervalId = setInterval(
-      (intervalId, counter) => {
+      (counter) => {
         this.network.send(
           {
             kind: "heartbeatTasks",
@@ -37,13 +37,12 @@ export class AsyncHeartbeat implements Heartbeat {
             util.assertDefined(res);
 
             if (res.tasksAffected === 0) {
-              this.clearIntervalIfMatch(intervalId, counter);
+              this.clearIntervalIfMatch(this.intervalId, counter);
             }
           },
         );
       },
       delay,
-      this.intervalId,
       this.counter,
     );
   }
