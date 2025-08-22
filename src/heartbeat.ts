@@ -2,7 +2,7 @@ import type { Network } from "./network/network";
 import * as util from "./util";
 
 export interface Heartbeat {
-  start(delay: number): void;
+  start(): void;
   stop(): void;
 }
 
@@ -60,6 +60,6 @@ export class AsyncHeartbeat implements Heartbeat {
 }
 
 export class NoHeartbeat implements Heartbeat {
-  start(delay: number): void {}
+  start(): void {}
   stop(): void {}
 }
