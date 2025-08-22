@@ -11,20 +11,22 @@ export class AsyncHeartbeat implements Heartbeat {
   private intervalId: ReturnType<typeof setInterval> | undefined;
   private pid: string;
   private counter = 0;
+  private delay: number;
 
-  constructor(network: Network, pid: string) {
-    this.network = network;
+  constructor(pid: string, delay: number, network: Network) {
     this.pid = pid;
+    this.delay = delay;
+    this.network = network;
   }
 
-  start(delay: number): void {
+  start(): void {
     this.counter++;
     if (!this.intervalId) {
-      this.heartbeat(delay);
+      this.heartbeat();
     }
   }
 
-  private heartbeat(delay: number): void {
+  private heartbeat(): void {
     this.intervalId = setInterval(() => {
       const counter = this.counter;
 
@@ -38,19 +40,19 @@ export class AsyncHeartbeat implements Heartbeat {
           util.assertDefined(res);
 
           if (res.tasksAffected === 0) {
-            this.clearIntervalIfMatch(this.intervalId, counter);
+            this.clearIntervalIfMatch(counter);
           }
         },
       );
-    }, delay);
+    }, this.delay);
   }
 
   stop(): void {
-    this.clearIntervalIfMatch(this.intervalId, this.counter);
+    this.clearIntervalIfMatch(this.counter);
   }
 
-  private clearIntervalIfMatch(interval: ReturnType<typeof setInterval> | undefined, counter: number) {
-    if (this.intervalId === interval && this.counter === counter) {
+  private clearIntervalIfMatch(counter: number) {
+    if (this.counter === counter) {
       clearInterval(this.intervalId);
       this.intervalId = undefined;
     }
