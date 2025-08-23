@@ -656,7 +656,6 @@ export class HttpNetwork implements Network {
 
         return res;
       } catch (err) {
-        console.error(`Server error: ${err}`);
         if (attempt >= retries || !controller.signal.aborted) {
           throw err;
         }
