@@ -24,7 +24,7 @@ describe("Resonate usage tests", () => {
 
     const startTime = Date.now();
     const h = await f.beginRun("test");
-    const r = await h.result;
+    const r = await h.result();
     const endTime = Date.now();
     const executionTime = endTime - startTime;
 
@@ -51,7 +51,7 @@ describe("Resonate usage tests", () => {
 
     const startTime = Date.now();
     const h = await f.beginRun("test");
-    const r = await h.result;
+    const r = await h.result();
     const endTime = Date.now();
     const executionTime = endTime - startTime;
 
@@ -76,7 +76,7 @@ describe("Resonate usage tests", () => {
     });
 
     const h = await f.beginRun("f");
-    await expect(h.result).rejects.toBe("this is an error");
+    await expect(h.result()).rejects.toBe("this is an error");
     resonate.stop();
   });
 
@@ -92,7 +92,7 @@ describe("Resonate usage tests", () => {
     });
 
     const h = await f.beginRun("f");
-    await expect(h.result).rejects.toBe("this is an error");
+    await expect(h.result()).rejects.toBe("this is an error");
     resonate.stop();
   });
 
@@ -155,7 +155,7 @@ describe("Resonate usage tests", () => {
 
     const p = await f.beginRun("f");
     await promises.resolve("myId", "myId", false, "myValue");
-    const v = await p.result;
+    const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
   });
@@ -179,7 +179,7 @@ describe("Resonate usage tests", () => {
     expect(durable.timeout).toBeLessThan(time + 5 * util.HOUR + 1000);
 
     await promises.resolve("myId", "myId", false, "myValue");
-    const v = await p.result;
+    const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
   });
@@ -200,7 +200,7 @@ describe("Resonate usage tests", () => {
     expect(durable.tags).toMatchObject({ "resonate:timeout": "true" });
     expect(durable.timeout).toBeLessThan(time + 1 * util.SEC + 100);
 
-    const v = await p.result;
+    const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
   });
