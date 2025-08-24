@@ -212,7 +212,7 @@ export class JsonEncoder implements Encoder {
 export interface HttpNetworkConfig {
   host: string;
   storePort: string;
-  msgSrcPort: string;
+  messageSourcePort: string;
   pid: string;
   group: string;
   timeout?: number;
@@ -235,9 +235,12 @@ export class HttpNetwork implements Network {
   private subscriptions: Array<(msg: Message) => void> = new Array();
 
   constructor(config: HttpNetworkConfig) {
-    const { host, storePort, msgSrcPort, pid, group } = config;
+    const { host, storePort, messageSourcePort, pid, group } = config;
     this.url = `${host}:${storePort}`;
-    this.msgUrl = new URL(`/${encodeURIComponent(group)}/${encodeURIComponent(pid)}`, `${host}:${msgSrcPort}`).href;
+    this.msgUrl = new URL(
+      `/${encodeURIComponent(group)}/${encodeURIComponent(pid)}`,
+      `${host}:${messageSourcePort}`,
+    ).href;
     this.timeout = config.timeout || 30 * util.SEC;
 
     this.baseHeaders = {

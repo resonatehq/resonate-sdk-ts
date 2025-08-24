@@ -98,7 +98,7 @@ describe("Resonate usage tests", () => {
 
   test("Correctly sets options on inner functions", async () => {
     const network = new LocalNetwork();
-    const resonate = new Resonate(network, { group: "default", pid: "0", ttl: 50_000 });
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
     const promises = new Promises(network);
 
     const g = async (_ctx: Context, msg: string) => {
@@ -121,7 +121,7 @@ describe("Resonate usage tests", () => {
 
   test("Correctly sets options on inner functions without defined opts", async () => {
     const network = new LocalNetwork();
-    const resonate = new Resonate(network, { group: "default", pid: "0", ttl: 50_000 });
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
     const promises = new Promises(network);
 
     const g = async (_ctx: Context, msg: string) => {
@@ -144,7 +144,7 @@ describe("Resonate usage tests", () => {
 
   test("Basic human in the loop", async () => {
     const network = new LocalNetwork();
-    const resonate = new Resonate(network, { group: "default", pid: "0", ttl: 50_000 });
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
     const promises = new Promises(network);
 
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -162,7 +162,7 @@ describe("Resonate usage tests", () => {
 
   test("Correctly sets timeout", async () => {
     const network = new LocalNetwork();
-    const resonate = new Resonate(network, { group: "default", pid: "0", ttl: 50_000 });
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
     const promises = new Promises(network);
 
     const time = Date.now();
@@ -186,7 +186,7 @@ describe("Resonate usage tests", () => {
 
   test("Basic Durable sleep", async () => {
     const network = new LocalNetwork();
-    const resonate = new Resonate(network, { group: "default", pid: "0", ttl: 50_000 });
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
     const promises = new Promises(network);
 
     const time = Date.now();
