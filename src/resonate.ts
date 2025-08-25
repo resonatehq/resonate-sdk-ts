@@ -1,3 +1,4 @@
+import { Promises } from "./promises";
 import { LocalNetwork } from "../dev/network";
 import { AsyncHeartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Network } from "./network/network";
@@ -5,6 +6,7 @@ import { HttpNetwork } from "./network/remote";
 import { ResonateInner } from "./resonate-inner";
 import { type Func, type Options, type ParamsWithOptions, RESONATE_OPTIONS, type Return } from "./types";
 import * as util from "./util";
+import { Schedules } from "./schedules";
 
 export interface Handle<T> {
   result: Promise<T>;
@@ -24,6 +26,8 @@ export class Resonate {
   private group: string;
   private pid: string;
   private ttl: number;
+  public readonly promises: Promises;
+  public readonly schedules: Schedules;
 
   constructor(network: Network, config: { group: string; pid: string; ttl: number }) {
     this.network = network;
@@ -34,6 +38,8 @@ export class Resonate {
       ...config,
       heartbeat: new AsyncHeartbeat(config.pid, this.ttl / 2, network),
     });
+    this.promises = new Promises(network);
+    this.schedules = new Schedules(network);
   }
 
   /**
