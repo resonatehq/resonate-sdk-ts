@@ -1,8 +1,11 @@
 import { LocalNetwork } from "../dev/network";
-import { AsyncHeartbeat } from "./heartbeat";
+import { AsyncHeartbeat, NoHeartbeat } from "./heartbeat";
 import type { Network } from "./network/network";
 import { HttpNetwork } from "./network/remote";
-import { type PromiseHandler, ResonateInner } from "./resonate-inner";
+import { Promises } from "./promises";
+import type { PromiseHandler } from "./resonate-inner";
+import { ResonateInner } from "./resonate-inner";
+import { Schedules } from "./schedules";
 import { type Func, type Options, type ParamsWithOptions, RESONATE_OPTIONS, type Return } from "./types";
 import * as util from "./util";
 
@@ -24,17 +27,24 @@ export class Resonate {
   private group: string;
   private pid: string;
   private ttl: number;
+  public readonly promises: Promises;
+  public readonly schedules: Schedules;
 
   constructor(config: { group: string; pid: string; ttl: number }, network: Network) {
     this.group = config.group;
     this.pid = config.pid;
     this.ttl = config.ttl;
+
+    const heartbeat =
+      network instanceof LocalNetwork ? new NoHeartbeat() : new AsyncHeartbeat(config.pid, this.ttl / 2, network);
+
     this.inner = new ResonateInner(network, {
-      group: this.group,
-      pid: this.pid,
-      ttl: this.ttl,
-      heartbeat: new AsyncHeartbeat(config.pid, this.ttl / 2, network),
+      ...config,
+      heartbeat: heartbeat,
     });
+
+    this.promises = new Promises(network);
+    this.schedules = new Schedules(network);
   }
 
   /**
@@ -45,7 +55,7 @@ export class Resonate {
       {
         group: "default",
         pid: "default",
-        ttl: 1 * util.MIN,
+        ttl: Number.MAX_SAFE_INTEGER,
       },
       new LocalNetwork(),
     );
