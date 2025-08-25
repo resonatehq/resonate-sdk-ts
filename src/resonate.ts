@@ -1,12 +1,12 @@
-import { Promises } from "./promises";
 import { LocalNetwork } from "../dev/network";
 import { AsyncHeartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Network } from "./network/network";
 import { HttpNetwork } from "./network/remote";
+import { Promises } from "./promises";
 import { ResonateInner } from "./resonate-inner";
+import { Schedules } from "./schedules";
 import { type Func, type Options, type ParamsWithOptions, RESONATE_OPTIONS, type Return } from "./types";
 import * as util from "./util";
-import { Schedules } from "./schedules";
 
 export interface Handle<T> {
   result: Promise<T>;
