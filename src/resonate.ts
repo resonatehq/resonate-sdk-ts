@@ -2,7 +2,7 @@ import { LocalNetwork } from "../dev/network";
 import { AsyncHeartbeat } from "./heartbeat";
 import type { Network } from "./network/network";
 import { HttpNetwork } from "./network/remote";
-import { ResonateInner, type Rpc, type Run } from "./resonate-inner";
+import { type PromiseHandler, ResonateInner } from "./resonate-inner";
 import { type Func, type Options, type ParamsWithOptions, RESONATE_OPTIONS, type Return } from "./types";
 import * as util from "./util";
 
@@ -25,22 +25,15 @@ export class Resonate {
   private pid: string;
   private ttl: number;
 
-  constructor(
-    {
-      group = "default",
-      pid = crypto.randomUUID().replace(/-/g, ""),
-      ttl = 1 * util.MIN,
-    }: { group?: string; pid?: string; ttl?: number } = {},
-    network: Network = new LocalNetwork(),
-  ) {
-    this.group = group;
-    this.pid = pid;
-    this.ttl = ttl;
+  constructor(config: { group: string; pid: string; ttl: number }, network: Network) {
+    this.group = config.group;
+    this.pid = config.pid;
+    this.ttl = config.ttl;
     this.inner = new ResonateInner(network, {
       group: this.group,
       pid: this.pid,
       ttl: this.ttl,
-      heartbeat: new AsyncHeartbeat(pid, this.ttl / 2, network),
+      heartbeat: new AsyncHeartbeat(config.pid, this.ttl / 2, network),
     });
   }
 
@@ -48,7 +41,14 @@ export class Resonate {
    * Create a local Resonate instance
    */
   static local(): Resonate {
-    return new Resonate();
+    return new Resonate(
+      {
+        group: "default",
+        pid: "default",
+        ttl: 1 * util.MIN,
+      },
+      new LocalNetwork(),
+    );
   }
 
   /**
@@ -127,29 +127,27 @@ export class Resonate {
 
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
-    return this.process({
-      kind: "run",
-      id: id,
-      req: {
-        kind: "createPromiseAndTask",
-        promise: {
-          id: id,
-          timeout: opts.timeout + Date.now(),
-          param: { func: registered.name, args },
-          tags: {
-            ...opts.tags,
-            "resonate:invoke": `poll://any@${this.group}/${this.pid}`,
-            "resonate:scope": "global",
-          }, // TODO(avillega): use the real anycast address or change the server to not require `poll://`
-        },
-        task: {
-          processId: this.pid,
-          ttl: this.ttl,
-        },
-        iKey: id,
-        strict: false,
+    const promiseHandler = this.inner.run({
+      kind: "createPromiseAndTask",
+      promise: {
+        id: id,
+        timeout: opts.timeout + Date.now(),
+        param: { func: registered.name, args },
+        tags: {
+          ...opts.tags,
+          "resonate:invoke": `poll://any@${this.group}/${this.pid}`,
+          "resonate:scope": "global",
+        }, // TODO(avillega): use the real anycast address or change the server to not require `poll://`
       },
+      task: {
+        processId: this.pid,
+        ttl: this.ttl,
+      },
+      iKey: id,
+      strict: false,
     });
+
+    return this.handle(promiseHandler);
   }
 
   /**
@@ -182,19 +180,17 @@ export class Resonate {
 
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
-    return this.process({
-      kind: "rpc",
+    const promiseHandler = this.inner.rpc({
+      kind: "createPromise",
       id: id,
-      req: {
-        kind: "createPromise",
-        id: id,
-        timeout: Date.now() + opts.timeout,
-        param: { func: name, args },
-        tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
-        iKey: id,
-        strict: false,
-      },
+      timeout: Date.now() + opts.timeout,
+      param: { func: name, args },
+      tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
+      iKey: id,
+      strict: false,
     });
+
+    return this.handle(promiseHandler);
   }
 
   public options(opts: Partial<Options> = {}): Options & { [RESONATE_OPTIONS]: true } {
@@ -212,15 +208,12 @@ export class Resonate {
     this.inner.stop();
   }
 
-  private process(cmd: Run | Rpc): Promise<Handle<any>> {
+  private handle(promiseHandler: PromiseHandler): Promise<Handle<any>> {
     // resolves with a handle
     const handle = Promise.withResolvers<Handle<any>>();
 
     // resolves with the result
     const result = Promise.withResolvers<any>();
-
-    // call inner process to get a promise handler
-    const promiseHandler = this.inner.process(cmd);
 
     // listen for created and resolve p1 with a handle
     promiseHandler.addEventListener("created", (promise) => {

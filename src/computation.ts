@@ -81,8 +81,8 @@ export class Computation {
         this.network.send(
           {
             kind: "claimTask",
-            id: task.id,
-            counter: task.counter,
+            id: task.task.id,
+            counter: task.task.counter,
             processId: this.pid,
             ttl: this.ttl,
           },
@@ -97,7 +97,7 @@ export class Computation {
               this.handler.updateCache(leaf.data);
             }
 
-            this.processClaimed({ ...task, kind: "claimed", rootPromise: root.data }, doneProcessing);
+            this.processClaimed({ kind: "claimed", task: task.task, rootPromise: root.data }, doneProcessing);
           },
         );
         break;
@@ -105,12 +105,12 @@ export class Computation {
   }
 
   private processClaimed(task: ClaimedTask, done: Callback<Status>) {
-    util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
+    util.assert(task.task.rootPromiseId === this.id, "task root promise id must match computation id");
     util.assert(!this.nurseries.has(task.rootPromise.id), "task must not have nursery");
 
     const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
       if (err) {
-        return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, () => {
+        return this.network.send({ kind: "dropTask", id: task.task.id, counter: task.task.counter }, () => {
           // ignore the drop task response, if the request failed the
           // task will eventually expire anyways
           done(true);
@@ -150,7 +150,7 @@ export class Computation {
             return nursery.done(err);
           }
 
-          this.network.send({ kind: "completeTask", id: task.id, counter: task.counter }, (err) => {
+          this.network.send({ kind: "completeTask", id: task.task.id, counter: task.task.counter }, (err) => {
             this.nurseries.delete(task.rootPromise.id);
             nursery.done(err, res);
           });

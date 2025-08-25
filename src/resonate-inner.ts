@@ -6,22 +6,11 @@ import type {
   DurablePromiseRecord,
   Message,
   Network,
+  ResponseFor,
 } from "./network/network";
 import { Registry } from "./registry";
 import type { Callback, Func, Task } from "./types";
 import * as util from "./util";
-
-export type Run = {
-  kind: "run";
-  id: string;
-  req: CreatePromiseAndTaskReq;
-};
-
-export type Rpc = {
-  kind: "rpc";
-  id: string;
-  req: CreatePromiseReq;
-};
 
 export type PromiseHandler = {
   addEventListener: (event: "created" | "completed", callback: (p: DurablePromiseRecord) => void) => void;
@@ -52,10 +41,61 @@ export class ResonateInner {
     this.network.subscribe(this.onMessage.bind(this));
   }
 
-  public process(cmd: Run | Rpc): PromiseHandler {
-    const promiseHandler = {
+  public run(req: CreatePromiseAndTaskReq): PromiseHandler {
+    return this.runOrRpc(req, (err, res) => {
+      util.assert(!err, "retry forever ensures err is false");
+      util.assertDefined(res);
+
+      // notify
+      this.notify(res.promise);
+
+      // if we have the task, process it
+      if (res.task) {
+        this.process({ kind: "claimed", task: res.task, rootPromise: res.promise }, () => {});
+      }
+    });
+  }
+
+  public rpc(req: CreatePromiseReq): PromiseHandler {
+    return this.runOrRpc(req, (err, res) => {
+      util.assert(!err, "retry forever ensures err is false");
+      util.assertDefined(res);
+
+      // notify
+      this.notify(res.promise);
+    });
+  }
+
+  public process(task: Task, done: Callback<Status>) {
+    let computation = this.computations.get(task.task.rootPromiseId);
+    if (!computation) {
+      computation = new Computation(
+        task.task.rootPromiseId,
+        this.pid,
+        this.ttl,
+        this.group,
+        this.network,
+        this.registry,
+        this.heartbeat,
+      );
+      this.computations.set(task.task.rootPromiseId, computation);
+    }
+
+    computation.process(task, done);
+  }
+
+  private runOrRpc<T extends CreatePromiseReq | CreatePromiseAndTaskReq>(
+    req: T,
+    done: Callback<ResponseFor<T>>,
+  ): PromiseHandler {
+    const id = req.kind === "createPromise" ? req.id : req.promise.id;
+    const timeout = req.kind === "createPromise" ? req.timeout : req.promise.timeout;
+
+    this.network.send(req, done, true);
+
+    return {
       addEventListener: (event: "created" | "completed", callback: (p: DurablePromiseRecord) => void) => {
-        const subscriptions = this.subscriptions.get(cmd.id) || [];
+        const subscriptions = this.subscriptions.get(id) || [];
 
         subscriptions.push((p: DurablePromiseRecord): boolean => {
           if (event === "created" || (event === "completed" && p.state !== "pending")) {
@@ -66,7 +106,13 @@ export class ResonateInner {
           return false;
         });
 
-        this.subscriptions.set(cmd.id, subscriptions);
+        this.subscriptions.set(id, subscriptions);
+
+        // immediately notify if we already have a promise
+        const promise = this.notifications.get(id);
+        if (promise) {
+          this.notify(promise);
+        }
       },
       subscribe: () =>
         new Promise<void>((resolve) => {
@@ -74,8 +120,8 @@ export class ResonateInner {
           this.network.send(
             {
               kind: "createSubscription",
-              id: cmd.id,
-              timeout: cmd.kind === "run" ? cmd.req.promise.timeout : cmd.req.timeout,
+              id: id,
+              timeout: timeout,
               recv: `poll://uni@${this.group}/${this.pid}`,
             },
             (err, res) => {
@@ -89,64 +135,6 @@ export class ResonateInner {
           );
         }),
     };
-
-    this.network.send(
-      cmd.req,
-      (err, res) => {
-        util.assert(!err, "retry forever ensures err is false");
-        util.assertDefined(res);
-
-        // notify created
-        this.notify(res.promise);
-
-        // process if we have the task
-        if (res.kind === "createPromiseAndTask" && res.task) {
-          this.processTask(
-            {
-              ...res.task,
-              rootPromise: res.promise,
-              kind: "claimed",
-            },
-            (err, res) => {
-              if (err) {
-                // the task has already been dropped, just subscribe
-                promiseHandler.subscribe();
-                return;
-              }
-              util.assertDefined(res);
-
-              if (res.kind === "suspended") {
-                // do we need to do anything here?
-              } else {
-                // notify subscribers of the completed promise
-                this.notify(res.promise);
-              }
-            },
-          );
-        }
-      },
-      true,
-    );
-
-    return promiseHandler;
-  }
-
-  private processTask(task: Task, done: Callback<Status>) {
-    let computation = this.computations.get(task.rootPromiseId);
-    if (!computation) {
-      computation = new Computation(
-        task.rootPromiseId,
-        this.pid,
-        this.ttl,
-        this.group,
-        this.network,
-        this.registry,
-        this.heartbeat,
-      );
-      this.computations.set(task.rootPromiseId, computation);
-    }
-
-    computation.process(task, done);
   }
 
   public register<F extends Func>(name: string, func: F) {
@@ -161,7 +149,7 @@ export class ResonateInner {
     switch (msg.type) {
       case "invoke":
       case "resume":
-        this.processTask({ ...msg.task, kind: "unclaimed" }, () => {});
+        this.process({ kind: "unclaimed", task: msg.task }, () => {});
         break;
 
       case "notify":
