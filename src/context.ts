@@ -145,11 +145,12 @@ export interface Context {
     tags,
   }: { id?: string; timeout?: number; data?: any; tags?: Record<string, string> }): RFI<T>;
 
-  // options
+  // detached
   detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
   detached<T>(func: string, ...args: any[]): RFI<T>;
   detached(func: Func | string, ...args: any[]): RFI<any>;
 
+  // options
   options(opts: Partial<Options>): Options & { [RESONATE_OPTIONS]: true };
 }
 
