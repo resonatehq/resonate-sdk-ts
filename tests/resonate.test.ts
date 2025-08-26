@@ -148,7 +148,7 @@ describe("Resonate usage tests", () => {
     const promises = new Promises(network);
 
     const f = resonate.register("f", function* foo(ctx: Context) {
-      const fu = yield* ctx.promise(ctx.options({ id: "myId" }));
+      const fu = yield* ctx.promise({ id: "myId" });
       expect(fu.id).toBe("myId");
       return yield* fu;
     });
