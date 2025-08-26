@@ -204,4 +204,27 @@ describe("Resonate usage tests", () => {
     expect(v).toBe("myValue");
     resonate.stop();
   });
+
+  test("Basic Detached", async () => {
+    const network = new LocalNetwork();
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network);
+    const promises = new Promises(network);
+
+    resonate.register("d", async (_ctx: Context): Promise<void> => {
+      await setTimeout(1000);
+    });
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.detached("d");
+      return "myValue";
+    });
+
+    const v = await f.run("f");
+    expect(v).toBe("myValue");
+
+    const durable = await promises.get("f.0");
+    expect(durable).toMatchObject({ state: "pending" });
+
+    resonate.stop();
+  });
 });
