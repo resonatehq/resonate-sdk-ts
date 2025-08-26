@@ -1,3 +1,4 @@
+import { WallClock } from "clock";
 import { LocalNetwork } from "../dev/network";
 import { AsyncHeartbeat, NoHeartbeat } from "./heartbeat";
 import type { Network } from "./network/network";
@@ -48,6 +49,7 @@ export class Resonate {
       anycast: this.anycast,
       unicast: this.unicast,
       dependencies: config.dependencies ?? new Map(),
+      clock: new WallClock(),
     });
 
     this.promises = new Promises(network);

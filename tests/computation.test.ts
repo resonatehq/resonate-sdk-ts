@@ -1,3 +1,4 @@
+import { WallClock } from "clock";
 import { LocalNetwork } from "../dev/network";
 import { Computation, type Status } from "../src/computation";
 import type { Context } from "../src/context";
@@ -111,6 +112,7 @@ describe("Computation Event Queue Concurrency", () => {
       registry,
       new NoHeartbeat(),
       new Map(),
+      new WallClock(),
       mockProcessor,
     );
   });
