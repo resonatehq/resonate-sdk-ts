@@ -212,7 +212,7 @@ export class Resonate {
   public options(opts: Partial<Options> = {}): Options & { [RESONATE_OPTIONS]: true } {
     return {
       id: "",
-      target: `poll://any@${this.group}`,
+      target: "poll://any@default",
       timeout: 24 * util.HOUR,
       tags: {},
       ...opts,
