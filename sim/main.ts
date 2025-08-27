@@ -1,5 +1,5 @@
-import { StepClock } from "clock";
 import { Command } from "commander";
+import { StepClock } from "../src/clock";
 import type { Context } from "../src/context";
 import type { Request } from "../src/network/network";
 import { ServerProcess } from "./src/server";

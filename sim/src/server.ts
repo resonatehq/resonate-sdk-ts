@@ -1,5 +1,5 @@
-import type { StepClock } from "clock";
 import { Server } from "../../dev/server";
+import type { StepClock } from "../../src/clock";
 import type { Message as NetworkMessage, Request, Response } from "../../src/network/network";
 import * as util from "../../src/util";
 import { type Address, Message, Process, anycast, unicast } from "./simulator";

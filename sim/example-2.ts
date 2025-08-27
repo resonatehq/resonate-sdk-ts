@@ -4,7 +4,7 @@ import { ServerProcess } from "./src/server";
 import { Message, Random, Simulator, unicast } from "./src/simulator";
 import { WorkerProcess } from "./src/worker";
 
-import { StepClock } from "clock";
+import { StepClock } from "../src/clock";
 import * as util from "../src/util";
 
 // Function definition

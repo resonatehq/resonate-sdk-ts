@@ -1,4 +1,4 @@
-import type { Clock } from "clock";
+import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
 import type { Heartbeat } from "./heartbeat";
 import type {

@@ -1,4 +1,4 @@
-import type { StepClock } from "clock";
+import type { StepClock } from "../../src/clock";
 import { NoHeartbeat } from "../../src/heartbeat";
 import type { Network, Message as NetworkMessage, Request, Response, ResponseFor } from "../../src/network/network";
 import { ResonateInner } from "../../src/resonate-inner";

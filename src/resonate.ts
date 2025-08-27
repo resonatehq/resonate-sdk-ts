@@ -1,5 +1,5 @@
-import { WallClock } from "clock";
 import { LocalNetwork } from "../dev/network";
+import { WallClock } from "./clock";
 import { AsyncHeartbeat, NoHeartbeat } from "./heartbeat";
 import type { Network } from "./network/network";
 import { HttpNetwork } from "./network/remote";
