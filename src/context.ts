@@ -94,7 +94,7 @@ export class Future<T> implements Iterable<Future<T>> {
     }
 
     if (this.value.success) {
-      return this.value.data;
+      return this.value.value;
     }
     throw this.value.error; // Should be unreachble
   }

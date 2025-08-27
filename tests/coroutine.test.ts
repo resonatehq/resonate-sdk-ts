@@ -65,10 +65,20 @@ describe("Coroutine", () => {
 
   const completePromise = (handler: Handler, id: string, result: Result<any>) => {
     return new Promise<any>((resolve) => {
-      handler.completePromise(id, result, (err, res) => {
-        expect(err).toBe(false);
-        resolve(res);
-      });
+      handler.completePromise(
+        {
+          kind: "completePromise",
+          id: id,
+          state: result.success ? "resolved" : "rejected",
+          value: result.success ? result.value : result.error,
+          iKey: id,
+          strict: false,
+        },
+        (err, res) => {
+          expect(err).toBe(false);
+          resolve(res);
+        },
+      );
     });
   };
 

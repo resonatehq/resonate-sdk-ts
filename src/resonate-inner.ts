@@ -1,5 +1,6 @@
 import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
+import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type {
   CreatePromiseAndTaskReq,
@@ -9,8 +10,8 @@ import type {
   Network,
   ResponseFor,
 } from "./network/network";
-import { Registry } from "./registry";
-import type { Callback, Func, Task } from "./types";
+import type { Registry } from "./registry";
+import type { Callback, Task } from "./types";
 import * as util from "./util";
 
 export type PromiseHandler = {
@@ -19,43 +20,56 @@ export type PromiseHandler = {
 };
 
 export class ResonateInner {
-  public registry: Registry; // TODO(avillega): Who should own the registry? the resonate class?
-
-  private computations: Map<string, Computation>;
-  private network: Network;
-  private anycast: string;
   private unicast: string;
+  private anycast: string;
   private pid: string;
   private ttl: number;
+  private clock: Clock;
+  private network: Network;
+  private handler: Handler;
+  private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
-  private clock: Clock;
+
+  private computations: Map<string, Computation> = new Map();
   private notifications: Map<string, DurablePromiseRecord> = new Map();
   private subscriptions: Map<string, Array<(promise: DurablePromiseRecord) => boolean>> = new Map();
 
-  constructor(
-    network: Network,
-    config: {
-      anycast: string;
-      unicast: string;
-      pid: string;
-      ttl: number;
-      heartbeat: Heartbeat;
-      dependencies: Map<string, any>;
-      clock: Clock;
-    },
-  ) {
-    const { anycast, unicast, pid, ttl, dependencies, heartbeat, clock } = config;
-    this.computations = new Map();
+  constructor({
+    unicast,
+    anycast,
+    pid,
+    ttl,
+    clock,
+    network,
+    handler,
+    registry,
+    heartbeat,
+    dependencies,
+  }: {
+    unicast: string;
+    anycast: string;
+    pid: string;
+    ttl: number;
+    clock: Clock;
+    network: Network;
+    handler: Handler;
+    registry: Registry;
+    heartbeat: Heartbeat;
+    dependencies: Map<string, any>;
+  }) {
+    this.unicast = unicast;
+    this.anycast = anycast;
     this.pid = pid;
     this.ttl = ttl;
-    this.heartbeat = heartbeat;
-    this.anycast = anycast;
-    this.unicast = unicast;
-    this.registry = new Registry();
-    this.network = network;
-    this.dependencies = dependencies;
     this.clock = clock;
+    this.network = network;
+    this.handler = handler;
+    this.registry = registry;
+    this.heartbeat = heartbeat;
+    this.dependencies = dependencies;
+
+    // subscribe to network messages
     this.network.subscribe(this.onMessage.bind(this));
   }
 
@@ -89,15 +103,16 @@ export class ResonateInner {
     if (!computation) {
       computation = new Computation(
         task.task.rootPromiseId,
+        this.unicast,
+        this.anycast,
         this.pid,
         this.ttl,
-        this.anycast,
-        this.unicast,
+        this.clock,
         this.network,
+        this.handler,
         this.registry,
         this.heartbeat,
         this.dependencies,
-        this.clock,
       );
       this.computations.set(task.task.rootPromiseId, computation);
     }
@@ -158,18 +173,6 @@ export class ResonateInner {
     };
   }
 
-  public register<F extends Func>(name: string, func: F) {
-    if (this.registry.has(name)) {
-      throw new Error(`'${name}' already registered`);
-    }
-
-    this.registry.set(name, func);
-  }
-
-  public setDependency(name: string, obj: any): void {
-    this.dependencies.set(name, obj);
-  }
-
   private onMessage(msg: Message): void {
     switch (msg.type) {
       case "invoke":
@@ -198,10 +201,5 @@ export class ResonateInner {
 
     // remove any subscriber that was notified
     this.subscriptions.set(promise.id, subscriptions);
-  }
-
-  public stop() {
-    this.network.stop();
-    this.heartbeat.stop();
   }
 }

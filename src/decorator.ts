@@ -168,7 +168,7 @@ export class Decorator<TRet> {
       if (!value.success) {
         itResult = this.generator.throw(value.error);
       } else {
-        itResult = this.generator.next(value.data);
+        itResult = this.generator.next(value.value);
       }
 
       if (!itResult.done) {

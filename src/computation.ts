@@ -1,7 +1,7 @@
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
-import { Handler } from "./handler";
+import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { CallbackRecord, DurablePromiseRecord, Network } from "./network/network";
 import { Nursery } from "./nursery";
@@ -42,28 +42,29 @@ export class Computation {
 
   constructor(
     id: string,
+    unicast: string,
+    anycast: string,
     pid: string,
     ttl: number,
-    anycast: string,
-    unicast: string,
+    clock: Clock,
     network: Network,
+    handler: Handler,
     registry: Registry,
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
-    clock: Clock,
     processor?: Processor,
   ) {
     this.id = id;
+    this.unicast = unicast;
+    this.anycast = anycast;
     this.pid = pid;
     this.ttl = ttl;
-    this.anycast = anycast;
-    this.unicast = unicast;
+    this.clock = clock;
     this.network = network;
-    this.handler = new Handler(network);
+    this.handler = handler;
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
-    this.clock = clock;
     this.processor = processor ?? new AsyncProcessor();
   }
 
@@ -84,7 +85,7 @@ export class Computation {
         break;
 
       case "unclaimed":
-        this.network.send(
+        this.handler.claimTask(
           {
             kind: "claimTask",
             id: task.task.id,
@@ -92,18 +93,11 @@ export class Computation {
             processId: this.pid,
             ttl: this.ttl,
           },
-          (err, res) => {
+          (err, promise) => {
             if (err) return doneProcessing(true);
-            util.assertDefined(res);
+            util.assertDefined(promise);
 
-            const { root, leaf } = res.message.promises;
-            util.assertDefined(root);
-
-            if (leaf) {
-              this.handler.updateCache(leaf.data);
-            }
-
-            this.processClaimed({ kind: "claimed", task: task.task, rootPromise: root.data }, doneProcessing);
+            this.processClaimed({ kind: "claimed", task: task.task, rootPromise: promise }, doneProcessing);
           },
         );
         break;
@@ -139,10 +133,6 @@ export class Computation {
 
     const func = registered.func;
     const args = task.rootPromise.param.args;
-
-    // TODO: investigate if it is possible to update a completed
-    // promise with a pending promise
-    this.handler.updateCache(task.rootPromise);
 
     // start heartbeat
     this.heartbeat.start();
@@ -216,7 +206,18 @@ export class Computation {
     this.processor.process(
       id,
       async () => await func(ctx, ...args),
-      (res) => this.handler.completePromise(id, res, done),
+      (res) =>
+        this.handler.completePromise(
+          {
+            kind: "completePromise",
+            id: id,
+            state: res.success ? "resolved" : "rejected",
+            value: res.success ? res.value : res.error,
+            iKey: id,
+            strict: false,
+          },
+          done,
+        ),
     );
   }
 
@@ -247,7 +248,17 @@ export class Computation {
       boolean
     >(
       todo,
-      ({ id }, done) => this.handler.createCallback(id, this.id, Number.MAX_SAFE_INTEGER, this.anycast, done),
+      ({ id }, done) =>
+        this.handler.createCallback(
+          {
+            kind: "createCallback",
+            id: id,
+            rootPromiseId: this.id,
+            timeout: Number.MAX_SAFE_INTEGER, // TODO: set to parent timeout
+            recv: this.anycast,
+          },
+          done,
+        ),
       (err, results) => {
         if (err) return done(err);
         util.assertDefined(results);

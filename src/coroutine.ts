@@ -62,6 +62,7 @@ export class Coroutine<T> {
         kind: "createPromise",
         id,
         timeout: 0,
+        iKey: id,
       },
       (err, res) => {
         if (err) return callback(err);
@@ -82,12 +83,22 @@ export class Coroutine<T> {
               break;
 
             case "done":
-              handler.completePromise(id, status.result, (err, promise) => {
-                if (err) return callback(err);
-                util.assertDefined(promise);
+              handler.completePromise(
+                {
+                  kind: "completePromise",
+                  id: id,
+                  state: status.result.success ? "resolved" : "rejected",
+                  value: status.result.success ? status.result.value : status.result.error,
+                  iKey: id,
+                  strict: false,
+                },
+                (err, promise) => {
+                  if (err) return callback(err);
+                  util.assertDefined(promise);
 
-                callback(false, { type: "completed", promise });
-              });
+                  callback(false, { type: "completed", promise });
+                },
+              );
               break;
           }
         });
@@ -152,18 +163,28 @@ export class Coroutine<T> {
                   };
                   next();
                 } else {
-                  this.handler.completePromise(action.id, status.result, (err, res) => {
-                    if (err) return callback(err);
-                    util.assertDefined(res);
-
-                    input = {
-                      type: "internal.promise",
-                      state: "completed",
+                  this.handler.completePromise(
+                    {
+                      kind: "completePromise",
                       id: action.id,
-                      value: extractResult(res),
-                    };
-                    next();
-                  });
+                      state: status.result.success ? "resolved" : "rejected",
+                      value: status.result.success ? status.result.value : status.result.error,
+                      iKey: action.id,
+                      strict: false,
+                    },
+                    (err, res) => {
+                      if (err) return callback(err);
+                      util.assertDefined(res);
+
+                      input = {
+                        type: "internal.promise",
+                        state: "completed",
+                        id: action.id,
+                        value: extractResult(res),
+                      };
+                      next();
+                    },
+                  );
                 }
               });
             } else {
