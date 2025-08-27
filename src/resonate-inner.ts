@@ -8,7 +8,6 @@ import type {
   DurablePromiseRecord,
   Message,
   Network,
-  ResponseFor,
 } from "./network/network";
 import type { Registry } from "./registry";
 import type { Callback, Task } from "./types";
@@ -74,28 +73,39 @@ export class ResonateInner {
   }
 
   public run(req: CreatePromiseAndTaskReq): PromiseHandler {
-    return this.runOrRpc(req, (err, res) => {
-      util.assert(!err, "retry forever ensures err is false");
-      util.assertDefined(res);
+    this.handler.createPromiseAndTask(
+      req,
+      (err, res) => {
+        util.assert(!err, "retry forever ensures err is false");
+        util.assertDefined(res);
 
-      // notify
-      this.notify(res.promise);
+        // notify
+        this.notify(res.promise);
 
-      // if we have the task, process it
-      if (res.task) {
-        this.process({ kind: "claimed", task: res.task, rootPromise: res.promise }, () => {});
-      }
-    });
+        // if we have the task, process it
+        if (res.task) {
+          this.process({ kind: "claimed", task: res.task, rootPromise: res.promise }, () => {});
+        }
+      },
+      true,
+    );
+
+    return this.promiseHandler(req.promise.id, req.promise.timeout);
   }
 
   public rpc(req: CreatePromiseReq): PromiseHandler {
-    return this.runOrRpc(req, (err, res) => {
-      util.assert(!err, "retry forever ensures err is false");
-      util.assertDefined(res);
+    this.handler.createPromise(
+      req,
+      (err, res) => {
+        util.assert(!err, "retry forever ensures err is false");
+        util.assertDefined(res);
 
-      // notify
-      this.notify(res.promise);
-    });
+        // notify
+        this.notify(res);
+      },
+      true,
+    );
+    return this.promiseHandler(req.id, req.timeout);
   }
 
   public process(task: Task, done: Callback<Status>) {
@@ -120,15 +130,7 @@ export class ResonateInner {
     computation.process(task, done);
   }
 
-  private runOrRpc<T extends CreatePromiseReq | CreatePromiseAndTaskReq>(
-    req: T,
-    done: Callback<ResponseFor<T>>,
-  ): PromiseHandler {
-    const id = req.kind === "createPromise" ? req.id : req.promise.id;
-    const timeout = req.kind === "createPromise" ? req.timeout : req.promise.timeout;
-
-    this.network.send(req, done, true);
-
+  private promiseHandler(id: string, timeout: number): PromiseHandler {
     return {
       addEventListener: (event: "created" | "completed", callback: (p: DurablePromiseRecord) => void) => {
         const subscriptions = this.subscriptions.get(id) || [];
@@ -152,8 +154,7 @@ export class ResonateInner {
       },
       subscribe: () =>
         new Promise<void>((resolve) => {
-          // attempt to subscribe forever
-          this.network.send(
+          this.handler.createSubscription(
             {
               kind: "createSubscription",
               id: id,
@@ -163,8 +164,7 @@ export class ResonateInner {
             (err, res) => {
               util.assert(!err, "retry forever ensures err is false");
               util.assertDefined(res);
-
-              this.notify(res.promise);
+              this.notify(res);
               resolve();
             },
             true,
