@@ -30,7 +30,6 @@ export class LocalNetwork implements Network {
         callback(false, res as ResponseFor<T>);
         this.enqueueNext();
       } catch (err) {
-        console.error(`Request failed: ${err}`);
         callback(true);
       }
     });
