@@ -64,6 +64,7 @@ export class Coroutine<T> {
         id,
         timeout: 0,
         iKey: id,
+        strict: false,
       },
       (err, res) => {
         if (err) return callback(err);
