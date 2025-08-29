@@ -131,44 +131,6 @@ export class Handler {
     });
   }
 
-  public createCallback(
-    req: CreateCallbackReq,
-    done: Callback<{ kind: "callback"; callback: CallbackRecord } | { kind: "promise"; promise: DurablePromiseRecord }>,
-  ): void {
-    const promise = this.cache.getPromise(req.id);
-    util.assertDefined(promise);
-
-    if (promise.state !== "pending") {
-      done(false, { kind: "promise", promise });
-      return;
-    }
-
-    const id = `__resume:${req.rootPromiseId}:${req.id}`;
-    const callback = this.cache.getCallback(id);
-    if (callback) {
-      done(false, { kind: "callback", callback });
-      return;
-    }
-
-    this.network.send(req, (err, res) => {
-      if (err) return done(true);
-      util.assertDefined(res);
-
-      if (res.promise) {
-        this.cache.setPromise(res.promise);
-      }
-
-      if (res.callback) {
-        this.cache.setCallback(id, res.callback);
-      }
-
-      done(
-        false,
-        res.callback ? { kind: "callback", callback: res.callback } : { kind: "promise", promise: res.promise },
-      );
-    });
-  }
-
   public claimTask(req: ClaimTaskReq, done: Callback<DurablePromiseRecord>): void {
     const task = this.cache.getTask(req.id);
     if (task && task.counter >= req.counter) {
@@ -195,7 +157,46 @@ export class Handler {
     });
   }
 
+  public createCallback(
+    req: CreateCallbackReq,
+    done: Callback<{ kind: "callback"; callback: CallbackRecord } | { kind: "promise"; promise: DurablePromiseRecord }>,
+  ): void {
+    const id = `__resume:${req.rootPromiseId}:${req.id}`;
+    const promise = this.cache.getPromise(req.id);
+    util.assertDefined(promise);
+
+    if (promise.state !== "pending") {
+      done(false, { kind: "promise", promise });
+      return;
+    }
+
+    const callback = this.cache.getCallback(id);
+    if (callback) {
+      done(false, { kind: "callback", callback });
+      return;
+    }
+
+    this.network.send(req, (err, res) => {
+      if (err) return done(true);
+      util.assertDefined(res);
+
+      if (res.promise) {
+        this.cache.setPromise(res.promise);
+      }
+
+      if (res.callback) {
+        this.cache.setCallback(id, res.callback);
+      }
+
+      done(
+        false,
+        res.callback ? { kind: "callback", callback: res.callback } : { kind: "promise", promise: res.promise },
+      );
+    });
+  }
+
   public createSubscription(req: CreateSubscriptionReq, done: Callback<DurablePromiseRecord>, retryForever = false) {
+    const id = `__notify:${req.id}:${req.id}`;
     const promise = this.cache.getPromise(req.id);
     util.assertDefined(promise);
 
@@ -204,10 +205,8 @@ export class Handler {
       return;
     }
 
-    const id = `__notify:${req.id}:${req.id}`;
-
-    const cb = this.cache.getCallback(id);
-    if (cb) {
+    const callback = this.cache.getCallback(id);
+    if (callback) {
       done(false, promise);
       return;
     }

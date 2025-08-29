@@ -27,8 +27,8 @@ export class Computation {
   private pid: string;
   private ttl: number;
   private clock: Clock;
-  private anycast: string;
   private unicast: string;
+  private anycast: string;
   private network: Network;
   private handler: Handler;
   private registry: Registry;
@@ -146,7 +146,8 @@ export class Computation {
         });
       };
 
-      const ctx = InnerContext.root(this.id, this.dependencies, this.clock);
+      const ctx = InnerContext.root(this.id, rootPromise.timeout, this.clock, this.dependencies);
+
       if (util.isGeneratorFunction(func)) {
         this.processGenerator(nursery, ctx, func, args, done);
       } else {
@@ -241,13 +242,13 @@ export class Computation {
       boolean
     >(
       todo,
-      ({ id }, done) =>
+      ({ id, timeout }, done) =>
         this.handler.createCallback(
           {
             kind: "createCallback",
             id: id,
             rootPromiseId: this.id,
-            timeout: Number.MAX_SAFE_INTEGER, // TODO: set to parent timeout
+            timeout: timeout,
             recv: this.anycast,
           },
           done,

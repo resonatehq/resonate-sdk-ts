@@ -166,7 +166,7 @@ export class Resonate {
       kind: "createPromiseAndTask",
       promise: {
         id: id,
-        timeout: opts.timeout + Date.now(),
+        timeout: Date.now() + opts.timeout,
         param: { func: registered.name, args },
         tags: {
           ...opts.tags,
