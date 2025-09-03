@@ -1,4 +1,5 @@
 import type { Clock } from "./clock";
+import exceptions from "./exceptions";
 import type { CreatePromiseReq } from "./network/network";
 import { type Func, type Options, type ParamsWithOptions, RESONATE_OPTIONS, type Result, type Return } from "./types";
 import * as util from "./util";
@@ -152,7 +153,7 @@ export interface Context {
   detached(func: Func | string, ...args: any[]): RFI<any>;
 
   // getDependency
-  getDependency(key: string): any | undefined;
+  getDependency<T = any>(name: string): T;
 
   // options
   options(opts: Partial<Options>): Options & { [RESONATE_OPTIONS]: true };
@@ -251,8 +252,11 @@ export class InnerContext implements Context {
     return new RFI(this.remoteCreateReq(func, argu, opts, Number.MAX_SAFE_INTEGER), "detached");
   }
 
-  getDependency(key: string): any | undefined {
-    return this.dependencies.get(key);
+  getDependency<T = any>(name: string): T {
+    if (!this.dependencies.has(name)) {
+      throw exceptions.DependencyNotRegistered(name);
+    }
+    return this.dependencies.get(name);
   }
 
   options(opts: Partial<Options> = {}): Options & { [RESONATE_OPTIONS]: true } {

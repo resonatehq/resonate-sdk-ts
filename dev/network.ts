@@ -22,17 +22,23 @@ export class LocalNetwork implements Network {
   }
 
   send<T extends Request>(req: Request, callback: Callback<ResponseFor<T>>): void {
-    setTimeout(() => {
-      try {
-        const res = this.server.process(req, Date.now());
-        util.assert(res.kind === req.kind, "res kind must match req kind");
+    // Delay dropTask by 5s to avoid busy looping
+    // this is only an issue because this is the local network
+    // implementation
+    setTimeout(
+      () => {
+        try {
+          const res = this.server.process(req, Date.now());
+          util.assert(res.kind === req.kind, "res kind must match req kind");
 
-        callback(false, res as ResponseFor<T>);
-        this.enqueueNext();
-      } catch (err) {
-        callback(true);
-      }
-    });
+          callback(false, res as ResponseFor<T>);
+          this.enqueueNext();
+        } catch (err) {
+          callback(true);
+        }
+      },
+      req.kind === "dropTask" ? 5000 : 0,
+    );
   }
 
   recv(msg: Message): void {

@@ -63,7 +63,6 @@ export class Decorator<TRet> {
   private invokes: { kind: "call" | "invoke"; id: string }[];
   private generator: Generator<Yieldable, TRet, any>;
   private nextState: "internal.nothing" | "internal.promise" | "internal.literal" | "over" = "internal.nothing";
-
   constructor(generator: Generator<Yieldable, TRet, any>) {
     this.generator = generator;
     this.invokes = [];

@@ -2,6 +2,7 @@ import type { ClaimedTask, Task } from "resonate-inner";
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
+import exceptions, { ResonateError } from "./exceptions";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { CallbackRecord, DurablePromiseRecord, Network } from "./network/network";
@@ -109,7 +110,7 @@ export class Computation {
 
     const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
       if (err) {
-        return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, () => {
+        return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, (e, r) => {
           // ignore the drop task response, if the request failed the
           // task will eventually expire anyways
           done(true);
@@ -126,7 +127,10 @@ export class Computation {
 
     const registered = this.registry.get(rootPromise.param.func);
     if (!registered) {
-      // TODO: log something useful
+      // log observation
+      const obs = exceptions.FunctionNotRegistered(rootPromise.param.func);
+      obs.log();
+
       return doneAndDropTaskIfErr(true);
     }
 
@@ -201,7 +205,12 @@ export class Computation {
     this.processor.process(
       id,
       async () => await func(ctx, ...args),
-      (res) =>
+      (res) => {
+        if (!res.success && res.error instanceof ResonateError) {
+          res.error.log();
+          return done(true);
+        }
+
         this.handler.completePromise(
           {
             kind: "completePromise",
@@ -212,7 +221,8 @@ export class Computation {
             strict: false,
           },
           done,
-        ),
+        );
+      },
     );
   }
 
