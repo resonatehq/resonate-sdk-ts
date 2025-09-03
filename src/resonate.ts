@@ -2,6 +2,7 @@ import { LocalNetwork } from "../dev/network";
 import { Handler } from "../src/handler";
 import { Registry } from "../src/registry";
 import { WallClock } from "./clock";
+import exceptions from "./exceptions";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";
 import type { Network } from "./network/network";
 import { HttpNetwork } from "./network/remote";
@@ -122,7 +123,7 @@ export class Resonate {
     const func = typeof nameOrFunc === "string" ? maybeFunc! : nameOrFunc;
 
     if (this.registry.has(name)) {
-      throw new Error(`'${name}' already registered`);
+      throw exceptions.FunctionRegistered(name);
     }
 
     this.registry.set(name, func);
@@ -161,9 +162,10 @@ export class Resonate {
   public async beginRun(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<ResonateHandle<any>> {
     const registered = this.registry.get(funcOrName);
     if (!registered) {
-      throw new Error(`${funcOrName} does not exist`);
+      throw exceptions.FunctionNotRegistered(typeof funcOrName === "string" ? funcOrName : funcOrName.name);
     }
 
+    const func = registered.name;
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
     const promiseHandler = this.inner.run({
@@ -171,7 +173,7 @@ export class Resonate {
       promise: {
         id: id,
         timeout: Date.now() + opts.timeout,
-        param: { func: registered.name, args },
+        param: { func, args },
         tags: {
           ...opts.tags,
           "resonate:invoke": this.anycast,
@@ -210,24 +212,19 @@ export class Resonate {
   public async beginRpc<T>(id: string, func: string, ...args: any[]): Promise<ResonateHandle<T>>;
   public async beginRpc(id: string, funcOrName: Func | string, ...args: any[]): Promise<ResonateHandle<any>>;
   public async beginRpc(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<ResonateHandle<any>> {
-    let name: string;
-    if (typeof funcOrName === "string") {
-      name = funcOrName;
-    } else {
-      const registered = this.registry.get(funcOrName);
-      if (!registered) {
-        throw new Error(`${funcOrName} is not registered`);
-      }
-      name = registered.name;
+    const registered = this.registry.get(funcOrName);
+    if (!registered && typeof funcOrName !== "string") {
+      throw exceptions.FunctionNotRegistered(funcOrName.name);
     }
 
+    const func = registered ? registered.name : (funcOrName as string);
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
     const promiseHandler = this.inner.rpc({
       kind: "createPromise",
       id: id,
       timeout: Date.now() + opts.timeout,
-      param: { func: name, args },
+      param: { func, args },
       tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
       iKey: id,
       strict: false,
@@ -254,6 +251,9 @@ export class Resonate {
    *  overwrite the previously set dependency.
    */
   public setDependency(name: string, obj: any): void {
+    if (this.dependencies.has(name)) {
+      throw exceptions.DependencyRegistered(name);
+    }
     this.dependencies.set(name, obj);
   }
 

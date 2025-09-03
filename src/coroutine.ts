@@ -1,3 +1,4 @@
+import { ResonateError } from "./exceptions";
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Literal, type Value } from "./decorator";
 import type { Handler } from "./handler";
@@ -255,6 +256,13 @@ export class Coroutine<T> {
         if (action.type === "internal.return") {
           util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
           util.assertDefined(action.value);
+
+          // TODO: provide more detail here
+          if (!action.value.value.success && action.value.value.error instanceof ResonateError) {
+            action.value.value.error.log();
+            callback(true);
+            return;
+          }
 
           callback(false, { type: "done", result: action.value.value });
           return;

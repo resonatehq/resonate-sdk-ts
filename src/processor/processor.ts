@@ -1,3 +1,4 @@
+import { ResonateError } from "../exceptions";
 import type { Result } from "../types";
 
 type F = () => Promise<unknown>;
@@ -7,6 +8,7 @@ export interface Processor {
 }
 
 export class AsyncProcessor implements Processor {
+  // TODO: I think this can cause deadlock
   private seen = new Set<string>();
 
   process(id: string, func: F, cb: (result: Result<unknown>) => void): void {
@@ -18,13 +20,16 @@ export class AsyncProcessor implements Processor {
     this.seen.add(id);
 
     func()
-      .then((data) => {
-        const result: Result<unknown> = { success: true, value: data };
-        cb(result);
+      .then((value) => {
+        cb({ success: true, value });
       })
       .catch((error) => {
-        const result: Result<unknown> = { success: false, error };
-        cb(result);
+        if (error instanceof ResonateError) {
+          // remove from seen so we can retry
+          this.seen.delete(id);
+        }
+
+        cb({ success: false, error });
       });
   }
 }
