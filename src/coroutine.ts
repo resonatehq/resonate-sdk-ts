@@ -1,6 +1,6 @@
-import { ResonateError } from "./exceptions";
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Literal, type Value } from "./decorator";
+import { ResonateError } from "./exceptions";
 import type { Handler } from "./handler";
 import type { DurablePromiseRecord } from "./network/network";
 import { type Callback, type Result, type Yieldable, ko, ok } from "./types";
