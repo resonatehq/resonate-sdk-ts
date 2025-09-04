@@ -156,11 +156,27 @@ export interface Context {
 
   // options
   options(opts: Partial<Options>): Options & { [RESONATE_OPTIONS]: true };
+
+  // date
+  date: Date;
+
+  // random
+  random: Random;
+}
+
+export interface Date {
+  now(): LFC<number>;
+}
+
+export interface Random {
+  random(): LFC<number>;
 }
 
 export class InnerContext implements Context {
   readonly id: string;
   readonly timeout: number;
+  readonly date: Date;
+  readonly random: Random;
 
   private rId: string;
   private pId: string;
@@ -188,6 +204,14 @@ export class InnerContext implements Context {
     this.timeout = timeout;
     this.clock = clock;
     this.dependencies = dependencies;
+
+    this.date = this.getDependency("resonate:date") ?? {
+      now: () => this.lfc(Date.now),
+    };
+
+    this.random = this.getDependency("resonate:random") ?? {
+      random: () => this.lfc(Math.random),
+    };
   }
 
   static root(id: string, timeout: number, clock: Clock, dependencies: Map<string, any>) {
