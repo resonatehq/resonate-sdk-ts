@@ -8,6 +8,7 @@ import type {
   DurablePromiseRecord,
   Message,
   Network,
+  ReadPromiseReq,
   TaskRecord,
 } from "./network/network";
 import type { Registry } from "./registry";
@@ -86,40 +87,61 @@ export class ResonateInner {
     this.network.subscribe(this.onMessage.bind(this));
   }
 
-  public run(req: CreatePromiseAndTaskReq): PromiseHandler {
-    this.handler.createPromiseAndTask(
-      req,
-      (err, res) => {
-        util.assert(!err, "retry forever ensures err is false");
-        util.assertDefined(res);
+  public run(req: CreatePromiseAndTaskReq): Promise<PromiseHandler> {
+    return new Promise((resolve, reject) => {
+      this.handler.createPromiseAndTask(
+        req,
+        (err, res) => {
+          if (err) {
+            reject(err);
+          } else {
+            // notify
+            this.notify(res!.promise);
 
-        // notify
-        this.notify(res.promise);
+            // if we have the task, process it
+            if (res!.task) {
+              this.process({ kind: "claimed", task: res!.task, rootPromise: res!.promise }, () => {});
+            }
 
-        // if we have the task, process it
-        if (res.task) {
-          this.process({ kind: "claimed", task: res.task, rootPromise: res.promise }, () => {});
-        }
-      },
-      true,
-    );
-
-    return this.promiseHandler(req.promise.id, req.promise.timeout);
+            // resolve
+            resolve(this.promiseHandler(res!.promise.id, res!.promise.timeout));
+          }
+        },
+        true,
+      );
+    });
   }
 
-  public rpc(req: CreatePromiseReq): PromiseHandler {
-    this.handler.createPromise(
-      req,
-      (err, res) => {
-        util.assert(!err, "retry forever ensures err is false");
-        util.assertDefined(res);
+  public rpc(req: CreatePromiseReq): Promise<PromiseHandler> {
+    return new Promise((resolve, reject) => {
+      this.handler.createPromise(
+        req,
+        (err, res) => {
+          if (err) {
+            reject(err);
+          } else {
+            // notify
+            this.notify(res!);
+            resolve(this.promiseHandler(res!.id, res!.timeout));
+          }
+        },
+        true,
+      );
+    });
+  }
 
-        // notify
-        this.notify(res);
-      },
-      true,
-    );
-    return this.promiseHandler(req.id, req.timeout);
+  public get(req: ReadPromiseReq): Promise<PromiseHandler> {
+    return new Promise((resolve, reject) => {
+      this.handler.readPromise(req, (err, res) => {
+        if (err) {
+          reject(err);
+        } else {
+          // huh?
+          this.notify(res!);
+          resolve(this.promiseHandler(res!.id, res!.timeout));
+        }
+      });
+    });
   }
 
   public process(task: Task, done: Callback<Status>) {
@@ -167,7 +189,7 @@ export class ResonateInner {
         }
       },
       subscribe: () =>
-        new Promise<void>((resolve) => {
+        new Promise<void>((resolve, reject) => {
           this.handler.createSubscription(
             {
               kind: "createSubscription",
@@ -176,10 +198,12 @@ export class ResonateInner {
               recv: this.unicast,
             },
             (err, res) => {
-              util.assert(!err, "retry forever ensures err is false");
-              util.assertDefined(res);
-              this.notify(res);
-              resolve();
+              if (err) {
+                reject(err);
+              } else {
+                this.notify(res!);
+                resolve();
+              }
             },
             true,
           );

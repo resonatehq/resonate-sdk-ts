@@ -166,7 +166,7 @@ export class Resonate {
 
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
-    const promiseHandler = this.inner.run({
+    const promiseHandler = await this.inner.run({
       kind: "createPromiseAndTask",
       promise: {
         id: id,
@@ -186,7 +186,7 @@ export class Resonate {
       strict: false,
     });
 
-    return this.handle(promiseHandler);
+    return this.handle(id, promiseHandler);
   }
 
   /**
@@ -223,7 +223,7 @@ export class Resonate {
 
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
-    const promiseHandler = this.inner.rpc({
+    const promiseHandler = await this.inner.rpc({
       kind: "createPromise",
       id: id,
       timeout: Date.now() + opts.timeout,
@@ -233,7 +233,25 @@ export class Resonate {
       strict: false,
     });
 
-    return this.handle(promiseHandler);
+    return this.handle(id, promiseHandler);
+  }
+
+  /**
+   * Get a promise and return a value
+   */
+  public async get<T = any>(id: string): Promise<ResonateHandle<T>> {
+    let promiseHandler: PromiseHandler;
+
+    try {
+      promiseHandler = await this.inner.get({
+        kind: "readPromise",
+        id,
+      });
+    } catch (err) {
+      throw new Error(`Promise '${id}' not found`);
+    }
+
+    return this.handle(id, promiseHandler);
   }
 
   public options(opts: Partial<Options> = {}): Options & { [RESONATE_OPTIONS]: true } {
@@ -262,40 +280,31 @@ export class Resonate {
     this.heartbeat.stop();
   }
 
-  private handle(promiseHandler: PromiseHandler): Promise<ResonateHandle<any>> {
-    // resolves with a handle
-    const handle = Promise.withResolvers<ResonateHandle<any>>();
-
-    // resolves with the result
-    const result = Promise.withResolvers<any>();
-
-    // listen for created and resolve p1 with a handle
-    promiseHandler.addEventListener("created", (promise) => {
-      handle.resolve({
-        id: promise.id,
-        result: async () => {
-          // subscribe lazily, no need to await
-          promiseHandler.subscribe();
-          return await result.promise;
-        },
-      });
-    });
+  private handle(id: string, promiseHandler: PromiseHandler): ResonateHandle<any> {
+    const { promise, resolve, reject } = Promise.withResolvers<any>();
 
     // listen for completed and resolve p2 with the value
     promiseHandler.addEventListener("completed", (promise) => {
       util.assert(promise.state !== "pending", "promise must be completed");
 
       if (promise.state === "resolved") {
-        result.resolve(promise.value);
+        resolve(promise.value);
       } else if (promise.state === "rejected") {
-        result.reject(promise.value);
+        reject(promise.value);
       } else if (promise.state === "rejected_canceled") {
-        result.reject(new Error("Promise canceled"));
+        reject(new Error("Promise canceled"));
       } else if (promise.state === "rejected_timedout") {
-        result.reject(new Error("Promise timedout"));
+        reject(new Error("Promise timedout"));
       }
     });
 
-    return handle.promise;
+    return {
+      id: id,
+      result: async () => {
+        // subscribe lazily, no need to await
+        promiseHandler.subscribe();
+        return await promise;
+      },
+    };
   }
 }
