@@ -111,7 +111,7 @@ describe("Resonate usage tests", () => {
 
     const v = await f.run("f");
     expect(v.msg).toBe("this is a function");
-    const durable = await resonate.promises.get("altId");
+    const durable = await resonate.promises.get({ id: "altId" });
     expect(durable.id).toBe("altId");
     expect(durable.tags).toMatchObject({ myTag: "value", "resonate:scope": "local" });
     resonate.stop();
@@ -133,7 +133,7 @@ describe("Resonate usage tests", () => {
 
     const v = await f.run("f");
     expect(v.msg).toBe("this is a function");
-    const durable = await resonate.promises.get("f.0");
+    const durable = await resonate.promises.get({ id: "f.0" });
     expect(durable.id).toBe("f.0");
     expect(durable.tags).toStrictEqual({ "resonate:scope": "local", "resonate:root": "f", "resonate:parent": "f" });
     resonate.stop();
@@ -152,7 +152,7 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    await resonate.promises.resolve("myId", "myId", false, "myValue");
+    await resonate.promises.resolve({ id: "myId", iKey: "myId", strict: false, value: "myValue" });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
@@ -173,11 +173,11 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    const durable = await resonate.promises.get("myId");
+    const durable = await resonate.promises.get({ id: "myId" });
     expect(durable.timeout).toBeGreaterThanOrEqual(time + 5 * util.HOUR);
     expect(durable.timeout).toBeLessThan(time + 5 * util.HOUR + 1000);
 
-    await resonate.promises.resolve("myId", "myId", false, "myValue");
+    await resonate.promises.resolve({ id: "myId", iKey: "myId", strict: false, value: "myValue" });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
@@ -196,7 +196,7 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure f.0 promise is created
 
-    const durable = await resonate.promises.get("f.0");
+    const durable = await resonate.promises.get({ id: "f.0" });
     expect(durable.tags).toMatchObject({ "resonate:timeout": "true" });
     expect(durable.timeout).toBeLessThan(time + 1 * util.SEC + 100);
 
@@ -221,7 +221,7 @@ describe("Resonate usage tests", () => {
     const v = await f.run("f");
     expect(v).toBe("myValue");
 
-    const durable = await resonate.promises.get("f.0");
+    const durable = await resonate.promises.get({ id: "f.0" });
     expect(durable).toMatchObject({ state: "pending" });
 
     resonate.stop();
@@ -256,8 +256,8 @@ describe("Resonate usage tests", () => {
     expect(resonate.get("foo")).rejects.toThrow();
 
     // get returns the promise value
-    await resonate.promises.create("foo", Number.MAX_SAFE_INTEGER);
-    await resonate.promises.resolve("foo", "foo", false, "foo");
+    await resonate.promises.create({ id: "foo", timeout: Number.MAX_SAFE_INTEGER });
+    await resonate.promises.resolve({ id: "foo", iKey: "foo", strict: false, value: "foo" });
 
     const handle = await resonate.get("foo");
     expect(await handle.result()).toBe("foo");

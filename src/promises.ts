@@ -7,9 +7,9 @@ export class Promises {
     this.network = network;
   }
 
-  get(id: string): Promise<DurablePromiseRecord> {
+  get({ id }: { id: string }): Promise<DurablePromiseRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send({ kind: "readPromise", id: id }, (err, res) => {
+      this.network.send({ kind: "readPromise", id }, (err, res) => {
         if (err) {
           // TODO: reject with more information
           reject(Error("not implemented"));
@@ -21,14 +21,21 @@ export class Promises {
     });
   }
 
-  create(
-    id: string,
-    timeout: number,
-    iKey: string | undefined = undefined,
+  create({
+    id,
+    timeout,
+    iKey = undefined,
     strict = false,
-    param: any | undefined = undefined,
-    tags: Record<string, string> | undefined = undefined,
-  ): Promise<DurablePromiseRecord> {
+    param = undefined,
+    tags = undefined,
+  }: {
+    id: string;
+    timeout: number;
+    iKey?: string;
+    strict?: boolean;
+    param?: any;
+    tags?: Record<string, string>;
+  }): Promise<DurablePromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -53,16 +60,25 @@ export class Promises {
     });
   }
 
-  createWithTask(
-    id: string,
-    timeout: number,
-    processId: string,
-    ttl: number,
-    iKey: string | undefined = undefined,
+  createWithTask({
+    id,
+    timeout,
+    processId,
+    ttl,
+    iKey = undefined,
     strict = false,
-    param: any | undefined = undefined,
-    tags: Record<string, string> | undefined = undefined,
-  ): Promise<{ promise: DurablePromiseRecord; task?: TaskRecord }> {
+    param = undefined,
+    tags = undefined,
+  }: {
+    id: string;
+    timeout: number;
+    processId: string;
+    ttl: number;
+    iKey?: string;
+    strict?: boolean;
+    param?: any;
+    tags?: Record<string, string>;
+  }): Promise<{ promise: DurablePromiseRecord; task?: TaskRecord }> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -93,12 +109,17 @@ export class Promises {
     });
   }
 
-  resolve(
-    id: string,
-    iKey: string | undefined = undefined,
+  resolve({
+    id,
+    iKey = undefined,
     strict = false,
-    value: any | undefined = undefined,
-  ): Promise<DurablePromiseRecord> {
+    value = undefined,
+  }: {
+    id: string;
+    iKey?: string;
+    strict?: boolean;
+    value?: any;
+  }): Promise<DurablePromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -121,12 +142,17 @@ export class Promises {
       );
     });
   }
-  reject(
-    id: string,
-    iKey: string | undefined = undefined,
+  reject({
+    id,
+    iKey = undefined,
     strict = false,
-    value: any | undefined = undefined,
-  ): Promise<DurablePromiseRecord> {
+    value = undefined,
+  }: {
+    id: string;
+    iKey?: string;
+    strict?: boolean;
+    value?: any;
+  }): Promise<DurablePromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -149,12 +175,18 @@ export class Promises {
       );
     });
   }
-  cancel(
-    id: string,
-    iKey: string | undefined = undefined,
+
+  cancel({
+    id,
+    iKey = undefined,
     strict = false,
-    value: any | undefined = undefined,
-  ): Promise<DurablePromiseRecord> {
+    value = undefined,
+  }: {
+    id: string;
+    iKey?: string;
+    strict?: boolean;
+    value?: any;
+  }): Promise<DurablePromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -178,12 +210,17 @@ export class Promises {
     });
   }
 
-  callback(
-    promiseId: string,
-    rootPromiseId: string,
-    recv: string,
-    timeout: number,
-  ): Promise<{
+  callback({
+    promiseId,
+    rootPromiseId,
+    recv,
+    timeout,
+  }: {
+    promiseId: string;
+    rootPromiseId: string;
+    recv: string;
+    timeout: number;
+  }): Promise<{
     promise: DurablePromiseRecord;
     callback: CallbackRecord | undefined;
   }> {
@@ -209,11 +246,15 @@ export class Promises {
     });
   }
 
-  subscribe(
-    id: string,
-    timeout: number,
-    recv: string,
-  ): Promise<{
+  subscribe({
+    id,
+    timeout,
+    recv,
+  }: {
+    id: string;
+    timeout: number;
+    recv: string;
+  }): Promise<{
     promise: DurablePromiseRecord;
     callback: CallbackRecord | undefined;
   }> {

@@ -8,7 +8,11 @@ export class Schedules {
     this.network = network;
   }
 
-  get(id: string): Promise<ScheduleRecord> {
+  get({
+    id,
+  }: {
+    id: string;
+  }): Promise<ScheduleRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -28,17 +32,27 @@ export class Schedules {
     });
   }
 
-  create(
-    id: string,
-    cron: string,
-    promiseId: string,
-    promiseTimeout: number,
-    iKey: string | undefined = undefined,
-    description: string | undefined = undefined,
-    tags: Record<string, string> | undefined = undefined,
-    promiseParam: any | undefined = undefined,
-    promiseTags: Record<string, string> | undefined = undefined,
-  ): Promise<ScheduleRecord> {
+  create({
+    id,
+    cron,
+    promiseId,
+    promiseTimeout,
+    iKey = undefined,
+    description = undefined,
+    tags = undefined,
+    promiseParam = undefined,
+    promiseTags = undefined,
+  }: {
+    id: string;
+    cron: string;
+    promiseId: string;
+    promiseTimeout: number;
+    iKey?: string;
+    description?: string;
+    tags?: Record<string, string>;
+    promiseParam?: any;
+    promiseTags?: Record<string, string>;
+  }): Promise<ScheduleRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -66,7 +80,11 @@ export class Schedules {
     });
   }
 
-  delete(id: string): Promise<void> {
+  delete({
+    id,
+  }: {
+    id: string;
+  }): Promise<void> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
