@@ -8,17 +8,7 @@ export class Tasks {
     this.network = network;
   }
 
-  claim({
-    id,
-    counter,
-    processId,
-    ttl,
-  }: {
-    id: string;
-    counter: number;
-    processId: string;
-    ttl: number;
-  }): Promise<ClaimTaskRes["message"]> {
+  claim(id: string, counter: number, processId: string, ttl: number): Promise<ClaimTaskRes["message"]> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -41,13 +31,7 @@ export class Tasks {
     });
   }
 
-  complete({
-    id,
-    counter,
-  }: {
-    id: string;
-    counter: number;
-  }): Promise<TaskRecord> {
+  complete(id: string, counter: number): Promise<TaskRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -68,11 +52,7 @@ export class Tasks {
     });
   }
 
-  heartbeat({
-    processId,
-  }: {
-    processId: string;
-  }): Promise<number> {
+  heartbeat(processId: string): Promise<number> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
