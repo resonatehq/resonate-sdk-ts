@@ -224,7 +224,7 @@ export class Promises {
       this.network.send(
         {
           kind: "createCallback",
-          id: promiseId,
+          promiseId: promiseId,
           rootPromiseId: rootPromiseId,
           timeout: timeout,
           recv: recv,
