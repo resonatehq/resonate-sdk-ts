@@ -244,6 +244,7 @@ export class Promises {
 
   subscribe(
     id: string,
+    promiseId: string,
     timeout: number,
     recv: string,
   ): Promise<{
@@ -251,7 +252,7 @@ export class Promises {
     callback: CallbackRecord | undefined;
   }> {
     return new Promise((resolve, reject) => {
-      this.network.send({ kind: "createSubscription", id: id, timeout: timeout, recv: recv }, (err, res) => {
+      this.network.send({ kind: "createSubscription", id, promiseId, timeout, recv }, (err, res) => {
         if (err) {
           // TODO: reject with more information
           reject(Error("not implemented"));

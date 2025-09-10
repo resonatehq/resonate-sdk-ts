@@ -466,7 +466,7 @@ export class HttpNetwork implements Network {
     };
 
     const res = await this.fetch(
-      `/promises/subscribe/${encodeURIComponent(req.id)}`,
+      `/promises/subscribe/${encodeURIComponent(req.promiseId)}`,
       {
         method: "POST",
         headers: this.baseHeaders,

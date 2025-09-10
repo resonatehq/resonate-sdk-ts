@@ -213,8 +213,8 @@ export class Handler {
   }
 
   public createSubscription(req: CreateSubscriptionReq, done: Callback<DurablePromiseRecord>, retryForever = false) {
-    const id = `__notify:${req.id}:${req.id}`;
-    const promise = this.cache.getPromise(req.id);
+    const id = `__notify:${req.promiseId}:${req.id}`;
+    const promise = this.cache.getPromise(req.promiseId);
     util.assertDefined(promise);
 
     if (promise.state !== "pending") {

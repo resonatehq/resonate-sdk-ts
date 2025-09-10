@@ -115,6 +115,7 @@ export type CreateCallbackReq = {
 export type CreateSubscriptionReq = {
   kind: "createSubscription";
   id: string;
+  promiseId: string;
   timeout: number;
   recv: string;
 };
