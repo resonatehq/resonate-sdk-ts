@@ -538,7 +538,7 @@ export class Server {
     timeout,
     recv,
     time,
-  }: { id: string, promiseId: string; timeout: number; recv: string; time: number }): {
+  }: { id: string; promiseId: string; timeout: number; recv: string; time: number }): {
     promise: DurablePromiseRecord;
     callback?: CallbackRecord;
   } {
