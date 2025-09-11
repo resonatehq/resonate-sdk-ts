@@ -1254,7 +1254,7 @@ export class Server {
         promiseTimeout,
         promiseParam,
         promiseTags: promiseTags ?? {},
-        nextRunTime: CronExpressionParser.parse(cron, {currentDate: time}).next().getTime(),
+        nextRunTime: CronExpressionParser.parse(cron, { currentDate: time }).next().getTime(),
         iKey,
         createdOn: time,
         lastRunTime: 0,
@@ -1271,7 +1271,7 @@ export class Server {
 
     // Update existing schedule
     if (record !== undefined && to === "created" && updating) {
-      const nextRunTime = CronExpressionParser.parse(record.cron, {currentDate: time}).next().getTime()
+      const nextRunTime = CronExpressionParser.parse(record.cron, { currentDate: time }).next().getTime();
       record = {
         ...record,
         lastRunTime: record.nextRunTime,
