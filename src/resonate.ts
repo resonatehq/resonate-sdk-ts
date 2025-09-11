@@ -32,6 +32,10 @@ export interface ResonateFunc<F extends Func> {
   options: (opts?: Partial<Options>) => Partial<Options> & { [RESONATE_OPTIONS]: true };
 }
 
+export interface ResonateSchedule {
+  delete(): Promise<void>;
+}
+
 export class Resonate {
   private unicast: string;
   private anycast: string;
@@ -258,9 +262,14 @@ export class Resonate {
     cron: string,
     func: F,
     ...args: ParamsWithOptions<F>
-  ): Promise<void>;
-  public async schedule(name: string, cron: string, func: string, ...args: any[]): Promise<void>;
-  public async schedule(name: string, cron: string, func: Func | string, ...argsWithOpts: any[]): Promise<void> {
+  ): Promise<ResonateSchedule>;
+  public async schedule(name: string, cron: string, func: string, ...args: any[]): Promise<ResonateSchedule>;
+  public async schedule(
+    name: string,
+    cron: string,
+    func: Func | string,
+    ...argsWithOpts: any[]
+  ): Promise<ResonateSchedule> {
     let funcName: string;
     if (typeof func === "string") {
       funcName = func;
@@ -280,7 +289,9 @@ export class Resonate {
       promiseTags: { ...opts.tags, "resonate:invoke": opts.target },
     });
 
-    return;
+    return {
+      delete: () => this.schedules.delete(name),
+    };
   }
 
   /**
