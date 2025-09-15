@@ -1,4 +1,5 @@
 import { setTimeout } from "node:timers/promises";
+import { Never } from "retries";
 import { LocalNetwork } from "../dev/network";
 import type { Context } from "../src/context";
 import { Resonate } from "../src/resonate";
@@ -100,7 +101,7 @@ describe("Resonate usage tests", () => {
     };
 
     const f = resonate.register("f", function* foo(ctx: Context) {
-      const future = yield* ctx.beginRun(g, "this is an error");
+      const future = yield* ctx.beginRun(g, "this is an error", ctx.options({ funcRetryPolicy: new Never() }));
       yield* future;
     });
 

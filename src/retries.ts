@@ -90,3 +90,5 @@ export class Never {
     return attempt === 0 ? 0 : null;
   }
 }
+
+export type RetryPolicy = Never | Constant | Linear | Exponential;

@@ -1,30 +1,51 @@
+import type { RetryPolicy } from "../retries";
 import type { Result } from "../types";
 
 type F = () => Promise<unknown>;
 
 export interface Processor {
-  process(id: string, func: F, cb: (result: Result<unknown>) => void): void;
+  process(id: string, name: string, func: F, cb: (result: Result<unknown>) => void, retryPolicy: RetryPolicy): void;
 }
 
 export class AsyncProcessor implements Processor {
-  private seen = new Set<string>();
+  private seen = new Map<string, number>();
 
-  process(id: string, func: F, cb: (result: Result<unknown>) => void): void {
-    // If already seen, ignore, either we are already working on it, or it was already completed
+  process<T>(
+    id: string,
+    name: string,
+    func: () => Promise<T>,
+    cb: (result: Result<T>) => void,
+    retryPolicy: RetryPolicy,
+  ): void {
     if (this.seen.has(id)) {
       return;
     }
 
-    this.seen.add(id);
+    this.run(id, name, func, cb, retryPolicy);
+  }
+
+  private run<T>(
+    id: string,
+    name: string,
+    func: () => Promise<T>,
+    cb: (result: Result<T>) => void,
+    retryPolicy: RetryPolicy,
+  ) {
+    const attempt = (this.seen.get(id) ?? 0) + 1;
+    this.seen.set(id, attempt);
 
     func()
       .then((data) => {
-        const result: Result<unknown> = { success: true, value: data };
-        cb(result);
+        cb({ success: true, value: data });
       })
       .catch((error) => {
-        const result: Result<unknown> = { success: false, error };
-        cb(result);
+        const retryIn = retryPolicy.next(attempt);
+        if (!retryIn) {
+          cb({ success: false, error });
+        } else {
+          console.log(`RuntimeError. Function ${name} failed with '${String(error)}' (retrying in ${retryIn}s)`);
+          setTimeout(() => this.run(id, name, func, cb, retryPolicy), retryIn * 1000);
+        }
       });
   }
 }

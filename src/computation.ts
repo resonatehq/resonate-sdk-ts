@@ -1,4 +1,5 @@
 import type { ClaimedTask, Task } from "resonate-inner";
+import { Exponential, Never } from "retries";
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
@@ -147,7 +148,13 @@ export class Computation {
         });
       };
 
-      const ctx = InnerContext.root(this.id, rootPromise.timeout, this.clock, this.dependencies);
+      const ctx = InnerContext.root(
+        this.id,
+        rootPromise.timeout,
+        util.isGeneratorFunction(func) ? new Never() : new Exponential(),
+        this.clock,
+        this.dependencies,
+      );
 
       if (util.isGeneratorFunction(func)) {
         this.processGenerator(nursery, ctx, func, args, done);
@@ -200,6 +207,7 @@ export class Computation {
   ) {
     this.processor.process(
       id,
+      func.name,
       async () => await func(ctx, ...args),
       (res) =>
         this.handler.completePromise(
@@ -213,6 +221,7 @@ export class Computation {
           },
           done,
         ),
+      ctx.retryPolicy,
     );
   }
 
