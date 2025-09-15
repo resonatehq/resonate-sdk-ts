@@ -118,7 +118,7 @@ describe("Resonate usage tests", () => {
     };
 
     const f = resonate.register("f", function* foo(ctx: Context) {
-      yield* ctx.run(g, "this is an error");
+      yield* ctx.run(g, "this is an error", ctx.options({ funcRetryPolicy: new Never() }));
     });
 
     const h = await f.beginRun("f");
