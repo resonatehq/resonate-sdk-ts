@@ -40,7 +40,7 @@ export class AsyncProcessor implements Processor {
       })
       .catch((error) => {
         const retryIn = retryPolicy.next(attempt);
-        if (!retryIn) {
+        if (retryIn === null) {
           cb({ success: false, error });
         } else {
           console.log(`RuntimeError. Function ${name} failed with '${String(error)}' (retrying in ${retryIn}s)`);

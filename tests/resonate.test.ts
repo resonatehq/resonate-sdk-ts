@@ -1,11 +1,42 @@
 import { setTimeout } from "node:timers/promises";
-import { Never } from "retries";
+import { Constant, Never } from "retries";
 import { LocalNetwork } from "../dev/network";
 import type { Context } from "../src/context";
 import { Resonate } from "../src/resonate";
 import * as util from "../src/util";
 
 describe("Resonate usage tests", () => {
+  test("function retries", async () => {
+    const resonate = Resonate.local();
+
+    let tries = 0;
+    const g = async (_ctx: Context, msg: string) => {
+      tries++;
+      throw msg;
+    };
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      const future = yield* ctx.beginRun(
+        g,
+        "this is an error",
+        ctx.options({ funcRetryPolicy: new Constant({ delay: 0, maxRetries: 3 }) }),
+      );
+      yield* future;
+    });
+
+    const h = await f.beginRun("f");
+
+    try {
+      await h.result();
+    } catch {
+      // expected, since g always throws
+    }
+
+    expect(tries).toBe(4);
+
+    resonate.stop();
+  });
+
   test("function is executed on schedule", async () => {
     const resonate = Resonate.local();
 
