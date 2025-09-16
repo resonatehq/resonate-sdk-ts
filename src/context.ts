@@ -1,7 +1,7 @@
 import type { Clock } from "./clock";
 import type { CreatePromiseReq } from "./network/network";
 import { Options } from "./options";
-import type { RetryPolicy } from "./retries";
+import { Exponential, Never, type RetryPolicy } from "./retries";
 import type { Func, ParamsWithOptions, Result, Return } from "./types";
 import * as util from "./util";
 
@@ -227,7 +227,7 @@ export class InnerContext implements Context {
     return new LFI(
       func,
       argu,
-      util.isGeneratorFunction(func) ? opts.genRetryPolicy : opts.funcRetryPolicy,
+      opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
       this.localCreateReq(opts),
     );
   }
@@ -238,7 +238,7 @@ export class InnerContext implements Context {
     return new LFC(
       func,
       argu,
-      util.isGeneratorFunction(func) ? opts.genRetryPolicy : opts.funcRetryPolicy,
+      opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
       this.localCreateReq(opts),
     );
   }

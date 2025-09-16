@@ -1,4 +1,4 @@
-import { Exponential, Never, type RetryPolicy } from "./retries";
+import type { RetryPolicy } from "./retries";
 import * as util from "./util";
 
 export const RESONATE_OPTIONS: unique symbol = Symbol("ResonateOptions");
@@ -8,8 +8,7 @@ export class Options {
   public readonly tags: Record<string, string>;
   public readonly target: string;
   public readonly timeout: number;
-  public readonly funcRetryPolicy: RetryPolicy;
-  public readonly genRetryPolicy: RetryPolicy;
+  public readonly retryPolicy: RetryPolicy | undefined;
 
   [RESONATE_OPTIONS] = true;
 
@@ -18,22 +17,19 @@ export class Options {
     tags = {},
     target = "default",
     timeout = 24 * util.HOUR,
-    funcRetryPolicy = new Exponential(),
-    genRetryPolicy = new Never(),
+    retryPolicy = undefined,
   }: {
     id?: string;
     tags?: Record<string, string>;
     target?: string;
     timeout?: number;
-    funcRetryPolicy?: RetryPolicy;
-    genRetryPolicy?: RetryPolicy;
+    retryPolicy?: RetryPolicy;
   }) {
     this.id = id;
     this.tags = tags;
     this.target = this.match(target);
     this.timeout = timeout;
-    this.funcRetryPolicy = funcRetryPolicy;
-    this.genRetryPolicy = genRetryPolicy;
+    this.retryPolicy = retryPolicy;
   }
 
   private match(target: string): string {

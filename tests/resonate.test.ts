@@ -19,7 +19,7 @@ describe("Resonate usage tests", () => {
       const future = yield* ctx.beginRun(
         g,
         "this is an error",
-        ctx.options({ funcRetryPolicy: new Constant({ delay: 0, maxRetries: 3 }) }),
+        ctx.options({ retryPolicy: new Constant({ delay: 0, maxRetries: 3 }) }),
       );
       yield* future;
     });
@@ -132,7 +132,7 @@ describe("Resonate usage tests", () => {
     };
 
     const f = resonate.register("f", function* foo(ctx: Context) {
-      const future = yield* ctx.beginRun(g, "this is an error", ctx.options({ funcRetryPolicy: new Never() }));
+      const future = yield* ctx.beginRun(g, "this is an error", ctx.options({ retryPolicy: new Never() }));
       yield* future;
     });
 
@@ -149,7 +149,7 @@ describe("Resonate usage tests", () => {
     };
 
     const f = resonate.register("f", function* foo(ctx: Context) {
-      yield* ctx.run(g, "this is an error", ctx.options({ funcRetryPolicy: new Never() }));
+      yield* ctx.run(g, "this is an error", ctx.options({ retryPolicy: new Never() }));
     });
 
     const h = await f.beginRun("f");
