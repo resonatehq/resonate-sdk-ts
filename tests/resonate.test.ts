@@ -26,13 +26,8 @@ describe("Resonate usage tests", () => {
 
     const h = await f.beginRun("f");
 
-    try {
-      await h.result();
-    } catch {
-      // expected, since g always throws
-    }
-
-    expect(tries).toBe(4);
+    await expect(h.result()).rejects.toBe("this is an error");
+    expect(tries).toBe(4); // 1 initial try + 3 retries
 
     resonate.stop();
   });

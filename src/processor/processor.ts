@@ -25,26 +25,25 @@ export class AsyncProcessor implements Processor {
     cb: (result: Result<T>) => void,
     retryPolicy: RetryPolicy,
   ) {
-    let attempt = 0;
-    let error: any = undefined;
-    while (true) {
-      const retryIn = retryPolicy.next(attempt);
-      if (retryIn === null) {
-        cb({ success: false, error });
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, retryIn));
+    let attempt = 1;
 
+    while (true) {
       try {
         const data = await func();
         cb({ success: true, value: data });
         return;
-      } catch (e) {
-        error = e;
-        attempt++;
+      } catch (error) {
+        const retryIn = retryPolicy.next(attempt);
+        if (retryIn === null) {
+          cb({ success: false, error });
+          return;
+        }
         console.log(
           `RuntimeError. Function ${name} failed with '${String(error)}' (retrying in ${retryIn / 1000} secs)`,
         );
+
+        await new Promise((resolve) => setTimeout(resolve, retryIn));
+        attempt++;
       }
     }
   }

@@ -1,3 +1,7 @@
+export interface RetryPolicy {
+  next(attempt: number): number | null;
+}
+
 export class Constant {
   public readonly delay: number;
   public readonly maxRetries: number;
@@ -90,5 +94,3 @@ export class Never {
     return attempt === 0 ? 0 : null;
   }
 }
-
-export type RetryPolicy = Never | Constant | Linear | Exponential;
