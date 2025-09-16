@@ -1,8 +1,8 @@
 import { setTimeout } from "node:timers/promises";
-import { Constant, Never } from "retries";
 import { LocalNetwork } from "../dev/network";
 import type { Context } from "../src/context";
 import { Resonate } from "../src/resonate";
+import { Constant, Never } from "../src/retries";
 import * as util from "../src/util";
 
 describe("Resonate usage tests", () => {

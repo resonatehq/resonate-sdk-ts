@@ -1,5 +1,4 @@
 import type { ClaimedTask, Task } from "resonate-inner";
-import { Exponential, Never } from "retries";
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
@@ -9,6 +8,7 @@ import type { CallbackRecord, DurablePromiseRecord, Network } from "./network/ne
 import { Nursery } from "./nursery";
 import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
+import { Exponential, Never } from "./retries";
 import type { Callback, Func } from "./types";
 import * as util from "./util";
 
