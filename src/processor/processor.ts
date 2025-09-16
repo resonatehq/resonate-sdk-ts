@@ -8,8 +8,6 @@ export interface Processor {
 }
 
 export class AsyncProcessor implements Processor {
-  private seen = new Set<string>();
-
   process<T>(
     id: string,
     name: string,
@@ -17,10 +15,6 @@ export class AsyncProcessor implements Processor {
     cb: (result: Result<T>) => void,
     retryPolicy: RetryPolicy,
   ): void {
-    if (this.seen.has(id)) {
-      return;
-    }
-
     void this.run(id, name, func, cb, retryPolicy);
   }
 
@@ -35,8 +29,6 @@ export class AsyncProcessor implements Processor {
 
     while (true) {
       attempt++;
-      this.seen.add(id);
-
       try {
         const data = await func();
         cb({ success: true, value: data });
