@@ -2,7 +2,7 @@ export interface RetryPolicy {
   next(attempt: number): number | null;
 }
 
-export class Constant {
+export class Constant implements RetryPolicy {
   public readonly delay: number;
   public readonly maxRetries: number;
 
@@ -28,7 +28,7 @@ export class Constant {
   }
 }
 
-export class Exponential {
+export class Exponential implements RetryPolicy {
   public readonly delay: number;
   public readonly maxRetries: number;
   public readonly factor: number;
@@ -63,7 +63,7 @@ export class Exponential {
   }
 }
 
-export class Linear {
+export class Linear implements RetryPolicy {
   public readonly delay: number;
   public readonly maxRetries: number;
 
@@ -85,7 +85,7 @@ export class Linear {
   }
 }
 
-export class Never {
+export class Never implements RetryPolicy {
   next(attempt: number): number | null {
     if (attempt < 0) {
       throw new Error("attempt must be greater than or equal to 0");
