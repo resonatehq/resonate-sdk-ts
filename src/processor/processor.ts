@@ -8,7 +8,7 @@ export interface Processor {
 }
 
 export class AsyncProcessor implements Processor {
-  private seen = new Map<string, number>();
+  private seen = new Set<string>();
 
   process<T>(
     id: string,
@@ -21,31 +21,35 @@ export class AsyncProcessor implements Processor {
       return;
     }
 
-    this.run(id, name, func, cb, retryPolicy);
+    void this.run(id, name, func, cb, retryPolicy);
   }
 
-  private run<T>(
+  private async run<T>(
     id: string,
     name: string,
     func: () => Promise<T>,
     cb: (result: Result<T>) => void,
     retryPolicy: RetryPolicy,
   ) {
-    const attempt = (this.seen.get(id) ?? 0) + 1;
-    this.seen.set(id, attempt);
+    let attempt = 0;
 
-    func()
-      .then((data) => {
+    while (true) {
+      attempt++;
+      this.seen.add(id);
+
+      try {
+        const data = await func();
         cb({ success: true, value: data });
-      })
-      .catch((error) => {
+        return;
+      } catch (error) {
         const retryIn = retryPolicy.next(attempt);
         if (retryIn === null) {
           cb({ success: false, error });
-        } else {
-          console.log(`RuntimeError. Function ${name} failed with '${String(error)}' (retrying in ${retryIn}s)`);
-          setTimeout(() => this.run(id, name, func, cb, retryPolicy), retryIn * 1000);
+          return;
         }
-      });
+        console.log(`RuntimeError. Function ${name} failed with '${String(error)}' (retrying in ${retryIn}s)`);
+        await new Promise((resolve) => setTimeout(resolve, retryIn * 1000));
+      }
+    }
   }
 }
