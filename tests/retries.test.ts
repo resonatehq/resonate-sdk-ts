@@ -6,9 +6,9 @@ import { Never } from "../src/retries";
 describe("RetryPolicy delay progression", () => {
   const cases: [Never | Constant | Linear | Exponential, (number | null)[] | null][] = [
     [new Never(), null],
-    [new Constant({ delay: 1, maxRetries: 2 }), [1, 1, null]],
-    [new Linear({ delay: 1, maxRetries: 2 }), [1, 2, null]],
-    [new Exponential({ delay: 1, factor: 2, maxRetries: 5, maxDelay: 8 }), [2, 4, 8, 8, 8, null]],
+    [new Constant({ delay: 1000, maxRetries: 2 }), [1000, 1000, null]],
+    [new Linear({ delay: 1000, maxRetries: 2 }), [1000, 2000, null]],
+    [new Exponential({ delay: 1000, factor: 2, maxRetries: 5, maxDelay: 8000 }), [2000, 4000, 8000, 8000, 8000, null]],
   ];
 
   test.each(cases)("policy %p progression", (policy, progression) => {

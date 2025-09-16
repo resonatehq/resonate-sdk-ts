@@ -2,7 +2,7 @@ export class Constant {
   public readonly delay: number;
   public readonly maxRetries: number;
 
-  constructor({ delay = 1, maxRetries = Number.MAX_SAFE_INTEGER }: { delay?: number; maxRetries?: number } = {}) {
+  constructor({ delay = 1000, maxRetries = Number.MAX_SAFE_INTEGER }: { delay?: number; maxRetries?: number } = {}) {
     this.delay = delay;
     this.maxRetries = maxRetries;
   }
@@ -31,10 +31,10 @@ export class Exponential {
   public readonly maxDelay: number;
 
   constructor({
-    delay = 1,
+    delay = 1000,
     factor = 2,
     maxRetries = Number.MAX_SAFE_INTEGER,
-    maxDelay = 30,
+    maxDelay = 30000,
   }: { delay?: number; factor?: number; maxRetries?: number; maxDelay?: number } = {}) {
     this.delay = delay;
     this.maxRetries = maxRetries;
@@ -63,7 +63,7 @@ export class Linear {
   public readonly delay: number;
   public readonly maxRetries: number;
 
-  constructor({ delay = 1, maxRetries = Number.MAX_SAFE_INTEGER }: { delay?: number; maxRetries?: number } = {}) {
+  constructor({ delay = 1000, maxRetries = Number.MAX_SAFE_INTEGER }: { delay?: number; maxRetries?: number } = {}) {
     this.delay = delay;
     this.maxRetries = maxRetries;
   }
