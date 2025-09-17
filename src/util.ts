@@ -87,12 +87,12 @@ export function isUrl(str: string): boolean {
   }
 }
 
-export function base64Encoder(str: string): string {
+export function base64Encode(str: string): string {
   const bytes = new TextEncoder().encode(str);
   return btoa(String.fromCharCode(...bytes));
 }
 
-export function base64Decoder(str: string): string {
+export function base64Decode(str: string): string {
   const bytes = Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
   const jsonStr = new TextDecoder().decode(bytes);
   return jsonStr;

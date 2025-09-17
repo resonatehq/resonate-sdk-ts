@@ -1,4 +1,4 @@
-import { base64Decoder, base64Encoder, isGeneratorFunction } from "../src/util";
+import { base64Decode, base64Encode, isGeneratorFunction } from "../src/util";
 
 describe("isGeneratorFunction", () => {
   // Basic generator functions
@@ -135,6 +135,6 @@ describe("base64 encoder", () => {
   ];
 
   test.each(cases.map((str) => [str]))("encodes and decodes correctly: %s", (string) => {
-    expect(base64Decoder(base64Encoder(string))).toEqual(string);
+    expect(base64Decode(base64Encode(string))).toEqual(string);
   });
 });
