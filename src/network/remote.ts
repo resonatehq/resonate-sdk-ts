@@ -226,6 +226,8 @@ export type RetryPolicy = {
 };
 
 export class HttpNetwork implements Network {
+  private EXCPECTED_RESONATE_VERSION = "0.7.15";
+
   private url: string;
   private group: string;
   private pid: string;
@@ -300,6 +302,11 @@ export class HttpNetwork implements Network {
     });
 
     this.eventSource.addEventListener("error", () => {
+      // some browsers/runtimes may handle automatic reconnect
+      // differently, so to ensure consistency close the eventsource
+      // and recreate
+      this.eventSource.close();
+
       console.log(`Networking. Cannot connect to [${this.url}/poll]. Retrying in 5s.`);
       setTimeout(() => this.connect(), 5000);
     });
@@ -665,6 +672,13 @@ export class HttpNetwork implements Network {
 
       try {
         const res = await fetch(url, { ...init, signal: controller.signal });
+        const ver = res.headers.get("Resonate-Version") ?? "0.0.0";
+
+        if (util.semverLessThan(ver, this.EXCPECTED_RESONATE_VERSION)) {
+          console.warn(
+            `Networking. Expected Resonate server version >=${this.EXCPECTED_RESONATE_VERSION}, got ${ver}. Will continue.`,
+          );
+        }
 
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as { message?: string };
