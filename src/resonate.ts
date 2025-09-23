@@ -381,7 +381,7 @@ export class Resonate {
       if (trackedPromise !== null) return;
 
       trackedPromise = new Promise((resolve, reject) => {
-        this.subscribe(promise, (p) => {
+        const settle = (p: DurablePromiseRecord) => {
           util.assert(p.state !== "pending", "promise must be completed");
 
           if (p.state === "resolved") {
@@ -397,7 +397,13 @@ export class Resonate {
             isSettled = true;
             reject(new Error("Promise timed out"));
           }
-        });
+        };
+
+        if (!isSettled) {
+          this.subscribe(promise, settle);
+        } else {
+          settle(promise);
+        }
       });
     };
 
