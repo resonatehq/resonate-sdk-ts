@@ -23,7 +23,7 @@ import * as util from "./util";
 export interface ResonateHandle<T> {
   id: string;
   result(): Promise<T>;
-  done(): boolean;
+  done(): Promise<boolean>;
 }
 
 export interface ResonateFunc<F extends Func> {
@@ -375,30 +375,39 @@ export class Resonate {
 
   private createHandle(promise: DurablePromiseRecord): ResonateHandle<any> {
     let isSettled = promise.state !== "pending";
+    let trackedPromise: Promise<any> | null = null;
 
-    const trackedPromise = new Promise((resolve, reject) => {
-      this.subscribe(promise, (p) => {
-        util.assert(p.state !== "pending", "promise must be completed");
+    const ensureSubscribed = () => {
+      if (trackedPromise !== null) return;
 
-        if (p.state === "resolved") {
-          isSettled = true;
-          resolve(p.value);
-        } else if (p.state === "rejected") {
-          isSettled = true;
-          reject(p.value);
-        } else if (p.state === "rejected_canceled") {
-          isSettled = true;
-          reject(new Error("Promise canceled"));
-        } else if (p.state === "rejected_timedout") {
-          isSettled = true;
-          reject(new Error("Promise timed out"));
-        }
+      trackedPromise = new Promise((resolve, reject) => {
+        this.subscribe(promise, (p) => {
+          util.assert(p.state !== "pending", "promise must be completed");
+
+          if (p.state === "resolved") {
+            isSettled = true;
+            resolve(p.value);
+          } else if (p.state === "rejected") {
+            isSettled = true;
+            reject(p.value);
+          } else if (p.state === "rejected_canceled") {
+            isSettled = true;
+            reject(new Error("Promise canceled"));
+          } else if (p.state === "rejected_timedout") {
+            isSettled = true;
+            reject(new Error("Promise timed out"));
+          }
+        });
       });
-    });
+    };
+
     return {
       id: promise.id,
-      result: () => trackedPromise,
-      done: () => isSettled,
+      result: () => {
+        ensureSubscribed();
+        return trackedPromise!;
+      },
+      done: async () => isSettled,
     };
   }
 

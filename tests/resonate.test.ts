@@ -15,12 +15,12 @@ describe("Resonate usage tests", () => {
     });
 
     const h = await f.beginRun("f");
-    expect(h.done()).toBe(false);
+    expect(await h.done()).toBe(false);
     await h.result();
-    expect(h.done()).toBe(true);
+    expect(await h.done()).toBe(true);
 
     const h1 = await f.beginRun("f");
-    expect(h1.done()).toBe(true);
+    expect(await h1.done()).toBe(true);
   });
 
   test("function retries", async () => {
