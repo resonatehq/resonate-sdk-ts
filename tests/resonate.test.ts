@@ -15,6 +15,7 @@ describe("Resonate usage tests", () => {
     });
 
     const h = await f.beginRun("f");
+
     expect(await h.done()).toBe(false);
     await h.result();
     expect(await h.done()).toBe(true);

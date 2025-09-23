@@ -374,46 +374,44 @@ export class Resonate {
   }
 
   private createHandle(promise: DurablePromiseRecord): ResonateHandle<any> {
-    let isSettled = promise.state !== "pending";
-    let trackedPromise: Promise<any> | null = null;
-
-    const ensureSubscribed = () => {
-      if (trackedPromise !== null) return;
-
-      trackedPromise = new Promise((resolve, reject) => {
-        const settle = (p: DurablePromiseRecord) => {
-          util.assert(p.state !== "pending", "promise must be completed");
-
-          if (p.state === "resolved") {
-            isSettled = true;
-            resolve(p.value);
-          } else if (p.state === "rejected") {
-            isSettled = true;
-            reject(p.value);
-          } else if (p.state === "rejected_canceled") {
-            isSettled = true;
-            reject(new Error("Promise canceled"));
-          } else if (p.state === "rejected_timedout") {
-            isSettled = true;
-            reject(new Error("Promise timed out"));
-          }
-        };
-
-        if (!isSettled) {
-          this.subscribe(promise, settle);
-        } else {
-          settle(promise);
-        }
-      });
-    };
-
+    let resultPromise: Promise<any> | null = null;
     return {
       id: promise.id,
       result: () => {
-        ensureSubscribed();
-        return trackedPromise!;
+        if (resultPromise !== null) {
+          return resultPromise;
+        }
+        resultPromise = new Promise((resolve, reject) => {
+          this.subscribe(
+            promise,
+            (promise) => {
+              util.assert(promise.state !== "pending", "promise must be completed");
+
+              if (promise.state === "resolved") {
+                resolve(promise.value);
+              } else if (promise.state === "rejected") {
+                reject(promise.value);
+              } else if (promise.state === "rejected_canceled") {
+                reject(new Error("Promise canceled"));
+              } else if (promise.state === "rejected_timedout") {
+                reject(new Error("Promise timedout"));
+              }
+            },
+            undefined,
+          );
+        });
+        return resultPromise;
       },
-      done: async () => isSettled,
+      done: () =>
+        new Promise((resolve, _) => {
+          this.subscribe(promise, undefined, (promise) => {
+            if (promise.state === "pending") {
+              resolve(false);
+            } else {
+              resolve(true);
+            }
+          });
+        }),
     };
   }
 
@@ -422,9 +420,15 @@ export class Resonate {
     if (msg.type === "notify") this.notify(msg.promise);
   }
 
-  private subscribe(promise: DurablePromiseRecord, callback: (p: DurablePromiseRecord) => void) {
+  private subscribe(
+    promise: DurablePromiseRecord,
+    subsCallback?: (p: DurablePromiseRecord) => void,
+    callback?: (p: DurablePromiseRecord) => void,
+  ) {
     const subscriptions = this.subscriptions.get(promise.id) || [];
-    subscriptions.push(callback);
+    if (subsCallback) {
+      subscriptions.push(subsCallback);
+    }
 
     // store local subscription
     this.subscriptions.set(promise.id, subscriptions);
@@ -441,8 +445,11 @@ export class Resonate {
       (err, res) => {
         if (err) {
           // TODO
-        } else if (res!.state !== "pending") {
-          this.notify(res!);
+        } else {
+          callback?.(res!);
+          if (res!.state !== "pending") {
+            this.notify(res!);
+          }
         }
       },
       true,
