@@ -190,7 +190,7 @@ export function run(options: Options) {
   const registry = new Registry();
 
   for (const [name, func] of Object.entries(availableFuncs)) {
-    registry.set(name, func);
+    registry.add(func, name);
   }
 
   // server

@@ -131,7 +131,7 @@ export class Computation {
       return doneAndDropTaskIfErr(true);
     }
 
-    const func = registered.func;
+    const func = registered[1];
     const args = rootPromise.param.args;
 
     // start heartbeat

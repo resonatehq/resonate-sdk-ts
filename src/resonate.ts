@@ -134,17 +134,14 @@ export class Resonate {
   /**
    * Register a function and returns a registered function
    */
-  public register<F extends Func>(name: string, func: F): ResonateFunc<F>;
-  public register<F extends Func>(func: F): ResonateFunc<F>;
-  public register<F extends Func>(nameOrFunc: string | F, maybeFunc?: F): ResonateFunc<F> {
-    const name = typeof nameOrFunc === "string" ? nameOrFunc : nameOrFunc.name;
-    const func = typeof nameOrFunc === "string" ? maybeFunc! : nameOrFunc;
+  public register<F extends Func>(name: string, func: F, version?: number): ResonateFunc<F>;
+  public register<F extends Func>(func: F, version?: number): ResonateFunc<F>;
+  public register<F extends Func>(nameOrFunc: string | F, maybeFunc?: F, version = 1): ResonateFunc<F> {
+    const hasName = typeof nameOrFunc === "string";
+    const func = hasName ? maybeFunc! : nameOrFunc;
+    const name = hasName ? (nameOrFunc as string) : undefined;
 
-    if (this.registry.has(name)) {
-      throw new Error(`'${name}' already registered`);
-    }
-
-    this.registry.set(name, func);
+    this.registry.add(func, name, version);
 
     return {
       run: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> => this.run(id, func, ...args),
@@ -179,9 +176,6 @@ export class Resonate {
   public async beginRun(id: string, funcOrName: Func | string, ...args: any[]): Promise<ResonateHandle<any>>;
   public async beginRun(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<ResonateHandle<any>> {
     const registered = this.registry.get(funcOrName);
-    if (!registered) {
-      throw new Error(`${funcOrName} does not exist`);
-    }
 
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
@@ -190,7 +184,7 @@ export class Resonate {
       promise: {
         id: id,
         timeout: Date.now() + opts.timeout,
-        param: { func: registered.name, args },
+        param: { func: registered[0], args },
         tags: {
           ...opts.tags,
           "resonate:invoke": this.anycast,
@@ -238,10 +232,7 @@ export class Resonate {
       name = funcOrName;
     } else {
       const registered = this.registry.get(funcOrName);
-      if (!registered) {
-        throw new Error(`${funcOrName} is not registered`);
-      }
-      name = registered.name;
+      name = registered[0];
     }
 
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
@@ -277,10 +268,7 @@ export class Resonate {
       funcName = func;
     } else {
       const registered = this.registry.get(func);
-      if (!registered) {
-        throw new Error(`${func} is not registered`);
-      }
-      funcName = registered.name;
+      funcName = registered[0];
     }
 
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());

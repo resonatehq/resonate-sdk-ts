@@ -24,7 +24,7 @@ const options = { seed: 0, steps: 1000, randomDelay: 0, dropProb: 0, duplProb: 0
 const rnd = new Random(options.seed);
 const clock = new StepClock();
 const registry = new Registry();
-registry.set("fibonacci", fibonacci);
+registry.add(fibonacci);
 
 const sim = new Simulator(rnd, {
   randomDelay: options.randomDelay,
