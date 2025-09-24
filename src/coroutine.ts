@@ -50,7 +50,7 @@ export class Coroutine<T> {
     this.depth = depth;
 
     if (typeof process !== "undefined" && process.env.QUEUE_MICROTASK_EVERY_N) {
-      this.queueMicrotaskEveryN = Number.parseInt(process.env.QUEUE_MICROTASK_EVERY_N)
+      this.queueMicrotaskEveryN = Number.parseInt(process.env.QUEUE_MICROTASK_EVERY_N);
     }
   }
 
@@ -153,7 +153,12 @@ export class Coroutine<T> {
                 return;
               }
 
-              const coroutine = new Coroutine(ctx, new Decorator(action.func(ctx, ...action.args)), this.handler, this.depth + 1);
+              const coroutine = new Coroutine(
+                ctx,
+                new Decorator(action.func(ctx, ...action.args)),
+                this.handler,
+                this.depth + 1,
+              );
 
               const cb: Callback<More | Done> = (err, status) => {
                 if (err) return callback(err);
@@ -193,12 +198,12 @@ export class Coroutine<T> {
                     },
                   );
                 }
-              }
+              };
 
               if (this.depth % this.queueMicrotaskEveryN === 0) {
                 queueMicrotask(() => coroutine.exec(cb));
               } else {
-                coroutine.exec(cb)
+                coroutine.exec(cb);
               }
             } else {
               // durable promise is completed
