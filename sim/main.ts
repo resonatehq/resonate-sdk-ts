@@ -236,7 +236,7 @@ export function run(options: Options) {
               timeout,
               iKey: id,
               tags: { "resonate:invoke": "local://any@default" },
-              param: { func: funcName, args: [rnd.randint(0, 20)] },
+              param: { func: funcName, args: [rnd.randint(0, 20)], version: 1 },
             },
             { requ: true, correlationId: i },
           );
@@ -254,7 +254,7 @@ export function run(options: Options) {
               timeout,
               iKey: id,
               tags: { "resonate:invoke": "local://any@default" },
-              param: { func: funcName, args: [] },
+              param: { func: funcName, args: [], version: 1 },
             },
             { requ: true, correlationId: i },
           );

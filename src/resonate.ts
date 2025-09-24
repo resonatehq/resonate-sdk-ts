@@ -175,16 +175,15 @@ export class Resonate {
   public async beginRun<T>(id: string, func: string, ...args: any[]): Promise<ResonateHandle<T>>;
   public async beginRun(id: string, funcOrName: Func | string, ...args: any[]): Promise<ResonateHandle<any>>;
   public async beginRun(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<ResonateHandle<any>> {
-    const registered = this.registry.get(funcOrName);
-
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
+    const registered = this.registry.get(funcOrName, opts.version);
 
     const { promise, task } = await this.createPromiseAndTask({
       kind: "createPromiseAndTask",
       promise: {
         id: id,
         timeout: Date.now() + opts.timeout,
-        param: { func: registered[0], args },
+        param: { func: registered[0], args, version: opts.version },
         tags: {
           ...opts.tags,
           "resonate:invoke": this.anycast,
@@ -227,21 +226,21 @@ export class Resonate {
   public async beginRpc<T>(id: string, func: string, ...args: any[]): Promise<ResonateHandle<T>>;
   public async beginRpc(id: string, funcOrName: Func | string, ...args: any[]): Promise<ResonateHandle<any>>;
   public async beginRpc(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<ResonateHandle<any>> {
+    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
+
     let name: string;
     if (typeof funcOrName === "string") {
       name = funcOrName;
     } else {
-      const registered = this.registry.get(funcOrName);
+      const registered = this.registry.get(funcOrName, opts.version);
       name = registered[0];
     }
-
-    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
 
     const promise = await this.createPromise({
       kind: "createPromise",
       id: id,
       timeout: Date.now() + opts.timeout,
-      param: { func: name, args },
+      param: { func: name, args, version: opts.version },
       tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
       iKey: id,
       strict: false,
@@ -263,19 +262,19 @@ export class Resonate {
     func: Func | string,
     ...argsWithOpts: any[]
   ): Promise<ResonateSchedule> {
+    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
+
     let funcName: string;
     if (typeof func === "string") {
       funcName = func;
     } else {
-      const registered = this.registry.get(func);
+      const registered = this.registry.get(func, opts.version);
       funcName = registered[0];
     }
 
-    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
-
     await this.schedules.create(name, cron, "{{.id}}.{{.timestamp}}", opts.timeout, {
       ikey: name,
-      promiseParam: { func: funcName, args },
+      promiseParam: { func: funcName, args, version: opts.version },
       promiseTags: { ...opts.tags, "resonate:invoke": opts.target },
     });
 

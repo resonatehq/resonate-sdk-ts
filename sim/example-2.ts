@@ -87,7 +87,7 @@ sim.delay(0, () => {
       timeout: 10000000000,
       iKey: id,
       tags: { "resonate:invoke": "local://any@default" },
-      param: { func: "fibonacci", args: [n] },
+      param: { func: "fibonacci", args: [n], version: 1 },
     },
     { requ: true, correlationId: 1 },
   );
