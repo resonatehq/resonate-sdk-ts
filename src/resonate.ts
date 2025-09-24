@@ -144,12 +144,14 @@ export class Resonate {
     this.registry.add(func, name, version);
 
     return {
-      run: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> => this.run(id, func, ...args),
-      rpc: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> => this.rpc(id, func, ...args),
+      run: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> =>
+        this.run(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
+      rpc: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> =>
+        this.rpc(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
       beginRun: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
-        this.beginRun(id, func, ...args),
+        this.beginRun(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
       beginRpc: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
-        this.beginRpc(id, func, ...args),
+        this.beginRpc(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
       options: this.options,
     };
   }

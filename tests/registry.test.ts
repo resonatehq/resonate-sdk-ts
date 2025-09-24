@@ -62,6 +62,8 @@ describe("Registry", () => {
     registry.add(qux1, "qux", 1);
     registry.add(qux2, "qux", 2);
     expect(registry.latest("qux")).toBe(2);
+    expect(registry.get(qux1, 0)[1]).toBe(qux1);
+    expect(registry.get(qux2, 0)[1]).toBe(qux2);
   });
 
   test("throws when getting unknown function", () => {
