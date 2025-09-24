@@ -129,7 +129,7 @@ export class Computation {
     const args = rootPromise.param.args;
 
     try {
-      func = this.registry.get(rootPromise.param.func, rootPromise.param.version)[1];
+      func = this.registry.get(rootPromise.param.func, rootPromise.param.version ?? 0)[1];
     } catch {
       return doneAndDropTaskIfErr(true);
     }
