@@ -40,11 +40,18 @@ export class Coroutine<T> {
   private ctx: InnerContext;
   private decorator: Decorator<T>;
   private handler: Handler;
+  private readonly depth: number;
+  private readonly queueMicrotaskEveryN: number = 1;
 
-  constructor(ctx: InnerContext, decorator: Decorator<T>, handler: Handler) {
+  constructor(ctx: InnerContext, decorator: Decorator<T>, handler: Handler, depth = 1) {
     this.ctx = ctx;
     this.decorator = decorator;
     this.handler = handler;
+    this.depth = depth;
+
+    if (typeof process !== "undefined" && process.env.QUEUE_MICROTASK_EVERY_N) {
+      this.queueMicrotaskEveryN = Number.parseInt(process.env.QUEUE_MICROTASK_EVERY_N)
+    }
   }
 
   public static exec(
@@ -146,8 +153,9 @@ export class Coroutine<T> {
                 return;
               }
 
-              const coroutine = new Coroutine(ctx, new Decorator(action.func(ctx, ...action.args)), this.handler);
-              coroutine.exec((err, status) => {
+              const coroutine = new Coroutine(ctx, new Decorator(action.func(ctx, ...action.args)), this.handler, this.depth + 1);
+
+              const cb: Callback<More | Done> = (err, status) => {
                 if (err) return callback(err);
                 util.assertDefined(status);
 
@@ -185,7 +193,13 @@ export class Coroutine<T> {
                     },
                   );
                 }
-              });
+              }
+
+              if (this.depth % this.queueMicrotaskEveryN === 0) {
+                queueMicrotask(() => coroutine.exec(cb));
+              } else {
+                coroutine.exec(cb)
+              }
             } else {
               // durable promise is completed
               input = {
