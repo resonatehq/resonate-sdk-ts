@@ -144,7 +144,7 @@ export class Resonate {
   public register<F extends Func>(
     nameOrFunc: string | F,
     funcOrOptions?: F | RegisterOptions,
-    maybeOptions: RegisterOptions = { version: 1},
+    maybeOptions: RegisterOptions = { version: 1 },
   ): ResonateFunc<F> {
     const { version } = (typeof funcOrOptions === "object" ? funcOrOptions : maybeOptions) ?? {};
     const func = typeof nameOrFunc === "function" ? nameOrFunc : (funcOrOptions as F);
