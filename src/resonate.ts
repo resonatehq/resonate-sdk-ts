@@ -144,9 +144,9 @@ export class Resonate {
   public register<F extends Func>(
     nameOrFunc: string | F,
     funcOrOptions?: F | RegisterOptions,
-    maybeOptions: RegisterOptions = {},
+    maybeOptions: RegisterOptions = { version: 1},
   ): ResonateFunc<F> {
-    const { version = 1 } = (typeof funcOrOptions === "object" ? funcOrOptions : maybeOptions) ?? {};
+    const { version } = (typeof funcOrOptions === "object" ? funcOrOptions : maybeOptions) ?? {};
     const func = typeof nameOrFunc === "function" ? nameOrFunc : (funcOrOptions as F);
     const name = typeof nameOrFunc === "string" ? nameOrFunc : (func.name ?? "anonymous");
 
