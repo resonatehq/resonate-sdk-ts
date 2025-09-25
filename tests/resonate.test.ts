@@ -15,14 +15,14 @@ describe("Resonate usage tests", () => {
       function foo(ctx: Context): number {
         return 1;
       },
-      1,
+      { version: 1 },
     );
     const f2 = resonate.register(
       "f",
       function bar(ctx: Context): number {
         return 2;
       },
-      2,
+      { version: 2 },
     );
 
     expect(await resonate.run(crypto.randomUUID().replace(/-/g, ""), "f", resonate.options({ version: 1 }))).toBe(1);
