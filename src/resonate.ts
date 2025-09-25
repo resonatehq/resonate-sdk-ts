@@ -20,11 +20,6 @@ import { Schedules } from "./schedules";
 import type { Func, ParamsWithOptions, Return } from "./types";
 import * as util from "./util";
 
-type RegisterOptions = {
-  version?: number;
-  // add more options later without breaking compatibility
-};
-
 export interface ResonateHandle<T> {
   id: string;
   result(): Promise<T>;
@@ -139,12 +134,29 @@ export class Resonate {
   /**
    * Register a function and returns a registered function
    */
-  public register<F extends Func>(name: string, func: F, options?: RegisterOptions): ResonateFunc<F>;
-  public register<F extends Func>(func: F, options?: RegisterOptions): ResonateFunc<F>;
+  public register<F extends Func>(
+    name: string,
+    func: F,
+    options?: {
+      version: number;
+    },
+  ): ResonateFunc<F>;
+  public register<F extends Func>(
+    func: F,
+    options?: {
+      version: number;
+    },
+  ): ResonateFunc<F>;
   public register<F extends Func>(
     nameOrFunc: string | F,
-    funcOrOptions?: F | RegisterOptions,
-    maybeOptions: RegisterOptions = { version: 1 },
+    funcOrOptions?:
+      | F
+      | {
+          version: number;
+        },
+    maybeOptions: {
+      version: number;
+    } = { version: 1 },
   ): ResonateFunc<F> {
     const { version } = (typeof funcOrOptions === "object" ? funcOrOptions : maybeOptions) ?? {};
     const func = typeof nameOrFunc === "function" ? nameOrFunc : (funcOrOptions as F);
