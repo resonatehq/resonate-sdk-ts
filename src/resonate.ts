@@ -138,13 +138,13 @@ export class Resonate {
     name: string,
     func: F,
     options?: {
-      version: number;
+      version?: number;
     },
   ): ResonateFunc<F>;
   public register<F extends Func>(
     func: F,
     options?: {
-      version: number;
+      version?: number;
     },
   ): ResonateFunc<F>;
   public register<F extends Func>(
@@ -152,13 +152,13 @@ export class Resonate {
     funcOrOptions?:
       | F
       | {
-          version: number;
+          version?: number;
         },
     maybeOptions: {
-      version: number;
-    } = { version: 1 },
+      version?: number;
+    } = {},
   ): ResonateFunc<F> {
-    const { version } = (typeof funcOrOptions === "object" ? funcOrOptions : maybeOptions) ?? {};
+    const { version = 1 } = (typeof funcOrOptions === "object" ? funcOrOptions : maybeOptions) ?? {};
     const func = typeof nameOrFunc === "function" ? nameOrFunc : (funcOrOptions as F);
     const name = typeof nameOrFunc === "string" ? nameOrFunc : (func.name ?? "anonymous");
 
