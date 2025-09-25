@@ -200,6 +200,21 @@ export class Coroutine<T> {
                 }
               };
 
+              // Every nth level we kick off the next coroutine in a
+              // microtask, escaping the current call stack. This is
+              // necessary to avoid exceeding the maximum call stack
+              // when the user program has adequate recursion.
+              //
+              // The microtask queue is exhausted before the
+              // javascript engine moves on to macrotasks and a
+              // coroutine may spawn recursive coroutines, opening up
+              // the possibility of blocking the event loop
+              // indefinitely. However, this is analagous to writing
+              // a program with unbounded recursion, something that
+              // is always possible.
+              //
+              // Experimenting with the queueMicrotaskEveryN value
+              // shows that a valud of 1 (our default) is optimal.
               if (this.depth % this.queueMicrotaskEveryN === 0) {
                 queueMicrotask(() => coroutine.exec(cb));
               } else {
