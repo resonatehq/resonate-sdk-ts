@@ -214,7 +214,7 @@ export class Coroutine<T> {
               // is always possible.
               //
               // Experimenting with the queueMicrotaskEveryN value
-              // shows that a valud of 1 (our default) is optimal.
+              // shows that a value of 1 (our default) is optimal.
               if (this.depth % this.queueMicrotaskEveryN === 0) {
                 queueMicrotask(() => coroutine.exec(cb));
               } else {
