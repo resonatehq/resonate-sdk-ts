@@ -1,6 +1,10 @@
 import type { Func } from "./types";
 
-type Item = [string, Func, number];
+type Item = {
+  name: string;
+  func: Func;
+  version: number;
+};
 
 export class Registry {
   private forward: Map<string, Record<number, Item>> = new Map();
@@ -21,7 +25,7 @@ export class Registry {
       throw new Error(`function ${funcName} already registered`);
     }
 
-    const item: Item = [funcName, func, version];
+    const item: Item = { name: funcName, func, version };
 
     if (!existingByName) {
       this.forward.set(funcName, {});
@@ -53,7 +57,7 @@ export class Registry {
       throw new Error(`function ${fnName} not found in registry`);
     }
 
-    if (version !== 0 && entry[2] !== version) {
+    if (version !== 0 && entry.version !== version) {
       const fnName = func.name || "unknown";
       throw new Error(`function ${fnName} version ${version} not found in registry`);
     }
@@ -74,7 +78,6 @@ export class Registry {
     if (!entry) {
       return defaultVersion;
     }
-    const [, , version] = entry;
-    return version;
+    return entry.version;
   }
 }

@@ -185,7 +185,7 @@ export class Resonate {
       promise: {
         id: id,
         timeout: Date.now() + opts.timeout,
-        param: { func: registered[0], args, version: opts.version },
+        param: { func: registered.name, args, version: opts.version },
         tags: {
           ...opts.tags,
           "resonate:invoke": this.anycast,
@@ -234,8 +234,7 @@ export class Resonate {
     if (typeof funcOrName === "string") {
       name = funcOrName;
     } else {
-      const registered = this.registry.get(funcOrName, opts.version);
-      name = registered[0];
+      name = this.registry.get(funcOrName, opts.version).name;
     }
 
     const promise = await this.createPromise({
@@ -270,8 +269,7 @@ export class Resonate {
     if (typeof func === "string") {
       funcName = func;
     } else {
-      const registered = this.registry.get(func, opts.version);
-      funcName = registered[0];
+      funcName = this.registry.get(func, opts.version).name;
     }
 
     await this.schedules.create(name, cron, "{{.id}}.{{.timestamp}}", opts.timeout, {

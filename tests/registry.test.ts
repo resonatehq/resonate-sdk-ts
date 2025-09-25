@@ -13,11 +13,11 @@ describe("Registry", () => {
     }
 
     registry.add(foo);
-    const [name, func, version] = registry.get("foo");
+    const item = registry.get("foo");
 
-    expect(name).toBe("foo");
-    expect(func).toBe(foo);
-    expect(version).toBe(1);
+    expect(item.name).toBe("foo");
+    expect(item.func).toBe(foo);
+    expect(item.version).toBe(1);
   });
 
   test("registers and retrieves a function by reference", () => {
@@ -26,11 +26,11 @@ describe("Registry", () => {
     }
 
     registry.add(bar, "customBar", 2);
-    const [name, func, version] = registry.get(bar);
+    const item = registry.get(bar);
 
-    expect(name).toBe("customBar");
-    expect(func).toBe(bar);
-    expect(version).toBe(2);
+    expect(item.name).toBe("customBar");
+    expect(item.func).toBe(bar);
+    expect(item.version).toBe(2);
   });
 
   test("throws when registering same name+version twice", () => {
@@ -62,8 +62,8 @@ describe("Registry", () => {
     registry.add(qux1, "qux", 1);
     registry.add(qux2, "qux", 2);
     expect(registry.latest("qux")).toBe(2);
-    expect(registry.get(qux1, 0)[1]).toBe(qux1);
-    expect(registry.get(qux2, 0)[1]).toBe(qux2);
+    expect(registry.get(qux1, 0).func).toBe(qux1);
+    expect(registry.get(qux2, 0).func).toBe(qux2);
   });
 
   test("throws when getting unknown function", () => {
