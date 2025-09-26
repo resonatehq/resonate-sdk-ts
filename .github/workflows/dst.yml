@@ -63,6 +63,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `DST: ${{ needs.values.outputs.seed }}`,
+              labels: ['dst'],
               body: `# DST Failed
               DST run failed for seed=${{ needs.values.outputs.seed }}, steps=${{ needs.values.outputs.steps }}, os=${{ matrix.os }}, version=${{ matrix.node-version }}.
 
