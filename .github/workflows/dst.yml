@@ -115,9 +115,7 @@ jobs:
           path: logs-2.txt
 
       - name: Diff
-        run: |
-          diff logs-1.txt logs-2.txt
-          exit 1
+        run: diff logs-1.txt logs-2.txt
 
       - name: Create issue if diff
         if: ${{ failure() }}
