@@ -62,26 +62,26 @@ jobs:
             github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: "🚨 Automated Issue Title",
+              title: `DST: ${{ needs.values.outputs.seed }}`,
               body: `# DST Failed
-              DST run failed for seed=\`${{ needs.values.outputs.seed }}\`, steps=${{ needs.values.outputs.steps }}, os=${{ matrix.os }}, version=${{ matrix.node-version }}.
+              DST run failed for seed=${{ needs.values.outputs.seed }}, steps=${{ needs.values.outputs.steps }}, os=${{ matrix.os }}, version=${{ matrix.node-version }}.
 
               **Seed**
               ~~~
-              %d
+              ${{ needs.values.outputs.seed }}
               ~~~
 
               **Commit**
               ~~~
-              %s
+              $GITHUB_SHA
               ~~~
 
               **Command**
               ~~~
-              npm run dst
+              npm run dst -- --seed ${{ needs.values.outputs.seed }} --steps ${{ needs.values.outputs.steps }}
               ~~~
 
-              [more details](%s)`,
+              [more details]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)`,
             })
 
       - uses: actions/upload-artifact@v4
