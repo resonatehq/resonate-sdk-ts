@@ -1,4 +1,4 @@
-name: dst
+name: DST
 
 permissions:
   contents: read
@@ -81,7 +81,7 @@ jobs:
               npm run dst -- --seed ${{ needs.values.outputs.seed }} --steps ${{ needs.values.outputs.steps }}
               ~~~
 
-              [more details]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)`,
+              [more details](${ process.env.GITHUB_SERVER_URL }/${ process.env.GITHUB_REPOSITORY }/actions/runs/${ process.env.GITHUB_RUN_ID })`,
             })
 
       - uses: actions/upload-artifact@v4
