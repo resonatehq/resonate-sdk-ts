@@ -73,7 +73,7 @@ jobs:
 
               **Commit**
               ~~~
-              $GITHUB_SHA
+              ${{ process.env.GITHUB_SHA }}
               ~~~
 
               **Command**
