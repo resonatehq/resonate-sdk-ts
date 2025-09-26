@@ -53,6 +53,18 @@ jobs:
         run: |
           npm run dst -- --seed ${{ needs.values.outputs.seed }} --steps ${{ needs.values.outputs.steps }} 2> logs.txt
 
+      - name: Create issue if dst failed
+        if: ${{ failure() && matrix.run == 1 }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "🚨 Automated Issue Title",
+              body: `hello world`,
+            })
+
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
