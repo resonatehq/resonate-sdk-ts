@@ -1,4 +1,5 @@
 import type { StepClock } from "../../src/clock";
+import type { Encoder } from "../../src/encoder";
 import { Handler } from "../../src/handler";
 import { NoopHeartbeat } from "../../src/heartbeat";
 import type { Network, Message as NetworkMessage, Request, Response, ResponseFor } from "../../src/network/network";
@@ -135,6 +136,7 @@ export class WorkerProcess extends Process {
   constructor(
     prng: Random,
     clock: StepClock,
+    encoder: Encoder,
     registry: Registry,
     { charFlipProb = 0 }: DeliveryOptions,
     public readonly iaddr: string,
@@ -152,6 +154,7 @@ export class WorkerProcess extends Process {
       clock: this.clock,
       network: this.network,
       handler: new Handler(this.network),
+      encoder: encoder,
       registry: registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),

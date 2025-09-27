@@ -1,5 +1,6 @@
-import type { CreatePromiseReq } from "network/network";
 import { Future, LFC, LFI, RFC, RFI } from "./context";
+import type { Encoder } from "./encoder";
+import type { CreatePromiseReq } from "./network/network";
 import type { RetryPolicy } from "./retries";
 import { type Func, type Result, type Yieldable, ko, ok } from "./types";
 import * as util from "./util";
@@ -12,7 +13,7 @@ export type InternalAsyncR = {
   type: "internal.async.r";
   id: string;
   mode: "attached" | "detached";
-  createReq: CreatePromiseReq;
+  createReq: (encoder: Encoder) => CreatePromiseReq;
 };
 
 export type InternalAsyncL = {
@@ -21,7 +22,7 @@ export type InternalAsyncL = {
   func: Func;
   args: any[];
   retryPolicy: RetryPolicy;
-  createReq: CreatePromiseReq;
+  createReq: (encoder: Encoder) => CreatePromiseReq;
 };
 export type InternalAwait<T> = {
   type: "internal.await";
@@ -145,12 +146,12 @@ export class Decorator<TRet> {
     if (event instanceof LFI || event instanceof LFC) {
       this.invokes.push({
         kind: event instanceof LFI ? "invoke" : "call",
-        id: event.createReq.id,
+        id: event.id,
       });
       this.nextState = "internal.promise";
       return {
         type: "internal.async.l",
-        id: event.createReq.id,
+        id: event.id,
         func: event.func,
         args: event.args ?? [],
         retryPolicy: event.retryPolicy,
@@ -161,14 +162,14 @@ export class Decorator<TRet> {
       if (event.mode === "attached") {
         this.invokes.push({
           kind: event instanceof RFI ? "invoke" : "call",
-          id: event.createReq.id,
+          id: event.id,
         });
       }
 
       this.nextState = "internal.promise";
       return {
         type: "internal.async.r",
-        id: event.createReq.id,
+        id: event.id,
         mode: event.mode,
         createReq: event.createReq,
       };

@@ -1,13 +1,14 @@
-import type { ClaimedTask, Task } from "resonate-inner";
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
+import type { Encoder } from "./encoder";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { CallbackRecord, DurablePromiseRecord, Network } from "./network/network";
 import { Nursery } from "./nursery";
 import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
+import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
 import type { Callback, Func } from "./types";
 import * as util from "./util";
@@ -33,6 +34,7 @@ export class Computation {
   private anycast: string;
   private network: Network;
   private handler: Handler;
+  private encoder: Encoder;
   private registry: Registry;
   private dependencies: Map<string, any>;
   private heartbeat: Heartbeat;
@@ -50,6 +52,7 @@ export class Computation {
     clock: Clock,
     network: Network,
     handler: Handler,
+    encoder: Encoder,
     registry: Registry,
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
@@ -63,6 +66,7 @@ export class Computation {
     this.clock = clock;
     this.network = network;
     this.handler = handler;
+    this.encoder = encoder;
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
@@ -120,16 +124,25 @@ export class Computation {
       done(false, res!);
     };
 
-    if (!("func" in rootPromise.param) || !("args" in rootPromise.param)) {
+    let param: any;
+
+    try {
+      param = this.encoder.decode(rootPromise.param);
+    } catch {
+      // TODO: log something useful
+      return doneAndDropTaskIfErr(true);
+    }
+
+    if (param === null || typeof param !== "object" || !("func" in param) || !("args" in param)) {
       // TODO: log something useful
       return doneAndDropTaskIfErr(true);
     }
 
     let func: Func;
-    const args = rootPromise.param.args;
+    const args = param.args;
 
     try {
-      func = this.registry.get(rootPromise.param.func, rootPromise.param.version ?? 0).func;
+      func = this.registry.get(param.func, param.version ?? 0).func;
     } catch {
       return doneAndDropTaskIfErr(true);
     }
@@ -176,7 +189,7 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, ctx, func, args, this.handler, (err, status) => {
+    Coroutine.exec(this.id, ctx, func, args, this.handler, this.encoder, (err, status) => {
       if (err) return done(err);
       util.assertDefined(status);
 
@@ -209,18 +222,28 @@ export class Computation {
       id,
       func.name,
       async () => await func(ctx, ...args),
-      (res) =>
+      (res) => {
+        let value: { headers?: Record<string, string>; data?: any };
+
+        try {
+          value = this.encoder.encode(res.success ? res.value : res.error);
+        } catch {
+          // TODO: log something useful
+          return done(true);
+        }
+
         this.handler.completePromise(
           {
             kind: "completePromise",
             id: id,
             state: res.success ? "resolved" : "rejected",
-            value: res.success ? res.value : res.error,
+            value: value,
             iKey: id,
             strict: false,
           },
           done,
-        ),
+        );
+      },
       ctx.retryPolicy,
     );
   }
