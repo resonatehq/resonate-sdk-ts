@@ -1,13 +1,14 @@
-import type { ClaimedTask } from "resonate-inner";
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
 import type { Context } from "../src/context";
+import { JsonEncoder } from "../src/encoder";
 import { Handler } from "../src/handler";
 import { NoopHeartbeat } from "../src/heartbeat";
 import type { DurablePromiseRecord, Network, TaskRecord } from "../src/network/network";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
+import type { ClaimedTask } from "../src/resonate-inner";
 import type { Result } from "../src/types";
 import * as util from "../src/util";
 
@@ -17,6 +18,8 @@ async function createPromiseAndTask(
   funcName: string,
   args: any[],
 ): Promise<{ promise: DurablePromiseRecord; task: TaskRecord }> {
+  const encoder = new JsonEncoder();
+
   return new Promise((resolve, _reject) => {
     network.send(
       {
@@ -24,10 +27,10 @@ async function createPromiseAndTask(
         promise: {
           id: id,
           timeout: 24 * util.HOUR + Date.now(),
-          param: {
+          param: encoder.encode({
             func: funcName,
             args,
-          },
+          }),
           tags: { "resonate:invoke": "poll://any@default/default" },
         },
         task: {
@@ -113,6 +116,7 @@ describe("Computation Event Queue Concurrency", () => {
       new WallClock(),
       network,
       new Handler(network),
+      new JsonEncoder(),
       registry,
       new NoopHeartbeat(),
       new Map(),
@@ -173,10 +177,12 @@ describe("Computation Event Queue Concurrency", () => {
       kind: "completed",
       promise: {
         value: {
-          a: "completed-root-promise-1.0",
-          b: "completed-root-promise-1.1",
-          c: "completed-root-promise-1.2",
-          d: "completed-root-promise-1.3",
+          data: JSON.stringify({
+            a: "completed-root-promise-1.0",
+            b: "completed-root-promise-1.1",
+            c: "completed-root-promise-1.2",
+            d: "completed-root-promise-1.3",
+          }),
         },
       },
     });

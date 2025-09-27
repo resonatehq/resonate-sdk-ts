@@ -6,8 +6,8 @@ export interface DurablePromiseRecord {
   id: string;
   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
   timeout: number;
-  param: any;
-  value: any;
+  param?: { headers?: Record<string, string>; data?: string };
+  value?: { headers?: Record<string, string>; data?: string };
   tags: Record<string, string>;
   iKeyForCreate?: string;
   iKeyForComplete?: string;
@@ -22,7 +22,7 @@ export interface ScheduleRecord {
   tags: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam: any;
+  promiseParam?: { headers?: Record<string, string>; data?: string };
   promiseTags: Record<string, string>;
   iKey?: string;
   lastRunTime?: number;
@@ -68,7 +68,7 @@ export type CreatePromiseReq = {
   kind: "createPromise";
   id: string;
   timeout: number;
-  param?: any;
+  param?: { headers?: Record<string, string>; data?: string };
   tags?: Record<string, string>;
   iKey?: string;
   strict?: boolean;
@@ -79,7 +79,7 @@ export type CreatePromiseAndTaskReq = {
   promise: {
     id: string;
     timeout: number;
-    param?: any;
+    param?: { headers?: Record<string, string>; data?: string };
     tags?: Record<string, string>;
   };
   task: {
@@ -99,7 +99,7 @@ export type CompletePromiseReq = {
   kind: "completePromise";
   id: string;
   state: "resolved" | "rejected" | "rejected_canceled";
-  value?: any;
+  value?: { headers?: Record<string, string>; data?: string };
   iKey?: string;
   strict?: boolean;
 };
@@ -128,7 +128,7 @@ export type CreateScheduleReq = {
   tags?: Record<string, string>;
   promiseId?: string;
   promiseTimeout?: number;
-  promiseParam?: any;
+  promiseParam?: { headers?: Record<string, string>; data?: string };
   promiseTags?: Record<string, string>;
   iKey?: string;
 };

@@ -2,6 +2,7 @@ import { LocalNetwork } from "../dev/network";
 import { Handler } from "../src/handler";
 import { Registry } from "../src/registry";
 import { WallClock } from "./clock";
+import { type Encoder, JsonEncoder } from "./encoder";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";
 import type {
   CreatePromiseAndTaskReq,
@@ -47,6 +48,7 @@ export class Resonate {
   private inner: ResonateInner;
   private network: Network;
   private handler: Handler;
+  private encoder: Encoder;
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
@@ -63,6 +65,7 @@ export class Resonate {
 
     this.network = network;
     this.handler = new Handler(this.network);
+    this.encoder = new JsonEncoder();
     this.registry = new Registry();
     this.heartbeat = network instanceof LocalNetwork ? new NoopHeartbeat() : new AsyncHeartbeat(pid, ttl / 2, network);
     this.dependencies = new Map();
@@ -75,6 +78,7 @@ export class Resonate {
       clock: new WallClock(),
       network: this.network,
       handler: this.handler,
+      encoder: this.encoder,
       registry: this.registry,
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
@@ -201,12 +205,19 @@ export class Resonate {
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
+    // TODO: throw nice error on encoding failure
+    const param = this.encoder.encode({
+      func: registered.name,
+      args: args,
+      version: opts.version,
+    });
+
     const { promise, task } = await this.createPromiseAndTask({
       kind: "createPromiseAndTask",
       promise: {
         id: id,
         timeout: Date.now() + opts.timeout,
-        param: { func: registered.name, args, version: opts.version },
+        param: param,
         tags: {
           ...opts.tags,
           "resonate:invoke": this.anycast,
@@ -258,11 +269,18 @@ export class Resonate {
       name = this.registry.get(funcOrName, opts.version).name;
     }
 
+    // TODO: throw nice error on encoding failure
+    const param = this.encoder.encode({
+      func: name,
+      args: args,
+      version: opts.version,
+    });
+
     const promise = await this.createPromise({
       kind: "createPromise",
       id: id,
       timeout: Date.now() + opts.timeout,
-      param: { func: name, args, version: opts.version },
+      param: param,
       tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
       iKey: id,
       strict: false,
@@ -293,9 +311,13 @@ export class Resonate {
       funcName = this.registry.get(func, opts.version).name;
     }
 
+    // TODO: throw nice error on encoding failure
+    const { headers, data } = this.encoder.encode({ func: funcName, args, version: opts.version });
+
     await this.schedules.create(name, cron, "{{.id}}.{{.timestamp}}", opts.timeout, {
       ikey: name,
-      promiseParam: { func: funcName, args, version: opts.version },
+      promiseHeaders: headers,
+      promiseData: data,
       promiseTags: { ...opts.tags, "resonate:invoke": opts.target },
     });
 
@@ -382,36 +404,30 @@ export class Resonate {
   }
 
   private createHandle(promise: DurablePromiseRecord): ResonateHandle<any> {
-    let resultPromise: Promise<any> | null = null;
     return {
       id: promise.id,
       result: () => {
-        if (resultPromise !== null) {
-          return resultPromise;
-        }
-        resultPromise = new Promise((resolve, reject) => {
-          this.subscribe(
-            promise,
-            (promise) => {
-              util.assert(promise.state !== "pending", "promise must be completed");
+        return new Promise((resolve, reject) => {
+          this.subscribe(promise, (promise) => {
+            util.assert(promise.state !== "pending", "promise must be completed");
 
-              if (promise.state === "resolved") {
-                resolve(promise.value);
-              } else if (promise.state === "rejected") {
-                reject(promise.value);
-              } else if (promise.state === "rejected_canceled") {
-                reject(new Error("Promise canceled"));
-              } else if (promise.state === "rejected_timedout") {
-                reject(new Error("Promise timedout"));
-              }
-            },
-            undefined,
-          );
+            // TODO: how to handle decode failure?
+            const value = this.encoder.decode(promise.value);
+
+            if (promise.state === "resolved") {
+              resolve(value);
+            } else if (promise.state === "rejected") {
+              reject(value);
+            } else if (promise.state === "rejected_canceled") {
+              reject(new Error("Promise canceled"));
+            } else if (promise.state === "rejected_timedout") {
+              reject(new Error("Promise timedout"));
+            }
+          });
         });
-        return resultPromise;
       },
       done: () =>
-        new Promise((resolve, _) => {
+        new Promise((resolve) => {
           this.subscribe(promise, undefined, (promise) => {
             if (promise.state === "pending") {
               resolve(false);
@@ -430,12 +446,12 @@ export class Resonate {
 
   private subscribe(
     promise: DurablePromiseRecord,
-    subsCallback?: (p: DurablePromiseRecord) => void,
+    onComplete?: (p: DurablePromiseRecord) => void,
     callback?: (p: DurablePromiseRecord) => void,
   ) {
     const subscriptions = this.subscriptions.get(promise.id) || [];
-    if (subsCallback) {
-      subscriptions.push(subsCallback);
+    if (onComplete) {
+      subscriptions.push(onComplete);
     }
 
     // store local subscription
