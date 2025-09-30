@@ -7,6 +7,7 @@ import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";
 import type {
   CreatePromiseAndTaskReq,
   CreatePromiseReq,
+  CreateSubscriptionReq,
   DurablePromiseRecord,
   Message,
   Network,
@@ -52,7 +53,7 @@ export class Resonate {
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
-  private subscriptions: Map<string, Array<(promise: DurablePromiseRecord<any>) => void>> = new Map();
+  private subscriptions: Map<string, PromiseWithResolvers<DurablePromiseRecord<any>>> = new Map();
 
   public readonly promises: Promises;
   public readonly schedules: Schedules;
@@ -357,7 +358,7 @@ export class Resonate {
   private createPromiseAndTask(
     req: CreatePromiseAndTaskReq<any>,
   ): Promise<{ promise: DurablePromiseRecord; task?: TaskRecord }> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) =>
       this.handler.createPromiseAndTask(
         req,
         (err, res) => {
@@ -369,12 +370,12 @@ export class Resonate {
           }
         },
         true,
-      );
-    });
+      ),
+    );
   }
 
-  private createPromise(req: CreatePromiseReq<any>): Promise<DurablePromiseRecord> {
-    return new Promise((resolve, reject) => {
+  private createPromise(req: CreatePromiseReq<any>): Promise<DurablePromiseRecord<any>> {
+    return new Promise((resolve, reject) =>
       this.handler.createPromise(
         req,
         (err, res) => {
@@ -386,52 +387,53 @@ export class Resonate {
           }
         },
         true,
-      );
-    });
+      ),
+    );
   }
 
-  private readPromise(req: ReadPromiseReq): Promise<DurablePromiseRecord> {
-    return new Promise((resolve, reject) => {
+  private createSubscription(req: CreateSubscriptionReq): Promise<DurablePromiseRecord<any>> {
+    return new Promise((resolve, reject) =>
+      this.handler.createSubscription(
+        req,
+        (err, res) => {
+          if (err) {
+            // TODO: improve this message
+            reject(new Error(`Subscription for promise '${req.promiseId}' could not be created`));
+          } else {
+            resolve(res!);
+          }
+        },
+        true,
+      ),
+    );
+  }
+
+  private readPromise(req: ReadPromiseReq): Promise<DurablePromiseRecord<any>> {
+    return new Promise((resolve, reject) =>
       this.handler.readPromise(req, (err, res) => {
         if (err) {
+          // TODO: improve this message
           reject(new Error(`Promise '${req.id}' not found`));
         } else {
           resolve(res!);
         }
-      });
-    });
+      }),
+    );
   }
 
   private createHandle(promise: DurablePromiseRecord<any>): ResonateHandle<any> {
+    const createSubscriptionReq: CreateSubscriptionReq = {
+      kind: "createSubscription",
+      id: this.pid,
+      promiseId: promise.id,
+      timeout: promise.timeout + 1 * util.MIN, // add a buffer
+      recv: this.unicast,
+    };
+
     return {
       id: promise.id,
-      result: () => {
-        return new Promise((resolve, reject) => {
-          this.subscribe(promise, (promise) => {
-            util.assert(promise.state !== "pending", "promise must be completed");
-
-            if (promise.state === "resolved") {
-              resolve(promise.value?.data);
-            } else if (promise.state === "rejected") {
-              reject(promise.value?.data);
-            } else if (promise.state === "rejected_canceled") {
-              reject(new Error("Promise canceled"));
-            } else if (promise.state === "rejected_timedout") {
-              reject(new Error("Promise timedout"));
-            }
-          });
-        });
-      },
-      done: () =>
-        new Promise((resolve) => {
-          this.subscribe(promise, undefined, (promise) => {
-            if (promise.state === "pending") {
-              resolve(false);
-            } else {
-              resolve(true);
-            }
-          });
-        }),
+      done: () => this.createSubscription(createSubscriptionReq).then((res) => res.state !== "pending"),
+      result: () => this.createSubscription(createSubscriptionReq).then((res) => this.subscribe(promise.id, res)),
     };
   }
 
@@ -444,18 +446,20 @@ export class Resonate {
       try {
         paramData = this.encoder.decode(msg.promise.param);
       } catch (e) {
-        // TODO
+        // TODO: improve this message
+        this.notify(msg.promise.id, new Error("Failed to decode promise param"));
         return;
       }
 
       try {
         valueData = this.encoder.decode(msg.promise.value);
       } catch (e) {
-        // TODO
+        // TODO: improve this message
+        this.notify(msg.promise.id, new Error("Failed to decode promise value"));
         return;
       }
 
-      this.notify({
+      this.notify(msg.promise.id, undefined, {
         ...msg.promise,
         param: { headers: msg.promise.param?.headers, data: paramData },
         value: { headers: msg.promise.value?.headers, data: valueData },
@@ -463,51 +467,46 @@ export class Resonate {
     }
   }
 
-  private subscribe(
-    promise: DurablePromiseRecord,
-    onComplete?: (p: DurablePromiseRecord) => void,
-    callback?: (p: DurablePromiseRecord) => void,
-  ) {
-    const subscriptions = this.subscriptions.get(promise.id) || [];
-    if (onComplete) {
-      subscriptions.push(onComplete);
+  private async subscribe(id: string, res: DurablePromiseRecord) {
+    const { promise, resolve, reject } =
+      this.subscriptions.get(id) ?? Promise.withResolvers<DurablePromiseRecord<any>>();
+
+    if (res.state === "pending") {
+      this.subscriptions.set(id, { promise, resolve, reject });
+    } else {
+      resolve(res);
+      this.subscriptions.delete(id);
     }
 
-    // store local subscription
-    this.subscriptions.set(promise.id, subscriptions);
+    const p = await promise;
+    util.assert(p.state !== "pending", "promise must be completed");
 
-    // create remote subscription
-    this.handler.createSubscription(
-      {
-        kind: "createSubscription",
-        id: this.pid,
-        promiseId: promise.id,
-        timeout: promise.timeout + 1 * util.MIN, // add a buffer
-        recv: this.unicast,
-      },
-      (err, res) => {
-        if (err) {
-          // TODO
-        } else {
-          callback?.(res!);
-          if (res!.state !== "pending") {
-            this.notify(res!);
-          }
-        }
-      },
-      true,
-    );
+    if (p.state === "resolved") {
+      return p.value?.data;
+    }
+    if (p.state === "rejected") {
+      throw p.value?.data;
+    }
+    if (p.state === "rejected_canceled") {
+      throw new Error("Promise canceled");
+    }
+    if (p.state === "rejected_timedout") {
+      throw new Error("Promise timedout");
+    }
   }
 
-  private notify(promise: DurablePromiseRecord<any>) {
-    util.assert(promise.state !== "pending", "promise must be completed");
+  private notify(id: string, err: any, res?: DurablePromiseRecord<any>) {
+    const subscription = this.subscriptions.get(id);
 
     // notify subscribers
-    for (const callback of this.subscriptions.get(promise.id) ?? []) {
-      callback(promise);
+    if (res) {
+      util.assert(res.state !== "pending", "promise must be completed");
+      subscription?.resolve(res);
+    } else {
+      subscription?.reject(err);
     }
 
-    // remove subscriptions
-    this.subscriptions.delete(promise.id);
+    // remove subscription
+    this.subscriptions.delete(id);
   }
 }
