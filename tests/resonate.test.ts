@@ -1,11 +1,11 @@
 import { setTimeout } from "node:timers/promises";
 import { LocalNetwork } from "../dev/network";
 import type { Context } from "../src/context";
+import { JsonEncoder } from "../src/encoder";
 import { HttpNetwork } from "../src/network/remote";
 import { Resonate } from "../src/resonate";
 import { Constant, Never } from "../src/retries";
 import * as util from "../src/util";
-import { JsonEncoder } from "encoder";
 
 describe("Resonate usage tests", () => {
   test("try versions", async () => {
