@@ -285,10 +285,7 @@ export class HttpNetwork implements Network {
         body: JSON.stringify({
           id: req.id,
           timeout: req.timeout,
-          param: {
-            headers: req.param?.headers,
-            data: req.param?.data ? util.base64Encode(req.param.data) : undefined,
-          },
+          param: req.param,
           tags: req.tags,
         }),
       },
@@ -316,10 +313,7 @@ export class HttpNetwork implements Network {
           promise: {
             id: req.promise.id,
             timeout: req.promise.timeout,
-            param: {
-              headers: req.promise.param?.headers,
-              data: req.promise.param?.data ? util.base64Encode(req.promise.param.data) : undefined,
-            },
+            param: req.promise.param,
             tags: req.promise.tags,
           },
           task: {
@@ -358,10 +352,7 @@ export class HttpNetwork implements Network {
         headers,
         body: JSON.stringify({
           state: req.state.toUpperCase(),
-          value: {
-            headers: req.value?.headers,
-            data: req.value?.data ? util.base64Encode(req.value.data) : undefined,
-          },
+          value: req.value,
         }),
       },
       retryPolicy,
@@ -436,10 +427,7 @@ export class HttpNetwork implements Network {
           tags: req.tags,
           promiseId: req.promiseId,
           promiseTimeout: req.promiseTimeout,
-          promiseParam: {
-            headers: req.promiseParam?.headers,
-            data: req.promiseParam?.data ? util.base64Encode(req.promiseParam.data) : undefined,
-          },
+          promiseParam: req.promiseParam,
           promiseTags: req.promiseTags,
         }),
       },
@@ -615,14 +603,8 @@ export class HttpNetwork implements Network {
       id: promise.id,
       state: this.mapApiStateToInternal(promise.state),
       timeout: promise.timeout,
-      param: {
-        headers: promise.param?.headers,
-        data: promise.param?.data ? util.base64Decode(promise.param.data) : undefined,
-      },
-      value: {
-        headers: promise.value?.headers,
-        data: promise.value?.data ? util.base64Decode(promise.value.data) : undefined,
-      },
+      param: promise.param,
+      value: promise.value,
       tags: promise.tags || {},
       iKeyForCreate: promise.idempotencyKeyForCreate,
       iKeyForComplete: promise.idempotencyKeyForComplete,
@@ -639,10 +621,7 @@ export class HttpNetwork implements Network {
       tags: schedule.tags || {},
       promiseId: schedule.promiseId,
       promiseTimeout: schedule.promiseTimeout,
-      promiseParam: {
-        headers: schedule.promiseParam?.headers,
-        data: schedule.promiseParam?.data ? util.base64Decode(schedule.promiseParam.data) : undefined,
-      },
+      promiseParam: schedule.promiseParam,
       promiseTags: schedule.promiseTags || {},
       iKey: schedule.idempotencyKey,
       lastRunTime: schedule.lastRunTime,

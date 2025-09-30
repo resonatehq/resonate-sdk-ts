@@ -1,3 +1,5 @@
+import * as util from "./util";
+
 export interface Encoder {
   encode(value: any): { headers?: Record<string, string>; data?: string };
   decode(value: { headers?: Record<string, string>; data?: string } | undefined): any;
@@ -49,7 +51,7 @@ export class JsonEncoder implements Encoder {
 
     return {
       headers: {},
-      data: data,
+      data: util.base64Encode(data),
     };
   }
 
@@ -58,7 +60,7 @@ export class JsonEncoder implements Encoder {
       return undefined;
     }
 
-    return JSON.parse(value.data, (_, value) => {
+    return JSON.parse(util.base64Decode(value.data), (_, value) => {
       if (value === this.inf) {
         return Number.POSITIVE_INFINITY;
       }
