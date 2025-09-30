@@ -1,5 +1,4 @@
 import { Future, LFC, LFI, RFC, RFI } from "./context";
-import type { Encoder } from "./encoder";
 import type { CreatePromiseReq } from "./network/network";
 import type { RetryPolicy } from "./retries";
 import { type Func, type Result, type Yieldable, ko, ok } from "./types";
@@ -13,7 +12,7 @@ export type InternalAsyncR = {
   type: "internal.async.r";
   id: string;
   mode: "attached" | "detached";
-  createReq: (encoder: Encoder) => CreatePromiseReq;
+  createReq: CreatePromiseReq<any>;
 };
 
 export type InternalAsyncL = {
@@ -22,7 +21,7 @@ export type InternalAsyncL = {
   func: Func;
   args: any[];
   retryPolicy: RetryPolicy;
-  createReq: (encoder: Encoder) => CreatePromiseReq;
+  createReq: CreatePromiseReq<any>;
 };
 export type InternalAwait<T> = {
   type: "internal.await";

@@ -47,12 +47,12 @@ export class Resonate {
 
   private inner: ResonateInner;
   private network: Network;
-  private handler: Handler;
   private encoder: Encoder;
+  private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
-  private subscriptions: Map<string, Array<(promise: DurablePromiseRecord) => void>> = new Map();
+  private subscriptions: Map<string, Array<(promise: DurablePromiseRecord<any>) => void>> = new Map();
 
   public readonly promises: Promises;
   public readonly schedules: Schedules;
@@ -64,8 +64,8 @@ export class Resonate {
     this.ttl = ttl;
 
     this.network = network;
-    this.handler = new Handler(this.network);
     this.encoder = new JsonEncoder();
+    this.handler = new Handler(this.network, this.encoder);
     this.registry = new Registry();
     this.heartbeat = network instanceof LocalNetwork ? new NoopHeartbeat() : new AsyncHeartbeat(pid, ttl / 2, network);
     this.dependencies = new Map();
@@ -78,7 +78,6 @@ export class Resonate {
       clock: new WallClock(),
       network: this.network,
       handler: this.handler,
-      encoder: this.encoder,
       registry: this.registry,
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
@@ -205,19 +204,18 @@ export class Resonate {
     const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
-    // TODO: throw nice error on encoding failure
-    const param = this.encoder.encode({
-      func: registered.name,
-      args: args,
-      version: opts.version,
-    });
-
     const { promise, task } = await this.createPromiseAndTask({
       kind: "createPromiseAndTask",
       promise: {
         id: id,
         timeout: Date.now() + opts.timeout,
-        param: param,
+        param: {
+          data: {
+            func: registered.name,
+            args: args,
+            version: opts.version,
+          },
+        },
         tags: {
           ...opts.tags,
           "resonate:invoke": this.anycast,
@@ -269,18 +267,17 @@ export class Resonate {
       name = this.registry.get(funcOrName, opts.version).name;
     }
 
-    // TODO: throw nice error on encoding failure
-    const param = this.encoder.encode({
-      func: name,
-      args: args,
-      version: opts.version,
-    });
-
     const promise = await this.createPromise({
       kind: "createPromise",
       id: id,
       timeout: Date.now() + opts.timeout,
-      param: param,
+      param: {
+        data: {
+          func: name,
+          args: args,
+          version: opts.version,
+        },
+      },
       tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
       iKey: id,
       strict: false,
@@ -311,7 +308,7 @@ export class Resonate {
       funcName = this.registry.get(func, opts.version).name;
     }
 
-    // TODO: throw nice error on encoding failure
+    // TODO: move this into the handler?
     const { headers, data } = this.encoder.encode({ func: funcName, args, version: opts.version });
 
     await this.schedules.create(name, cron, "{{.id}}.{{.timestamp}}", opts.timeout, {
@@ -358,13 +355,14 @@ export class Resonate {
   }
 
   private createPromiseAndTask(
-    req: CreatePromiseAndTaskReq,
+    req: CreatePromiseAndTaskReq<any>,
   ): Promise<{ promise: DurablePromiseRecord; task?: TaskRecord }> {
     return new Promise((resolve, reject) => {
       this.handler.createPromiseAndTask(
         req,
         (err, res) => {
           if (err) {
+            // TODO: improve this message
             reject(new Error(`Promise '${req.promise.id}' could not be created`));
           } else {
             resolve({ promise: res!.promise, task: res!.task });
@@ -375,12 +373,13 @@ export class Resonate {
     });
   }
 
-  private createPromise(req: CreatePromiseReq): Promise<DurablePromiseRecord> {
+  private createPromise(req: CreatePromiseReq<any>): Promise<DurablePromiseRecord> {
     return new Promise((resolve, reject) => {
       this.handler.createPromise(
         req,
         (err, res) => {
           if (err) {
+            // TODO: improve this message
             reject(new Error(`Promise '${req.id}' could not be created`));
           } else {
             resolve(res!);
@@ -403,7 +402,7 @@ export class Resonate {
     });
   }
 
-  private createHandle(promise: DurablePromiseRecord): ResonateHandle<any> {
+  private createHandle(promise: DurablePromiseRecord<any>): ResonateHandle<any> {
     return {
       id: promise.id,
       result: () => {
@@ -411,13 +410,10 @@ export class Resonate {
           this.subscribe(promise, (promise) => {
             util.assert(promise.state !== "pending", "promise must be completed");
 
-            // TODO: how to handle decode failure?
-            const value = this.encoder.decode(promise.value);
-
             if (promise.state === "resolved") {
-              resolve(value);
+              resolve(promise.value?.data);
             } else if (promise.state === "rejected") {
-              reject(value);
+              reject(promise.value?.data);
             } else if (promise.state === "rejected_canceled") {
               reject(new Error("Promise canceled"));
             } else if (promise.state === "rejected_timedout") {
@@ -441,7 +437,30 @@ export class Resonate {
 
   private onMessage(msg: Message): void {
     util.assert(msg.type === "notify");
-    if (msg.type === "notify") this.notify(msg.promise);
+    if (msg.type === "notify") {
+      let paramData: any;
+      let valueData: any;
+
+      try {
+        paramData = this.encoder.decode(msg.promise.param);
+      } catch (e) {
+        // TODO
+        return;
+      }
+
+      try {
+        valueData = this.encoder.decode(msg.promise.value);
+      } catch (e) {
+        // TODO
+        return;
+      }
+
+      this.notify({
+        ...msg.promise,
+        param: { headers: msg.promise.param?.headers, data: paramData },
+        value: { headers: msg.promise.value?.headers, data: valueData },
+      });
+    }
   }
 
   private subscribe(
@@ -480,7 +499,7 @@ export class Resonate {
     );
   }
 
-  private notify(promise: DurablePromiseRecord) {
+  private notify(promise: DurablePromiseRecord<any>) {
     util.assert(promise.state !== "pending", "promise must be completed");
 
     // notify subscribers

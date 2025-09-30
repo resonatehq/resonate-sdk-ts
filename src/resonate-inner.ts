@@ -1,6 +1,5 @@
 import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
-import type { Encoder } from "./encoder";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Message, Network, TaskRecord } from "./network/network";
@@ -18,7 +17,7 @@ export type Task = ClaimedTask | UnclaimedTask;
 export type ClaimedTask = {
   kind: "claimed";
   task: TaskRecord;
-  rootPromise: DurablePromiseRecord;
+  rootPromise: DurablePromiseRecord<any>;
 };
 
 export type UnclaimedTask = {
@@ -34,7 +33,6 @@ export class ResonateInner {
   private clock: Clock;
   private network: Network;
   private handler: Handler;
-  private encoder: Encoder;
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
@@ -48,7 +46,6 @@ export class ResonateInner {
     clock,
     network,
     handler,
-    encoder,
     registry,
     heartbeat,
     dependencies,
@@ -60,7 +57,6 @@ export class ResonateInner {
     clock: Clock;
     network: Network;
     handler: Handler;
-    encoder: Encoder;
     registry: Registry;
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
@@ -72,7 +68,6 @@ export class ResonateInner {
     this.clock = clock;
     this.network = network;
     this.handler = handler;
-    this.encoder = encoder;
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
@@ -94,7 +89,6 @@ export class ResonateInner {
         this.clock,
         this.network,
         this.handler,
-        this.encoder,
         this.registry,
         this.heartbeat,
         this.dependencies,

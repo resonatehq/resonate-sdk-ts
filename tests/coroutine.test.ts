@@ -55,8 +55,6 @@ class DummyNetwork implements Network {
 }
 
 describe("Coroutine", () => {
-  const encoder = new JsonEncoder();
-
   // Helper functions to write test easily
   const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], handler: Handler) => {
     return new Promise<any>((resolve) => {
@@ -66,7 +64,6 @@ describe("Coroutine", () => {
         func,
         args,
         handler,
-        encoder,
         (err, res) => {
           expect(err).toBe(false);
           resolve(res);
@@ -82,7 +79,9 @@ describe("Coroutine", () => {
           kind: "completePromise",
           id: id,
           state: result.success ? "resolved" : "rejected",
-          value: encoder.encode(result.success ? result.value : result.error),
+          value: {
+            data: result.success ? result.value : result.error,
+          },
           iKey: id,
           strict: false,
         },
@@ -105,9 +104,9 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const h = new Handler(new DummyNetwork());
+    const h = new Handler(new DummyNetwork(), new JsonEncoder());
     const r = await exec("foo.1", foo, [], h);
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: "42" } } });
+    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
   });
 
   test("basic coroutine with function suspends after first await", async () => {
@@ -125,7 +124,7 @@ describe("Coroutine", () => {
       const v2 = yield* p2;
       return v + v2;
     }
-    const h = new Handler(new DummyNetwork());
+    const h = new Handler(new DummyNetwork(), new JsonEncoder());
 
     // First execution - should suspend
     let r = await exec("foo.1", foo, [], h);
@@ -138,7 +137,7 @@ describe("Coroutine", () => {
 
     // Second execution - should complete
     r = await exec("foo.1", foo, [], h);
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: "31458" } } });
+    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 31458 } } });
   });
 
   test("coroutine with a suspension point suspends if can not make more progress", async () => {
@@ -155,7 +154,7 @@ describe("Coroutine", () => {
       return v1;
     }
 
-    const h = new Handler(new DummyNetwork());
+    const h = new Handler(new DummyNetwork(), new JsonEncoder());
 
     let r = await exec("foo.1", foo, [], h);
     expect(r.type).toBe("suspended");
@@ -164,7 +163,7 @@ describe("Coroutine", () => {
 
     await completePromise(h, "foo.1.1", ok(42));
     r = await exec("foo.1", foo, [], h);
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: "42" } } });
+    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
   });
 
   test("Structured concurrency", async () => {
@@ -178,7 +177,7 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const h = new Handler(new DummyNetwork());
+    const h = new Handler(new DummyNetwork(), new JsonEncoder());
     let r = await exec("foo.1", foo, [], h);
 
     expect(r.type).toBe("suspended");
@@ -195,7 +194,7 @@ describe("Coroutine", () => {
     await completePromise(h, "foo.1.0", ok(42));
     r = await exec("foo.1", foo, [], h);
 
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: "99" } } });
+    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 99 } } });
   });
 
   test("Detached concurrency", async () => {
@@ -209,7 +208,7 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const h = new Handler(new DummyNetwork());
+    const h = new Handler(new DummyNetwork(), new JsonEncoder());
     let r = await exec("foo.1", foo, [], h);
 
     expect(r.type).toBe("suspended");
@@ -219,7 +218,7 @@ describe("Coroutine", () => {
     await completePromise(h, "foo.1.0", ok(42));
     r = await exec("foo.1", foo, [], h);
 
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: "99" } } });
+    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 99 } } });
   });
 
   test("Return the detached todo if explicitly awaited", async () => {
@@ -234,7 +233,7 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const h = new Handler(new DummyNetwork());
+    const h = new Handler(new DummyNetwork(), new JsonEncoder());
     let r = await exec("foo.1", foo, [], h);
 
     expect(r.type).toBe("suspended");
@@ -251,7 +250,7 @@ describe("Coroutine", () => {
     await completePromise(h, "foo.1.1", ok(42));
     r = await exec("foo.1", foo, [], h);
 
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: "42" } } });
+    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
   });
 
   test("lfc/rfc", async () => {
@@ -265,7 +264,7 @@ describe("Coroutine", () => {
       return v1 + v2;
     }
 
-    const h = new Handler(new DummyNetwork());
+    const h = new Handler(new DummyNetwork(), new JsonEncoder());
 
     let r = await exec("foo.1", foo, [], h);
     expect(r.type).toBe("suspended");
@@ -275,6 +274,6 @@ describe("Coroutine", () => {
     await completePromise(h, "foo.1.1", ok(42));
 
     r = await exec("foo.1", foo, [], h);
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: "84" } } });
+    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 84 } } });
   });
 });

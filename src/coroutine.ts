@@ -1,8 +1,7 @@
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
-import type { Encoder } from "./encoder";
 import type { Handler } from "./handler";
-import type { CreatePromiseReq, DurablePromiseRecord } from "./network/network";
+import type { DurablePromiseRecord } from "./network/network";
 import { type Callback, type Result, type Yieldable, ko, ok } from "./types";
 import * as util from "./util";
 
@@ -41,15 +40,13 @@ export class Coroutine<T> {
   private ctx: InnerContext;
   private decorator: Decorator<T>;
   private handler: Handler;
-  private encoder: Encoder;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
 
-  constructor(ctx: InnerContext, decorator: Decorator<T>, handler: Handler, encoder: Encoder, depth = 1) {
+  constructor(ctx: InnerContext, decorator: Decorator<T>, handler: Handler, depth = 1) {
     this.ctx = ctx;
     this.decorator = decorator;
     this.handler = handler;
-    this.encoder = encoder;
     this.depth = depth;
 
     if (typeof process !== "undefined" && process.env.QUEUE_MICROTASK_EVERY_N) {
@@ -63,7 +60,6 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     handler: Handler,
-    encoder: Encoder,
     callback: Callback<Suspended | Completed>,
   ): void {
     handler.createPromise(
@@ -84,7 +80,7 @@ export class Coroutine<T> {
           return callback(false, { type: "completed", promise: res });
         }
 
-        const coroutine = new Coroutine(ctx, new Decorator(func(ctx, ...args)), handler, encoder);
+        const coroutine = new Coroutine(ctx, new Decorator(func(ctx, ...args)), handler);
         coroutine.exec((err, status) => {
           if (err) return callback(err);
           util.assertDefined(status);
@@ -93,22 +89,15 @@ export class Coroutine<T> {
               callback(false, { type: "suspended", todo: status.todo });
               break;
 
-            case "done": {
-              let value: { headers?: Record<string, string>; data?: any };
-
-              try {
-                value = encoder.encode(status.result.success ? status.result.value : status.result.error);
-              } catch {
-                // TODO: log something useful
-                return callback(true);
-              }
-
+            case "done":
               handler.completePromise(
                 {
                   kind: "completePromise",
                   id: id,
                   state: status.result.success ? "resolved" : "rejected",
-                  value: value,
+                  value: {
+                    data: status.result.success ? status.result.value : status.result.error,
+                  },
                   iKey: id,
                   strict: false,
                 },
@@ -120,7 +109,6 @@ export class Coroutine<T> {
                 },
               );
               break;
-            }
           }
         });
       },
@@ -142,16 +130,7 @@ export class Coroutine<T> {
 
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
-          let req: CreatePromiseReq;
-
-          try {
-            req = action.createReq(this.encoder);
-          } catch {
-            // TODO: log something useful
-            return callback(true);
-          }
-
-          this.handler.createPromise(req, (err, res) => {
+          this.handler.createPromise(action.createReq, (err, res) => {
             if (err) return callback(err);
             util.assertDefined(res);
 
@@ -179,7 +158,6 @@ export class Coroutine<T> {
                 ctx,
                 new Decorator(action.func(ctx, ...action.args)),
                 this.handler,
-                this.encoder,
                 this.depth + 1,
               );
 
@@ -198,21 +176,14 @@ export class Coroutine<T> {
                   };
                   next();
                 } else {
-                  let value: { headers?: Record<string, string>; data?: any };
-
-                  try {
-                    value = this.encoder.encode(status.result.success ? status.result.value : status.result.error);
-                  } catch {
-                    // TODO: log something useful
-                    return callback(true);
-                  }
-
                   this.handler.completePromise(
                     {
                       kind: "completePromise",
                       id: action.id,
                       state: status.result.success ? "resolved" : "rejected",
-                      value: value,
+                      value: {
+                        data: status.result.success ? status.result.value : status.result.error,
+                      },
                       iKey: action.id,
                       strict: false,
                     },
@@ -221,21 +192,13 @@ export class Coroutine<T> {
                       util.assertDefined(res);
                       util.assert(res.state !== "pending", "promise must be completed");
 
-                      let value: any;
-                      try {
-                        value = this.encoder.decode(res.value);
-                      } catch {
-                        // TODO: log something useful
-                        return callback(true);
-                      }
-
                       input = {
                         type: "internal.promise",
                         state: "completed",
                         id: action.id,
                         value: {
                           type: "internal.literal",
-                          value: res.state === "resolved" ? ok(value) : ko(value),
+                          value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
                         },
                       };
                       next();
@@ -266,22 +229,13 @@ export class Coroutine<T> {
               }
             } else {
               // durable promise is completed
-
-              let value: any;
-              try {
-                value = this.encoder.decode(res.value);
-              } catch {
-                // TODO: log something useful
-                return callback(true);
-              }
-
               input = {
                 type: "internal.promise",
                 state: "completed",
                 id: action.id,
                 value: {
                   type: "internal.literal",
-                  value: res.state === "resolved" ? ok(value) : ko(value),
+                  value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
                 },
               };
               next();
@@ -292,16 +246,7 @@ export class Coroutine<T> {
 
         // Handle internal.async.r
         if (action.type === "internal.async.r") {
-          let req: CreatePromiseReq;
-
-          try {
-            req = action.createReq(this.encoder);
-          } catch {
-            // TODO: log something useful
-            return callback(true);
-          }
-
-          this.handler.createPromise(req, (err, res) => {
+          this.handler.createPromise(action.createReq, (err, res) => {
             if (err) return callback(err);
             util.assertDefined(res);
 
@@ -315,21 +260,13 @@ export class Coroutine<T> {
                 id: action.id,
               };
             } else {
-              let value: any;
-              try {
-                value = this.encoder.decode(res.value);
-              } catch {
-                // TODO: log something useful
-                return callback(true);
-              }
-
               input = {
                 type: "internal.promise",
                 state: "completed",
                 id: action.id,
                 value: {
                   type: "internal.literal",
-                  value: res.state === "resolved" ? ok(value) : ko(value),
+                  value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
                 },
               };
             }

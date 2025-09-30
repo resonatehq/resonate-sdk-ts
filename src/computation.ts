@@ -1,13 +1,12 @@
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
-import type { Encoder } from "./encoder";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { CallbackRecord, DurablePromiseRecord, Network } from "./network/network";
 import { Nursery } from "./nursery";
 import { AsyncProcessor, type Processor } from "./processor/processor";
-import type { Registry } from "./registry";
+import type { Registry, RegistryItem } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
 import type { Callback, Func } from "./types";
@@ -34,7 +33,6 @@ export class Computation {
   private anycast: string;
   private network: Network;
   private handler: Handler;
-  private encoder: Encoder;
   private registry: Registry;
   private dependencies: Map<string, any>;
   private heartbeat: Heartbeat;
@@ -52,7 +50,6 @@ export class Computation {
     clock: Clock,
     network: Network,
     handler: Handler,
-    encoder: Encoder,
     registry: Registry,
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
@@ -66,7 +63,6 @@ export class Computation {
     this.clock = clock;
     this.network = network;
     this.handler = handler;
-    this.encoder = encoder;
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
@@ -124,26 +120,28 @@ export class Computation {
       done(false, res!);
     };
 
-    let param: any;
-
-    try {
-      param = this.encoder.decode(rootPromise.param);
-    } catch {
+    if (
+      rootPromise.param === null ||
+      typeof rootPromise.param !== "object" ||
+      rootPromise.param.data === null ||
+      typeof rootPromise.param.data !== "object" ||
+      !("func" in rootPromise.param.data) ||
+      typeof rootPromise.param.data.func !== "string" ||
+      !("args" in rootPromise.param.data) ||
+      !Array.isArray(rootPromise.param.data.args) ||
+      !("version" in rootPromise.param.data) ||
+      typeof rootPromise.param.data.version !== "number"
+    ) {
       // TODO: log something useful
       return doneAndDropTaskIfErr(true);
     }
 
-    if (param === null || typeof param !== "object" || !("func" in param) || !("args" in param)) {
-      // TODO: log something useful
-      return doneAndDropTaskIfErr(true);
-    }
-
-    let func: Func;
-    const args = param.args;
-
+    let registered: RegistryItem;
+    const args = rootPromise.param.data.args;
     try {
-      func = this.registry.get(param.func, param.version ?? 0).func;
+      registered = this.registry.get(rootPromise.param.data.func, rootPromise.param.data.version);
     } catch {
+      // TODO: log something useful
       return doneAndDropTaskIfErr(true);
     }
 
@@ -164,15 +162,15 @@ export class Computation {
       const ctx = InnerContext.root(
         this.id,
         rootPromise.timeout,
-        util.isGeneratorFunction(func) ? new Never() : new Exponential(),
+        util.isGeneratorFunction(registered.func) ? new Never() : new Exponential(),
         this.clock,
         this.dependencies,
       );
 
-      if (util.isGeneratorFunction(func)) {
-        this.processGenerator(nursery, ctx, func, args, done);
+      if (util.isGeneratorFunction(registered.func)) {
+        this.processGenerator(nursery, ctx, registered.func, args, done);
       } else {
-        this.processFunction(this.id, ctx, func, args, (err, promise) => {
+        this.processFunction(this.id, ctx, registered.func, args, (err, promise) => {
           if (err) return done(true);
           util.assertDefined(promise);
 
@@ -189,7 +187,7 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, ctx, func, args, this.handler, this.encoder, (err, status) => {
+    Coroutine.exec(this.id, ctx, func, args, this.handler, (err, status) => {
       if (err) return done(err);
       util.assertDefined(status);
 
@@ -222,28 +220,20 @@ export class Computation {
       id,
       func.name,
       async () => await func(ctx, ...args),
-      (res) => {
-        let value: { headers?: Record<string, string>; data?: any };
-
-        try {
-          value = this.encoder.encode(res.success ? res.value : res.error);
-        } catch {
-          // TODO: log something useful
-          return done(true);
-        }
-
+      (res) =>
         this.handler.completePromise(
           {
             kind: "completePromise",
             id: id,
             state: res.success ? "resolved" : "rejected",
-            value: value,
+            value: {
+              data: res.success ? res.value : res.error,
+            },
             iKey: id,
             strict: false,
           },
           done,
-        );
-      },
+        ),
       ctx.retryPolicy,
     );
   }

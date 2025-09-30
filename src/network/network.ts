@@ -2,12 +2,12 @@
 
 import type { Callback } from "../types";
 
-export interface DurablePromiseRecord {
+export interface DurablePromiseRecord<T = string> {
   id: string;
   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
   timeout: number;
-  param?: { headers?: Record<string, string>; data?: string };
-  value?: { headers?: Record<string, string>; data?: string };
+  param?: { headers?: Record<string, string>; data?: T };
+  value?: { headers?: Record<string, string>; data?: T };
   tags: Record<string, string>;
   iKeyForCreate?: string;
   iKeyForComplete?: string;
@@ -64,22 +64,22 @@ export type Request =
   | DropTaskReq
   | HeartbeatTasksReq;
 
-export type CreatePromiseReq = {
+export type CreatePromiseReq<T = string> = {
   kind: "createPromise";
   id: string;
   timeout: number;
-  param?: { headers?: Record<string, string>; data?: string };
+  param?: { headers?: Record<string, string>; data?: T };
   tags?: Record<string, string>;
   iKey?: string;
   strict?: boolean;
 };
 
-export type CreatePromiseAndTaskReq = {
+export type CreatePromiseAndTaskReq<T = string> = {
   kind: "createPromiseAndTask";
   promise: {
     id: string;
     timeout: number;
-    param?: { headers?: Record<string, string>; data?: string };
+    param?: { headers?: Record<string, string>; data?: T };
     tags?: Record<string, string>;
   };
   task: {
@@ -95,11 +95,11 @@ export type ReadPromiseReq = {
   id: string;
 };
 
-export type CompletePromiseReq = {
+export type CompletePromiseReq<T = string> = {
   kind: "completePromise";
   id: string;
   state: "resolved" | "rejected" | "rejected_canceled";
-  value?: { headers?: Record<string, string>; data?: string };
+  value?: { headers?: Record<string, string>; data?: T };
   iKey?: string;
   strict?: boolean;
 };
