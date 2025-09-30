@@ -1,4 +1,5 @@
 import { LocalNetwork } from "../dev/network";
+import { Server } from "../dev/server";
 import { Handler } from "../src/handler";
 import { Registry } from "../src/registry";
 import { WallClock } from "./clock";
@@ -10,11 +11,12 @@ import type {
   CreateSubscriptionReq,
   DurablePromiseRecord,
   Message,
+  MessageSource,
   Network,
   ReadPromiseReq,
   TaskRecord,
 } from "./network/network";
-import { HttpNetwork } from "./network/remote";
+import { HttpMessageSource, HttpNetwork } from "./network/remote";
 import { Options } from "./options";
 import { Promises } from "./promises";
 import { ResonateInner } from "./resonate-inner";
@@ -49,6 +51,7 @@ export class Resonate {
   private inner: ResonateInner;
   private network: Network;
   private encoder: Encoder;
+  private messageSource: MessageSource;
   private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
@@ -58,7 +61,11 @@ export class Resonate {
   public readonly promises: Promises;
   public readonly schedules: Schedules;
 
-  constructor({ group, pid, ttl }: { group: string; pid: string; ttl: number }, network: Network) {
+  constructor(
+    { group, pid, ttl }: { group: string; pid: string; ttl: number },
+    network: Network,
+    messageSource: MessageSource,
+  ) {
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycast = `poll://any@${group}/${pid}`;
     this.pid = pid;
@@ -67,6 +74,7 @@ export class Resonate {
     this.network = network;
     this.encoder = new JsonEncoder();
     this.handler = new Handler(this.network, this.encoder);
+    this.messageSource = messageSource;
     this.registry = new Registry();
     this.heartbeat = network instanceof LocalNetwork ? new NoopHeartbeat() : new AsyncHeartbeat(pid, ttl / 2, network);
     this.dependencies = new Map();
@@ -78,6 +86,7 @@ export class Resonate {
       ttl: this.ttl,
       clock: new WallClock(),
       network: this.network,
+      messageSource: this.messageSource,
       handler: this.handler,
       registry: this.registry,
       heartbeat: this.heartbeat,
@@ -88,20 +97,25 @@ export class Resonate {
     this.schedules = new Schedules(network);
 
     // subscribe to notify
-    this.network.subscribe("notify", this.onMessage.bind(this));
+    this.messageSource.subscribe("notify", this.onMessage.bind(this));
   }
 
   /**
    * Create a local Resonate instance
    */
   static local(): Resonate {
+    const server = new Server();
+    const network = new LocalNetwork(server);
+    const messageSource = network.getMessageSource();
+
     return new Resonate(
       {
         group: "default",
         pid: "default",
         ttl: Number.MAX_SAFE_INTEGER,
       },
-      new LocalNetwork(),
+      network,
+      messageSource,
     );
   }
 
@@ -125,14 +139,19 @@ export class Resonate {
   } = {}): Resonate {
     const network = new HttpNetwork({
       url,
-      pid,
-      group,
       auth,
-      messageSourceAuth,
       timeout: 1 * util.MIN,
       headers: {},
     });
-    return new Resonate({ pid, group, ttl }, network);
+
+    const messageSource = new HttpMessageSource({
+      url,
+      pid,
+      group,
+      auth: messageSourceAuth,
+    });
+
+    return new Resonate({ pid, group, ttl }, network, messageSource);
   }
 
   /**
@@ -352,6 +371,7 @@ export class Resonate {
 
   public stop() {
     this.network.stop();
+    this.messageSource.stop();
     this.heartbeat.stop();
   }
 

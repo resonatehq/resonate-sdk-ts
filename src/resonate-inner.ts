@@ -2,7 +2,7 @@ import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
-import type { DurablePromiseRecord, Message, Network, TaskRecord } from "./network/network";
+import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
 import type { Registry } from "./registry";
 import type { Callback } from "./types";
 import * as util from "./util";
@@ -32,6 +32,7 @@ export class ResonateInner {
   private ttl: number;
   private clock: Clock;
   private network: Network;
+  private messageSource: MessageSource;
   private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
@@ -45,6 +46,7 @@ export class ResonateInner {
     ttl,
     clock,
     network,
+    messageSource,
     handler,
     registry,
     heartbeat,
@@ -56,6 +58,7 @@ export class ResonateInner {
     ttl: number;
     clock: Clock;
     network: Network;
+    messageSource: MessageSource;
     handler: Handler;
     registry: Registry;
     heartbeat: Heartbeat;
@@ -67,14 +70,15 @@ export class ResonateInner {
     this.ttl = ttl;
     this.clock = clock;
     this.network = network;
+    this.messageSource = messageSource;
     this.handler = handler;
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
 
     // subscribe to invoke and resume
-    this.network.subscribe("invoke", this.onMessage.bind(this));
-    this.network.subscribe("resume", this.onMessage.bind(this));
+    this.messageSource.subscribe("invoke", this.onMessage.bind(this));
+    this.messageSource.subscribe("resume", this.onMessage.bind(this));
   }
 
   public process(task: Task, done: Callback<Status>) {
