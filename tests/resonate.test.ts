@@ -1,9 +1,6 @@
 import { setTimeout } from "node:timers/promises";
-import { LocalNetwork } from "../dev/network";
-import { Server } from "../dev/server";
 import type { Context } from "../src/context";
 import { JsonEncoder } from "../src/encoder";
-import { HttpMessageSource, HttpNetwork } from "../src/network/remote";
 import { Resonate } from "../src/resonate";
 import { Constant, Never } from "../src/retries";
 import * as util from "../src/util";
@@ -206,10 +203,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Correctly sets options on inner functions", async () => {
-    const server = new Server();
-    const network = new LocalNetwork(server);
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
       return { msg };
@@ -230,10 +224,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Correctly matches target", async () => {
-    const server = new Server();
-    const network = new LocalNetwork(server);
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     resonate.register("foo", function* (ctx: Context, target: string) {
       yield* ctx.rfi("bar", ctx.options({ target }));
@@ -271,10 +262,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Correctly sets options on inner functions without defined opts", async () => {
-    const server = new Server();
-    const network = new LocalNetwork(server);
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
       return { msg };
@@ -296,9 +284,7 @@ describe("Resonate usage tests", () => {
 
   test("Basic human in the loop", async () => {
     const encoder = new JsonEncoder();
-    const network = new LocalNetwork();
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const f = resonate.register("f", function* foo(ctx: Context) {
       const fu = yield* ctx.promise({ id: "myId" });
@@ -317,9 +303,7 @@ describe("Resonate usage tests", () => {
 
   test("Correctly sets timeout", async () => {
     const encoder = new JsonEncoder();
-    const network = new LocalNetwork();
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const time = Date.now();
 
@@ -343,10 +327,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Basic Durable sleep", async () => {
-    const server = new Server();
-    const network = new LocalNetwork(server);
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const time = Date.now();
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -367,10 +348,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Basic Detached", async () => {
-    const server = new Server();
-    const network = new LocalNetwork(server);
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     resonate.register("d", async (_ctx: Context): Promise<void> => {
       await setTimeout(1000);
@@ -391,10 +369,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Basic use of dependencies", async () => {
-    const server = new Server();
-    const network = new LocalNetwork(server);
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     const g = (ctx: Context, name: string): string => {
       const greeting = ctx.getDependency("greeting") as string;
@@ -415,9 +390,7 @@ describe("Resonate usage tests", () => {
 
   test("Basic get", async () => {
     const encoder = new JsonEncoder();
-    const network = new LocalNetwork();
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     // get throws when promise does not exist
     expect(resonate.get("foo")).rejects.toThrow();
@@ -431,10 +404,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Date", async () => {
-    const server = new Server();
-    const network = new LocalNetwork(server);
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     // with default date
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -458,10 +428,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Math", async () => {
-    const server = new Server();
-    const network = new LocalNetwork(server);
-    const messageSource = network.getMessageSource();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network, messageSource);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     // with default math
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -497,7 +464,7 @@ describe("Resonate usage tests", () => {
       }
 
       if (url instanceof URL && url.href === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic YmF6OnF1eA==");
+        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic Zm9vOmJhcg==");
         p2.resolve(null);
       }
 
@@ -505,17 +472,14 @@ describe("Resonate usage tests", () => {
       return new Promise(() => {});
     });
 
-    const network = new HttpNetwork({
+    const resonate = new Resonate({
       url: "http://localhost:9999",
+      group: "default",
+      pid: "0",
+      ttl: 60_000,
       auth: { username: "foo", password: "bar" },
     });
-    const messageSource = new HttpMessageSource({
-      url: "http://localhost:9999",
-      pid: "0",
-      group: "default",
-      auth: { username: "baz", password: "qux" },
-    });
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network, messageSource);
+
     resonate.promises.create("foo", 0);
 
     await p1.promise;

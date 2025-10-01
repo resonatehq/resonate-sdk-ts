@@ -1,5 +1,4 @@
 import { LocalNetwork } from "../dev/network";
-import { Server } from "../dev/server";
 import { Handler } from "../src/handler";
 import { Registry } from "../src/registry";
 import { WallClock } from "./clock";
@@ -61,22 +60,38 @@ export class Resonate {
   public readonly promises: Promises;
   public readonly schedules: Schedules;
 
-  constructor(
-    { group, pid, ttl }: { group: string; pid: string; ttl: number },
-    network: Network,
-    messageSource: MessageSource,
-  ) {
+  constructor({
+    url = undefined,
+    group = "default",
+    pid = crypto.randomUUID().replace(/-/g, ""),
+    ttl = 1 * util.MIN,
+    auth = undefined,
+  }: {
+    url?: string;
+    group?: string;
+    pid?: string;
+    ttl?: number;
+    auth?: { username: string; password: string };
+  } = {}) {
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycast = `poll://any@${group}/${pid}`;
     this.pid = pid;
     this.ttl = ttl;
-
-    this.network = network;
     this.encoder = new JsonEncoder();
+
+    if (!url) {
+      const localNetwork = new LocalNetwork();
+      this.network = localNetwork;
+      this.messageSource = localNetwork.getMessageSource();
+      this.heartbeat = new NoopHeartbeat();
+    } else {
+      this.network = new HttpNetwork({ url, auth, timeout: 1 * util.MIN, headers: {} });
+      this.messageSource = new HttpMessageSource({ url, pid, group, auth });
+      this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
+    }
+
     this.handler = new Handler(this.network, this.encoder);
-    this.messageSource = messageSource;
     this.registry = new Registry();
-    this.heartbeat = network instanceof LocalNetwork ? new NoopHeartbeat() : new AsyncHeartbeat(pid, ttl / 2, network);
     this.dependencies = new Map();
 
     this.inner = new ResonateInner({
@@ -93,8 +108,8 @@ export class Resonate {
       dependencies: this.dependencies,
     });
 
-    this.promises = new Promises(network);
-    this.schedules = new Schedules(network);
+    this.promises = new Promises(this.network);
+    this.schedules = new Schedules(this.network);
 
     // subscribe to notify
     this.messageSource.subscribe("notify", this.onMessage.bind(this));
@@ -104,19 +119,11 @@ export class Resonate {
    * Create a local Resonate instance
    */
   static local(): Resonate {
-    const server = new Server();
-    const network = new LocalNetwork(server);
-    const messageSource = network.getMessageSource();
-
-    return new Resonate(
-      {
-        group: "default",
-        pid: "default",
-        ttl: Number.MAX_SAFE_INTEGER,
-      },
-      network,
-      messageSource,
-    );
+    return new Resonate({
+      group: "default",
+      pid: "default",
+      ttl: Number.MAX_SAFE_INTEGER,
+    });
   }
 
   /**
@@ -128,7 +135,6 @@ export class Resonate {
     pid = crypto.randomUUID().replace(/-/g, ""),
     ttl = 1 * util.MIN,
     auth = undefined,
-    messageSourceAuth = undefined,
   }: {
     url?: string;
     group?: string;
@@ -137,21 +143,7 @@ export class Resonate {
     auth?: { username: string; password: string };
     messageSourceAuth?: { username: string; password: string };
   } = {}): Resonate {
-    const network = new HttpNetwork({
-      url,
-      auth,
-      timeout: 1 * util.MIN,
-      headers: {},
-    });
-
-    const messageSource = new HttpMessageSource({
-      url,
-      pid,
-      group,
-      auth: messageSourceAuth,
-    });
-
-    return new Resonate({ pid, group, ttl }, network, messageSource);
+    return new Resonate({ url, group, pid, ttl, auth });
   }
 
   /**
