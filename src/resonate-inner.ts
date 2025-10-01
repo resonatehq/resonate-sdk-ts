@@ -32,7 +32,6 @@ export class ResonateInner {
   private ttl: number;
   private clock: Clock;
   private network: Network;
-  private messageSource: MessageSource;
   private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
@@ -46,11 +45,11 @@ export class ResonateInner {
     ttl,
     clock,
     network,
-    messageSource,
     handler,
     registry,
     heartbeat,
     dependencies,
+    messageSource = undefined,
   }: {
     unicast: string;
     anycast: string;
@@ -58,11 +57,11 @@ export class ResonateInner {
     ttl: number;
     clock: Clock;
     network: Network;
-    messageSource: MessageSource;
     handler: Handler;
     registry: Registry;
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
+    messageSource?: MessageSource;
   }) {
     this.unicast = unicast;
     this.anycast = anycast;
@@ -70,15 +69,14 @@ export class ResonateInner {
     this.ttl = ttl;
     this.clock = clock;
     this.network = network;
-    this.messageSource = messageSource;
     this.handler = handler;
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
 
     // subscribe to invoke and resume
-    this.messageSource.subscribe("invoke", this.onMessage.bind(this));
-    this.messageSource.subscribe("resume", this.onMessage.bind(this));
+    messageSource?.subscribe("invoke", this.onMessage.bind(this));
+    messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
   public process(task: Task, done: Callback<Status>) {
