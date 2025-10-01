@@ -138,7 +138,7 @@ export class Computation {
     let registered: RegistryItem;
     const args = rootPromise.param.data.args;
     try {
-      registered = this.registry.get(rootPromise.param.data.func, rootPromise.param.data.version ?? 0);
+      registered = this.registry.get(rootPromise.param.data.func, rootPromise.param.data.version ?? 1);
     } catch {
       // TODO: log something useful
       return doneAndDropTaskIfErr(true);
