@@ -14,7 +14,7 @@ import type {
 import * as util from "./util";
 
 import type { Encoder } from "./encoder";
-import type { Callback } from "./types";
+import type { Callback, Value } from "./types";
 
 export class Cache {
   private promises: Map<string, DurablePromiseRecord<any>> = new Map();
@@ -98,7 +98,7 @@ export class Handler {
       return;
     }
 
-    let param: { headers?: Record<string, string>; data?: string };
+    let param: Value<string>;
     try {
       param = this.encoder.encode(req.param?.data);
     } catch (e) {
@@ -138,7 +138,7 @@ export class Handler {
       return;
     }
 
-    let param: { headers?: Record<string, string>; data?: string };
+    let param: Value<string>;
     try {
       param = this.encoder.encode(req.promise.param?.data);
     } catch (e) {
@@ -181,7 +181,7 @@ export class Handler {
       return;
     }
 
-    let value: { headers?: Record<string, string>; data?: string };
+    let value: Value<string>;
     try {
       value = this.encoder.encode(req.value?.data);
     } catch (e) {
@@ -223,20 +223,14 @@ export class Handler {
 
       try {
         rootPromise = this.decode(res.message.promises.root.data);
+        if (res.message.promises.leaf) {
+          leafPromise = this.decode(res.message.promises.leaf.data);
+        }
       } catch {
         return done(true);
       }
 
-      if (res.message.promises.leaf) {
-        try {
-          leafPromise = this.decode(res.message.promises.leaf.data);
-        } catch {
-          return done(true);
-        }
-      }
-
       this.cache.setPromise(rootPromise);
-
       if (leafPromise) {
         this.cache.setPromise(leafPromise);
       }

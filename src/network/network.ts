@@ -1,13 +1,13 @@
 // Records
 
-import type { Callback } from "../types";
+import type { Callback, Value } from "../types";
 
 export interface DurablePromiseRecord<T = string> {
   id: string;
   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
   timeout: number;
-  param?: { headers?: Record<string, string>; data?: T };
-  value?: { headers?: Record<string, string>; data?: T };
+  param?: Value<T>;
+  value?: Value<T>;
   tags: Record<string, string>;
   iKeyForCreate?: string;
   iKeyForComplete?: string;
@@ -22,7 +22,7 @@ export interface ScheduleRecord {
   tags: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam?: { headers?: Record<string, string>; data?: string };
+  promiseParam?: Value<string>;
   promiseTags: Record<string, string>;
   iKey?: string;
   lastRunTime?: number;
@@ -68,7 +68,7 @@ export type CreatePromiseReq<T = string> = {
   kind: "createPromise";
   id: string;
   timeout: number;
-  param?: { headers?: Record<string, string>; data?: T };
+  param?: Value<T>;
   tags?: Record<string, string>;
   iKey?: string;
   strict?: boolean;
@@ -79,7 +79,7 @@ export type CreatePromiseAndTaskReq<T = string> = {
   promise: {
     id: string;
     timeout: number;
-    param?: { headers?: Record<string, string>; data?: T };
+    param?: Value<T>;
     tags?: Record<string, string>;
   };
   task: {
@@ -99,7 +99,7 @@ export type CompletePromiseReq<T = string> = {
   kind: "completePromise";
   id: string;
   state: "resolved" | "rejected" | "rejected_canceled";
-  value?: { headers?: Record<string, string>; data?: T };
+  value?: Value<T>;
   iKey?: string;
   strict?: boolean;
 };
@@ -128,7 +128,7 @@ export type CreateScheduleReq = {
   tags?: Record<string, string>;
   promiseId?: string;
   promiseTimeout?: number;
-  promiseParam?: { headers?: Record<string, string>; data?: string };
+  promiseParam?: Value<string>;
   promiseTags?: Record<string, string>;
   iKey?: string;
 };

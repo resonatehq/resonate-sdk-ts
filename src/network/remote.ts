@@ -38,7 +38,7 @@ import type {
 
 import { EventSource } from "eventsource";
 
-import type { Callback } from "../types";
+import type { Callback, Value } from "../types";
 import * as util from "../util";
 
 // API Response Types
@@ -46,8 +46,8 @@ interface PromiseDto {
   id: string;
   state: string;
   timeout: number;
-  param?: { headers?: Record<string, string>; data?: string };
-  value?: { headers?: Record<string, string>; data?: string };
+  param?: Value<string>;
+  value?: Value<string>;
   tags?: Record<string, string>;
   idempotencyKeyForCreate?: string;
   idempotencyKeyForComplete?: string;
@@ -79,7 +79,7 @@ interface ScheduleDto {
   tags?: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam?: { headers?: Record<string, string>; data?: string };
+  promiseParam?: Value<string>;
   promiseTags?: Record<string, string>;
   idempotencyKey?: string;
   lastRunTime?: number;

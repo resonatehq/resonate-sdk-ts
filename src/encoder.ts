@@ -1,15 +1,16 @@
+import type { Value } from "./types";
 import * as util from "./util";
 
 export interface Encoder {
-  encode(value: any): { headers?: Record<string, string>; data?: string };
-  decode(value: { headers?: Record<string, string>; data?: string } | undefined): any;
+  encode(value: any): Value<string>;
+  decode(value: Value<string> | undefined): any;
 }
 
 export class JsonEncoder implements Encoder {
   inf = "__INF__";
   negInf = "__NEG_INF__";
 
-  encode(value: any): { headers?: Record<string, string>; data?: string } {
+  encode(value: any): Value<string> {
     // note about undefined:
     // undefined is not json serializable, so immediately return undefined
     if (value === undefined) {
@@ -55,7 +56,7 @@ export class JsonEncoder implements Encoder {
     };
   }
 
-  decode(value: { headers?: Record<string, string>; data?: string } | undefined): any {
+  decode(value: Value<string> | undefined): any {
     if (!value?.data) {
       return undefined;
     }
