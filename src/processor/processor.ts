@@ -50,7 +50,7 @@ export class AsyncProcessor implements Processor {
 
         const now = Date.now();
 
-        if (now + retryIn > timeout) {
+        if (now + retryIn >= timeout) {
           cb({ success: false, error });
           return;
         }
