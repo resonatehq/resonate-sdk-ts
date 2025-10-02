@@ -152,6 +152,9 @@ export interface Context {
   // sleep
   sleep(ms: number): RFC<void>;
 
+  // sleepUntil
+  sleepUntil(until: number): RFC<void>;
+
   // promise
   promise<T>({
     id,
@@ -298,6 +301,19 @@ export class InnerContext implements Context {
 
   sleep(ms: number): RFC<void> {
     const opts = this.options({ timeout: ms });
+    return new RFC(opts.id, this.sleepCreateOpts(opts));
+  }
+
+  sleepUntil(until: number): RFC<void> {
+    const now = (this.getDependency<DateConstructor>("resonate:date") ?? Date).now();
+
+    // Compute ms difference (ensure non-negative)
+    const ms = Math.max(0, until - now);
+
+    // Build options with the proper timeout
+    const opts = this.options({ timeout: ms });
+
+    // Return RFC using the same mechanism as sleep()
     return new RFC(opts.id, this.sleepCreateOpts(opts));
   }
 
