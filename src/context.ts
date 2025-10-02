@@ -299,17 +299,17 @@ export class InnerContext implements Context {
   }
 
   sleep(msOrOpts: number | { for?: number; until?: Date }): RFC<void> {
-    if (typeof msOrOpts === "number") {
-      const opts = this.options({ timeout: msOrOpts });
-      return new RFC(opts.id, this.sleepCreateOpts(opts));
-    }
+    let ms: number;
 
-    let ms = 0;
-    if (msOrOpts.for != null) {
+    if (typeof msOrOpts === "number") {
+      ms = msOrOpts;
+    } else if (msOrOpts.for != null) {
       ms = msOrOpts.for;
     } else if (msOrOpts.until != null) {
       const now = (this.getDependency<DateConstructor>("resonate:date") ?? Date).now();
       ms = Math.max(0, msOrOpts.until.getTime() - now);
+    } else {
+      ms = 0;
     }
 
     const opts = this.options({ timeout: ms });
