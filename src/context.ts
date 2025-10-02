@@ -151,9 +151,8 @@ export interface Context {
 
   // sleep
   sleep(ms: number): RFC<void>;
-
-  // sleepUntil
-  sleepUntil(until: number): RFC<void>;
+  sleep(opts: { until: number }): RFC<void>;
+  sleep(msOrOpts: number | { until: number }): RFC<void>;
 
   // promise
   promise<T>({
@@ -299,21 +298,15 @@ export class InnerContext implements Context {
     return new RFI(id, this.latentCreateOpts(id, timeout, data, tags));
   }
 
-  sleep(ms: number): RFC<void> {
-    const opts = this.options({ timeout: ms });
-    return new RFC(opts.id, this.sleepCreateOpts(opts));
-  }
+  sleep(msOrOpts: number | { until: number }): RFC<void> {
+    if (typeof msOrOpts === "number") {
+      const opts = this.options({ timeout: msOrOpts });
+      return new RFC(opts.id, this.sleepCreateOpts(opts));
+    }
 
-  sleepUntil(until: number): RFC<void> {
     const now = (this.getDependency<DateConstructor>("resonate:date") ?? Date).now();
-
-    // Compute ms difference (ensure non-negative)
-    const ms = Math.max(0, until - now);
-
-    // Build options with the proper timeout
+    const ms = Math.max(0, msOrOpts.until - now);
     const opts = this.options({ timeout: ms });
-
-    // Return RFC using the same mechanism as sleep()
     return new RFC(opts.id, this.sleepCreateOpts(opts));
   }
 
