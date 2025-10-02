@@ -299,7 +299,6 @@ export class InnerContext implements Context {
   }
 
   sleep(msOrOpts: number | { for?: number; until?: Date }): RFC<void> {
-
     let until: number;
 
     if (typeof msOrOpts === "number") {
