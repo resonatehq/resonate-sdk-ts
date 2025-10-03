@@ -485,4 +485,76 @@ describe("Resonate usage tests", () => {
     await p1.promise;
     await p2.promise;
   });
+
+  test("Target is set to anycast without preference by default", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function");
+    });
+
+    await f.run("f");
+    const durable = await resonate.promises.get("f.0");
+    expect(durable.id).toBe("f.0");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:root": "f",
+      "resonate:parent": "f",
+      "resonate:invoke": "poll://any@test",
+    });
+    resonate.stop();
+  });
+
+  test("Target is set to the target option", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function", ctx.options({ target: "remoteTarget" }));
+    });
+
+    await f.run("f");
+    const durable = await resonate.promises.get("f.0");
+    expect(durable.id).toBe("f.0");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:root": "f",
+      "resonate:parent": "f",
+      "resonate:invoke": "poll://any@remoteTarget",
+    });
+    resonate.stop();
+  });
+
+  test("Target is set to the target option when it is a url", async () => {
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function", ctx.options({ target: "http://faasurl.com" }));
+    });
+
+    await f.run("f");
+    const durable = await resonate.promises.get("f.0");
+    expect(durable.id).toBe("f.0");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:root": "f",
+      "resonate:parent": "f",
+      "resonate:invoke": "http://faasurl.com",
+    });
+    resonate.stop();
+  });
 });
