@@ -169,7 +169,7 @@ export class WorkerProcess extends Process {
     this.resonate = new ResonateInner({
       unicast: `sim://uni@${gaddr}/${iaddr}`,
       anycastPreference: `sim://any@${gaddr}/${iaddr}`,
-      anycastNoPreference: `sim://any@${gaddr}/${iaddr}`,
+      anycastNoPreference: `sim://any@${gaddr}`,
       pid: iaddr,
       ttl: 5000,
       clock: this.clock,
