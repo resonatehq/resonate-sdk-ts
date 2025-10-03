@@ -351,7 +351,8 @@ export class Resonate {
   }
 
   public options(opts: Partial<Options> = {}): Options {
-    return new Options(opts);
+    const target = opts.target ?? this.anycastNoPreference;
+    return new Options({ target, ...opts });
   }
 
   /** Store a named dependency for use with `Context`.

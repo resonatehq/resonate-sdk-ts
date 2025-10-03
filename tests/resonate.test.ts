@@ -557,4 +557,70 @@ describe("Resonate usage tests", () => {
     });
     resonate.stop();
   });
+
+  test("Target is set when using options in resonate class", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function");
+    });
+
+    await f.rpc("fid", resonate.options({ target: "http://faasurl.com" }));
+    const durable = await resonate.promises.get("fid");
+    expect(durable.id).toBe("fid");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:invoke": "http://faasurl.com",
+    });
+    resonate.stop();
+  });
+
+  test("Target is set in root promise to the unicast without preference address by default", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function");
+    });
+
+    await f.rpc("fid");
+    const durable = await resonate.promises.get("fid");
+    expect(durable.id).toBe("fid");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:invoke": "poll://any@test",
+    });
+    resonate.stop();
+  });
+
+  test("Target is set in root promise to the the poller and group when only group defined in opts", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function");
+    });
+
+    await f.rpc("fid", resonate.options({ target: "anotherNode" }));
+    const durable = await resonate.promises.get("fid");
+    expect(durable.id).toBe("fid");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:invoke": "poll://any@anotherNode",
+    });
+    resonate.stop();
+  });
 });
