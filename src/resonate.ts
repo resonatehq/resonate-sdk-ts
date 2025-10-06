@@ -81,14 +81,40 @@ export class Resonate {
     this.ttl = ttl;
     this.encoder = new JsonEncoder();
 
-    if (!url) {
+    // Determine the URL based on priority: url arg > RESONATE_URL > RESONATE_HOST+PORT
+    let resolvedUrl = url;
+    if (!resolvedUrl) {
+      if (process.env.RESONATE_URL) {
+        resolvedUrl = process.env.RESONATE_URL;
+      } else {
+        const resonateHost = process.env.RESONATE_HOST;
+        const resonatePort = process.env.RESONATE_PORT;
+
+        if (resonateHost && resonatePort) {
+          resolvedUrl = `${resonateHost}:${resonatePort}`;
+        }
+      }
+    }
+
+    // Determine the auth based on priority: auth arg > RESONATE_USERNAME+RESONATE_PASSWORD
+    let resolvedAuth = auth;
+    if (!resolvedAuth) {
+      const resonateUsername = process.env.RESONATE_USERNAME;
+      const resonatePassword = process.env.RESONATE_PASSWORD ?? "";
+
+      if (resonateUsername) {
+        resolvedAuth = { username: resonateUsername, password: resonatePassword };
+      }
+    }
+
+    if (!resolvedUrl) {
       const localNetwork = new LocalNetwork();
       this.network = localNetwork;
       this.messageSource = localNetwork.getMessageSource();
       this.heartbeat = new NoopHeartbeat();
     } else {
-      this.network = new HttpNetwork({ url, auth, timeout: 1 * util.MIN, headers: {} });
-      this.messageSource = new HttpMessageSource({ url, pid, group, auth });
+      this.network = new HttpNetwork({ url: resolvedUrl, auth: resolvedAuth, timeout: 1 * util.MIN, headers: {} });
+      this.messageSource = new HttpMessageSource({ url: resolvedUrl, pid, group, auth: resolvedAuth });
       this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
     }
 
