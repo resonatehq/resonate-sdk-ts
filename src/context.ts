@@ -327,7 +327,7 @@ export class InnerContext implements Context {
     } else if (msOrOpts.until != null) {
       until = msOrOpts.until.getTime();
     } else {
-      until = this.clock.now();
+      until = 0;
     }
 
     const id = this.seqid();
