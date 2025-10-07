@@ -458,14 +458,15 @@ describe("Resonate usage tests", () => {
 
     // mock fetch
     global.fetch = jest.fn((url, options) => {
-      if (url === "http://localhost:9999/promises") {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
         expect((options?.headers as Record<string, string>).Authorization).toBe("Basic Zm9vOmJhcg==");
         p1.resolve(null);
-      }
-
-      if (url instanceof URL && url.href === "http://localhost:9999/poll/default/0") {
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
         expect((options?.headers as Record<string, string>).Authorization).toBe("Basic Zm9vOmJhcg==");
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
 
       // leave on read
@@ -659,12 +660,11 @@ describe("Resonate environment variable initialization", () => {
     global.fetch = jest.fn((url) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://arg-url:3000/promises") {
-        expect(urlStr).toBe("http://arg-url:3000/promises");
         p1.resolve(null);
-      }
-      if (urlStr === "http://arg-url:3000/poll/default/0") {
-        expect(urlStr).toBe("http://arg-url:3000/poll/default/0");
+      } else if (urlStr === "http://arg-url:3000/poll/default/0") {
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
       return new Promise(() => {});
     });
@@ -687,12 +687,11 @@ describe("Resonate environment variable initialization", () => {
     global.fetch = jest.fn((url) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:8001/promises") {
-        expect(urlStr).toBe("http://localhost:8001/promises");
         p1.resolve(null);
-      }
-      if (urlStr === "http://localhost:8001/poll/default/0") {
-        expect(urlStr).toBe("http://localhost:8001/poll/default/0");
+      } else if (urlStr === "http://localhost:8001/poll/default/0") {
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
       return new Promise(() => {});
     });
@@ -714,12 +713,11 @@ describe("Resonate environment variable initialization", () => {
     global.fetch = jest.fn((url) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://resonate-server:9000/promises") {
-        expect(urlStr).toBe("http://resonate-server:9000/promises");
         p1.resolve(null);
-      }
-      if (urlStr === "http://resonate-server:9000/poll/default/0") {
-        expect(urlStr).toBe("http://resonate-server:9000/poll/default/0");
+      } else if (urlStr === "http://resonate-server:9000/poll/default/0") {
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
       return new Promise(() => {});
     });
@@ -760,12 +758,11 @@ describe("Resonate environment variable initialization", () => {
     global.fetch = jest.fn((url) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://priority-url:9000/promises") {
-        expect(urlStr).toBe("http://priority-url:9000/promises");
         p1.resolve(null);
-      }
-      if (urlStr === "http://priority-url:9000/poll/default/0") {
-        expect(urlStr).toBe("http://priority-url:9000/poll/default/0");
+      } else if (urlStr === "http://priority-url:9000/poll/default/0") {
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
       return new Promise(() => {});
     });
@@ -789,12 +786,11 @@ describe("Resonate environment variable initialization", () => {
     global.fetch = jest.fn((url) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://fallback:8080/promises") {
-        expect(urlStr).toBe("http://fallback:8080/promises");
         p1.resolve(null);
-      }
-      if (urlStr === "http://fallback:8080/poll/default/0") {
-        expect(urlStr).toBe("http://fallback:8080/poll/default/0");
+      } else if (urlStr === "http://fallback:8080/poll/default/0") {
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
       return new Promise(() => {});
     });
@@ -832,16 +828,16 @@ describe("Resonate environment variable initialization", () => {
     process.env.RESONATE_PASSWORD = "envpass";
 
     global.fetch = jest.fn((url, options) => {
-      if (url === "http://localhost:9999/promises") {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
         expect((options?.headers as Record<string, string>).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
         p1.resolve(null);
-      }
-
-      if (url instanceof URL && url.href === "http://localhost:9999/poll/default/0") {
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
         expect((options?.headers as Record<string, string>).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
-
       return new Promise(() => {});
     });
 
@@ -868,16 +864,16 @@ describe("Resonate environment variable initialization", () => {
     process.env.RESONATE_PASSWORD = "envpass";
 
     global.fetch = jest.fn((url, options) => {
-      if (url === "http://localhost:9999/promises") {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
         expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
         p1.resolve(null);
-      }
-
-      if (url instanceof URL && url.href === "http://localhost:9999/poll/default/0") {
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
         expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
-
       return new Promise(() => {});
     });
 
@@ -902,16 +898,16 @@ describe("Resonate environment variable initialization", () => {
     process.env.RESONATE_USERNAME = "envuser";
 
     global.fetch = jest.fn((url, options) => {
-      if (url === "http://localhost:9999/promises") {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
         expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjo=");
         p1.resolve(null);
-      }
-
-      if (url instanceof URL && url.href === "http://localhost:9999/poll/default/0") {
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
         expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjo=");
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
-
       return new Promise(() => {});
     });
 
@@ -936,16 +932,16 @@ describe("Resonate environment variable initialization", () => {
     process.env.RESONATE_PASSWORD = "envpass";
 
     global.fetch = jest.fn((url, options) => {
-      if (url === "http://localhost:9999/promises") {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
         expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
         p1.resolve(null);
-      }
-
-      if (url instanceof URL && url.href === "http://localhost:9999/poll/default/0") {
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
         expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
-
       return new Promise(() => {});
     });
 
@@ -968,16 +964,16 @@ describe("Resonate environment variable initialization", () => {
     const p2 = Promise.withResolvers();
 
     global.fetch = jest.fn((url, options) => {
-      if (url === "http://localhost:9999/promises") {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
         expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
         p1.resolve(null);
-      }
-
-      if (url instanceof URL && url.href === "http://localhost:9999/poll/default/0") {
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
         expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
-
       return new Promise(() => {});
     });
 
