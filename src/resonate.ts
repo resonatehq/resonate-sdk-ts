@@ -3,6 +3,7 @@ import { Handler } from "../src/handler";
 import { Registry } from "../src/registry";
 import { WallClock } from "./clock";
 import { type Encoder, JsonEncoder } from "./encoder";
+import exceptions from "./exceptions";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";
 import type {
   CreatePromiseAndTaskReq,
@@ -178,19 +179,19 @@ export class Resonate {
   ): ResonateFunc<F> {
     const { version = 1 } = (typeof funcOrOptions === "object" ? funcOrOptions : maybeOptions) ?? {};
     const func = typeof nameOrFunc === "function" ? nameOrFunc : (funcOrOptions as F);
-    const name = typeof nameOrFunc === "string" ? nameOrFunc : (func.name ?? "anonymous");
+    const name = typeof nameOrFunc === "string" ? nameOrFunc : func.name;
 
     this.registry.add(func, name, version);
 
     return {
       run: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> =>
-        this.run(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
+        this.run(id, func, ...this.getArgsAndOpts(args, version)),
       rpc: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> =>
-        this.rpc(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
+        this.rpc(id, func, ...this.getArgsAndOpts(args, version)),
       beginRun: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
-        this.beginRun(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
+        this.beginRun(id, func, ...this.getArgsAndOpts(args, version)),
       beginRpc: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
-        this.beginRpc(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
+        this.beginRpc(id, func, ...this.getArgsAndOpts(args, version)),
       options: this.options,
     };
   }
@@ -216,8 +217,15 @@ export class Resonate {
   public async beginRun<T>(id: string, func: string, ...args: any[]): Promise<ResonateHandle<T>>;
   public async beginRun(id: string, funcOrName: Func | string, ...args: any[]): Promise<ResonateHandle<any>>;
   public async beginRun(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<ResonateHandle<any>> {
-    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
+    const [args, opts] = this.getArgsAndOpts(argsWithOpts);
     const registered = this.registry.get(funcOrName, opts.version);
+
+    // function must be registered
+    if (!registered) {
+      throw exceptions[4](typeof funcOrName === "string" ? funcOrName : funcOrName.name, opts.version);
+    }
+
+    util.assert(registered.version > 0, "function version must be greater than zero");
 
     const { promise, task } = await this.createPromiseAndTask({
       kind: "createPromiseAndTask",
@@ -228,7 +236,7 @@ export class Resonate {
           data: {
             func: registered.name,
             args: args,
-            version: opts.version,
+            version: registered.version,
           },
         },
         tags: {
@@ -273,13 +281,12 @@ export class Resonate {
   public async beginRpc<T>(id: string, func: string, ...args: any[]): Promise<ResonateHandle<T>>;
   public async beginRpc(id: string, funcOrName: Func | string, ...args: any[]): Promise<ResonateHandle<any>>;
   public async beginRpc(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<ResonateHandle<any>> {
-    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
+    const [args, opts] = this.getArgsAndOpts(argsWithOpts);
+    const registered = this.registry.get(funcOrName, opts.version);
 
-    let name: string;
-    if (typeof funcOrName === "string") {
-      name = funcOrName;
-    } else {
-      name = this.registry.get(funcOrName, opts.version).name;
+    // function must be registered if function pointer is provided
+    if (typeof funcOrName === "function" && !registered) {
+      throw exceptions[4](funcOrName.name, opts.version);
     }
 
     const promise = await this.createPromise({
@@ -288,9 +295,9 @@ export class Resonate {
       timeout: Date.now() + opts.timeout,
       param: {
         data: {
-          func: name,
+          func: registered ? registered.name : (funcOrName as string),
           args: args,
-          version: opts.version,
+          version: registered ? registered.version : opts.version || 1,
         },
       },
       tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
@@ -311,20 +318,23 @@ export class Resonate {
   public async schedule(
     name: string,
     cron: string,
-    func: Func | string,
+    funcOrName: Func | string,
     ...argsWithOpts: any[]
   ): Promise<ResonateSchedule> {
-    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
+    const [args, opts] = this.getArgsAndOpts(argsWithOpts);
+    const registered = this.registry.get(funcOrName, opts.version);
 
-    let funcName: string;
-    if (typeof func === "string") {
-      funcName = func;
-    } else {
-      funcName = this.registry.get(func, opts.version).name;
+    // function must be registered if function pointer is provided
+    if (typeof funcOrName === "function" && !registered) {
+      throw exceptions[4](funcOrName.name, opts.version);
     }
 
     // TODO: move this into the handler?
-    const { headers, data } = this.encoder.encode({ func: funcName, args, version: opts.version });
+    const { headers, data } = this.encoder.encode({
+      func: registered ? registered.name : (funcOrName as string),
+      args: args,
+      version: registered ? registered.version : opts.version || 1,
+    });
 
     await this.schedules.create(name, cron, "{{.id}}.{{.timestamp}}", opts.timeout, {
       ikey: name,
@@ -353,6 +363,10 @@ export class Resonate {
   public options(opts: Partial<Options> = {}): Options {
     const target = opts.target ?? this.anycastNoPreference;
     return new Options({ target, ...opts });
+  }
+
+  private getArgsAndOpts(args: any[], version?: number): [any[], Options] {
+    return util.splitArgsAndOpts(args, this.options({ version }));
   }
 
   /** Store a named dependency for use with `Context`.

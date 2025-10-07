@@ -1,12 +1,13 @@
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
+import exceptions from "./exceptions";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { CallbackRecord, DurablePromiseRecord, Network } from "./network/network";
 import { Nursery } from "./nursery";
 import { AsyncProcessor, type Processor } from "./processor/processor";
-import type { Registry, RegistryItem } from "./registry";
+import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
 import type { Callback, Func } from "./types";
@@ -138,12 +139,12 @@ export class Computation {
       return doneAndDropTaskIfErr(true);
     }
 
-    let registered: RegistryItem;
+    const registered = this.registry.get(rootPromise.param.data.func, rootPromise.param.data.version ?? 1);
     const args = rootPromise.param.data.args;
-    try {
-      registered = this.registry.get(rootPromise.param.data.func, rootPromise.param.data.version ?? 1);
-    } catch {
-      // TODO: log something useful
+
+    // function must be registered
+    if (!registered) {
+      exceptions[4](rootPromise.param.data.func, rootPromise.param.data.version ?? 1).log();
       return doneAndDropTaskIfErr(true);
     }
 
