@@ -196,6 +196,7 @@ export class InnerContext implements Context {
   private rId: string;
   private pId: string;
   private clock: Clock;
+  private anycastNoPreference: string;
   private dependencies: Map<string, any>;
   private seq = 0;
 
@@ -208,6 +209,7 @@ export class InnerContext implements Context {
     id: string,
     rId: string,
     pId: string,
+    anycastNoPreference: string,
     timeout: number,
     retryPolicy: RetryPolicy,
     clock: Clock,
@@ -216,18 +218,35 @@ export class InnerContext implements Context {
     this.id = id;
     this.rId = rId;
     this.pId = pId;
+    this.anycastNoPreference = anycastNoPreference;
     this.timeout = timeout;
     this.retryPolicy = retryPolicy;
     this.clock = clock;
     this.dependencies = dependencies;
   }
 
-  static root(id: string, timeout: number, retryPolicy: RetryPolicy, clock: Clock, dependencies: Map<string, any>) {
-    return new InnerContext(id, id, id, timeout, retryPolicy, clock, dependencies);
+  static root(
+    id: string,
+    anycastNoPreference: string,
+    timeout: number,
+    retryPolicy: RetryPolicy,
+    clock: Clock,
+    dependencies: Map<string, any>,
+  ) {
+    return new InnerContext(id, id, id, anycastNoPreference, timeout, retryPolicy, clock, dependencies);
   }
 
   child(id: string, timeout: number, retryPolicy: RetryPolicy) {
-    return new InnerContext(id, this.rId, this.id, timeout, retryPolicy, this.clock, this.dependencies);
+    return new InnerContext(
+      id,
+      this.rId,
+      this.id,
+      this.anycastNoPreference,
+      timeout,
+      retryPolicy,
+      this.clock,
+      this.dependencies,
+    );
   }
 
   lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>> {
@@ -337,7 +356,8 @@ export class InnerContext implements Context {
   }
 
   options(opts: Partial<Options> = {}): Options {
-    return new Options({ id: this.seqid(), ...opts });
+    const target = opts.target ?? this.anycastNoPreference;
+    return new Options({ id: this.seqid(), target, ...opts });
   }
 
   readonly date = {
