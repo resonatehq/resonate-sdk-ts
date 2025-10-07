@@ -639,6 +639,8 @@ describe("Resonate environment variable initialization", () => {
     // biome-ignore lint/performance/noDelete:
     delete process.env.RESONATE_URL;
     // biome-ignore lint/performance/noDelete:
+    delete process.env.RESONATE_SCHEME;
+    // biome-ignore lint/performance/noDelete:
     delete process.env.RESONATE_USERNAME;
     // biome-ignore lint/performance/noDelete:
     delete process.env.RESONATE_PASSWORD;
@@ -653,7 +655,7 @@ describe("Resonate environment variable initialization", () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
-    process.env.RESONATE_HOST = "http://envhost";
+    process.env.RESONATE_HOST = "envhost";
     process.env.RESONATE_PORT = "8080";
     process.env.RESONATE_URL = "http://url-from-env:9000";
 
@@ -681,7 +683,7 @@ describe("Resonate environment variable initialization", () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
-    process.env.RESONATE_HOST = "http://localhost";
+    process.env.RESONATE_HOST = "localhost";
     process.env.RESONATE_PORT = "8001";
 
     global.fetch = jest.fn((url) => {
@@ -751,7 +753,7 @@ describe("Resonate environment variable initialization", () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
-    process.env.RESONATE_HOST = "http://should-not-use";
+    process.env.RESONATE_HOST = "should-not-use";
     process.env.RESONATE_PORT = "7000";
     process.env.RESONATE_URL = "http://priority-url:9000";
 
@@ -779,7 +781,7 @@ describe("Resonate environment variable initialization", () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
-    process.env.RESONATE_HOST = "http://fallback";
+    process.env.RESONATE_HOST = "fallback";
     process.env.RESONATE_PORT = "8080";
     process.env.RESONATE_URL = "";
 
@@ -984,6 +986,113 @@ describe("Resonate environment variable initialization", () => {
       ttl: 60_000,
     });
 
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_SCHEME defaults to http when not set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "localhost";
+    process.env.RESONATE_PORT = "8001";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:8001/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://localhost:8001/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_SCHEME can be set to https", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_SCHEME = "https";
+    process.env.RESONATE_HOST = "secure-host";
+    process.env.RESONATE_PORT = "8443";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "https://secure-host:8443/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "https://secure-host:8443/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_PORT defaults to 8001 when not set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "default-port-host";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://default-port-host:8001/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://default-port-host:8001/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_SCHEME and RESONATE_PORT both use defaults", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "defaults-host";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://defaults-host:8001/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://defaults-host:8001/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
     resonate.promises.create("test", 0);
 
     await p1.promise;

@@ -87,11 +87,12 @@ export class Resonate {
       if (process.env.RESONATE_URL) {
         resolvedUrl = process.env.RESONATE_URL;
       } else {
+        const resonateScheme = process.env.RESONATE_SCHEME ?? "http";
         const resonateHost = process.env.RESONATE_HOST;
-        const resonatePort = process.env.RESONATE_PORT;
+        const resonatePort = process.env.RESONATE_PORT ?? "8001";
 
-        if (resonateHost && resonatePort) {
-          resolvedUrl = `${resonateHost}:${resonatePort}`;
+        if (resonateHost) {
+          resolvedUrl = `${resonateScheme}://${resonateHost}:${resonatePort}`;
         }
       }
     }
