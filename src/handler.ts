@@ -117,7 +117,7 @@ export class Handler {
 
         let promise: DurablePromiseRecord<any>;
         try {
-          promise = this.decode(res.promise, func);
+          promise = this.decode(res.promise, req.param?.data?.func ?? func);
         } catch (e) {
           return done(e as ResonateError);
         }
@@ -157,7 +157,7 @@ export class Handler {
 
         let promise: DurablePromiseRecord<any>;
         try {
-          promise = this.decode(res.promise, func);
+          promise = this.decode(res.promise, req.promise.param?.data?.func ?? func);
         } catch (e) {
           return done(e as ResonateError);
         }

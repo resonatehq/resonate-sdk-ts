@@ -519,12 +519,12 @@ export class HttpNetwork implements Network {
             .json()
             .then((r: any) => r.error)
             .catch(() => undefined)) as ResonateServerError | undefined;
-          throw exceptions[99](err ? err.message : res.statusText, err);
+          throw exceptions[99](err ? err.message : res.statusText, res.status >= 500 && res.status < 600, err);
         }
 
         return res;
       } catch (err) {
-        if (err instanceof ResonateError) {
+        if (err instanceof ResonateError && !err.retriable) {
           throw err;
         }
         if (attempt >= retries) {
@@ -621,14 +621,19 @@ export class HttpMessageSource implements MessageSource {
 
     this.eventSource.addEventListener("message", (event) => {
       let msg: Message;
-      const data = JSON.parse(event.data);
 
-      if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
-        msg = { type: data.type, task: data.task };
-      } else if (data?.type === "notify" && util.isDurablePromiseRecord(data?.promise)) {
-        msg = { type: data.type, promise: mapPromiseDtoToRecord(data.promise) };
-      } else {
-        console.warn("Received invalid message:", data);
+      try {
+        const data = JSON.parse(event.data);
+
+        if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
+          msg = { type: data.type, task: data.task };
+        } else if (data?.type === "notify" && util.isDurablePromiseRecord(data?.promise)) {
+          msg = { type: data.type, promise: mapPromiseDtoToRecord(data.promise) };
+        } else {
+          throw new Error("invalid message");
+        }
+      } catch (e) {
+        console.warn("Networking. Received invalid message. Will continue.");
         return;
       }
 
@@ -641,7 +646,7 @@ export class HttpMessageSource implements MessageSource {
       // and recreate
       this.eventSource.close();
 
-      console.log(`Networking. Cannot connect to [${this.url}/poll]. Retrying in 5s.`);
+      console.warn(`Networking. Cannot connect to [${this.url}/poll]. Retrying in 5s.`);
       setTimeout(() => this.connect(), 5000);
     });
 

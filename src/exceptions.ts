@@ -9,13 +9,19 @@ export class ResonateError extends Error {
   type: string;
   next: string;
   href: string;
+  retriable: boolean;
   serverError?: ResonateServerError;
 
   constructor(
     code: string,
     type: string,
     mesg: string,
-    { next = "n/a", cause, serverError }: { next?: string; cause?: any; serverError?: ResonateServerError } = {},
+    {
+      next = "n/a",
+      cause,
+      retriable = false,
+      serverError,
+    }: { next?: string; cause?: any; retriable?: boolean; serverError?: ResonateServerError } = {},
   ) {
     super(mesg, { cause });
 
@@ -24,6 +30,7 @@ export class ResonateError extends Error {
     this.type = type;
     this.next = next;
     this.href = `https://rn8.io/e/${code}`;
+    this.retriable = retriable;
     this.serverError = serverError;
   }
 
@@ -47,12 +54,12 @@ export default {
     const version = v > 0 ? ` (version ${v})` : "";
     return new ResonateError("04", "Registry", `Function '${f}'${version} is not registered`, { next: "Will drop" });
   },
-  // 5: (d: string) => {
-  //   return new ResonateError("05", "Dependencies", `Dependency '${d}' is already registered`);
-  // },
-  // 6: (d: string) => {
-  //   return new ResonateError("06", "Dependencies", `Dependency '${d}' is not registered`, { next: "Will drop" });
-  // },
+  5: (d: string) => {
+    return new ResonateError("05", "Dependencies", `Dependency '${d}' is already registered`);
+  },
+  6: (d: string) => {
+    return new ResonateError("06", "Dependencies", `Dependency '${d}' is not registered`, { next: "Will drop" });
+  },
   7: (f: string, c: any) => {
     return new ResonateError("06", "Encoding", `Argument(s) for function '${f}' cannot be encoded`, {
       next: "Will drop",
@@ -77,7 +84,7 @@ export default {
       cause: c,
     });
   },
-  99: (m: any, e?: ResonateServerError) => {
-    return new ResonateError("10", "Store", m, { serverError: e });
+  99: (m: any, r?: boolean, e?: ResonateServerError) => {
+    return new ResonateError("10", "Server", m, { retriable: r, serverError: e });
   },
 };
