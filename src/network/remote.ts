@@ -504,7 +504,6 @@ export class HttpNetwork implements Network {
     if (req.limit) params.append("limit", String(req.limit));
     if (req.cursor) params.append("cursor", req.cursor);
 
-    console.log(params);
     const res = await this.fetch(`/promises?${params.toString()}`, { method: "GET" }, retryPolicy);
 
     const data: any = (await res.json()) as SearchPromisesResponseDto;
