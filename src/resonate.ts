@@ -369,12 +369,6 @@ export class Resonate {
     return util.splitArgsAndOpts(args, this.options({ version }));
   }
 
-  /** Store a named dependency for use with `Context`.
-   *  The dependency is made available to all functions via
-   *  their execution `Context`.
-   *  Setting a dependency for a name that already exists will
-   *  overwrite the previously set dependency.
-   */
   public setDependency(name: string, obj: any): void {
     this.dependencies.set(name, obj);
   }
@@ -393,12 +387,12 @@ export class Resonate {
         req,
         (err, res) => {
           if (err) {
-            // TODO: improve this message
-            reject(new Error(`Promise '${req.promise.id}' could not be created`));
+            reject(err);
           } else {
             resolve({ promise: res!.promise, task: res!.task });
           }
         },
+        undefined,
         true,
       ),
     );
@@ -410,12 +404,12 @@ export class Resonate {
         req,
         (err, res) => {
           if (err) {
-            // TODO: improve this message
-            reject(new Error(`Promise '${req.id}' could not be created`));
+            reject(err);
           } else {
             resolve(res!);
           }
         },
+        undefined,
         true,
       ),
     );
@@ -427,8 +421,7 @@ export class Resonate {
         req,
         (err, res) => {
           if (err) {
-            // TODO: improve this message
-            reject(new Error(`Subscription for promise '${req.promiseId}' could not be created`));
+            reject(err);
           } else {
             resolve(res!);
           }
@@ -442,8 +435,7 @@ export class Resonate {
     return new Promise((resolve, reject) =>
       this.handler.readPromise(req, (err, res) => {
         if (err) {
-          // TODO: improve this message
-          reject(new Error(`Promise '${req.id}' not found`));
+          reject(err);
         } else {
           resolve(res!);
         }

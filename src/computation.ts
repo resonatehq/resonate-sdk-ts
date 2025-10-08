@@ -99,7 +99,10 @@ export class Computation {
             ttl: this.ttl,
           },
           (err, promise) => {
-            if (err) return doneProcessing(true);
+            if (err) {
+              err.log();
+              return doneProcessing(true);
+            }
             util.assertDefined(promise);
 
             this.processClaimed({ kind: "claimed", task: task.task, rootPromise: promise }, doneProcessing);
@@ -158,7 +161,7 @@ export class Computation {
         }
 
         this.network.send({ kind: "completeTask", id: task.id, counter: task.counter }, (err) => {
-          nursery.done(err, res);
+          nursery.done(!!err, res);
         });
       };
 
@@ -236,7 +239,15 @@ export class Computation {
             iKey: id,
             strict: false,
           },
-          done,
+          (err, res) => {
+            if (err) {
+              err.log();
+              return done(true);
+            }
+            util.assertDefined(res);
+            done(false, res);
+          },
+          func.name,
         ),
       ctx.retryPolicy,
       ctx.timeout,
@@ -284,7 +295,14 @@ export class Computation {
             timeout: timeout,
             recv: this.anycastPreference,
           },
-          done,
+          (err, res) => {
+            if (err) {
+              err.log();
+              return done(true);
+            }
+            util.assertDefined(res);
+            done(false, res);
+          },
         ),
       (err, results) => {
         if (err) return done(err);

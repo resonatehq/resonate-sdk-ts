@@ -73,7 +73,7 @@ export class Coroutine<T> {
         strict: false,
       },
       (err, res) => {
-        if (err) return callback(err);
+        if (err) return callback(true);
         util.assertDefined(res);
 
         if (res.state !== "pending") {
@@ -102,7 +102,7 @@ export class Coroutine<T> {
                   strict: false,
                 },
                 (err, promise) => {
-                  if (err) return callback(err);
+                  if (err) return callback(true);
                   util.assertDefined(promise);
 
                   callback(false, { type: "completed", promise });
@@ -131,7 +131,10 @@ export class Coroutine<T> {
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
           this.handler.createPromise(action.createReq, (err, res) => {
-            if (err) return callback(err);
+            if (err) {
+              err.log();
+              return callback(true);
+            }
             util.assertDefined(res);
 
             const ctx = this.ctx.child(res.id, res.timeout, action.retryPolicy);
@@ -188,7 +191,10 @@ export class Coroutine<T> {
                       strict: false,
                     },
                     (err, res) => {
-                      if (err) return callback(err);
+                      if (err) {
+                        err.log();
+                        return callback(true);
+                      }
                       util.assertDefined(res);
                       util.assert(res.state !== "pending", "promise must be completed");
 
@@ -247,7 +253,10 @@ export class Coroutine<T> {
         // Handle internal.async.r
         if (action.type === "internal.async.r") {
           this.handler.createPromise(action.createReq, (err, res) => {
-            if (err) return callback(err);
+            if (err) {
+              err.log();
+              return callback(true);
+            }
             util.assertDefined(res);
 
             if (res.state === "pending") {

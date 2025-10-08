@@ -1,16 +1,30 @@
+export type ResonateServerError = {
+  code: number;
+  message: string;
+  details?: any[];
+};
+
 export class ResonateError extends Error {
   code: string;
   type: string;
   next: string;
   href: string;
+  serverError?: ResonateServerError;
 
-  constructor(code: string, type: string, mesg: string, next = "n/a") {
-    super(mesg);
+  constructor(
+    code: string,
+    type: string,
+    mesg: string,
+    { next = "n/a", cause, serverError }: { next?: string; cause?: any; serverError?: ResonateServerError } = {},
+  ) {
+    super(mesg, { cause });
+
     this.name = "ResonateError";
     this.code = code;
     this.type = type;
     this.next = next;
     this.href = `https://rn8.io/e/${code}`;
+    this.serverError = serverError;
   }
 
   log() {
@@ -31,13 +45,39 @@ export default {
   },
   4: (f: string, v: number) => {
     const version = v > 0 ? ` (version ${v})` : "";
-    return new ResonateError("04", "Registry", `Function '${f}'${version} is not registered`, "Will drop");
+    return new ResonateError("04", "Registry", `Function '${f}'${version} is not registered`, { next: "Will drop" });
   },
-  // 3: (d: string) => new ResonateError("03", "Local", `Dependency '${d}' is already registered`),
-  // 4: (d: string) => new ResonateError("04", "Local", `Dependency '${d}' is not registered`, "Will drop"),
-  // 5: (p: string) => new ResonateError("05", "Store", `Promise '${p}' not found`),
-  // 6: (f: string) => new ResonateError("06", "Store", `Argument(s) for function '${f}' cannot be encoded`),
-  // 7: (f: string) => new ResonateError("07", "Store", `Argument(s) for function '${f}' cannot be decoded`),
-  // 8: (f: string) => new ResonateError("08", "Store", `Return value from function '${f}' cannot be encoded`),
-  // 9: (f: string) => new ResonateError("09", "Store", `Return value from function '${f}' cannot be decoded`),
+  // 5: (d: string) => {
+  //   return new ResonateError("05", "Dependencies", `Dependency '${d}' is already registered`);
+  // },
+  // 6: (d: string) => {
+  //   return new ResonateError("06", "Dependencies", `Dependency '${d}' is not registered`, { next: "Will drop" });
+  // },
+  7: (f: string, c: any) => {
+    return new ResonateError("06", "Encoding", `Argument(s) for function '${f}' cannot be encoded`, {
+      next: "Will drop",
+      cause: c,
+    });
+  },
+  8: (f: string, c: any) => {
+    return new ResonateError("07", "Encoding", `Argument(s) for function '${f}' cannot be decoded`, {
+      next: "Will drop",
+      cause: c,
+    });
+  },
+  9: (f: string, c: any) => {
+    return new ResonateError("08", "Encoding", `Return value from function '${f}' cannot be encoded`, {
+      next: "Will drop",
+      cause: c,
+    });
+  },
+  10: (f: string, c: any) => {
+    return new ResonateError("09", "Encoding", `Return value from function '${f}' cannot be decoded`, {
+      next: "Will drop",
+      cause: c,
+    });
+  },
+  99: (m: any, e?: ResonateServerError) => {
+    return new ResonateError("10", "Store", m, { serverError: e });
+  },
 };

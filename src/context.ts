@@ -168,7 +168,7 @@ export interface Context {
   detached(func: Func | string, ...args: any[]): RFI<any>;
 
   // getDependency
-  getDependency(key: string): any | undefined;
+  getDependency<T = any>(key: string): T;
 
   // options
   options(opts: Partial<Options>): Options;
@@ -351,7 +351,7 @@ export class InnerContext implements Context {
     return new RFI(opts.id, this.remoteCreateReq(data, opts, Number.MAX_SAFE_INTEGER), "detached");
   }
 
-  getDependency<T = any>(name: string): T | undefined {
+  getDependency<T = any>(name: string): T {
     return this.dependencies.get(name);
   }
 
