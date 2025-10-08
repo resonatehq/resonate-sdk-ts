@@ -1,6 +1,6 @@
 // Records
 
-import type { ResonateError } from "exceptions";
+import type { ResonateError } from "../exceptions";
 import type { Value } from "../types";
 
 export interface DurablePromiseRecord<T = string> {

@@ -1,6 +1,6 @@
-import { ResonateError } from "exceptions";
 import type { StepClock } from "../../src/clock";
 import type { Encoder } from "../../src/encoder";
+import { ResonateError } from "../../src/exceptions";
 import { Handler } from "../../src/handler";
 import { NoopHeartbeat } from "../../src/heartbeat";
 import type {

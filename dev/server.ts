@@ -1,6 +1,6 @@
 import { CronExpressionParser } from "cron-parser";
 
-import exceptions from "exceptions";
+import exceptions from "../src/exceptions";
 import type {
   CallbackRecord,
   ClaimTaskRes,

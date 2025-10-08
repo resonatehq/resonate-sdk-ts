@@ -1,4 +1,4 @@
-import type { ResonateError } from "exceptions";
+import type { ResonateError } from "../src/exceptions";
 import type { Message, MessageSource, Network, Request, ResponseFor } from "../src/network/network";
 import * as util from "../src/util";
 import { Server } from "./server";

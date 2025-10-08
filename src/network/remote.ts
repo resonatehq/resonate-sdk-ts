@@ -39,7 +39,7 @@ import type {
 
 import { EventSource } from "eventsource";
 
-import exceptions, { ResonateError, type ResonateServerError } from "exceptions";
+import exceptions, { ResonateError, type ResonateServerError } from "../exceptions";
 import type { Value } from "../types";
 import * as util from "../util";
 
