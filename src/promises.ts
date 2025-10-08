@@ -178,7 +178,6 @@ export class Promises {
       );
     });
   }
-
   cancel(
     id: string,
     {
@@ -214,7 +213,33 @@ export class Promises {
       );
     });
   }
-
+  search(
+    id: string,
+    {
+      state = undefined,
+      limit = undefined,
+      cursor = undefined,
+    }: { state?: "pending" | "resolved" | "rejected"; limit?: number; cursor?: string } = {},
+  ): Promise<{ promises: DurablePromiseRecord[]; cursor?: string }> {
+    return new Promise((resolve, reject) => {
+      this.network.send(
+        {
+          kind: "searchPromises",
+          id: id,
+          state: state,
+          limit: limit,
+          cursor: cursor,
+        },
+        (err, res) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve({ promises: res!.promises, cursor: res!.cursor });
+        },
+      );
+    });
+  }
   callback(
     promiseId: string,
     rootPromiseId: string,
