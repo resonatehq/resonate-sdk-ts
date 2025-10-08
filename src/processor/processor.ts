@@ -53,7 +53,7 @@ export class AsyncProcessor implements Processor {
           return;
         }
 
-        console.warn(`Runtime. Function ${name} failed with '${String(error)}' (retrying in ${retryIn / 1000} secs)`);
+        console.warn(`Runtime. Function '${name}' failed with '${String(error)}' (retrying in ${retryIn / 1000} secs)`);
 
         await new Promise((resolve) => setTimeout(resolve, retryIn));
         attempt++;
