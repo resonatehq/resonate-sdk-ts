@@ -105,7 +105,7 @@ export class Handler {
     try {
       param = this.encoder.encode(req.param?.data);
     } catch (e) {
-      done(exceptions["7"](req.param?.data?.func ?? func, e));
+      done(exceptions.ENCODING_ARGS_UNENCODEABLE(req.param?.data?.func ?? func, e));
       return;
     }
 
@@ -145,7 +145,7 @@ export class Handler {
     try {
       param = this.encoder.encode(req.promise.param?.data);
     } catch (e) {
-      done(exceptions["7"](req.promise.param?.data?.func ?? func, e));
+      done(exceptions.ENCODING_ARGS_UNENCODEABLE(req.promise.param?.data?.func ?? func, e));
       return;
     }
 
@@ -191,7 +191,7 @@ export class Handler {
     try {
       value = this.encoder.encode(req.value?.data);
     } catch (e) {
-      done(exceptions["9"](func, e));
+      done(exceptions.ENCODING_RETV_UNENCODEABLE(func, e));
       return;
     }
 
@@ -215,7 +215,7 @@ export class Handler {
     const task = this.cache.getTask(req.id);
     if (task && task.counter >= req.counter) {
       done(
-        exceptions[10]("The task counter is invalid", {
+        exceptions.ENCODING_RETV_UNDECODEABLE("The task counter is invalid", {
           code: 40307,
           message: "The task counter is invalid",
         }),
@@ -351,13 +351,13 @@ export class Handler {
     try {
       paramData = this.encoder.decode(promise.param);
     } catch (e) {
-      throw exceptions["8"](func, e);
+      throw exceptions.ENCODING_ARGS_UNDECODEABLE(func, e);
     }
 
     try {
       valueData = this.encoder.decode(promise.value);
     } catch (e) {
-      throw exceptions["10"](paramData?.func ?? func, e);
+      throw exceptions.ENCODING_RETV_UNDECODEABLE(paramData?.func ?? func, e);
     }
 
     return {

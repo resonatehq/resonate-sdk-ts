@@ -14,22 +14,22 @@ export class Registry {
   add(func: Func, name = "", version = 1): void {
     // version must be greater than zero
     if (!(version > 0)) {
-      throw exceptions[1](version);
+      throw exceptions.REGISTRY_VERSION_INVALID(version);
     }
 
     // function must have a name
     if (name === "" && func.name === "") {
-      throw exceptions[2]();
+      throw exceptions.REGISTRY_NAME_REQUIRED();
     }
 
     const funcName = name || func.name;
 
     // function must not already be registered
     if (this.get(funcName, version)) {
-      throw exceptions[3](funcName, version);
+      throw exceptions.REGISTRY_FUNCTION_ALREADY_REGISTERED(funcName, version);
     }
     if (this.get(func, version)) {
-      throw exceptions[3](func.name, version, this.get(func, version)?.name);
+      throw exceptions.REGISTRY_FUNCTION_ALREADY_REGISTERED(func.name, version, this.get(func, version)?.name);
     }
 
     const forward = this.forward.get(funcName) ?? {};

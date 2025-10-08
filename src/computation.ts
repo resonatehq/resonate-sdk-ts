@@ -147,7 +147,9 @@ export class Computation {
 
     // function must be registered
     if (!registered) {
-      exceptions[4](rootPromise.param.data.func, rootPromise.param.data.version ?? 1).log();
+      exceptions
+        .REGISTRY_FUNCTION_NOT_REGISTERED(rootPromise.param.data.func, rootPromise.param.data.version ?? 1)
+        .log();
       return doneAndDropTaskIfErr(true);
     }
 

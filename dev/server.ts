@@ -352,7 +352,7 @@ export class Server {
       }
 
       default:
-        throw exceptions[99](`Unsupported request kind ${(requ as any).kind}`);
+        throw exceptions.SERVER_ERROR(`Unsupported request kind ${(requ as any).kind}`);
     }
   }
 
@@ -522,7 +522,7 @@ export class Server {
     {
       const record = this.promises.get(promiseId);
       if (!record) {
-        throw exceptions[99]("Promise not found");
+        throw exceptions.SERVER_ERROR("Promise not found");
       }
 
       const cbId = `__notify:${promiseId}:${id}`;
@@ -566,7 +566,7 @@ export class Server {
   } {
     const record = this.promises.get(promiseId);
     if (!record) {
-      throw exceptions[99]("Promise not found");
+      throw exceptions.SERVER_ERROR("Promise not found");
     }
 
     if (record.state !== "pending" || record.callbacks?.has(promiseId)) {
@@ -638,7 +638,7 @@ export class Server {
         };
       }
       default:
-        throw exceptions[99](`Unexpected task type '${task.type}'`);
+        throw exceptions.SERVER_ERROR(`Unexpected task type '${task.type}'`);
     }
   }
 
@@ -716,7 +716,7 @@ export class Server {
   private readSchedule({ id }: { id: string }): ScheduleRecord {
     const schedule = this.schedules.get(id);
     if (schedule === undefined) {
-      throw exceptions[99]("Schedule not found");
+      throw exceptions.SERVER_ERROR("Schedule not found");
     }
 
     return schedule;
@@ -731,7 +731,7 @@ export class Server {
   private getPromise({ id }: { id: string }): DurablePromise {
     const record = this.promises.get(id);
     if (!record) {
-      throw exceptions[99]("Promise not found");
+      throw exceptions.SERVER_ERROR("Promise not found");
     }
 
     return record;
@@ -862,7 +862,7 @@ export class Server {
 
     // Cannot complete non-existent promise
     if (record === undefined && ["resolved", "rejected", "rejected_canceled"].includes(to)) {
-      throw exceptions[99]("Promise not found");
+      throw exceptions.SERVER_ERROR("Promise not found");
     }
 
     // No-op re-create pending if before timeout and same iKey
@@ -921,7 +921,7 @@ export class Server {
       strict &&
       time >= record.timeout
     ) {
-      throw exceptions[99]("Promise already timedout");
+      throw exceptions.SERVER_ERROR("Promise already timedout");
     }
 
     // Transition to timed-out
@@ -981,7 +981,7 @@ export class Server {
     }
 
     // Fallback
-    throw exceptions[99]("Unexpected promise transition");
+    throw exceptions.SERVER_ERROR("Unexpected promise transition");
   }
 
   private transitionTask({
@@ -1176,10 +1176,10 @@ export class Server {
     }
 
     if (record === undefined) {
-      throw exceptions[99]("Task not found");
+      throw exceptions.SERVER_ERROR("Task not found");
     }
 
-    throw exceptions[99]("Task is already claimed, completed, or an invalid counter was provided");
+    throw exceptions.SERVER_ERROR("Task is already claimed, completed, or an invalid counter was provided");
   }
 
   private transitionSchedule({
@@ -1256,12 +1256,12 @@ export class Server {
 
     // Schedule exists and not updating
     if (record !== undefined && to === "created") {
-      throw exceptions[99]("Schedule already exists");
+      throw exceptions.SERVER_ERROR("Schedule already exists");
     }
 
     // Delete non-existent
     if (record === undefined && to === "deleted") {
-      throw exceptions[99]("Schedule not found");
+      throw exceptions.SERVER_ERROR("Schedule not found");
     }
 
     // Delete existing
@@ -1271,7 +1271,7 @@ export class Server {
     }
 
     // Fallback error
-    throw exceptions[99]("Unexpected schedule transition");
+    throw exceptions.SERVER_ERROR("Unexpected schedule transition");
   }
 }
 

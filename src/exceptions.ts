@@ -40,51 +40,51 @@ export class ResonateError extends Error {
 }
 
 export default {
-  1: (v: number) => {
+  REGISTRY_VERSION_INVALID: (v: number) => {
     return new ResonateError("01", "Registry", `Function version must be greater than zero (${v} provided)`);
   },
-  2: () => {
+  REGISTRY_NAME_REQUIRED: () => {
     return new ResonateError("02", "Registry", "Function name is required");
   },
-  3: (f: string, v: number, u?: string) => {
+  REGISTRY_FUNCTION_ALREADY_REGISTERED: (f: string, v: number, u?: string) => {
     const under = u ? ` under '${u}'` : "";
     return new ResonateError("03", "Registry", `Function '${f}' (version ${v}) is already registered${under}`);
   },
-  4: (f: string, v: number) => {
+  REGISTRY_FUNCTION_NOT_REGISTERED: (f: string, v: number) => {
     const version = v > 0 ? ` (version ${v})` : "";
     return new ResonateError("04", "Registry", `Function '${f}'${version} is not registered`, { next: "Will drop" });
   },
-  5: (d: string) => {
+  DEPENDENCY_ALREADY_REGISTERED: (d: string) => {
     return new ResonateError("05", "Dependencies", `Dependency '${d}' is already registered`);
   },
-  6: (d: string) => {
+  DEPENDENCY_NOT_REGISTERED: (d: string) => {
     return new ResonateError("06", "Dependencies", `Dependency '${d}' is not registered`, { next: "Will drop" });
   },
-  7: (f: string, c: any) => {
+  ENCODING_ARGS_UNENCODEABLE: (f: string, c: any) => {
     return new ResonateError("06", "Encoding", `Argument(s) for function '${f}' cannot be encoded`, {
       next: "Will drop",
       cause: c,
     });
   },
-  8: (f: string, c: any) => {
+  ENCODING_ARGS_UNDECODEABLE: (f: string, c: any) => {
     return new ResonateError("07", "Encoding", `Argument(s) for function '${f}' cannot be decoded`, {
       next: "Will drop",
       cause: c,
     });
   },
-  9: (f: string, c: any) => {
+  ENCODING_RETV_UNENCODEABLE: (f: string, c: any) => {
     return new ResonateError("08", "Encoding", `Return value from function '${f}' cannot be encoded`, {
       next: "Will drop",
       cause: c,
     });
   },
-  10: (f: string, c: any) => {
+  ENCODING_RETV_UNDECODEABLE: (f: string, c: any) => {
     return new ResonateError("09", "Encoding", `Return value from function '${f}' cannot be decoded`, {
       next: "Will drop",
       cause: c,
     });
   },
-  99: (m: any, r?: boolean, e?: ResonateServerError) => {
+  SERVER_ERROR: (m: any, r?: boolean, e?: ResonateServerError) => {
     return new ResonateError("10", "Server", m, { retriable: r, serverError: e });
   },
 };

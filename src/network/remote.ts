@@ -519,7 +519,7 @@ export class HttpNetwork implements Network {
             .json()
             .then((r: any) => r.error)
             .catch(() => undefined)) as ResonateServerError | undefined;
-          throw exceptions[99](err ? err.message : res.statusText, res.status >= 500 && res.status < 600, err);
+          throw exceptions.SERVER_ERROR(err ? err.message : res.statusText, res.status >= 500 && res.status < 600, err);
         }
 
         return res;
@@ -528,7 +528,7 @@ export class HttpNetwork implements Network {
           throw err;
         }
         if (attempt >= retries) {
-          throw exceptions[99](String(err));
+          throw exceptions.SERVER_ERROR(String(err));
         }
 
         console.warn(`Networking. Cannot connect to [${this.url}]. Retrying in ${delay / 1000}s.`);
