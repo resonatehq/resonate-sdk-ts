@@ -209,15 +209,12 @@ describe("Resonate usage tests", () => {
     const foo = await resonate.promises.create("foo", 10_000_000);
     const bar = await resonate.promises.create("bar", 10_000_000);
 
-    // Collect all results using pagination
     const results: any[] = [];
     for await (const page of resonate.promises.search("*", { limit: 1 })) {
-      // Each page should contain an array of DurablePromiseRecord(s)
       expect(Array.isArray(page)).toBe(true);
       results.push(...page);
     }
 
-    // Check that we received both created promises
     const ids = results.map((r) => r.id);
     expect(ids).toContain(foo.id);
     expect(ids).toContain(bar.id);
