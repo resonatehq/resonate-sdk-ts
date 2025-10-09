@@ -249,7 +249,10 @@ export class Resonate {
 
     // function must be registered
     if (!registered) {
-      throw exceptions[4](typeof funcOrName === "string" ? funcOrName : funcOrName.name, opts.version);
+      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(
+        typeof funcOrName === "string" ? funcOrName : funcOrName.name,
+        opts.version,
+      );
     }
 
     util.assert(registered.version > 0, "function version must be greater than zero");
@@ -313,7 +316,7 @@ export class Resonate {
 
     // function must be registered if function pointer is provided
     if (typeof funcOrName === "function" && !registered) {
-      throw exceptions[4](funcOrName.name, opts.version);
+      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
     const promise = await this.createPromise({
@@ -353,7 +356,7 @@ export class Resonate {
 
     // function must be registered if function pointer is provided
     if (typeof funcOrName === "function" && !registered) {
-      throw exceptions[4](funcOrName.name, opts.version);
+      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
     // TODO: move this into the handler?
