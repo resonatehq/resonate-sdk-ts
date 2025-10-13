@@ -341,7 +341,7 @@ export class Resonate {
    * identified by the provided `id`. If a promise with the same `id` already exists,
    * Resonate subscribes to its result or returns it immediately if it has already completed.
    *
-   * Unlike {@link Function.run}, this method is **non-blocking** and immediately returns a
+   * Unlike {@link run}, this method is **non-blocking** and immediately returns a
    * {@link ResonateHandle} that can be awaited or queried later to retrieve the final result
    * once execution completes.
    *
@@ -462,7 +462,7 @@ export class Resonate {
    * identified by the provided `id`. The function runs on a remote worker or process as part of
    * Resonate’s distributed execution environment.
    *
-   * Unlike {@link Function.rpc}, this method is **non-blocking** and immediately returns a
+   * Unlike {@link rpc}, this method is **non-blocking** and immediately returns a
    * {@link ResonateHandle} that can be awaited or queried later to retrieve the final result once
    * remote execution completes.
    *
