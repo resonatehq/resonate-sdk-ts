@@ -2,17 +2,21 @@ import { LocalNetwork } from "../dev/network";
 import { Handler } from "../src/handler";
 import { Registry } from "../src/registry";
 import { WallClock } from "./clock";
+import { type Encoder, JsonEncoder } from "./encoder";
+import exceptions from "./exceptions";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";
 import type {
   CreatePromiseAndTaskReq,
   CreatePromiseReq,
+  CreateSubscriptionReq,
   DurablePromiseRecord,
   Message,
+  MessageSource,
   Network,
   ReadPromiseReq,
   TaskRecord,
 } from "./network/network";
-import { HttpNetwork } from "./network/remote";
+import { HttpMessageSource, HttpNetwork } from "./network/remote";
 import { Options } from "./options";
 import { Promises } from "./promises";
 import { ResonateInner } from "./resonate-inner";
@@ -40,65 +44,117 @@ export interface ResonateSchedule {
 
 export class Resonate {
   private unicast: string;
-  private anycast: string;
+  private anycastPreference: string;
+  private anycastNoPreference: string;
   private pid: string;
   private ttl: number;
 
   private inner: ResonateInner;
   private network: Network;
+  private encoder: Encoder;
+  private messageSource: MessageSource;
   private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
-  private subscriptions: Map<string, Array<(promise: DurablePromiseRecord) => void>> = new Map();
+  private subscriptions: Map<string, PromiseWithResolvers<DurablePromiseRecord<any>>> = new Map();
 
   public readonly promises: Promises;
   public readonly schedules: Schedules;
 
-  constructor({ group, pid, ttl }: { group: string; pid: string; ttl: number }, network: Network) {
+  constructor({
+    url = undefined,
+    group = "default",
+    pid = crypto.randomUUID().replace(/-/g, ""),
+    ttl = 1 * util.MIN,
+    auth = undefined,
+  }: {
+    url?: string;
+    group?: string;
+    pid?: string;
+    ttl?: number;
+    auth?: { username: string; password: string };
+  } = {}) {
     this.unicast = `poll://uni@${group}/${pid}`;
-    this.anycast = `poll://any@${group}/${pid}`;
+    this.anycastPreference = `poll://any@${group}/${pid}`;
+    this.anycastNoPreference = `poll://any@${group}`;
     this.pid = pid;
     this.ttl = ttl;
+    this.encoder = new JsonEncoder();
 
-    this.network = network;
-    this.handler = new Handler(this.network);
+    // Determine the URL based on priority: url arg > RESONATE_URL > RESONATE_HOST+PORT
+    let resolvedUrl = url;
+    if (!resolvedUrl) {
+      if (process.env.RESONATE_URL) {
+        resolvedUrl = process.env.RESONATE_URL;
+      } else {
+        const resonateScheme = process.env.RESONATE_SCHEME ?? "http";
+        const resonateHost = process.env.RESONATE_HOST;
+        const resonatePort = process.env.RESONATE_PORT ?? "8001";
+
+        if (resonateHost) {
+          resolvedUrl = `${resonateScheme}://${resonateHost}:${resonatePort}`;
+        }
+      }
+    }
+
+    // Determine the auth based on priority: auth arg > RESONATE_USERNAME+RESONATE_PASSWORD
+    let resolvedAuth = auth;
+    if (!resolvedAuth) {
+      const resonateUsername = process.env.RESONATE_USERNAME;
+      const resonatePassword = process.env.RESONATE_PASSWORD ?? "";
+
+      if (resonateUsername) {
+        resolvedAuth = { username: resonateUsername, password: resonatePassword };
+      }
+    }
+
+    if (!resolvedUrl) {
+      const localNetwork = new LocalNetwork();
+      this.network = localNetwork;
+      this.messageSource = localNetwork.getMessageSource();
+      this.heartbeat = new NoopHeartbeat();
+    } else {
+      this.network = new HttpNetwork({ url: resolvedUrl, auth: resolvedAuth, timeout: 1 * util.MIN, headers: {} });
+      this.messageSource = new HttpMessageSource({ url: resolvedUrl, pid, group, auth: resolvedAuth });
+      this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
+    }
+
+    this.handler = new Handler(this.network, this.encoder);
     this.registry = new Registry();
-    this.heartbeat = network instanceof LocalNetwork ? new NoopHeartbeat() : new AsyncHeartbeat(pid, ttl / 2, network);
     this.dependencies = new Map();
 
     this.inner = new ResonateInner({
       unicast: this.unicast,
-      anycast: this.anycast,
+      anycastPreference: this.anycastPreference,
+      anycastNoPreference: this.anycastNoPreference,
       pid: this.pid,
       ttl: this.ttl,
       clock: new WallClock(),
       network: this.network,
+      messageSource: this.messageSource,
       handler: this.handler,
       registry: this.registry,
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
     });
 
-    this.promises = new Promises(network);
-    this.schedules = new Schedules(network);
+    this.promises = new Promises(this.network);
+    this.schedules = new Schedules(this.network);
 
     // subscribe to notify
-    this.network.subscribe("notify", this.onMessage.bind(this));
+    this.messageSource.subscribe("notify", this.onMessage.bind(this));
   }
 
   /**
    * Create a local Resonate instance
    */
   static local(): Resonate {
-    return new Resonate(
-      {
-        group: "default",
-        pid: "default",
-        ttl: Number.MAX_SAFE_INTEGER,
-      },
-      new LocalNetwork(),
-    );
+    return new Resonate({
+      group: "default",
+      pid: "default",
+      ttl: Number.MAX_SAFE_INTEGER,
+    });
   }
 
   /**
@@ -110,7 +166,6 @@ export class Resonate {
     pid = crypto.randomUUID().replace(/-/g, ""),
     ttl = 1 * util.MIN,
     auth = undefined,
-    messageSourceAuth = undefined,
   }: {
     url?: string;
     group?: string;
@@ -119,16 +174,7 @@ export class Resonate {
     auth?: { username: string; password: string };
     messageSourceAuth?: { username: string; password: string };
   } = {}): Resonate {
-    const network = new HttpNetwork({
-      url,
-      pid,
-      group,
-      auth,
-      messageSourceAuth,
-      timeout: 1 * util.MIN,
-      headers: {},
-    });
-    return new Resonate({ pid, group, ttl }, network);
+    return new Resonate({ url, group, pid, ttl, auth });
   }
 
   /**
@@ -160,19 +206,19 @@ export class Resonate {
   ): ResonateFunc<F> {
     const { version = 1 } = (typeof funcOrOptions === "object" ? funcOrOptions : maybeOptions) ?? {};
     const func = typeof nameOrFunc === "function" ? nameOrFunc : (funcOrOptions as F);
-    const name = typeof nameOrFunc === "string" ? nameOrFunc : (func.name ?? "anonymous");
+    const name = typeof nameOrFunc === "string" ? nameOrFunc : func.name;
 
     this.registry.add(func, name, version);
 
     return {
       run: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> =>
-        this.run(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
+        this.run(id, func, ...this.getArgsAndOpts(args, version)),
       rpc: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> =>
-        this.rpc(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
+        this.rpc(id, func, ...this.getArgsAndOpts(args, version)),
       beginRun: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
-        this.beginRun(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
+        this.beginRun(id, func, ...this.getArgsAndOpts(args, version)),
       beginRpc: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
-        this.beginRpc(id, func, ...util.splitArgsAndOpts(args, this.options({ version: version }))),
+        this.beginRpc(id, func, ...this.getArgsAndOpts(args, version)),
       options: this.options,
     };
   }
@@ -198,18 +244,34 @@ export class Resonate {
   public async beginRun<T>(id: string, func: string, ...args: any[]): Promise<ResonateHandle<T>>;
   public async beginRun(id: string, funcOrName: Func | string, ...args: any[]): Promise<ResonateHandle<any>>;
   public async beginRun(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<ResonateHandle<any>> {
-    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
+    const [args, opts] = this.getArgsAndOpts(argsWithOpts);
     const registered = this.registry.get(funcOrName, opts.version);
+
+    // function must be registered
+    if (!registered) {
+      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(
+        typeof funcOrName === "string" ? funcOrName : funcOrName.name,
+        opts.version,
+      );
+    }
+
+    util.assert(registered.version > 0, "function version must be greater than zero");
 
     const { promise, task } = await this.createPromiseAndTask({
       kind: "createPromiseAndTask",
       promise: {
         id: id,
         timeout: Date.now() + opts.timeout,
-        param: { func: registered.name, args, version: opts.version },
+        param: {
+          data: {
+            func: registered.name,
+            args: args,
+            version: registered.version,
+          },
+        },
         tags: {
           ...opts.tags,
-          "resonate:invoke": this.anycast,
+          "resonate:invoke": this.anycastPreference,
           "resonate:scope": "global",
         },
       },
@@ -249,20 +311,25 @@ export class Resonate {
   public async beginRpc<T>(id: string, func: string, ...args: any[]): Promise<ResonateHandle<T>>;
   public async beginRpc(id: string, funcOrName: Func | string, ...args: any[]): Promise<ResonateHandle<any>>;
   public async beginRpc(id: string, funcOrName: Func | string, ...argsWithOpts: any[]): Promise<ResonateHandle<any>> {
-    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
+    const [args, opts] = this.getArgsAndOpts(argsWithOpts);
+    const registered = this.registry.get(funcOrName, opts.version);
 
-    let name: string;
-    if (typeof funcOrName === "string") {
-      name = funcOrName;
-    } else {
-      name = this.registry.get(funcOrName, opts.version).name;
+    // function must be registered if function pointer is provided
+    if (typeof funcOrName === "function" && !registered) {
+      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
     const promise = await this.createPromise({
       kind: "createPromise",
       id: id,
       timeout: Date.now() + opts.timeout,
-      param: { func: name, args, version: opts.version },
+      param: {
+        data: {
+          func: registered ? registered.name : (funcOrName as string),
+          args: args,
+          version: registered ? registered.version : opts.version || 1,
+        },
+      },
       tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
       iKey: id,
       strict: false,
@@ -281,21 +348,28 @@ export class Resonate {
   public async schedule(
     name: string,
     cron: string,
-    func: Func | string,
+    funcOrName: Func | string,
     ...argsWithOpts: any[]
   ): Promise<ResonateSchedule> {
-    const [args, opts] = util.splitArgsAndOpts(argsWithOpts, this.options());
+    const [args, opts] = this.getArgsAndOpts(argsWithOpts);
+    const registered = this.registry.get(funcOrName, opts.version);
 
-    let funcName: string;
-    if (typeof func === "string") {
-      funcName = func;
-    } else {
-      funcName = this.registry.get(func, opts.version).name;
+    // function must be registered if function pointer is provided
+    if (typeof funcOrName === "function" && !registered) {
+      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
+
+    // TODO: move this into the handler?
+    const { headers, data } = this.encoder.encode({
+      func: registered ? registered.name : (funcOrName as string),
+      args: args,
+      version: registered ? registered.version : opts.version || 1,
+    });
 
     await this.schedules.create(name, cron, "{{.id}}.{{.timestamp}}", opts.timeout, {
       ikey: name,
-      promiseParam: { func: funcName, args, version: opts.version },
+      promiseHeaders: headers,
+      promiseData: data,
       promiseTags: { ...opts.tags, "resonate:invoke": opts.target },
     });
 
@@ -317,162 +391,174 @@ export class Resonate {
   }
 
   public options(opts: Partial<Options> = {}): Options {
-    return new Options(opts);
+    const target = opts.target ?? this.anycastNoPreference;
+    return new Options({ target, ...opts });
   }
 
-  /** Store a named dependency for use with `Context`.
-   *  The dependency is made available to all functions via
-   *  their execution `Context`.
-   *  Setting a dependency for a name that already exists will
-   *  overwrite the previously set dependency.
-   */
+  private getArgsAndOpts(args: any[], version?: number): [any[], Options] {
+    return util.splitArgsAndOpts(args, this.options({ version }));
+  }
+
   public setDependency(name: string, obj: any): void {
     this.dependencies.set(name, obj);
   }
 
   public stop() {
     this.network.stop();
+    this.messageSource.stop();
     this.heartbeat.stop();
   }
 
   private createPromiseAndTask(
-    req: CreatePromiseAndTaskReq,
+    req: CreatePromiseAndTaskReq<any>,
   ): Promise<{ promise: DurablePromiseRecord; task?: TaskRecord }> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) =>
       this.handler.createPromiseAndTask(
         req,
         (err, res) => {
           if (err) {
-            reject(new Error(`Promise '${req.promise.id}' could not be created`));
+            reject(err);
           } else {
             resolve({ promise: res!.promise, task: res!.task });
           }
         },
+        undefined,
         true,
-      );
-    });
+      ),
+    );
   }
 
-  private createPromise(req: CreatePromiseReq): Promise<DurablePromiseRecord> {
-    return new Promise((resolve, reject) => {
+  private createPromise(req: CreatePromiseReq<any>): Promise<DurablePromiseRecord<any>> {
+    return new Promise((resolve, reject) =>
       this.handler.createPromise(
         req,
         (err, res) => {
           if (err) {
-            reject(new Error(`Promise '${req.id}' could not be created`));
+            reject(err);
+          } else {
+            resolve(res!);
+          }
+        },
+        undefined,
+        true,
+      ),
+    );
+  }
+
+  private createSubscription(req: CreateSubscriptionReq): Promise<DurablePromiseRecord<any>> {
+    return new Promise((resolve, reject) =>
+      this.handler.createSubscription(
+        req,
+        (err, res) => {
+          if (err) {
+            reject(err);
           } else {
             resolve(res!);
           }
         },
         true,
-      );
-    });
+      ),
+    );
   }
 
-  private readPromise(req: ReadPromiseReq): Promise<DurablePromiseRecord> {
-    return new Promise((resolve, reject) => {
+  private readPromise(req: ReadPromiseReq): Promise<DurablePromiseRecord<any>> {
+    return new Promise((resolve, reject) =>
       this.handler.readPromise(req, (err, res) => {
         if (err) {
-          reject(new Error(`Promise '${req.id}' not found`));
+          reject(err);
         } else {
           resolve(res!);
         }
-      });
-    });
+      }),
+    );
   }
 
-  private createHandle(promise: DurablePromiseRecord): ResonateHandle<any> {
-    let resultPromise: Promise<any> | null = null;
+  private createHandle(promise: DurablePromiseRecord<any>): ResonateHandle<any> {
+    const createSubscriptionReq: CreateSubscriptionReq = {
+      kind: "createSubscription",
+      id: this.pid,
+      promiseId: promise.id,
+      timeout: promise.timeout + 1 * util.MIN, // add a buffer
+      recv: this.unicast,
+    };
+
     return {
       id: promise.id,
-      result: () => {
-        if (resultPromise !== null) {
-          return resultPromise;
-        }
-        resultPromise = new Promise((resolve, reject) => {
-          this.subscribe(
-            promise,
-            (promise) => {
-              util.assert(promise.state !== "pending", "promise must be completed");
-
-              if (promise.state === "resolved") {
-                resolve(promise.value);
-              } else if (promise.state === "rejected") {
-                reject(promise.value);
-              } else if (promise.state === "rejected_canceled") {
-                reject(new Error("Promise canceled"));
-              } else if (promise.state === "rejected_timedout") {
-                reject(new Error("Promise timedout"));
-              }
-            },
-            undefined,
-          );
-        });
-        return resultPromise;
-      },
-      done: () =>
-        new Promise((resolve, _) => {
-          this.subscribe(promise, undefined, (promise) => {
-            if (promise.state === "pending") {
-              resolve(false);
-            } else {
-              resolve(true);
-            }
-          });
-        }),
+      done: () => this.createSubscription(createSubscriptionReq).then((res) => res.state !== "pending"),
+      result: () => this.createSubscription(createSubscriptionReq).then((res) => this.subscribe(promise.id, res)),
     };
   }
 
   private onMessage(msg: Message): void {
     util.assert(msg.type === "notify");
-    if (msg.type === "notify") this.notify(msg.promise);
+    if (msg.type === "notify") {
+      let paramData: any;
+      let valueData: any;
+
+      try {
+        paramData = this.encoder.decode(msg.promise.param);
+      } catch (e) {
+        // TODO: improve this message
+        this.notify(msg.promise.id, new Error("Failed to decode promise param"));
+        return;
+      }
+
+      try {
+        valueData = this.encoder.decode(msg.promise.value);
+      } catch (e) {
+        // TODO: improve this message
+        this.notify(msg.promise.id, new Error("Failed to decode promise value"));
+        return;
+      }
+
+      this.notify(msg.promise.id, undefined, {
+        ...msg.promise,
+        param: { headers: msg.promise.param?.headers, data: paramData },
+        value: { headers: msg.promise.value?.headers, data: valueData },
+      });
+    }
   }
 
-  private subscribe(
-    promise: DurablePromiseRecord,
-    subsCallback?: (p: DurablePromiseRecord) => void,
-    callback?: (p: DurablePromiseRecord) => void,
-  ) {
-    const subscriptions = this.subscriptions.get(promise.id) || [];
-    if (subsCallback) {
-      subscriptions.push(subsCallback);
+  private async subscribe(id: string, res: DurablePromiseRecord) {
+    const { promise, resolve, reject } =
+      this.subscriptions.get(id) ?? Promise.withResolvers<DurablePromiseRecord<any>>();
+
+    if (res.state === "pending") {
+      this.subscriptions.set(id, { promise, resolve, reject });
+    } else {
+      resolve(res);
+      this.subscriptions.delete(id);
     }
 
-    // store local subscription
-    this.subscriptions.set(promise.id, subscriptions);
+    const p = await promise;
+    util.assert(p.state !== "pending", "promise must be completed");
 
-    // create remote subscription
-    this.handler.createSubscription(
-      {
-        kind: "createSubscription",
-        id: this.pid,
-        promiseId: promise.id,
-        timeout: promise.timeout + 1 * util.MIN, // add a buffer
-        recv: this.unicast,
-      },
-      (err, res) => {
-        if (err) {
-          // TODO
-        } else {
-          callback?.(res!);
-          if (res!.state !== "pending") {
-            this.notify(res!);
-          }
-        }
-      },
-      true,
-    );
+    if (p.state === "resolved") {
+      return p.value?.data;
+    }
+    if (p.state === "rejected") {
+      throw p.value?.data;
+    }
+    if (p.state === "rejected_canceled") {
+      throw new Error("Promise canceled");
+    }
+    if (p.state === "rejected_timedout") {
+      throw new Error("Promise timedout");
+    }
   }
 
-  private notify(promise: DurablePromiseRecord) {
-    util.assert(promise.state !== "pending", "promise must be completed");
+  private notify(id: string, err: any, res?: DurablePromiseRecord<any>) {
+    const subscription = this.subscriptions.get(id);
 
     // notify subscribers
-    for (const callback of this.subscriptions.get(promise.id) ?? []) {
-      callback(promise);
+    if (res) {
+      util.assert(res.state !== "pending", "promise must be completed");
+      subscription?.resolve(res);
+    } else {
+      subscription?.reject(err);
     }
 
-    // remove subscriptions
-    this.subscriptions.delete(promise.id);
+    // remove subscription
+    this.subscriptions.delete(id);
   }
 }
