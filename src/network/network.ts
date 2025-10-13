@@ -1,13 +1,14 @@
 // Records
 
-import type { Callback } from "../types";
+import type { ResonateError } from "../exceptions";
+import type { Value } from "../types";
 
-export interface DurablePromiseRecord {
+export interface DurablePromiseRecord<T = string> {
   id: string;
   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
   timeout: number;
-  param: any;
-  value: any;
+  param?: Value<T>;
+  value?: Value<T>;
   tags: Record<string, string>;
   iKeyForCreate?: string;
   iKeyForComplete?: string;
@@ -22,7 +23,7 @@ export interface ScheduleRecord {
   tags: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam: any;
+  promiseParam?: Value<string>;
   promiseTags: Record<string, string>;
   iKey?: string;
   lastRunTime?: number;
@@ -62,24 +63,25 @@ export type Request =
   | ClaimTaskReq
   | CompleteTaskReq
   | DropTaskReq
-  | HeartbeatTasksReq;
+  | HeartbeatTasksReq
+  | SearchPromisesReq;
 
-export type CreatePromiseReq = {
+export type CreatePromiseReq<T = string> = {
   kind: "createPromise";
   id: string;
   timeout: number;
-  param?: any;
+  param?: Value<T>;
   tags?: Record<string, string>;
   iKey?: string;
   strict?: boolean;
 };
 
-export type CreatePromiseAndTaskReq = {
+export type CreatePromiseAndTaskReq<T = string> = {
   kind: "createPromiseAndTask";
   promise: {
     id: string;
     timeout: number;
-    param?: any;
+    param?: Value<T>;
     tags?: Record<string, string>;
   };
   task: {
@@ -95,11 +97,11 @@ export type ReadPromiseReq = {
   id: string;
 };
 
-export type CompletePromiseReq = {
+export type CompletePromiseReq<T = string> = {
   kind: "completePromise";
   id: string;
   state: "resolved" | "rejected" | "rejected_canceled";
-  value?: any;
+  value?: Value<T>;
   iKey?: string;
   strict?: boolean;
 };
@@ -128,7 +130,7 @@ export type CreateScheduleReq = {
   tags?: Record<string, string>;
   promiseId?: string;
   promiseTimeout?: number;
-  promiseParam?: any;
+  promiseParam?: Value<string>;
   promiseTags?: Record<string, string>;
   iKey?: string;
 };
@@ -168,6 +170,14 @@ export type HeartbeatTasksReq = {
   processId: string;
 };
 
+export type SearchPromisesReq = {
+  kind: "searchPromises";
+  id: string;
+  state?: "pending" | "resolved" | "rejected";
+  limit?: number;
+  cursor?: string;
+};
+
 // Response
 
 export type Response =
@@ -183,7 +193,8 @@ export type Response =
   | ClaimTaskRes
   | CompleteTaskRes
   | DropTaskRes
-  | HeartbeatTasksRes;
+  | HeartbeatTasksRes
+  | SearchPromisesRes;
 
 export type CreatePromiseRes = {
   kind: "createPromise";
@@ -263,6 +274,12 @@ export type HeartbeatTasksRes = {
   tasksAffected: number;
 };
 
+export type SearchPromisesRes = {
+  kind: "searchPromises";
+  promises: DurablePromiseRecord[];
+  cursor?: string;
+};
+
 // Message
 
 export type Message =
@@ -274,8 +291,16 @@ export type Message =
 export type ResponseFor<T extends Request> = Extract<Response, { kind: T["kind"] }>;
 
 export interface Network {
-  send<T extends Request>(req: T, callback: Callback<ResponseFor<T>>, retryForever?: boolean): void;
-  recv(msg: Message): void;
+  send<T extends Request>(
+    req: T,
+    callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
+    retryForever?: boolean,
+  ): void;
   stop(): void;
+}
+
+export interface MessageSource {
+  recv(msg: Message): void;
   subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void;
+  stop(): void;
 }

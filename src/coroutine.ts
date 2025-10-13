@@ -1,5 +1,5 @@
 import type { Context, InnerContext } from "./context";
-import { Decorator, type Literal, type Value } from "./decorator";
+import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
 import type { DurablePromiseRecord } from "./network/network";
 import { type Callback, type Result, type Yieldable, ko, ok } from "./types";
@@ -73,7 +73,7 @@ export class Coroutine<T> {
         strict: false,
       },
       (err, res) => {
-        if (err) return callback(err);
+        if (err) return callback(true);
         util.assertDefined(res);
 
         if (res.state !== "pending") {
@@ -84,7 +84,6 @@ export class Coroutine<T> {
         coroutine.exec((err, status) => {
           if (err) return callback(err);
           util.assertDefined(status);
-
           switch (status.type) {
             case "more":
               callback(false, { type: "suspended", todo: status.todo });
@@ -96,21 +95,28 @@ export class Coroutine<T> {
                   kind: "completePromise",
                   id: id,
                   state: status.result.success ? "resolved" : "rejected",
-                  value: status.result.success ? status.result.value : status.result.error,
+                  value: {
+                    data: status.result.success ? status.result.value : status.result.error,
+                  },
                   iKey: id,
                   strict: false,
                 },
                 (err, promise) => {
-                  if (err) return callback(err);
+                  if (err) {
+                    err.log();
+                    return callback(true);
+                  }
                   util.assertDefined(promise);
 
                   callback(false, { type: "completed", promise });
                 },
+                func.name,
               );
               break;
           }
         });
       },
+      func.name,
     );
   }
 
@@ -129,115 +135,138 @@ export class Coroutine<T> {
 
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
-          this.handler.createPromise(action.createReq, (err, res) => {
-            if (err) return callback(err);
-            util.assertDefined(res);
-
-            const ctx = this.ctx.child(res.id, res.timeout, action.retryPolicy);
-
-            if (res.state === "pending") {
-              if (!util.isGeneratorFunction(action.func)) {
-                local.push({
-                  id: action.id,
-                  ctx: ctx,
-                  func: action.func,
-                  args: action.args,
-                });
-                input = {
-                  type: "internal.promise",
-                  state: "pending",
-                  mode: "attached",
-                  id: action.id,
-                };
-                next(); // Go back to the top of the loop
-                return;
+          this.handler.createPromise(
+            action.createReq,
+            (err, res) => {
+              if (err) {
+                err.log();
+                return callback(true);
               }
+              util.assertDefined(res);
 
-              const coroutine = new Coroutine(
-                ctx,
-                new Decorator(action.func(ctx, ...action.args)),
-                this.handler,
-                this.depth + 1,
-              );
+              const ctx = this.ctx.child(res.id, res.timeout, action.retryPolicy);
 
-              const cb: Callback<More | Done> = (err, status) => {
-                if (err) return callback(err);
-                util.assertDefined(status);
-
-                if (status.type === "more") {
-                  local.push(...status.todo.local);
-                  remote.push(...status.todo.remote);
+              if (res.state === "pending") {
+                if (!util.isGeneratorFunction(action.func)) {
+                  local.push({
+                    id: action.id,
+                    ctx: ctx,
+                    func: action.func,
+                    args: action.args,
+                  });
                   input = {
                     type: "internal.promise",
                     state: "pending",
                     mode: "attached",
                     id: action.id,
                   };
-                  next();
-                } else {
-                  this.handler.completePromise(
-                    {
-                      kind: "completePromise",
-                      id: action.id,
-                      state: status.result.success ? "resolved" : "rejected",
-                      value: status.result.success ? status.result.value : status.result.error,
-                      iKey: action.id,
-                      strict: false,
-                    },
-                    (err, res) => {
-                      if (err) return callback(err);
-                      util.assertDefined(res);
-
-                      input = {
-                        type: "internal.promise",
-                        state: "completed",
-                        id: action.id,
-                        value: extractResult(res),
-                      };
-                      next();
-                    },
-                  );
+                  next(); // Go back to the top of the loop
+                  return;
                 }
-              };
 
-              // Every nth level we kick off the next coroutine in a
-              // microtask, escaping the current call stack. This is
-              // necessary to avoid exceeding the maximum call stack
-              // when the user program has adequate recursion.
-              //
-              // The microtask queue is exhausted before the
-              // javascript engine moves on to macrotasks and a
-              // coroutine may spawn recursive coroutines, opening up
-              // the possibility of blocking the event loop
-              // indefinitely. However, this is analagous to writing
-              // a program with unbounded recursion, something that
-              // is always possible.
-              //
-              // Experimenting with the queueMicrotaskEveryN value
-              // shows that a value of 1 (our default) is optimal.
-              if (this.depth % this.queueMicrotaskEveryN === 0) {
-                queueMicrotask(() => coroutine.exec(cb));
+                const coroutine = new Coroutine(
+                  ctx,
+                  new Decorator(action.func(ctx, ...action.args)),
+                  this.handler,
+                  this.depth + 1,
+                );
+
+                const cb: Callback<More | Done> = (err, status) => {
+                  if (err) return callback(err);
+                  util.assertDefined(status);
+
+                  if (status.type === "more") {
+                    local.push(...status.todo.local);
+                    remote.push(...status.todo.remote);
+                    input = {
+                      type: "internal.promise",
+                      state: "pending",
+                      mode: "attached",
+                      id: action.id,
+                    };
+                    next();
+                  } else {
+                    this.handler.completePromise(
+                      {
+                        kind: "completePromise",
+                        id: action.id,
+                        state: status.result.success ? "resolved" : "rejected",
+                        value: {
+                          data: status.result.success ? status.result.value : status.result.error,
+                        },
+                        iKey: action.id,
+                        strict: false,
+                      },
+                      (err, res) => {
+                        if (err) {
+                          err.log();
+                          return callback(true);
+                        }
+                        util.assertDefined(res);
+                        util.assert(res.state !== "pending", "promise must be completed");
+
+                        input = {
+                          type: "internal.promise",
+                          state: "completed",
+                          id: action.id,
+                          value: {
+                            type: "internal.literal",
+                            value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
+                          },
+                        };
+                        next();
+                      },
+                      action.func.name,
+                    );
+                  }
+                };
+
+                // Every nth level we kick off the next coroutine in a
+                // microtask, escaping the current call stack. This is
+                // necessary to avoid exceeding the maximum call stack
+                // when the user program has adequate recursion.
+                //
+                // The microtask queue is exhausted before the
+                // javascript engine moves on to macrotasks and a
+                // coroutine may spawn recursive coroutines, opening up
+                // the possibility of blocking the event loop
+                // indefinitely. However, this is analagous to writing
+                // a program with unbounded recursion, something that
+                // is always possible.
+                //
+                // Experimenting with the queueMicrotaskEveryN value
+                // shows that a value of 1 (our default) is optimal.
+                if (this.depth % this.queueMicrotaskEveryN === 0) {
+                  queueMicrotask(() => coroutine.exec(cb));
+                } else {
+                  coroutine.exec(cb);
+                }
               } else {
-                coroutine.exec(cb);
+                // durable promise is completed
+                input = {
+                  type: "internal.promise",
+                  state: "completed",
+                  id: action.id,
+                  value: {
+                    type: "internal.literal",
+                    value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
+                  },
+                };
+                next();
               }
-            } else {
-              // durable promise is completed
-              input = {
-                type: "internal.promise",
-                state: "completed",
-                id: action.id,
-                value: extractResult(res),
-              };
-              next();
-            }
-          });
+            },
+            action.func.name,
+          );
           return; // Exit the while loop to wait for async callback
         }
 
         // Handle internal.async.r
         if (action.type === "internal.async.r") {
           this.handler.createPromise(action.createReq, (err, res) => {
-            if (err) return callback(err);
+            if (err) {
+              err.log();
+              return callback(true);
+            }
             util.assertDefined(res);
 
             if (res.state === "pending") {
@@ -254,7 +283,10 @@ export class Coroutine<T> {
                 type: "internal.promise",
                 state: "completed",
                 id: action.id,
-                value: extractResult(res),
+                value: {
+                  type: "internal.literal",
+                  value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
+                },
               };
             }
             next();
@@ -298,14 +330,4 @@ export class Coroutine<T> {
 
     next();
   }
-}
-
-function extractResult<T>(durablePromise: DurablePromiseRecord): Literal<T> {
-  util.assert(durablePromise.state !== "pending", "Can not get result from a pending promise");
-  const value: Result<T> = durablePromise.state === "resolved" ? ok(durablePromise.value) : ko(durablePromise.value);
-
-  return {
-    type: "internal.literal",
-    value,
-  };
 }

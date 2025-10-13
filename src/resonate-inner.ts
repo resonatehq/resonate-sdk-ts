@@ -2,7 +2,7 @@ import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
-import type { DurablePromiseRecord, Message, Network, TaskRecord } from "./network/network";
+import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
 import type { Registry } from "./registry";
 import type { Callback } from "./types";
 import * as util from "./util";
@@ -17,7 +17,7 @@ export type Task = ClaimedTask | UnclaimedTask;
 export type ClaimedTask = {
   kind: "claimed";
   task: TaskRecord;
-  rootPromise: DurablePromiseRecord;
+  rootPromise: DurablePromiseRecord<any>;
 };
 
 export type UnclaimedTask = {
@@ -27,7 +27,8 @@ export type UnclaimedTask = {
 
 export class ResonateInner {
   private unicast: string;
-  private anycast: string;
+  private anycastPreference: string;
+  private anycastNoPreference: string;
   private pid: string;
   private ttl: number;
   private clock: Clock;
@@ -40,7 +41,8 @@ export class ResonateInner {
 
   constructor({
     unicast,
-    anycast,
+    anycastPreference,
+    anycastNoPreference,
     pid,
     ttl,
     clock,
@@ -49,9 +51,11 @@ export class ResonateInner {
     registry,
     heartbeat,
     dependencies,
+    messageSource = undefined,
   }: {
     unicast: string;
-    anycast: string;
+    anycastPreference: string;
+    anycastNoPreference: string;
     pid: string;
     ttl: number;
     clock: Clock;
@@ -60,9 +64,11 @@ export class ResonateInner {
     registry: Registry;
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
+    messageSource?: MessageSource;
   }) {
     this.unicast = unicast;
-    this.anycast = anycast;
+    this.anycastPreference = anycastPreference;
+    this.anycastNoPreference = anycastNoPreference;
     this.pid = pid;
     this.ttl = ttl;
     this.clock = clock;
@@ -73,8 +79,8 @@ export class ResonateInner {
     this.dependencies = dependencies;
 
     // subscribe to invoke and resume
-    this.network.subscribe("invoke", this.onMessage.bind(this));
-    this.network.subscribe("resume", this.onMessage.bind(this));
+    messageSource?.subscribe("invoke", this.onMessage.bind(this));
+    messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
   public process(task: Task, done: Callback<Status>) {
@@ -83,7 +89,8 @@ export class ResonateInner {
       computation = new Computation(
         task.task.rootPromiseId,
         this.unicast,
-        this.anycast,
+        this.anycastPreference,
+        this.anycastNoPreference,
         this.pid,
         this.ttl,
         this.clock,
