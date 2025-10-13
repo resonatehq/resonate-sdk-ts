@@ -24,6 +24,7 @@ import type {
   HeartbeatTasksReq,
   HeartbeatTasksRes,
   Message,
+  MessageSource,
   Network,
   ReadPromiseReq,
   ReadPromiseRes,
@@ -33,27 +34,24 @@ import type {
   Response,
   ResponseFor,
   ScheduleRecord,
+  SearchPromisesReq,
+  SearchPromisesRes,
   TaskRecord,
-} from "./network"; // Assuming types are in a separate file
+} from "./network";
 
 import { EventSource } from "eventsource";
 
-import type { Callback } from "../types";
+import exceptions, { ResonateError, type ResonateServerError } from "../exceptions";
+import type { Value } from "../types";
 import * as util from "../util";
-
-// API Value format from OpenAPI spec
-interface ApiValue {
-  headers?: Record<string, string>;
-  data?: string;
-}
 
 // API Response Types
 interface PromiseDto {
   id: string;
   state: string;
   timeout: number;
-  param?: ApiValue;
-  value?: ApiValue;
+  param?: Value<string>;
+  value?: Value<string>;
   tags?: Record<string, string>;
   idempotencyKeyForCreate?: string;
   idempotencyKeyForComplete?: string;
@@ -85,7 +83,7 @@ interface ScheduleDto {
   tags?: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam?: ApiValue;
+  promiseParam?: Value<string>;
   promiseTags?: Record<string, string>;
   idempotencyKey?: string;
   lastRunTime?: number;
@@ -122,102 +120,23 @@ interface ClaimTaskResponseDto {
 interface HeartbeatResponseDto {
   tasksAffected: number;
 }
-
-export interface Encoder {
-  encode(value: any): ApiValue;
-  decode(apiValue: ApiValue | undefined): any;
-}
-
-export class JsonEncoder implements Encoder {
-  inf = "__INF__";
-  negInf = "__NEG_INF__";
-  encode(value: any): ApiValue {
-    // note about undefined:
-    // undefined is not json serializable, so immediately return undefined
-    if (value === undefined) {
-      return {
-        data: undefined,
-      };
-    }
-
-    const jsonVal = JSON.stringify(value, (_, value) => {
-      if (value === Number.POSITIVE_INFINITY) {
-        return this.inf;
-      }
-
-      if (value === Number.NEGATIVE_INFINITY) {
-        return this.negInf;
-      }
-
-      if (value instanceof AggregateError) {
-        return {
-          __type: "aggregate_error",
-          message: value.message,
-          stack: value.stack,
-          name: value.name,
-          errors: value.errors,
-        };
-      }
-
-      if (value instanceof Error) {
-        return {
-          __type: "error",
-          message: value.message,
-          stack: value.stack,
-          name: value.name,
-        };
-      }
-
-      return value;
-    });
-
-    return {
-      headers: {},
-      data: util.base64Encode(jsonVal),
-    };
-  }
-
-  decode(apiValue: ApiValue | undefined): any {
-    if (!apiValue?.data) {
-      return undefined;
-    }
-
-    const data = util.base64Decode(apiValue.data);
-
-    return JSON.parse(data, (_, value) => {
-      if (value === this.inf) {
-        return Number.POSITIVE_INFINITY;
-      }
-
-      if (value === this.negInf) {
-        return Number.NEGATIVE_INFINITY;
-      }
-
-      if (value?.__type === "aggregate_error") {
-        return Object.assign(new AggregateError(value.errors, value.message), value);
-      }
-
-      if (value?.__type === "error") {
-        const error = new Error(value.message || "Unknown error");
-        if (value.name) error.name = value.name;
-        if (value.stack) error.stack = value.stack;
-        return error;
-      }
-
-      return value;
-    });
-  }
+interface SearchPromisesResponseDto {
+  promises: PromiseDto[];
+  cursor: string;
 }
 
 export interface HttpNetworkConfig {
   url: string;
+  auth?: { username: string; password: string };
+  timeout?: number;
+  headers?: Record<string, string>;
+}
+
+export interface HttpMessageSourceConfig {
+  url: string;
   pid: string;
   group: string;
   auth?: { username: string; password: string };
-  messageSourceAuth?: { username: string; password: string };
-  timeout?: number;
-  headers?: Record<string, string>;
-  encoder?: Encoder;
 }
 
 export type RetryPolicy = {
@@ -229,118 +148,39 @@ export class HttpNetwork implements Network {
   private EXCPECTED_RESONATE_VERSION = "0.7.15";
 
   private url: string;
-  private group: string;
-  private pid: string;
   private timeout: number;
   private headers: Record<string, string>;
-  private msgHeaders: Record<string, string>;
-  private encoder: Encoder;
-  private eventSource: EventSource;
-  private subscriptions: {
-    invoke: Array<(msg: Message) => void>;
-    resume: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
-  } = { invoke: [], resume: [], notify: [] };
 
-  constructor({
-    url,
-    pid,
-    group,
-    auth,
-    messageSourceAuth,
-    timeout = 30 * util.SEC,
-    headers = {},
-    encoder = new JsonEncoder(),
-  }: HttpNetworkConfig) {
+  constructor({ url, auth, timeout = 30 * util.SEC, headers = {} }: HttpNetworkConfig) {
     this.url = url;
-
-    this.group = group;
-    this.pid = pid;
     this.timeout = timeout;
-    this.encoder = encoder;
 
     this.headers = { "Content-Type": "application/json", ...headers };
     if (auth) {
       this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
     }
-
-    this.msgHeaders = {};
-    if (messageSourceAuth) {
-      this.msgHeaders.Authorization = `Basic ${util.base64Encode(`${messageSourceAuth.username}:${messageSourceAuth.password}`)}`;
-    }
-
-    this.eventSource = this.connect();
   }
 
-  private connect() {
-    const url = new URL(`/poll/${encodeURIComponent(this.group)}/${encodeURIComponent(this.pid)}`, `${this.url}`);
-    this.eventSource = new EventSource(url, {
-      fetch: (url, init) =>
-        fetch(url, {
-          ...init,
-          headers: {
-            ...init.headers,
-            ...this.msgHeaders,
-          },
-        }),
-    });
-
-    this.eventSource.addEventListener("message", (event) => {
-      let msg: Message;
-      const data = JSON.parse(event.data);
-
-      if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
-        msg = { type: data.type, task: data.task };
-      } else if (data?.type === "notify" && util.isDurablePromiseRecord(data?.promise)) {
-        msg = { type: data.type, promise: this.mapPromiseDtoToRecord(data.promise) };
-      } else {
-        console.warn("Received invalid message:", data);
-        return;
-      }
-
-      this.recv(msg);
-    });
-
-    this.eventSource.addEventListener("error", () => {
-      // some browsers/runtimes may handle automatic reconnect
-      // differently, so to ensure consistency close the eventsource
-      // and recreate
-      this.eventSource.close();
-
-      console.log(`Networking. Cannot connect to [${this.url}/poll]. Retrying in 5s.`);
-      setTimeout(() => this.connect(), 5000);
-    });
-
-    return this.eventSource;
-  }
-
-  send<T extends Request>(req: T, callback: Callback<ResponseFor<T>>, retryForever = false): void {
+  send<T extends Request>(
+    req: T,
+    callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
+    retryForever = false,
+  ): void {
     const retryPolicy = retryForever ? { retries: Number.MAX_SAFE_INTEGER, delay: 1000 } : { retries: 0 };
 
     this.handleRequest(req, retryPolicy).then(
       (res) => {
         util.assert(res.kind === req.kind, "res kind must match req kind");
-        callback(false, res as ResponseFor<T>);
+        callback(undefined, res as ResponseFor<T>);
       },
       (err) => {
-        console.error(`Request failed: ${err}`);
-        callback(true);
+        callback(err as ResonateError);
       },
     );
   }
 
-  recv(msg: Message): void {
-    for (const callback of this.subscriptions[msg.type]) {
-      callback(msg);
-    }
-  }
-
   public stop(): void {
-    this.eventSource.close();
-  }
-
-  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void {
-    this.subscriptions[type].push(callback);
+    // No-op for HttpNetwork, MessageSource handles connection cleanup
   }
 
   private async handleRequest(req: Request, retryPolicy: RetryPolicy = {}): Promise<Response> {
@@ -371,6 +211,8 @@ export class HttpNetwork implements Network {
         return this.dropTask(req, retryPolicy);
       case "heartbeatTasks":
         return this.heartbeatTasks(req, retryPolicy);
+      case "searchPromises":
+        return this.searchPromises(req, retryPolicy);
       default:
         throw new Error(`Unsupported request kind: ${(req as any).kind}`);
     }
@@ -389,14 +231,14 @@ export class HttpNetwork implements Network {
         body: JSON.stringify({
           id: req.id,
           timeout: req.timeout,
-          param: this.encoder.encode(req.param),
+          param: req.param,
           tags: req.tags,
         }),
       },
       retryPolicy,
     );
 
-    const promise = this.mapPromiseDtoToRecord((await res.json()) as PromiseDto);
+    const promise = mapPromiseDtoToRecord((await res.json()) as PromiseDto);
     return { kind: "createPromise", promise };
   }
 
@@ -417,7 +259,7 @@ export class HttpNetwork implements Network {
           promise: {
             id: req.promise.id,
             timeout: req.promise.timeout,
-            param: this.encoder.encode(req.promise.param),
+            param: req.promise.param,
             tags: req.promise.tags,
           },
           task: {
@@ -432,7 +274,7 @@ export class HttpNetwork implements Network {
     const data = (await res.json()) as CreatePromiseAndTaskResponseDto;
     return {
       kind: "createPromiseAndTask",
-      promise: this.mapPromiseDtoToRecord(data.promise),
+      promise: mapPromiseDtoToRecord(data.promise),
       task: data.task ? this.mapTaskDtoToRecord(data.task) : undefined,
     };
   }
@@ -440,7 +282,7 @@ export class HttpNetwork implements Network {
   private async readPromise(req: ReadPromiseReq, retryPolicy: RetryPolicy = {}): Promise<ReadPromiseRes> {
     const res = await this.fetch(`/promises/${encodeURIComponent(req.id)}`, { method: "GET" }, retryPolicy);
 
-    const promise = this.mapPromiseDtoToRecord((await res.json()) as PromiseDto);
+    const promise = mapPromiseDtoToRecord((await res.json()) as PromiseDto);
     return { kind: "readPromise", promise };
   }
 
@@ -456,13 +298,13 @@ export class HttpNetwork implements Network {
         headers,
         body: JSON.stringify({
           state: req.state.toUpperCase(),
-          value: this.encoder.encode(req.value),
+          value: req.value,
         }),
       },
       retryPolicy,
     );
 
-    const promise = this.mapPromiseDtoToRecord((await res.json()) as PromiseDto);
+    const promise = mapPromiseDtoToRecord((await res.json()) as PromiseDto);
     return { kind: "completePromise", promise };
   }
 
@@ -484,7 +326,7 @@ export class HttpNetwork implements Network {
     return {
       kind: "createCallback",
       callback: data.callback ? this.mapCallbackDtoToRecord(data.callback) : undefined,
-      promise: this.mapPromiseDtoToRecord(data.promise),
+      promise: mapPromiseDtoToRecord(data.promise),
     };
   }
 
@@ -511,7 +353,7 @@ export class HttpNetwork implements Network {
     return {
       kind: "createSubscription",
       callback: data.callback ? this.mapCallbackDtoToRecord(data.callback) : undefined,
-      promise: this.mapPromiseDtoToRecord(data.promise),
+      promise: mapPromiseDtoToRecord(data.promise),
     };
   }
 
@@ -531,7 +373,7 @@ export class HttpNetwork implements Network {
           tags: req.tags,
           promiseId: req.promiseId,
           promiseTimeout: req.promiseTimeout,
-          promiseParam: this.encoder.encode(req.promiseParam),
+          promiseParam: req.promiseParam,
           promiseTags: req.promiseTags,
         }),
       },
@@ -588,13 +430,13 @@ export class HttpNetwork implements Network {
           root: message.promises.root
             ? {
                 id: message.promises.root.id,
-                data: this.mapPromiseDtoToRecord(message.promises.root.data),
+                data: mapPromiseDtoToRecord(message.promises.root.data),
               }
             : undefined,
           leaf: message.promises.leaf
             ? {
                 id: message.promises.leaf.id,
-                data: this.mapPromiseDtoToRecord(message.promises.leaf.data),
+                data: mapPromiseDtoToRecord(message.promises.leaf.data),
               }
             : undefined,
         },
@@ -656,6 +498,19 @@ export class HttpNetwork implements Network {
     };
   }
 
+  private async searchPromises(req: SearchPromisesReq, retryPolicy: RetryPolicy = {}): Promise<SearchPromisesRes> {
+    const params = new URLSearchParams({ id: req.id });
+    if (req.state) params.append("state", req.state);
+    if (req.limit) params.append("limit", String(req.limit));
+    if (req.cursor) params.append("cursor", req.cursor);
+
+    const res = await this.fetch(`/promises?${params.toString()}`, { method: "GET" }, retryPolicy);
+
+    const data: any = (await res.json()) as SearchPromisesResponseDto;
+
+    return { kind: "searchPromises", promises: data.promises, cursor: data.cursor };
+  }
+
   private async fetch(
     path: string,
     init: RequestInit,
@@ -676,21 +531,28 @@ export class HttpNetwork implements Network {
 
         if (util.semverLessThan(ver, this.EXCPECTED_RESONATE_VERSION)) {
           console.warn(
-            `Networking. Expected Resonate server version >=${this.EXCPECTED_RESONATE_VERSION}, got ${ver}. Will continue.`,
+            `Networking. Resonate server ${this.EXCPECTED_RESONATE_VERSION} or newer required (provided ${ver}). Will continue.`,
           );
         }
 
         if (!res.ok) {
-          const err = (await res.json().catch(() => ({}))) as { message?: string };
-          throw new Error(err.message || `HTTP ${res.status}: ${res.statusText}`);
+          const err = (await res
+            .json()
+            .then((r: any) => r.error)
+            .catch(() => undefined)) as ResonateServerError | undefined;
+          throw exceptions.SERVER_ERROR(err ? err.message : res.statusText, res.status >= 500 && res.status < 600, err);
         }
 
         return res;
       } catch (err) {
-        if (attempt >= retries) {
+        if (err instanceof ResonateError && !err.retriable) {
           throw err;
         }
-        console.log(`Networking. Cannot connect to [${this.url}]. Retrying in ${delay / 1000}s.`);
+        if (attempt >= retries) {
+          throw exceptions.SERVER_ERROR(String(err));
+        }
+
+        console.warn(`Networking. Cannot connect to [${this.url}]. Retrying in ${delay / 1000}s.`);
 
         // sleep before retrying
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -702,35 +564,20 @@ export class HttpNetwork implements Network {
     throw new Error("Fetch error");
   }
 
-  private mapPromiseDtoToRecord(apiPromise: PromiseDto): DurablePromiseRecord {
+  private mapScheduleDtoToRecord(schedule: ScheduleDto): ScheduleRecord {
     return {
-      id: apiPromise.id,
-      state: this.mapApiStateToInternal(apiPromise.state),
-      timeout: apiPromise.timeout,
-      param: this.encoder.decode(apiPromise.param),
-      value: this.encoder.decode(apiPromise.value),
-      tags: apiPromise.tags || {},
-      iKeyForCreate: apiPromise.idempotencyKeyForCreate,
-      iKeyForComplete: apiPromise.idempotencyKeyForComplete,
-      createdOn: apiPromise.createdOn,
-      completedOn: apiPromise.completedOn,
-    };
-  }
-
-  private mapScheduleDtoToRecord(apiSchedule: ScheduleDto): ScheduleRecord {
-    return {
-      id: apiSchedule.id,
-      description: apiSchedule.description,
-      cron: apiSchedule.cron,
-      tags: apiSchedule.tags || {},
-      promiseId: apiSchedule.promiseId,
-      promiseTimeout: apiSchedule.promiseTimeout,
-      promiseParam: apiSchedule.promiseParam,
-      promiseTags: apiSchedule.promiseTags || {},
-      iKey: apiSchedule.idempotencyKey,
-      lastRunTime: apiSchedule.lastRunTime,
-      nextRunTime: apiSchedule.nextRunTime,
-      createdOn: apiSchedule.createdOn,
+      id: schedule.id,
+      description: schedule.description,
+      cron: schedule.cron,
+      tags: schedule.tags || {},
+      promiseId: schedule.promiseId,
+      promiseTimeout: schedule.promiseTimeout,
+      promiseParam: schedule.promiseParam,
+      promiseTags: schedule.promiseTags || {},
+      iKey: schedule.idempotencyKey,
+      lastRunTime: schedule.lastRunTime,
+      nextRunTime: schedule.nextRunTime,
+      createdOn: schedule.createdOn,
     };
   }
 
@@ -754,23 +601,124 @@ export class HttpNetwork implements Network {
       completedOn: apiTask.completedOn,
     };
   }
+}
 
-  private mapApiStateToInternal(
-    apiState: string,
-  ): "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout" {
-    switch (apiState) {
-      case "PENDING":
-        return "pending";
-      case "RESOLVED":
-        return "resolved";
-      case "REJECTED":
-        return "rejected";
-      case "REJECTED_CANCELED":
-        return "rejected_canceled";
-      case "REJECTED_TIMEDOUT":
-        return "rejected_timedout";
-      default:
-        throw new Error(`Unknown API state: ${apiState}`);
+export class HttpMessageSource implements MessageSource {
+  private url: string;
+  private group: string;
+  private pid: string;
+  private headers: Record<string, string>;
+  private eventSource: EventSource;
+  private subscriptions: {
+    invoke: Array<(msg: Message) => void>;
+    resume: Array<(msg: Message) => void>;
+    notify: Array<(msg: Message) => void>;
+  } = { invoke: [], resume: [], notify: [] };
+
+  constructor({ url, pid, group, auth }: HttpMessageSourceConfig) {
+    this.url = url;
+    this.group = group;
+    this.pid = pid;
+    this.headers = {};
+    if (auth) {
+      this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
+    }
+
+    this.eventSource = this.connect();
+  }
+
+  private connect() {
+    const url = new URL(`/poll/${encodeURIComponent(this.group)}/${encodeURIComponent(this.pid)}`, `${this.url}`);
+    this.eventSource = new EventSource(url, {
+      fetch: (url, init) =>
+        fetch(url, {
+          ...init,
+          headers: {
+            ...init.headers,
+            ...this.headers,
+          },
+        }),
+    });
+
+    this.eventSource.addEventListener("message", (event) => {
+      let msg: Message;
+
+      try {
+        const data = JSON.parse(event.data);
+
+        if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
+          msg = { type: data.type, task: data.task };
+        } else if (data?.type === "notify" && util.isDurablePromiseRecord(data?.promise)) {
+          msg = { type: data.type, promise: mapPromiseDtoToRecord(data.promise) };
+        } else {
+          throw new Error("invalid message");
+        }
+      } catch (e) {
+        console.warn("Networking. Received invalid message. Will continue.");
+        return;
+      }
+
+      this.recv(msg);
+    });
+
+    this.eventSource.addEventListener("error", () => {
+      // some browsers/runtimes may handle automatic reconnect
+      // differently, so to ensure consistency close the eventsource
+      // and recreate
+      this.eventSource.close();
+
+      console.warn(`Networking. Cannot connect to [${this.url}/poll]. Retrying in 5s.`);
+      setTimeout(() => this.connect(), 5000);
+    });
+
+    return this.eventSource;
+  }
+
+  recv(msg: Message): void {
+    for (const callback of this.subscriptions[msg.type]) {
+      callback(msg);
     }
   }
+
+  public stop(): void {
+    this.eventSource.close();
+  }
+
+  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void {
+    this.subscriptions[type].push(callback);
+  }
+}
+
+function mapApiStateToInternal(
+  state: string,
+): "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout" {
+  switch (state) {
+    case "PENDING":
+      return "pending";
+    case "RESOLVED":
+      return "resolved";
+    case "REJECTED":
+      return "rejected";
+    case "REJECTED_CANCELED":
+      return "rejected_canceled";
+    case "REJECTED_TIMEDOUT":
+      return "rejected_timedout";
+    default:
+      throw new Error(`Unknown API state: ${state}`);
+  }
+}
+
+function mapPromiseDtoToRecord(promise: PromiseDto): DurablePromiseRecord {
+  return {
+    id: promise.id,
+    state: mapApiStateToInternal(promise.state),
+    timeout: promise.timeout,
+    param: promise.param,
+    value: promise.value,
+    tags: promise.tags || {},
+    iKeyForCreate: promise.idempotencyKeyForCreate,
+    iKeyForComplete: promise.idempotencyKeyForComplete,
+    createdOn: promise.createdOn,
+    completedOn: promise.completedOn,
+  };
 }

@@ -1,7 +1,16 @@
 import type { StepClock } from "../../src/clock";
+import type { Encoder } from "../../src/encoder";
+import { ResonateError } from "../../src/exceptions";
 import { Handler } from "../../src/handler";
 import { NoopHeartbeat } from "../../src/heartbeat";
-import type { Network, Message as NetworkMessage, Request, Response, ResponseFor } from "../../src/network/network";
+import type {
+  MessageSource,
+  Network,
+  Message as NetworkMessage,
+  Request,
+  Response,
+  ResponseFor,
+} from "../../src/network/network";
 import type { Registry } from "../../src/registry";
 import { ResonateInner } from "../../src/resonate-inner";
 import type { Callback } from "../../src/types";
@@ -12,44 +21,14 @@ interface DeliveryOptions {
   charFlipProb?: number;
 }
 
-class SimulatedNetwork implements Network {
-  private correlationId = 1;
-  private currentTime = 0;
-
-  private prng: Random;
-  private deliveryOptions: Required<DeliveryOptions>;
-  private buffer: Message<Request>[] = [];
-  private callbacks: Record<number, { callback: Callback<Response>; timeout: number }> = {};
+class SimulatedMessageSource implements MessageSource {
   private subscriptions: {
     invoke: Array<(msg: NetworkMessage) => void>;
     resume: Array<(msg: NetworkMessage) => void>;
     notify: Array<(msg: NetworkMessage) => void>;
   } = { invoke: [], resume: [], notify: [] };
 
-  constructor(
-    prng: Random,
-    { charFlipProb = 0 }: DeliveryOptions,
-    public readonly source: Address,
-    public readonly target: Address,
-  ) {
-    this.prng = prng;
-    this.deliveryOptions = { charFlipProb };
-  }
-
-  send<T extends Request>(req: T, cb: (err: boolean, res?: ResponseFor<T>) => void): void {
-    const message = new Message<Request>(this.source, this.target, req, {
-      requ: true,
-      correlationId: this.correlationId++,
-    });
-
-    const callback = (err: boolean, res?: Response) => {
-      util.assert(err || (res !== undefined && res.kind === req.kind), "res kind must match req kind");
-      cb(err, res as ResponseFor<T>);
-    };
-
-    this.callbacks[message.head!.correlationId] = { callback, timeout: this.currentTime + 5000 };
-    this.buffer.push(message);
-  }
+  constructor(private maybeCorruptData: (data: NetworkMessage) => any) {}
 
   recv(msg: NetworkMessage): void {
     for (const callback of this.subscriptions[msg.type]) {
@@ -59,6 +38,49 @@ class SimulatedNetwork implements Network {
 
   subscribe(type: "invoke" | "resume" | "notify", callback: (msg: NetworkMessage) => void): void {
     this.subscriptions[type].push(callback);
+  }
+
+  stop(): void {}
+}
+
+class SimulatedNetwork implements Network {
+  private correlationId = 1;
+  private currentTime = 0;
+
+  private prng: Random;
+  private deliveryOptions: Required<DeliveryOptions>;
+  private buffer: Message<Request>[] = [];
+  private callbacks: Record<number, { callback: Callback<Response>; timeout: number }> = {};
+  private messageSource: SimulatedMessageSource;
+
+  constructor(
+    prng: Random,
+    { charFlipProb = 0 }: DeliveryOptions,
+    public readonly source: Address,
+    public readonly target: Address,
+  ) {
+    this.prng = prng;
+    this.deliveryOptions = { charFlipProb };
+    this.messageSource = new SimulatedMessageSource((data) => this.maybeCorruptData(data));
+  }
+
+  getMessageSource(): MessageSource {
+    return this.messageSource;
+  }
+
+  send<T extends Request>(req: T, cb: (err?: ResonateError, res?: ResponseFor<T>) => void): void {
+    const message = new Message<Request>(this.source, this.target, req, {
+      requ: true,
+      correlationId: this.correlationId++,
+    });
+
+    const callback = (err: boolean, res?: Response) => {
+      util.assert(err || (res !== undefined && res.kind === req.kind), "res kind must match req kind");
+      cb(new ResonateError("0", "Simulator", "Simulator error"), res as ResponseFor<T>);
+    };
+
+    this.callbacks[message.head!.correlationId] = { callback, timeout: this.currentTime + 5000 };
+    this.buffer.push(message);
   }
 
   stop(): void {}
@@ -96,7 +118,7 @@ class SimulatedNetwork implements Network {
       }
     } else {
       util.assert(message.source.kind === this.target.kind && message.source.iaddr === this.target.iaddr);
-      this.recv((message as Message<NetworkMessage>).data);
+      this.messageSource.recv((message as Message<NetworkMessage>).data);
     }
   }
 
@@ -135,6 +157,7 @@ export class WorkerProcess extends Process {
   constructor(
     prng: Random,
     clock: StepClock,
+    encoder: Encoder,
     registry: Registry,
     { charFlipProb = 0 }: DeliveryOptions,
     public readonly iaddr: string,
@@ -146,12 +169,14 @@ export class WorkerProcess extends Process {
     this.registry = registry;
     this.resonate = new ResonateInner({
       unicast: `sim://uni@${gaddr}/${iaddr}`,
-      anycast: `sim://any@${gaddr}/${iaddr}`,
+      anycastPreference: `sim://any@${gaddr}/${iaddr}`,
+      anycastNoPreference: `sim://any@${gaddr}`,
       pid: iaddr,
       ttl: 5000,
       clock: this.clock,
       network: this.network,
-      handler: new Handler(this.network),
+      handler: new Handler(this.network, encoder),
+      messageSource: this.network.getMessageSource(),
       registry: registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),

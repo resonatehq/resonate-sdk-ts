@@ -1,7 +1,6 @@
 import { setTimeout } from "node:timers/promises";
-import { LocalNetwork } from "../dev/network";
 import type { Context } from "../src/context";
-import { HttpNetwork } from "../src/network/remote";
+import { JsonEncoder } from "../src/encoder";
 import { Resonate } from "../src/resonate";
 import { Constant, Never } from "../src/retries";
 import * as util from "../src/util";
@@ -33,11 +32,11 @@ describe("Resonate usage tests", () => {
     expect(await resonate.rpc(crypto.randomUUID().replace(/-/g, ""), "f")).toBe(2);
     expect(await f1.run(crypto.randomUUID().replace(/-/g, ""))).toBe(1);
     await expect(f1.run(crypto.randomUUID().replace(/-/g, ""), resonate.options({ version: 2 }))).rejects.toThrow(
-      "function foo version 2 not found in registry",
+      "Function 'foo' (version 2) is not registered",
     );
     expect(await f2.run(crypto.randomUUID().replace(/-/g, ""))).toBe(2);
     await expect(f2.run(crypto.randomUUID().replace(/-/g, ""), resonate.options({ version: 1 }))).rejects.toThrow(
-      "function bar version 1 not found in registry",
+      "Function 'bar' (version 1) is not registered",
     );
   });
   test("done check", async () => {
@@ -203,9 +202,28 @@ describe("Resonate usage tests", () => {
     resonate.stop();
   });
 
+  test("test search api", async () => {
+    const resonate = Resonate.local();
+
+    // Create test promises
+    const foo = await resonate.promises.create("foo", 10_000_000);
+    const bar = await resonate.promises.create("bar", 10_000_000);
+
+    const results: any[] = [];
+    for await (const page of resonate.promises.search("*", { limit: 1 })) {
+      expect(Array.isArray(page)).toBe(true);
+      results.push(...page);
+    }
+
+    const ids = results.map((r) => r.id);
+    expect(ids).toContain(foo.id);
+    expect(ids).toContain(bar.id);
+
+    resonate.stop();
+  });
+
   test("Correctly sets options on inner functions", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
       return { msg };
@@ -226,8 +244,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Correctly matches target", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     resonate.register("foo", function* (ctx: Context, target: string) {
       yield* ctx.rfi("bar", ctx.options({ target }));
@@ -265,8 +282,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Correctly sets options on inner functions without defined opts", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
       return { msg };
@@ -287,8 +303,8 @@ describe("Resonate usage tests", () => {
   });
 
   test("Basic human in the loop", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
+    const encoder = new JsonEncoder();
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const f = resonate.register("f", function* foo(ctx: Context) {
       const fu = yield* ctx.promise({ id: "myId" });
@@ -299,15 +315,15 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    await resonate.promises.resolve("myId", { ikey: "myId", strict: false, value: "myValue" });
+    await resonate.promises.resolve("myId", { ikey: "myId", strict: false, data: encoder.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
   });
 
   test("Correctly sets timeout", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
+    const encoder = new JsonEncoder();
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const time = Date.now();
 
@@ -324,15 +340,14 @@ describe("Resonate usage tests", () => {
     expect(durable.timeout).toBeGreaterThanOrEqual(time + 5 * util.HOUR);
     expect(durable.timeout).toBeLessThan(time + 5 * util.HOUR + 1000);
 
-    await resonate.promises.resolve("myId", { ikey: "myId", strict: false, value: "myValue" });
+    await resonate.promises.resolve("myId", { ikey: "myId", strict: false, data: encoder.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
   });
 
   test("Basic Durable sleep", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 }, network);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const time = Date.now();
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -353,8 +368,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Basic Detached", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     resonate.register("d", async (_ctx: Context): Promise<void> => {
       await setTimeout(1000);
@@ -375,8 +389,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Basic use of dependencies", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     const g = (ctx: Context, name: string): string => {
       const greeting = ctx.getDependency("greeting") as string;
@@ -396,23 +409,22 @@ describe("Resonate usage tests", () => {
   });
 
   test("Basic get", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network);
+    const encoder = new JsonEncoder();
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     // get throws when promise does not exist
     expect(resonate.get("foo")).rejects.toThrow();
 
     // get returns the promise value
     await resonate.promises.create("foo", Number.MAX_SAFE_INTEGER);
-    await resonate.promises.resolve("foo", { ikey: "foo", strict: false, value: "foo" });
+    await resonate.promises.resolve("foo", { ikey: "foo", strict: false, data: encoder.encode("foo").data });
 
     const handle = await resonate.get("foo");
     expect(await handle.result()).toBe("foo");
   });
 
   test("Date", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     // with default date
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -436,8 +448,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Math", async () => {
-    const network = new LocalNetwork();
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network);
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     // with default math
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -467,31 +478,645 @@ describe("Resonate usage tests", () => {
 
     // mock fetch
     global.fetch = jest.fn((url, options) => {
-      if (url === "http://localhost:9999/promises") {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
         expect((options?.headers as Record<string, string>).Authorization).toBe("Basic Zm9vOmJhcg==");
         p1.resolve(null);
-      }
-
-      if (url instanceof URL && url.href === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic YmF6OnF1eA==");
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
+        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic Zm9vOmJhcg==");
         p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
       }
 
       // leave on read
       return new Promise(() => {});
     });
 
-    const network = new HttpNetwork({
+    const resonate = new Resonate({
       url: "http://localhost:9999",
-      pid: "0",
       group: "default",
+      pid: "0",
+      ttl: 60_000,
       auth: { username: "foo", password: "bar" },
-      messageSourceAuth: { username: "baz", password: "qux" },
     });
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 }, network);
+
     resonate.promises.create("foo", 0);
 
     await p1.promise;
     await p2.promise;
+  });
+
+  test("Target is set to anycast without preference by default", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function");
+    });
+
+    await f.run("f");
+    const durable = await resonate.promises.get("f.0");
+    expect(durable.id).toBe("f.0");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:root": "f",
+      "resonate:parent": "f",
+      "resonate:invoke": "poll://any@test",
+    });
+    resonate.stop();
+  });
+
+  test("Target is set to the target option", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function", ctx.options({ target: "remoteTarget" }));
+    });
+
+    await f.run("f");
+    const durable = await resonate.promises.get("f.0");
+    expect(durable.id).toBe("f.0");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:root": "f",
+      "resonate:parent": "f",
+      "resonate:invoke": "poll://any@remoteTarget",
+    });
+    resonate.stop();
+  });
+
+  test("Target is set to the target option when it is a url", async () => {
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function", ctx.options({ target: "http://faasurl.com" }));
+    });
+
+    await f.run("f");
+    const durable = await resonate.promises.get("f.0");
+    expect(durable.id).toBe("f.0");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:root": "f",
+      "resonate:parent": "f",
+      "resonate:invoke": "http://faasurl.com",
+    });
+    resonate.stop();
+  });
+
+  test("Target is set when using options in resonate class", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function");
+    });
+
+    await f.rpc("fid", resonate.options({ target: "http://faasurl.com" }));
+    const durable = await resonate.promises.get("fid");
+    expect(durable.id).toBe("fid");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:invoke": "http://faasurl.com",
+    });
+    resonate.stop();
+  });
+
+  test("Target is set in root promise to the unicast without preference address by default", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function");
+    });
+
+    await f.rpc("fid");
+    const durable = await resonate.promises.get("fid");
+    expect(durable.id).toBe("fid");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:invoke": "poll://any@test",
+    });
+    resonate.stop();
+  });
+
+  test("Target is set in root promise to the the poller and group when only group defined in opts", async () => {
+    const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
+
+    const g = async (_ctx: Context, msg: string) => {
+      return { msg };
+    };
+    resonate.register("g", g);
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      yield* ctx.rpc("g", "this is a function");
+    });
+
+    await f.rpc("fid", resonate.options({ target: "anotherNode" }));
+    const durable = await resonate.promises.get("fid");
+    expect(durable.id).toBe("fid");
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "global",
+      "resonate:invoke": "poll://any@anotherNode",
+    });
+    resonate.stop();
+  });
+});
+
+describe("Resonate environment variable initialization", () => {
+  const originalEnv = process.env;
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    // biome-ignore lint/performance/noDelete: Fully delete the env variables between tests
+    delete process.env.RESONATE_HOST;
+    // biome-ignore lint/performance/noDelete:
+    delete process.env.RESONATE_PORT;
+    // biome-ignore lint/performance/noDelete:
+    delete process.env.RESONATE_URL;
+    // biome-ignore lint/performance/noDelete:
+    delete process.env.RESONATE_SCHEME;
+    // biome-ignore lint/performance/noDelete:
+    delete process.env.RESONATE_USERNAME;
+    // biome-ignore lint/performance/noDelete:
+    delete process.env.RESONATE_PASSWORD;
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+    global.fetch = originalFetch;
+  });
+
+  test("url arg takes priority over env vars", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "envhost";
+    process.env.RESONATE_PORT = "8080";
+    process.env.RESONATE_URL = "http://url-from-env:9000";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://arg-url:3000/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://arg-url:3000/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ url: "http://arg-url:3000", group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_HOST + RESONATE_PORT used when url arg not set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "localhost";
+    process.env.RESONATE_PORT = "8001";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:8001/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://localhost:8001/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_URL used when url arg not set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_URL = "http://resonate-server:9000";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://resonate-server:9000/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://resonate-server:9000/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("LocalNetwork used when no url sources are set", async () => {
+    global.fetch = jest.fn(() => {
+      throw new Error("Fetch should not be called for LocalNetwork");
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+
+    // Should work without calling fetch
+    const f = resonate.register("f", async (_ctx: Context) => "result");
+    const result = await f.run("test");
+    expect(result).toBe("result");
+
+    // Verify fetch was never called
+    expect(global.fetch).not.toHaveBeenCalled();
+    resonate.stop();
+  });
+
+  test("RESONATE_URL takes priority over HOST and PORT", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "should-not-use";
+    process.env.RESONATE_PORT = "7000";
+    process.env.RESONATE_URL = "http://priority-url:9000";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://priority-url:9000/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://priority-url:9000/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_URL empty fallbacks to HOST and PORT", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "fallback";
+    process.env.RESONATE_PORT = "8080";
+    process.env.RESONATE_URL = "";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://fallback:8080/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://fallback:8080/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("Empty RESONATE_URL and no url arg falls back to LocalNetwork", async () => {
+    process.env.RESONATE_URL = "";
+
+    global.fetch = jest.fn(() => {
+      throw new Error("Fetch should not be called for LocalNetwork");
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+
+    const f = resonate.register("f", async (_ctx: Context) => "result");
+    const result = await f.run("test");
+    expect(result).toBe("result");
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    resonate.stop();
+  });
+
+  test("auth arg takes priority over env vars", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_USERNAME = "envuser";
+    process.env.RESONATE_PASSWORD = "envpass";
+
+    global.fetch = jest.fn((url, options) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
+        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
+        p1.resolve(null);
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
+        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({
+      url: "http://localhost:9999",
+      group: "default",
+      pid: "0",
+      ttl: 60_000,
+      auth: { username: "arguser", password: "argpass" },
+    });
+
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_USERNAME and RESONATE_PASSWORD used when auth arg not set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_USERNAME = "envuser";
+    process.env.RESONATE_PASSWORD = "envpass";
+
+    global.fetch = jest.fn((url, options) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
+        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
+        p1.resolve(null);
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
+        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({
+      url: "http://localhost:9999",
+      group: "default",
+      pid: "0",
+      ttl: 60_000,
+    });
+
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("auth is defined when only RESONATE_USERNAME is set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_USERNAME = "envuser";
+
+    global.fetch = jest.fn((url, options) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
+        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjo=");
+        p1.resolve(null);
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
+        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjo=");
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({
+      url: "http://localhost:9999",
+      group: "default",
+      pid: "0",
+      ttl: 60_000,
+    });
+
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("auth is undefined when only RESONATE_PASSWORD is set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_PASSWORD = "envpass";
+
+    global.fetch = jest.fn((url, options) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
+        expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
+        p1.resolve(null);
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
+        expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({
+      url: "http://localhost:9999",
+      group: "default",
+      pid: "0",
+      ttl: 60_000,
+    });
+
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("auth is undefined when no env vars or arg are set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    global.fetch = jest.fn((url, options) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:9999/promises") {
+        expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
+        p1.resolve(null);
+      } else if (urlStr === "http://localhost:9999/poll/default/0") {
+        expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({
+      url: "http://localhost:9999",
+      group: "default",
+      pid: "0",
+      ttl: 60_000,
+    });
+
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_SCHEME defaults to http when not set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "localhost";
+    process.env.RESONATE_PORT = "8001";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://localhost:8001/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://localhost:8001/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_SCHEME can be set to https", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_SCHEME = "https";
+    process.env.RESONATE_HOST = "secure-host";
+    process.env.RESONATE_PORT = "8443";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "https://secure-host:8443/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "https://secure-host:8443/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_PORT defaults to 8001 when not set", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "default-port-host";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://default-port-host:8001/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://default-port-host:8001/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
+  });
+
+  test("RESONATE_SCHEME and RESONATE_PORT both use defaults", async () => {
+    const p1 = Promise.withResolvers();
+    const p2 = Promise.withResolvers();
+
+    process.env.RESONATE_HOST = "defaults-host";
+
+    global.fetch = jest.fn((url) => {
+      const urlStr = url instanceof URL ? url.href : url;
+      if (urlStr === "http://defaults-host:8001/promises") {
+        p1.resolve(null);
+      } else if (urlStr === "http://defaults-host:8001/poll/default/0") {
+        p2.resolve(null);
+      } else {
+        throw new Error(`Unexpected URL called: ${urlStr}`);
+      }
+      return new Promise(() => {});
+    });
+
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
+    resonate.promises.create("test", 0);
+
+    await p1.promise;
+    await p2.promise;
+    resonate.stop();
   });
 });

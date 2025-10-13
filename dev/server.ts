@@ -1,5 +1,6 @@
 import { CronExpressionParser } from "cron-parser";
 
+import exceptions from "../src/exceptions";
 import type {
   CallbackRecord,
   ClaimTaskRes,
@@ -47,7 +48,7 @@ interface Task {
   timeout: number;
   processId?: string;
   ttl?: number;
-  expiry?: number;
+  expiry: number;
   createdOn: number;
   completedOn?: number;
 }
@@ -83,14 +84,6 @@ class TagRouter implements Router {
   }
 }
 
-class ServerError extends Error {
-  code: "invalid_request" | "forbidden" | "not_found" | "conflict";
-  constructor(message: string, code: "invalid_request" | "forbidden" | "not_found" | "conflict") {
-    super(message);
-    this.code = code;
-  }
-}
-
 export class Server {
   readonly promises: Map<string, DurablePromise>;
   readonly tasks: Map<string, Task>;
@@ -109,45 +102,28 @@ export class Server {
   next(time: number): number | undefined {
     let timeout: number | undefined = undefined;
 
-    // Check pending promises
+    // Check promises
     for (const promise of this.promises.values()) {
-      if (timeout === 0) {
-        return timeout;
-      }
-
       if (promise.state === "pending") {
-        timeout = timeout === undefined ? promise.timeout : Math.min(promise.timeout, timeout);
-      }
-    }
-
-    // Check tasks
-    for (const task of this.tasks.values()) {
-      if (timeout === 0) {
-        return timeout;
-      }
-
-      if (task.state === "init") {
-        timeout = timeout === undefined ? 0 : Math.min(0, timeout);
-      } else if (["claimed", "enqueued"].includes(task.state)) {
-        util.assertDefined(task.expiry);
-        timeout = timeout === undefined ? task.expiry : Math.min(task.expiry, timeout);
+        timeout = Math.min(promise.timeout, timeout ?? promise.timeout);
       }
     }
 
     // Check schedules
     for (const schedule of this.schedules.values()) {
-      if (timeout === 0) {
-        return timeout;
-      }
-
       util.assertDefined(schedule.nextRunTime);
-      timeout = timeout === undefined ? schedule.nextRunTime : Math.min(schedule.nextRunTime, timeout);
+      timeout = Math.min(schedule.nextRunTime, timeout ?? schedule.nextRunTime);
+    }
+
+    // Check tasks
+    for (const task of this.tasks.values()) {
+      if (["init", "claimed", "enqueued"].includes(task.state)) {
+        timeout = Math.min(task.expiry, timeout ?? task.expiry);
+      }
     }
 
     // Convert to delay relative to `time`, clamped to signed 32-bit range
-    timeout = timeout !== undefined ? Math.min(Math.max(0, timeout - time), 2147483647) : timeout;
-
-    return timeout;
+    return timeout !== undefined ? Math.min(Math.max(0, timeout - time), 2147483647) : timeout;
   }
 
   step(time: number): { msg: Message; recv: string }[] {
@@ -203,7 +179,7 @@ export class Server {
 
     const msgs: { msg: Message; recv: string }[] = [];
     for (const task of this.tasks.values()) {
-      if (task.state !== "init" || inFlightRootPromiseIds.has(task.rootPromiseId)) {
+      if (task.state !== "init" || task.expiry > time || inFlightRootPromiseIds.has(task.rootPromiseId)) {
         continue;
       }
 
@@ -375,8 +351,12 @@ export class Server {
         return { kind: "dropTask" };
       }
 
+      case "searchPromises": {
+        return { kind: "searchPromises", promises: this.searchPromises({ ...requ }) };
+      }
+
       default:
-        throw new Error(`Unsupported request kind: ${(requ as any).kind}`);
+        throw exceptions.SERVER_ERROR(`Unsupported request kind ${(requ as any).kind}`);
     }
   }
 
@@ -545,9 +525,8 @@ export class Server {
   } {
     {
       const record = this.promises.get(promiseId);
-
       if (!record) {
-        throw new ServerError("not found", "not_found");
+        throw exceptions.SERVER_ERROR("Promise not found");
       }
 
       const cbId = `__notify:${promiseId}:${id}`;
@@ -590,9 +569,8 @@ export class Server {
     callback?: CallbackRecord;
   } {
     const record = this.promises.get(promiseId);
-
     if (!record) {
-      throw new ServerError("not found", "not_found");
+      throw exceptions.SERVER_ERROR("Promise not found");
     }
 
     if (record.state !== "pending" || record.callbacks?.has(promiseId)) {
@@ -664,7 +642,7 @@ export class Server {
         };
       }
       default:
-        throw new Error(`claimTask: unexpected task type '${task.type}' for task '${id}'`);
+        throw exceptions.SERVER_ERROR(`Unexpected task type '${task.type}'`);
     }
   }
 
@@ -678,6 +656,10 @@ export class Server {
     const { applied } = this.transitionTask({ id, to: "init", counter, time });
     util.assert(applied);
     return;
+  }
+
+  private searchPromises({ id }: { id: string }): DurablePromiseRecord[] {
+    return Array.from(this.promises.values());
   }
 
   private heartbeatTasks({ processId, time }: { processId: string; time: number }): number {
@@ -742,8 +724,9 @@ export class Server {
   private readSchedule({ id }: { id: string }): ScheduleRecord {
     const schedule = this.schedules.get(id);
     if (schedule === undefined) {
-      throw new ServerError("schedule not found", "not_found");
+      throw exceptions.SERVER_ERROR("Schedule not found");
     }
+
     return schedule;
   }
 
@@ -755,9 +738,8 @@ export class Server {
 
   private getPromise({ id }: { id: string }): DurablePromise {
     const record = this.promises.get(id);
-
     if (!record) {
-      throw new ServerError("not found", "not_found");
+      throw exceptions.SERVER_ERROR("Promise not found");
     }
 
     return record;
@@ -888,7 +870,7 @@ export class Server {
 
     // Cannot complete non-existent promise
     if (record === undefined && ["resolved", "rejected", "rejected_canceled"].includes(to)) {
-      throw new ServerError(`transitionPromise(${to}): promise '${id}' not found`, "not_found");
+      throw exceptions.SERVER_ERROR("Promise not found");
     }
 
     // No-op re-create pending if before timeout and same iKey
@@ -947,10 +929,7 @@ export class Server {
       strict &&
       time >= record.timeout
     ) {
-      throw new ServerError(
-        `transitionPromise(${to}): promise '${id}' already timed out at ${record.timeout}`,
-        "forbidden",
-      );
+      throw exceptions.SERVER_ERROR("Promise already timedout");
     }
 
     // Transition to timed-out
@@ -1010,7 +989,7 @@ export class Server {
     }
 
     // Fallback
-    throw new ServerError(`transitionPromise(${to}): unexpected transition for promise '${id}'`, "conflict");
+    throw exceptions.SERVER_ERROR("Unexpected promise transition");
   }
 
   private transitionTask({
@@ -1058,6 +1037,7 @@ export class Server {
         recv,
         rootPromiseId,
         leafPromiseId,
+        expiry: 0,
         createdOn: time,
       };
 
@@ -1069,7 +1049,7 @@ export class Server {
       record = {
         ...record,
         state: to,
-        expiry: time + 5000, // 5 secs
+        expiry: time + 5000, // wait 5s before transitioning back to init if unclaimed
       };
       this.tasks.set(id, record);
       return { task: record, applied: true };
@@ -1132,7 +1112,7 @@ export class Server {
         state: to,
         processId: undefined,
         ttl: undefined,
-        expiry: undefined,
+        expiry: time + 5000, // wait 5s before sending again
       };
       this.tasks.set(id, record);
       return { task: record, applied: true };
@@ -1147,7 +1127,7 @@ export class Server {
         state: to,
         processId: undefined,
         ttl: undefined,
-        expiry: undefined,
+        expiry: 0,
       };
 
       this.tasks.set(id, record);
@@ -1192,6 +1172,7 @@ export class Server {
       record = {
         ...record,
         state: to,
+        completedOn: time,
       };
 
       this.tasks.set(id, record);
@@ -1203,10 +1184,10 @@ export class Server {
     }
 
     if (record === undefined) {
-      throw new ServerError("Task not found", "not_found");
+      throw exceptions.SERVER_ERROR("Task not found");
     }
 
-    throw new ServerError("task is already claimed, completed, or an invalid counter was provided", "conflict");
+    throw exceptions.SERVER_ERROR("Task is already claimed, completed, or an invalid counter was provided");
   }
 
   private transitionSchedule({
@@ -1243,7 +1224,7 @@ export class Server {
       util.assertDefined(cron);
       util.assertDefined(promiseId);
       util.assertDefined(promiseTimeout);
-      util.assert(promiseTimeout >= 0, "transitionSchedule(created): 'promiseTimeout' must be non-negative");
+      util.assert(promiseTimeout >= 0, "promiseTimeout must be non-negative");
 
       record = {
         id,
@@ -1283,15 +1264,12 @@ export class Server {
 
     // Schedule exists and not updating
     if (record !== undefined && to === "created") {
-      throw new ServerError(
-        `transitionSchedule(created): schedule '${id}' already exists and 'updating' flag is false`,
-        "conflict",
-      );
+      throw exceptions.SERVER_ERROR("Schedule already exists");
     }
 
     // Delete non-existent
     if (record === undefined && to === "deleted") {
-      throw new ServerError(`transitionSchedule(deleted): schedule '${id}' not found`, "not_found");
+      throw exceptions.SERVER_ERROR("Schedule not found");
     }
 
     // Delete existing
@@ -1301,7 +1279,7 @@ export class Server {
     }
 
     // Fallback error
-    throw new ServerError(`transitionSchedule(${to}): unexpected transition for schedule '${id}'`, "conflict");
+    throw exceptions.SERVER_ERROR("Unexpected schedule transition");
   }
 }
 
