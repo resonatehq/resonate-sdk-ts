@@ -21,7 +21,7 @@ export class ResonateError extends Error {
       cause,
       retriable = false,
       serverError,
-    }: { next?: string; cause?: any; retriable?: boolean; verbose?: boolean; serverError?: ResonateServerError } = {},
+    }: { next?: string; cause?: any; retriable?: boolean; serverError?: ResonateServerError } = {},
   ) {
     super(mesg, { cause });
 
