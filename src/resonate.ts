@@ -52,6 +52,7 @@ export class Resonate {
   private inner: ResonateInner;
   private network: Network;
   private encoder: Encoder;
+  private verbose: boolean;
   private messageSource: MessageSource;
   private handler: Handler;
   private registry: Registry;
@@ -68,12 +69,14 @@ export class Resonate {
     pid = crypto.randomUUID().replace(/-/g, ""),
     ttl = 1 * util.MIN,
     auth = undefined,
+    verbose = false,
   }: {
     url?: string;
     group?: string;
     pid?: string;
     ttl?: number;
     auth?: { username: string; password: string };
+    verbose?: boolean;
   } = {}) {
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycastPreference = `poll://any@${group}/${pid}`;
@@ -81,6 +84,7 @@ export class Resonate {
     this.pid = pid;
     this.ttl = ttl;
     this.encoder = new JsonEncoder();
+    this.verbose = verbose;
 
     // Determine the URL based on priority: url arg > RESONATE_URL > RESONATE_HOST+PORT
     let resolvedUrl = url;
@@ -137,6 +141,7 @@ export class Resonate {
       registry: this.registry,
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
+      verbose: this.verbose,
     });
 
     this.promises = new Promises(this.network);
@@ -167,11 +172,12 @@ export class Resonate {
    * console.log(result);
    * ```
    */
-  static local(): Resonate {
+  static local({ verbose = false }: { verbose?: boolean } = {}): Resonate {
     return new Resonate({
       group: "default",
       pid: "default",
       ttl: Number.MAX_SAFE_INTEGER,
+      verbose: verbose,
     });
   }
 
@@ -216,15 +222,17 @@ export class Resonate {
     pid = crypto.randomUUID().replace(/-/g, ""),
     ttl = 1 * util.MIN,
     auth = undefined,
+    verbose = false,
   }: {
     url?: string;
     group?: string;
     pid?: string;
     ttl?: number;
     auth?: { username: string; password: string };
+    verbose?: boolean;
     messageSourceAuth?: { username: string; password: string };
   } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth });
+    return new Resonate({ url, group, pid, ttl, auth, verbose });
   }
 
   /**

@@ -37,6 +37,7 @@ export class Computation {
   private handler: Handler;
   private registry: Registry;
   private dependencies: Map<string, any>;
+  private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
 
@@ -56,6 +57,7 @@ export class Computation {
     registry: Registry,
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
+    verbose: boolean,
     processor?: Processor,
   ) {
     this.id = id;
@@ -70,7 +72,12 @@ export class Computation {
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
+    this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
+  }
+
+  private debug(msg: string): void {
+    if (this.verbose) console.debug(`[Computation ${this.id}] ${msg}`);
   }
 
   public process(task: Task, done: Callback<Status>) {
@@ -90,6 +97,7 @@ export class Computation {
         break;
 
       case "unclaimed":
+        this.debug(`attempting to claim task ${task.task.id}`);
         this.handler.claimTask(
           {
             kind: "claimTask",
@@ -104,7 +112,7 @@ export class Computation {
               return doneProcessing(true);
             }
             util.assertDefined(promise);
-
+            this.debug(`task ${task.task.id} for promise ${promise.id} successfully claimed`);
             this.processClaimed({ kind: "claimed", task: task.task, rootPromise: promise }, doneProcessing);
           },
         );
@@ -114,9 +122,11 @@ export class Computation {
 
   private processClaimed({ task, rootPromise }: ClaimedTask, done: Callback<Status>) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
+    this.debug(`processing claimed task ${task.id} for promise ${rootPromise.id}`);
 
     const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
       if (err) {
+        this.debug(`dropping task ${task.id}`);
         return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, () => {
           // ignore the drop task response, if the request failed the
           // task will eventually expire anyways
@@ -138,21 +148,22 @@ export class Computation {
       !Array.isArray(rootPromise.param.data.args) ||
       ("version" in rootPromise.param.data && typeof rootPromise.param.data.version !== "number")
     ) {
-      // TODO: log something useful
+      this.debug(`invalid promise param format for ${rootPromise.id}`);
       return doneAndDropTaskIfErr(true);
     }
 
-    const registered = this.registry.get(rootPromise.param.data.func, rootPromise.param.data.version ?? 1);
-    const args = rootPromise.param.data.args;
+    const { func: funcName, version = 1, args } = rootPromise.param.data;
+    const registered = this.registry.get(funcName, version);
 
     // function must be registered
     if (!registered) {
-      exceptions
-        .REGISTRY_FUNCTION_NOT_REGISTERED(rootPromise.param.data.func, rootPromise.param.data.version ?? 1)
-        .log();
+      exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcName, version).log();
       return doneAndDropTaskIfErr(true);
     }
 
+    if (version !== 0) util.assert(version === registered.version, "versions must match");
+    util.assert(funcName === registered.name, "names must match");
+    this.debug(`found registered function ${registered.name} with version ${registered.version}`);
     // start heartbeat
     this.heartbeat.start();
 
@@ -162,6 +173,7 @@ export class Computation {
           return nursery.done(err);
         }
 
+        this.debug(`completing task ${task.id}`);
         this.network.send({ kind: "completeTask", id: task.id, counter: task.counter }, (err) => {
           nursery.done(!!err, res);
         });
@@ -177,8 +189,10 @@ export class Computation {
       );
 
       if (util.isGeneratorFunction(registered.func)) {
+        this.debug(`executing generator function ${registered.name} with args ${args}`);
         this.processGenerator(nursery, ctx, registered.func, args, done);
       } else {
+        this.debug(`executing function ${registered.name} with args ${args}`);
         this.processFunction(this.id, ctx, registered.func, args, (err, promise) => {
           if (err) return done(true);
           util.assertDefined(promise);
@@ -197,11 +211,15 @@ export class Computation {
     done: Callback<Status>,
   ) {
     Coroutine.exec(this.id, ctx, func, args, this.handler, (err, status) => {
-      if (err) return done(err);
+      if (err) {
+        this.debug("an error occurred when processing generator function");
+        return done(err);
+      }
       util.assertDefined(status);
 
       switch (status.type) {
         case "completed":
+          this.debug("generator function completed");
           done(false, { kind: "completed", promise: status.promise });
           break;
 
@@ -213,6 +231,7 @@ export class Computation {
           } else if (status.todo.remote.length > 0) {
             this.processRemoteTodo(nursery, status.todo.remote, ctx.timeout, done);
           }
+          this.debug("generator function suspended");
           break;
       }
     });
