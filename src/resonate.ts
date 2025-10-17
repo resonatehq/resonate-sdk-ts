@@ -83,7 +83,7 @@ export class Resonate {
     this.pid = pid;
     this.ttl = ttl;
     this.encoder = new JsonEncoder();
-    this.subscribeEvery = 5000; // make this configurable
+    this.subscribeEvery = 60 * 1000; // make this configurable
 
     // Determine the URL based on priority: url arg > RESONATE_URL > RESONATE_HOST+PORT
     let resolvedUrl = url;
