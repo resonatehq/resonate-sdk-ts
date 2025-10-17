@@ -58,6 +58,7 @@ export class Resonate {
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
   private subscriptions: Map<string, PromiseWithResolvers<DurablePromiseRecord<any>>> = new Map();
+  private subscribeEvery: number;
   private intervalId: ReturnType<typeof setInterval>;
 
   public readonly promises: Promises;
@@ -82,6 +83,7 @@ export class Resonate {
     this.pid = pid;
     this.ttl = ttl;
     this.encoder = new JsonEncoder();
+    this.subscribeEvery = 5000; // make this configurable
 
     // Determine the URL based on priority: url arg > RESONATE_URL > RESONATE_HOST+PORT
     let resolvedUrl = url;
@@ -159,7 +161,7 @@ export class Resonate {
           // silently skip on error
         }
       }
-    }, 5000);
+    }, this.subscribeEvery);
   }
 
   /**
