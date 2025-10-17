@@ -10,6 +10,7 @@ export class ResonateError extends Error {
   next: string;
   href: string;
   retriable: boolean;
+  verbose: boolean;
   serverError?: ResonateServerError;
 
   constructor(
@@ -20,8 +21,9 @@ export class ResonateError extends Error {
       next = "n/a",
       cause,
       retriable = false,
+      verbose = false,
       serverError,
-    }: { next?: string; cause?: any; retriable?: boolean; serverError?: ResonateServerError } = {},
+    }: { next?: string; cause?: any; retriable?: boolean; verbose?: boolean; serverError?: ResonateServerError } = {},
   ) {
     super(mesg, { cause });
 
@@ -31,6 +33,7 @@ export class ResonateError extends Error {
     this.next = next;
     this.href = `https://rn8.io/e/11${code}`; // 11 is the typescript sdk code
     this.retriable = retriable;
+    this.verbose = verbose;
     this.serverError = serverError;
   }
 
