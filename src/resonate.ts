@@ -152,9 +152,17 @@ export class Resonate {
     this.intervalId = setInterval(async () => {
       for (const [id, sub] of this.subscriptions.entries()) {
         try {
-          const promise = await this.readPromise({ kind: "readPromise", id });
-          if (promise.state !== "pending") {
-            sub.resolve(promise);
+          const createSubscriptionReq: CreateSubscriptionReq = {
+            kind: "createSubscription",
+            id: this.pid,
+            promiseId: id,
+            timeout: Date.now() + 1 * util.MIN, // add a buffer
+            recv: this.unicast,
+          };
+
+          const res = await this.createSubscription(createSubscriptionReq);
+          if (res.state !== "pending") {
+            sub.resolve(res);
             this.subscriptions.delete(id);
           }
         } catch {
