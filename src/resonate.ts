@@ -42,6 +42,13 @@ export interface ResonateSchedule {
   delete(): Promise<void>;
 }
 
+type SubscriptionEntry = {
+  promise: Promise<DurablePromiseRecord<any>>;
+  resolve: (r: DurablePromiseRecord<any>) => void;
+  reject: (e: any) => void;
+  timeout: number;
+};
+
 export class Resonate {
   private unicast: string;
   private anycastPreference: string;
@@ -57,7 +64,7 @@ export class Resonate {
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
-  private subscriptions: Map<string, PromiseWithResolvers<DurablePromiseRecord<any>>> = new Map();
+  private subscriptions: Map<string, SubscriptionEntry> = new Map();
   private subscribeEvery: number;
   private intervalId: ReturnType<typeof setInterval>;
 
@@ -156,7 +163,7 @@ export class Resonate {
             kind: "createSubscription",
             id: this.pid,
             promiseId: id,
-            timeout: Date.now() + 1 * util.MIN, // add a buffer
+            timeout: sub.timeout + 1 * util.MIN, // add a buffer
             recv: this.unicast,
           };
 
@@ -749,7 +756,7 @@ export class Resonate {
       this.subscriptions.get(id) ?? Promise.withResolvers<DurablePromiseRecord<any>>();
 
     if (res.state === "pending") {
-      this.subscriptions.set(id, { promise, resolve, reject });
+      this.subscriptions.set(id, { promise, resolve, reject, timeout: res.timeout });
     } else {
       resolve(res);
       this.subscriptions.delete(id);
