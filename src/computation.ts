@@ -189,10 +189,8 @@ export class Computation {
       );
 
       if (util.isGeneratorFunction(registered.func)) {
-        this.debug(`executing generator function ${registered.name} with args ${args}`);
         this.processGenerator(nursery, ctx, registered.func, args, done);
       } else {
-        this.debug(`executing function ${registered.name} with args ${args}`);
         this.processFunction(this.id, ctx, registered.func, args, (err, promise) => {
           if (err) return done(true);
           util.assertDefined(promise);
@@ -210,6 +208,7 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
+    this.debug(`executing generator function ${func.name} with args ${args}`);
     Coroutine.exec(this.id, ctx, func, args, this.handler, (err, status) => {
       if (err) {
         this.debug("an error occurred when processing generator function");
@@ -244,6 +243,7 @@ export class Computation {
     args: any[],
     done: Callback<DurablePromiseRecord>,
   ) {
+    this.debug(`executing function ${id} with name ${func.name} and args ${args}`);
     this.processor.process(
       id,
       func.name,
@@ -261,6 +261,7 @@ export class Computation {
             strict: false,
           },
           (err, res) => {
+            this.debug(`function ${id} completed`);
             if (err) {
               err.log();
               return done(true);
