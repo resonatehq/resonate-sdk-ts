@@ -37,6 +37,7 @@ export class Computation {
   private handler: Handler;
   private registry: Registry;
   private dependencies: Map<string, any>;
+  private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
 
@@ -56,6 +57,7 @@ export class Computation {
     registry: Registry,
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
+    verbose: boolean,
     processor?: Processor,
   ) {
     this.id = id;
@@ -70,6 +72,7 @@ export class Computation {
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
+    this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
   }
 
@@ -100,7 +103,7 @@ export class Computation {
           },
           (err, promise) => {
             if (err) {
-              err.log();
+              err.log(this.verbose);
               return doneProcessing(true);
             }
             util.assertDefined(promise);
@@ -145,7 +148,7 @@ export class Computation {
 
     // function must be registered
     if (!registered) {
-      exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcName, version).log();
+      exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcName, version).log(this.verbose);
       return doneAndDropTaskIfErr(true);
     }
 
@@ -195,7 +198,7 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, ctx, func, args, this.handler, (err, status) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, (err, status) => {
       if (err) {
         return done(err);
       }
@@ -245,7 +248,7 @@ export class Computation {
           },
           (err, res) => {
             if (err) {
-              err.log();
+              err.log(this.verbose);
               return done(true);
             }
             util.assertDefined(res);
@@ -301,7 +304,7 @@ export class Computation {
           },
           (err, res) => {
             if (err) {
-              err.log();
+              err.log(this.verbose);
               return done(true);
             }
             util.assertDefined(res);

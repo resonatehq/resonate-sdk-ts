@@ -10,7 +10,6 @@ export class ResonateError extends Error {
   next: string;
   href: string;
   retriable: boolean;
-  verbose: boolean;
   serverError?: ResonateServerError;
 
   constructor(
@@ -21,7 +20,6 @@ export class ResonateError extends Error {
       next = "n/a",
       cause,
       retriable = false,
-      verbose = false,
       serverError,
     }: { next?: string; cause?: any; retriable?: boolean; verbose?: boolean; serverError?: ResonateServerError } = {},
   ) {
@@ -33,12 +31,36 @@ export class ResonateError extends Error {
     this.next = next;
     this.href = `https://rn8.io/e/11${code}`; // 11 is the typescript sdk code
     this.retriable = retriable;
-    this.verbose = verbose;
     this.serverError = serverError;
   }
 
-  log() {
+  log(verbose: boolean) {
     console.error(`${this.type}. ${this.message}. ${this.next}. (See ${this.href} for more information)`);
+
+    if (verbose) {
+      console.group("[Verbose Error Report]");
+      console.debug("Name:", this.name);
+      console.debug("Code:", this.code);
+      console.debug("Type:", this.type);
+      console.debug("Message:", this.message);
+      console.debug("Next:", this.next);
+      console.debug("Href:", this.href);
+      console.debug("Retriable:", this.retriable);
+
+      if (this.cause) {
+        console.debug("Cause:", this.cause);
+      }
+
+      if (this.serverError) {
+        console.group("Server Error");
+        console.debug("Code:", this.serverError.code);
+        console.debug("Message:", this.serverError.message);
+        console.debug("Details:", this.serverError.details ?? this.serverError);
+        console.groupEnd();
+      }
+
+      console.groupEnd();
+    }
   }
 }
 
