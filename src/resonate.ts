@@ -58,6 +58,7 @@ export class Resonate {
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
   private subscriptions: Map<string, PromiseWithResolvers<DurablePromiseRecord<any>>> = new Map();
+  private intervalId: ReturnType<typeof setInterval>;
 
   public readonly promises: Promises;
   public readonly schedules: Schedules;
@@ -144,6 +145,21 @@ export class Resonate {
 
     // subscribe to notify
     this.messageSource.subscribe("notify", this.onMessage.bind(this));
+
+    // periodically refresh subscriptions
+    this.intervalId = setInterval(async () => {
+      for (const [id, sub] of this.subscriptions.entries()) {
+        try {
+          const promise = await this.readPromise({ kind: "readPromise", id });
+          if (promise.state !== "pending") {
+            sub.resolve(promise);
+            this.subscriptions.delete(id);
+          }
+        } catch {
+          // silently skip on error
+        }
+      }
+    }, 5000);
   }
 
   /**
@@ -605,6 +621,7 @@ export class Resonate {
     this.network.stop();
     this.messageSource.stop();
     this.heartbeat.stop();
+    clearInterval(this.intervalId);
   }
 
   private createPromiseAndTask(
