@@ -119,7 +119,13 @@ export class Resonate {
       this.messageSource = localNetwork.getMessageSource();
       this.heartbeat = new NoopHeartbeat();
     } else {
-      this.network = new HttpNetwork({ url: resolvedUrl, auth: resolvedAuth, timeout: 1 * util.MIN, headers: {} });
+      this.network = new HttpNetwork({
+        verbose: this.verbose,
+        url: resolvedUrl,
+        auth: resolvedAuth,
+        timeout: 1 * util.MIN,
+        headers: {},
+      });
       this.messageSource = new HttpMessageSource({ url: resolvedUrl, pid, group, auth: resolvedAuth });
       this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
     }

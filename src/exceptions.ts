@@ -38,28 +38,7 @@ export class ResonateError extends Error {
     console.error(`${this.type}. ${this.message}. ${this.next}. (See ${this.href} for more information)`);
 
     if (verbose) {
-      console.group("[Verbose Error Report]");
-      console.debug("Name:", this.name);
-      console.debug("Code:", this.code);
-      console.debug("Type:", this.type);
-      console.debug("Message:", this.message);
-      console.debug("Next:", this.next);
-      console.debug("Href:", this.href);
-      console.debug("Retriable:", this.retriable);
-
-      if (this.cause) {
-        console.debug("Cause:", this.cause);
-      }
-
-      if (this.serverError) {
-        console.group("Server Error");
-        console.debug("Code:", this.serverError.code);
-        console.debug("Message:", this.serverError.message);
-        console.debug("Details:", this.serverError.details ?? this.serverError);
-        console.groupEnd();
-      }
-
-      console.groupEnd();
+      console.error(this);
     }
   }
 }
