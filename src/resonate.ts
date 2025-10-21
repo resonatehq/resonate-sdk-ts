@@ -217,12 +217,13 @@ export class Resonate {
    * console.log(result);
    * ```
    */
-  static local({ verbose = false }: { verbose?: boolean } = {}): Resonate {
+  static local({ verbose = false, secret = undefined }: { verbose?: boolean; secret?: string } = {}): Resonate {
     return new Resonate({
       group: "default",
       pid: "default",
       ttl: Number.MAX_SAFE_INTEGER,
-      verbose: verbose,
+      verbose,
+      secret,
     });
   }
 
@@ -268,6 +269,7 @@ export class Resonate {
     ttl = 1 * util.MIN,
     auth = undefined,
     verbose = false,
+    secret = undefined,
   }: {
     url?: string;
     group?: string;
@@ -275,9 +277,10 @@ export class Resonate {
     ttl?: number;
     auth?: { username: string; password: string };
     verbose?: boolean;
+    secret?: string;
     messageSourceAuth?: { username: string; password: string };
   } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth, verbose });
+    return new Resonate({ url, group, pid, ttl, auth, verbose, secret });
   }
 
   /**
