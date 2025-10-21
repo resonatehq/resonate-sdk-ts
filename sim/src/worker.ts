@@ -1,3 +1,4 @@
+import { NoopEncrypter } from "encrypter";
 import type { StepClock } from "../../src/clock";
 import type { Encoder } from "../../src/encoder";
 import { ResonateError } from "../../src/exceptions";
@@ -175,7 +176,7 @@ export class WorkerProcess extends Process {
       ttl: 5000,
       clock: this.clock,
       network: this.network,
-      handler: new Handler(this.network, encoder),
+      handler: new Handler(this.network, encoder, new NoopEncrypter()),
       messageSource: this.network.getMessageSource(),
       registry: registry,
       heartbeat: new NoopHeartbeat(),

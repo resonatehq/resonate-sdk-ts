@@ -1,3 +1,4 @@
+import { NoopEncrypter } from "encrypter";
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
@@ -108,7 +109,7 @@ describe("Computation Event Queue Concurrency", () => {
     jest.clearAllMocks();
     mockProcessor = new MockProcessor();
     network = new LocalNetwork();
-    handler = new Handler(network, new JsonEncoder());
+    handler = new Handler(network, new JsonEncoder(), new NoopEncrypter());
     registry = new Registry();
 
     computation = new Computation(
@@ -120,7 +121,7 @@ describe("Computation Event Queue Concurrency", () => {
       3600,
       new WallClock(),
       network,
-      new Handler(network, new JsonEncoder()),
+      handler,
       registry,
       new NoopHeartbeat(),
       new Map(),
