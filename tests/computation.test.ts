@@ -1,9 +1,9 @@
-import { NoopEncrypter } from "encrypter";
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
 import type { Context } from "../src/context";
 import { JsonEncoder } from "../src/encoder";
+import { NoopEncrypter } from "../src/encrypter";
 import { Handler } from "../src/handler";
 import { NoopHeartbeat } from "../src/heartbeat";
 import type { DurablePromiseRecord, TaskRecord } from "../src/network/network";

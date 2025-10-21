@@ -1,5 +1,5 @@
-import { AES256GCMEncrypter, type Encrypter, NoopEncrypter } from "encrypter";
 import { LocalNetwork } from "../dev/network";
+import { AES256GCMEncrypter, type Encrypter, NoopEncrypter } from "../src/encrypter";
 import { Handler } from "../src/handler";
 import { Registry } from "../src/registry";
 import { WallClock } from "./clock";

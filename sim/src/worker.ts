@@ -1,6 +1,6 @@
-import { NoopEncrypter } from "encrypter";
 import type { StepClock } from "../../src/clock";
 import type { Encoder } from "../../src/encoder";
+import { NoopEncrypter } from "../../src/encrypter";
 import { ResonateError } from "../../src/exceptions";
 import { Handler } from "../../src/handler";
 import { NoopHeartbeat } from "../../src/heartbeat";

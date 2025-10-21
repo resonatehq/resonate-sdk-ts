@@ -1,5 +1,5 @@
-import type { Encrypter } from "encrypter";
 import type { Encoder } from "./encoder";
+import type { Encrypter } from "./encrypter";
 import exceptions, { type ResonateError } from "./exceptions";
 import type {
   CallbackRecord,
