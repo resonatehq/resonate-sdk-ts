@@ -1,5 +1,5 @@
 import { LocalNetwork } from "../dev/network";
-import { AES256GCMEncrypter, type Encrypter, NoopEncrypter } from "../src/encrypter";
+import { type Encryptor, NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
 import { Registry } from "../src/registry";
 import { WallClock } from "./clock";
@@ -60,7 +60,7 @@ export class Resonate {
   private inner: ResonateInner;
   private network: Network;
   private encoder: Encoder;
-  private encrypter: Encrypter;
+  private encryptor: Encryptor;
   private verbose: boolean;
   private messageSource: MessageSource;
   private handler: Handler;
@@ -81,7 +81,7 @@ export class Resonate {
     ttl = 1 * util.MIN,
     auth = undefined,
     verbose = false,
-    secret = undefined,
+    encryptor = undefined,
   }: {
     url?: string;
     group?: string;
@@ -89,14 +89,14 @@ export class Resonate {
     ttl?: number;
     auth?: { username: string; password: string };
     verbose?: boolean;
-    secret?: string;
+    encryptor?: Encryptor;
   } = {}) {
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycastPreference = `poll://any@${group}/${pid}`;
     this.anycastNoPreference = `poll://any@${group}`;
     this.pid = pid;
     this.ttl = ttl;
-    this.encrypter = secret ? new AES256GCMEncrypter(secret) : new NoopEncrypter();
+    this.encryptor = encryptor ?? new NoopEncryptor();
     this.encoder = new JsonEncoder();
 
     this.verbose = verbose;
@@ -146,7 +146,7 @@ export class Resonate {
       this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
     }
 
-    this.handler = new Handler(this.network, this.encoder, this.encrypter);
+    this.handler = new Handler(this.network, this.encoder, this.encryptor);
     this.registry = new Registry();
     this.dependencies = new Map();
 
@@ -217,13 +217,19 @@ export class Resonate {
    * console.log(result);
    * ```
    */
-  static local({ verbose = false, secret = undefined }: { verbose?: boolean; secret?: string } = {}): Resonate {
+  static local({
+    verbose = false,
+    encryptor = undefined,
+  }: {
+    verbose?: boolean;
+    encryptor?: Encryptor;
+  } = {}): Resonate {
     return new Resonate({
       group: "default",
       pid: "default",
       ttl: Number.MAX_SAFE_INTEGER,
       verbose,
-      secret,
+      encryptor,
     });
   }
 
@@ -269,7 +275,7 @@ export class Resonate {
     ttl = 1 * util.MIN,
     auth = undefined,
     verbose = false,
-    secret = undefined,
+    encryptor = undefined,
   }: {
     url?: string;
     group?: string;
@@ -277,10 +283,10 @@ export class Resonate {
     ttl?: number;
     auth?: { username: string; password: string };
     verbose?: boolean;
-    secret?: string;
+    encryptor?: Encryptor;
     messageSourceAuth?: { username: string; password: string };
   } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth, verbose, secret });
+    return new Resonate({ url, group, pid, ttl, auth, verbose, encryptor });
   }
 
   /**
@@ -599,7 +605,7 @@ export class Resonate {
     }
 
     // TODO: move this into the handler?
-    const { headers, data } = this.encrypter.encrypt(
+    const { headers, data } = this.encryptor.encrypt(
       this.encoder.encode({
         func: registered ? registered.name : (funcOrName as string),
         args: args,
@@ -753,7 +759,7 @@ export class Resonate {
       let valueData: any;
 
       try {
-        paramData = this.encoder.decode(this.encrypter.decrypt(msg.promise.param));
+        paramData = this.encoder.decode(this.encryptor.decrypt(msg.promise.param));
       } catch (e) {
         // TODO: improve this message
         this.notify(msg.promise.id, new Error("Failed to decode promise param"));
@@ -761,7 +767,7 @@ export class Resonate {
       }
 
       try {
-        valueData = this.encoder.decode(this.encrypter.decrypt(msg.promise.value));
+        valueData = this.encoder.decode(this.encryptor.decrypt(msg.promise.value));
       } catch (e) {
         // TODO: improve this message
         this.notify(msg.promise.id, new Error("Failed to decode promise value"));

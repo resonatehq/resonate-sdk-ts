@@ -1,5 +1,5 @@
 import type { Encoder } from "./encoder";
-import type { Encrypter } from "./encrypter";
+import type { Encryptor } from "./encryptor";
 import exceptions, { type ResonateError } from "./exceptions";
 import type {
   CallbackRecord,
@@ -59,12 +59,12 @@ export class Handler {
   private cache: Cache = new Cache();
   private network: Network;
   private encoder: Encoder;
-  private encrypter: Encrypter;
+  private encryptor: Encryptor;
 
-  constructor(network: Network, encoder: Encoder, encrypter: Encrypter) {
+  constructor(network: Network, encoder: Encoder, encryptor: Encryptor) {
     this.network = network;
     this.encoder = encoder;
-    this.encrypter = encrypter;
+    this.encryptor = encryptor;
   }
 
   public readPromise(req: ReadPromiseReq, done: (err?: ResonateError, res?: DurablePromiseRecord<any>) => void): void {
@@ -104,7 +104,7 @@ export class Handler {
 
     let param: Value<string>;
     try {
-      param = this.encrypter.encrypt(this.encoder.encode(req.param?.data));
+      param = this.encryptor.encrypt(this.encoder.encode(req.param?.data));
     } catch (e) {
       done(exceptions.ENCODING_ARGS_UNENCODEABLE(req.param?.data?.func ?? func, e));
       return;
@@ -144,7 +144,7 @@ export class Handler {
 
     let param: Value<string>;
     try {
-      param = this.encrypter.encrypt(this.encoder.encode(req.promise.param?.data));
+      param = this.encryptor.encrypt(this.encoder.encode(req.promise.param?.data));
     } catch (e) {
       done(exceptions.ENCODING_ARGS_UNENCODEABLE(req.promise.param?.data?.func ?? func, e));
       return;
@@ -190,7 +190,7 @@ export class Handler {
 
     let value: Value<string>;
     try {
-      value = this.encrypter.encrypt(this.encoder.encode(req.value?.data));
+      value = this.encryptor.encrypt(this.encoder.encode(req.value?.data));
     } catch (e) {
       done(exceptions.ENCODING_RETV_UNENCODEABLE(func, e));
       return;
@@ -350,13 +350,13 @@ export class Handler {
     let valueData: any;
 
     try {
-      paramData = this.encoder.decode(this.encrypter.decrypt(promise.param));
+      paramData = this.encoder.decode(this.encryptor.decrypt(promise.param));
     } catch (e) {
       throw exceptions.ENCODING_ARGS_UNDECODEABLE(func, e);
     }
 
     try {
-      valueData = this.encoder.decode(this.encrypter.decrypt(promise.value));
+      valueData = this.encoder.decode(this.encryptor.decrypt(promise.value));
     } catch (e) {
       throw exceptions.ENCODING_RETV_UNDECODEABLE(paramData?.func ?? func, e);
     }

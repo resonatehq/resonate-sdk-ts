@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
 import type { Value } from "types";
 
-export interface Encrypter {
+export interface Encryptor {
   encrypt(plaintext: Value<string>): Value<string>;
   decrypt(ciphertext: Value<string> | undefined): Value<string> | undefined;
 }
 
-export class NoopEncrypter implements Encrypter {
+export class NoopEncryptor implements Encryptor {
   encrypt(plaintext: Value<string>): Value<string> {
     return plaintext;
   }
@@ -16,7 +16,7 @@ export class NoopEncrypter implements Encrypter {
   }
 }
 
-export class AES256GCMEncrypter implements Encrypter {
+export class AES256GCMEncryptor implements Encryptor {
   private key: Buffer;
 
   constructor(secret: string) {

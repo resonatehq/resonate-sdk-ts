@@ -1,8 +1,8 @@
 import type { Value } from "types";
-import { AES256GCMEncrypter, type Encrypter, NoopEncrypter } from "../src/encrypter";
+import { AES256GCMEncryptor, type Encryptor, NoopEncryptor } from "../src/encryptor";
 
-describe("Encrypters", () => {
-  const encrypters: Encrypter[] = [new AES256GCMEncrypter("foo"), new NoopEncrypter()];
+describe("Encryptors", () => {
+  const encryptors: Encryptor[] = [new AES256GCMEncryptor("foo"), new NoopEncryptor()];
   const plaintexts: Value<string>[] = [
     // Basic cases
     { headers: { foo: "bar" }, data: "Hello, world!" },
@@ -44,11 +44,11 @@ describe("Encrypters", () => {
   ];
 
   // Generate all combinations
-  const cases = encrypters.flatMap((encrypter) => plaintexts.map((plaintext) => [encrypter, plaintext] as const));
+  const cases = encryptors.flatMap((encryptor) => plaintexts.map((plaintext) => [encryptor, plaintext] as const));
 
-  test.each(cases)("encrypts and decrypts back to original", (encrypter, plaintext) => {
-    const encrypted = encrypter.encrypt(plaintext);
-    const decrypted = encrypter.decrypt(encrypted);
+  test.each(cases)("encrypts and decrypts back to original", (encryptor, plaintext) => {
+    const encrypted = encryptor.encrypt(plaintext);
+    const decrypted = encryptor.decrypt(encrypted);
     expect(decrypted?.data).toBe(plaintext.data);
     expect(decrypted?.headers).toEqual(plaintext.headers);
   });
