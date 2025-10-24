@@ -1,4 +1,3 @@
-import { NoopTracer } from "tracer";
 import type { StepClock } from "../../src/clock";
 import type { Encoder } from "../../src/encoder";
 import { NoopEncryptor } from "../../src/encryptor";
@@ -15,6 +14,7 @@ import type {
 } from "../../src/network/network";
 import type { Registry } from "../../src/registry";
 import { ResonateInner } from "../../src/resonate-inner";
+import { NoopTracer } from "../../src/tracer";
 import type { Callback } from "../../src/types";
 import * as util from "../../src/util";
 import { type Address, Message, Process, type Random, unicast } from "./simulator";

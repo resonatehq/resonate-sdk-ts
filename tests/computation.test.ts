@@ -1,4 +1,3 @@
-import { NoopTracer } from "tracer";
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
@@ -11,6 +10,7 @@ import type { DurablePromiseRecord, TaskRecord } from "../src/network/network";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
 import type { ClaimedTask } from "../src/resonate-inner";
+import { NoopTracer } from "../src/tracer";
 import type { Result } from "../src/types";
 import * as util from "../src/util";
 

@@ -1,4 +1,3 @@
-import { NoopTracer } from "tracer";
 import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
 import { Coroutine, type Suspended } from "../src/coroutine";
@@ -8,6 +7,7 @@ import type { ResonateError } from "../src/exceptions";
 import { Handler } from "../src/handler";
 import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
 import { Never } from "../src/retries";
+import { NoopTracer } from "../src/tracer";
 import { ok, type Result } from "../src/types";
 
 class DummyNetwork implements Network {
