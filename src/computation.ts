@@ -198,7 +198,7 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, (err, status) => {
+    Coroutine.exec(this.id, this.verbose, this.clock, ctx, func, args, this.handler, (err, status) => {
       if (err) {
         return done(err);
       }
@@ -230,6 +230,7 @@ export class Computation {
     args: any[],
     done: Callback<DurablePromiseRecord>,
   ) {
+    console.log(`${this.clock.now()} starting function ${id}`)
     this.processor.process(
       id,
       func.name,
@@ -252,6 +253,7 @@ export class Computation {
               return done(true);
             }
             util.assertDefined(res);
+            console.log(`${this.clock.now()} completing function ${id}`)
             done(false, res);
           },
           func.name,
