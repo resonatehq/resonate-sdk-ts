@@ -6,6 +6,7 @@ import { AES256GCMEncryptor } from "../src/encryptor";
 import type { ResonateError } from "../src/exceptions";
 import { Handler } from "../src/handler";
 import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
+import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { ok, type Result } from "../src/types";
 
@@ -63,7 +64,7 @@ describe("Coroutine", () => {
       Coroutine.exec(
         uuid,
         false,
-        InnerContext.root(uuid, "poll://any@default", 0, new Never(), new WallClock(), new Map()),
+        InnerContext.root(uuid, "poll://any@default", 0, new Never(), new WallClock(), new Registry(), new Map()),
         func,
         args,
         handler,

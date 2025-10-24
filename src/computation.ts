@@ -175,6 +175,7 @@ export class Computation {
         rootPromise.timeout,
         util.isGeneratorFunction(registered.func) ? new Never() : new Exponential(),
         this.clock,
+        this.registry,
         this.dependencies,
       );
 

@@ -1,6 +1,7 @@
 import { WallClock } from "../src/clock";
 import { type Context, Future, InnerContext, type LFI } from "../src/context";
 import { Decorator } from "../src/decorator";
+import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { ok, type Yieldable } from "../src/types";
 
@@ -28,7 +29,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator(
-      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Map())),
+      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Registry(), new Map())),
     );
     const r = d.next({ type: "internal.nothing" });
 
@@ -63,7 +64,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator(
-      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Map())),
+      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Registry(), new Map())),
     );
     let r = d.next({ type: "internal.nothing" });
     expect(r).toMatchObject({
@@ -125,7 +126,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator(
-      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Map())),
+      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Registry(), new Map())),
     );
 
     d.next({ type: "internal.nothing" }); // First yield
@@ -158,7 +159,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator(
-      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Map())),
+      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Registry(), new Map())),
     );
 
     d.next({ type: "internal.nothing" }); // First yield
@@ -198,7 +199,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator(
-      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Map())),
+      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Registry(), new Map())),
     );
 
     d.next({ type: "internal.nothing" }); // First yield

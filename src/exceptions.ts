@@ -10,6 +10,7 @@ export class ResonateError extends Error {
   next: string;
   href: string;
   retriable: boolean;
+  shouldDrop: boolean;
   serverError?: ResonateServerError;
 
   constructor(
@@ -20,8 +21,15 @@ export class ResonateError extends Error {
       next = "n/a",
       cause,
       retriable = false,
+      shouldDrop = false,
       serverError,
-    }: { next?: string; cause?: any; retriable?: boolean; serverError?: ResonateServerError } = {},
+    }: {
+      next?: string;
+      cause?: any;
+      retriable?: boolean;
+      shouldDrop?: boolean;
+      serverError?: ResonateServerError;
+    } = {},
   ) {
     super(mesg, { cause });
 
@@ -31,6 +39,7 @@ export class ResonateError extends Error {
     this.next = next;
     this.href = `https://rn8.io/e/11${code}`; // 11 is the typescript sdk code
     this.retriable = retriable;
+    this.shouldDrop = shouldDrop;
     this.serverError = serverError;
   }
 
@@ -56,7 +65,10 @@ export default {
   },
   REGISTRY_FUNCTION_NOT_REGISTERED: (f: string, v: number) => {
     const version = v > 0 ? ` (version ${v})` : "";
-    return new ResonateError("03", "Registry", `Function '${f}'${version} is not registered`, { next: "Will drop" });
+    return new ResonateError("03", "Registry", `Function '${f}'${version} is not registered`, {
+      next: "Will drop",
+      shouldDrop: true,
+    });
   },
   DEPENDENCY_ALREADY_REGISTERED: (d: string) => {
     return new ResonateError("04", "Dependencies", `Dependency '${d}' is already registered`);
