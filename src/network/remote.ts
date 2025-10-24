@@ -223,7 +223,7 @@ export class HttpNetwork implements Network {
       case "searchSchedules":
         return this.searchSchedules(req, retryPolicy);
       default:
-        throw new Error(`Unsupported request kind: ${(req as any).kind}`);
+        util.assertNever(req);
     }
   }
 

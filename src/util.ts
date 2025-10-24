@@ -25,6 +25,10 @@ export function assertDefined<T>(val: T | undefined | null): asserts val is T {
   assert(val !== null && val !== undefined, "value must not be null");
 }
 
+export function assertNever(x: never): never {
+  throw new Error(`Unsupported object: ${x}`);
+}
+
 export function isGeneratorFunction(func: Function): boolean {
   const GeneratorFunction = Object.getPrototypeOf(function* () {}).constructor;
   const AsyncGeneratorFunction = Object.getPrototypeOf(async function* () {}).constructor;
