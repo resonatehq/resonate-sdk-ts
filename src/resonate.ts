@@ -1,4 +1,3 @@
-import type { Tracer } from "@opentelemetry/api";
 import { LocalNetwork } from "../dev/network";
 import { type Encryptor, NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
@@ -23,6 +22,7 @@ import { Options } from "./options";
 import { Promises } from "./promises";
 import { ResonateInner } from "./resonate-inner";
 import { Schedules } from "./schedules";
+import { NoopTracer, type Tracer } from "./tracer";
 import type { Func, ParamsWithOptions, Return } from "./types";
 import * as util from "./util";
 
@@ -62,7 +62,7 @@ export class Resonate {
   private network: Network;
   private encoder: Encoder;
   private encryptor: Encryptor;
-  private tracer: Tracer | undefined;
+  private tracer: Tracer;
   private verbose: boolean;
   private messageSource: MessageSource;
   private handler: Handler;
@@ -101,7 +101,7 @@ export class Resonate {
     this.pid = pid;
     this.ttl = ttl;
     this.encryptor = encryptor ?? new NoopEncryptor();
-    this.tracer = tracer;
+    this.tracer = tracer ?? new NoopTracer();
     this.encoder = new JsonEncoder();
 
     this.verbose = verbose;

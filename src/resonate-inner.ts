@@ -1,10 +1,10 @@
-import type { Tracer } from "@opentelemetry/api";
 import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
 import type { Registry } from "./registry";
+import type { Tracer } from "./tracer";
 import type { Callback } from "./types";
 import * as util from "./util";
 
@@ -37,7 +37,7 @@ export class ResonateInner {
   private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
-  private tracer: Tracer | undefined;
+  private tracer: Tracer;
   private dependencies: Map<string, any>;
   private verbose: boolean;
   private computations: Map<string, Computation> = new Map();
@@ -68,7 +68,7 @@ export class ResonateInner {
     handler: Handler;
     registry: Registry;
     heartbeat: Heartbeat;
-    tracer: Tracer | undefined;
+    tracer: Tracer;
     dependencies: Map<string, any>;
     verbose: boolean;
     messageSource?: MessageSource;

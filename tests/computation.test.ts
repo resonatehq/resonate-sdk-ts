@@ -1,3 +1,4 @@
+import { NoopTracer } from "tracer";
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
@@ -126,7 +127,7 @@ describe("Computation Event Queue Concurrency", () => {
       new NoopHeartbeat(),
       new Map(),
       false,
-      undefined,
+      new NoopTracer(),
       mockProcessor,
     );
   });

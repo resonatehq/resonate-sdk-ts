@@ -1,3 +1,4 @@
+import { NoopTracer } from "tracer";
 import type { StepClock } from "../../src/clock";
 import type { Encoder } from "../../src/encoder";
 import { NoopEncryptor } from "../../src/encryptor";
@@ -182,7 +183,7 @@ export class WorkerProcess extends Process {
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
       verbose: false,
-      tracer: undefined, // replace with NoopTracer
+      tracer: new NoopTracer(),
     });
   }
 

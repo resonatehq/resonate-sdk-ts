@@ -1,3 +1,4 @@
+import { NoopTracer } from "tracer";
 import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
 import { Coroutine, type Suspended } from "../src/coroutine";
@@ -67,7 +68,7 @@ describe("Coroutine", () => {
         func,
         args,
         handler,
-        undefined,
+        new NoopTracer(),
         (err, res) => {
           expect(err).toBe(false);
           resolve(res);

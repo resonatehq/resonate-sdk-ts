@@ -1,9 +1,8 @@
-import type { Span, Tracer } from "@opentelemetry/api";
-
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
 import type { DurablePromiseRecord } from "./network/network";
+import type { Tracer } from "./tracer";
 import { type Callback, ko, ok, type Result, type Yieldable } from "./types";
 import * as util from "./util";
 
@@ -43,7 +42,7 @@ export class Coroutine<T> {
   private verbose: boolean;
   private decorator: Decorator<T>;
   private handler: Handler;
-  private tracer: Tracer | undefined;
+  private tracer: Tracer;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
 
@@ -52,7 +51,7 @@ export class Coroutine<T> {
     verbose: boolean,
     decorator: Decorator<T>,
     handler: Handler,
-    tracer: Tracer | undefined,
+    tracer: Tracer,
     depth = 1,
   ) {
     this.ctx = ctx;
@@ -74,7 +73,7 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     handler: Handler,
-    tracer: Tracer | undefined,
+    tracer: Tracer,
     callback: Callback<Suspended | Completed>,
   ): void {
     handler.createPromise(
@@ -135,10 +134,7 @@ export class Coroutine<T> {
   }
 
   private exec(callback: Callback<More | Done>) {
-    let span: Span | undefined;
-    if (this.tracer) {
-      span = this.tracer.startSpan(this.ctx.id, { startTime: this.ctx.clock.now() });
-    }
+    this.tracer.startSpan(this.ctx.id, this.ctx.rId, this.ctx.clock.now());
 
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
@@ -334,9 +330,8 @@ export class Coroutine<T> {
             // All detached are remotes.
             remote.push({ id: action.id });
           }
-          if (span) {
-            span.addEvent("suspended", this.ctx.clock.now());
-          }
+          this.tracer.addEvent(this.ctx.id, "suspended", this.ctx.clock.now());
+
           callback(false, { type: "more", todo: { local, remote } });
           return;
         }
@@ -346,9 +341,7 @@ export class Coroutine<T> {
           util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
           util.assertDefined(action.value);
 
-          if (span) {
-            span.end(this.ctx.clock.now());
-          }
+          this.tracer.endSpan(this.ctx.id, this.ctx.clock.now());
 
           callback(false, { type: "done", result: action.value.value });
           return;

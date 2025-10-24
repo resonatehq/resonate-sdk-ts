@@ -198,8 +198,8 @@ export class InnerContext implements Context {
   readonly timeout: number;
   readonly retryPolicy: RetryPolicy;
 
-  private rId: string;
-  private pId: string;
+  public rId: string;
+  public pId: string;
   readonly clock: Clock;
   private anycastNoPreference: string;
   private dependencies: Map<string, any>;

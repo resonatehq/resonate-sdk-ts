@@ -1,4 +1,3 @@
-import type { Span, Tracer } from "@opentelemetry/api";
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
@@ -11,6 +10,7 @@ import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
+import type { Tracer } from "./tracer";
 import type { Callback, Func } from "./types";
 import * as util from "./util";
 
@@ -41,7 +41,7 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
-  private tracer: Tracer | undefined;
+  private tracer: Tracer;
 
   private seen: Set<string> = new Set();
   private processing = false;
@@ -60,7 +60,7 @@ export class Computation {
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
     verbose: boolean,
-    tracer: Tracer | undefined,
+    tracer: Tracer,
     processor?: Processor,
   ) {
     this.id = id;
@@ -234,10 +234,7 @@ export class Computation {
     args: any[],
     done: Callback<DurablePromiseRecord>,
   ) {
-    let span: Span | undefined;
-    if (this.tracer) {
-      span = this.tracer.startSpan(id, { startTime: this.clock.now() });
-    }
+    this.tracer.startSpan(ctx.id, ctx.rId, this.clock.now());
 
     this.processor.process(
       id,
@@ -261,9 +258,8 @@ export class Computation {
               return done(true);
             }
             util.assertDefined(res);
-            if (span) {
-              span.end(this.clock.now());
-            }
+            this.tracer.endSpan(id, this.clock.now());
+
             done(false, res);
           },
           func.name,
