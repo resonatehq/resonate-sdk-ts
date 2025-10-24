@@ -1,5 +1,5 @@
+import type { Span, Tracer } from "@opentelemetry/api";
 
-import { Clock } from "./clock";
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
@@ -39,20 +39,27 @@ type Done = {
 };
 
 export class Coroutine<T> {
-  private clock: Clock;
   private ctx: InnerContext;
   private verbose: boolean;
   private decorator: Decorator<T>;
   private handler: Handler;
+  private tracer: Tracer | undefined;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
 
-  constructor(clock: Clock,ctx: InnerContext, verbose: boolean, decorator: Decorator<T>, handler: Handler, depth = 1) {
-    this.clock = clock
+  constructor(
+    ctx: InnerContext,
+    verbose: boolean,
+    decorator: Decorator<T>,
+    handler: Handler,
+    tracer: Tracer | undefined,
+    depth = 1,
+  ) {
     this.ctx = ctx;
     this.verbose = verbose;
     this.decorator = decorator;
     this.handler = handler;
+    this.tracer = tracer;
     this.depth = depth;
 
     if (typeof process !== "undefined" && process.env.QUEUE_MICROTASK_EVERY_N) {
@@ -63,11 +70,11 @@ export class Coroutine<T> {
   public static exec(
     id: string,
     verbose: boolean,
-    clock: Clock,
     ctx: InnerContext,
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     handler: Handler,
+    tracer: Tracer | undefined,
     callback: Callback<Suspended | Completed>,
   ): void {
     handler.createPromise(
@@ -87,7 +94,7 @@ export class Coroutine<T> {
         if (res.state !== "pending") {
           return callback(false, { type: "completed", promise: res });
         }
-        const coroutine = new Coroutine(clock, ctx, verbose, new Decorator(func(ctx, ...args)), handler);
+        const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), handler, tracer);
         coroutine.exec((err, status) => {
           if (err) return callback(err);
           util.assertDefined(status);
@@ -128,7 +135,11 @@ export class Coroutine<T> {
   }
 
   private exec(callback: Callback<More | Done>) {
-    console.log(`${this.clock.now()} starting ${this.ctx.id}`)
+    let span: Span | undefined;
+    if (this.tracer) {
+      span = this.tracer.startSpan(this.ctx.id, { startTime: this.ctx.clock.now() });
+    }
+
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
 
@@ -173,11 +184,11 @@ export class Coroutine<T> {
                 }
 
                 const coroutine = new Coroutine(
-                  this.clock,
                   ctx,
                   this.verbose,
                   new Decorator(action.func(ctx, ...action.args)),
                   this.handler,
+                  this.tracer,
                   this.depth + 1,
                 );
 
@@ -323,7 +334,9 @@ export class Coroutine<T> {
             // All detached are remotes.
             remote.push({ id: action.id });
           }
-          console.log(`${this.clock.now()} suspending coroutine ${this.ctx.id}`)
+          if (span) {
+            span.addEvent("suspended", this.ctx.clock.now());
+          }
           callback(false, { type: "more", todo: { local, remote } });
           return;
         }
@@ -333,7 +346,10 @@ export class Coroutine<T> {
           util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
           util.assertDefined(action.value);
 
-          console.log(`${this.clock.now()} completing coroutine ${this.ctx.id}`)
+          if (span) {
+            span.end(this.ctx.clock.now());
+          }
+
           callback(false, { type: "done", result: action.value.value });
           return;
         }

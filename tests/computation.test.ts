@@ -126,6 +126,7 @@ describe("Computation Event Queue Concurrency", () => {
       new NoopHeartbeat(),
       new Map(),
       false,
+      undefined,
       mockProcessor,
     );
   });

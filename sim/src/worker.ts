@@ -182,6 +182,7 @@ export class WorkerProcess extends Process {
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
       verbose: false,
+      tracer: undefined,
     });
   }
 

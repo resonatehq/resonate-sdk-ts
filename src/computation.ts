@@ -1,3 +1,4 @@
+import type { Span, Tracer } from "@opentelemetry/api";
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
@@ -40,6 +41,7 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
+  private tracer: Tracer | undefined;
 
   private seen: Set<string> = new Set();
   private processing = false;
@@ -58,6 +60,7 @@ export class Computation {
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
     verbose: boolean,
+    tracer: Tracer | undefined,
     processor?: Processor,
   ) {
     this.id = id;
@@ -74,6 +77,7 @@ export class Computation {
     this.dependencies = dependencies;
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
+    this.tracer = tracer;
   }
 
   public process(task: Task, done: Callback<Status>) {
@@ -198,7 +202,7 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, this.verbose, this.clock, ctx, func, args, this.handler, (err, status) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, this.tracer, (err, status) => {
       if (err) {
         return done(err);
       }
@@ -230,7 +234,11 @@ export class Computation {
     args: any[],
     done: Callback<DurablePromiseRecord>,
   ) {
-    console.log(`${this.clock.now()} starting function ${id}`)
+    let span: Span | undefined;
+    if (this.tracer) {
+      span = this.tracer.startSpan(id, { startTime: this.clock.now() });
+    }
+
     this.processor.process(
       id,
       func.name,
@@ -253,7 +261,9 @@ export class Computation {
               return done(true);
             }
             util.assertDefined(res);
-            console.log(`${this.clock.now()} completing function ${id}`)
+            if (span) {
+              span.end(this.clock.now());
+            }
             done(false, res);
           },
           func.name,

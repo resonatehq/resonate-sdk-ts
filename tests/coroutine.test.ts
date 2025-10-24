@@ -63,11 +63,11 @@ describe("Coroutine", () => {
       Coroutine.exec(
         uuid,
         false,
-        new WallClock(),
         InnerContext.root(uuid, "poll://any@default", 0, new Never(), new WallClock(), new Map()),
         func,
         args,
         handler,
+        undefined,
         (err, res) => {
           expect(err).toBe(false);
           resolve(res);

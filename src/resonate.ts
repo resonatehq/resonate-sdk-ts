@@ -1,3 +1,4 @@
+import type { Tracer } from "@opentelemetry/api";
 import { LocalNetwork } from "../dev/network";
 import { type Encryptor, NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
@@ -61,6 +62,7 @@ export class Resonate {
   private network: Network;
   private encoder: Encoder;
   private encryptor: Encryptor;
+  private tracer: Tracer | undefined;
   private verbose: boolean;
   private messageSource: MessageSource;
   private handler: Handler;
@@ -82,6 +84,7 @@ export class Resonate {
     auth = undefined,
     verbose = false,
     encryptor = undefined,
+    tracer = undefined,
   }: {
     url?: string;
     group?: string;
@@ -90,6 +93,7 @@ export class Resonate {
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
+    tracer?: Tracer;
   } = {}) {
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycastPreference = `poll://any@${group}/${pid}`;
@@ -97,6 +101,7 @@ export class Resonate {
     this.pid = pid;
     this.ttl = ttl;
     this.encryptor = encryptor ?? new NoopEncryptor();
+    this.tracer = tracer;
     this.encoder = new JsonEncoder();
 
     this.verbose = verbose;
@@ -164,6 +169,7 @@ export class Resonate {
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
       verbose: this.verbose,
+      tracer: this.tracer,
     });
 
     this.promises = new Promises(this.network);
@@ -220,9 +226,11 @@ export class Resonate {
   static local({
     verbose = false,
     encryptor = undefined,
+    tracer = undefined,
   }: {
     verbose?: boolean;
     encryptor?: Encryptor;
+    tracer?: Tracer;
   } = {}): Resonate {
     return new Resonate({
       group: "default",
@@ -230,6 +238,7 @@ export class Resonate {
       ttl: Number.MAX_SAFE_INTEGER,
       verbose,
       encryptor,
+      tracer,
     });
   }
 
@@ -276,6 +285,7 @@ export class Resonate {
     auth = undefined,
     verbose = false,
     encryptor = undefined,
+    tracer = undefined,
   }: {
     url?: string;
     group?: string;
@@ -284,9 +294,10 @@ export class Resonate {
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
+    tracer?: Tracer;
     messageSourceAuth?: { username: string; password: string };
   } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth, verbose, encryptor });
+    return new Resonate({ url, group, pid, ttl, auth, verbose, encryptor, tracer });
   }
 
   /**
