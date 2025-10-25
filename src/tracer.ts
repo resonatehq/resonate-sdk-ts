@@ -1,58 +1,58 @@
-import type { Tracer as otelTracer, Span } from "@opentelemetry/api";
-import { context as otelContext, trace as otelTrace } from "@opentelemetry/api";
-
+import type { Tracer as OtelTracer, Span } from "@opentelemetry/api";
+import { context as otelContext, trace as otelTrace, SpanStatusCode } from "@opentelemetry/api";
+import * as util from "./util";
 export interface Tracer {
   startSpan(id: string, rId: string, at: number): void;
-  addEvent(id: string, event: string, at: number): void;
+  suspendSpan(id: string, at: number): void;
   endSpan(id: string, at: number): void;
 }
+
 export class ResonateTracer implements Tracer {
-  private tracer: otelTracer;
+  private tracer: OtelTracer;
   private spans: Map<string, Span>;
 
-  constructor({ tracer }: { tracer: otelTracer }) {
+  constructor({ tracer }: { tracer: OtelTracer }) {
     this.tracer = tracer;
     this.spans = new Map();
   }
 
   startSpan(id: string, rId: string, at: number): void {
-    const existingSpan = this.spans.get(id);
-    if (existingSpan) {
-      this.addEvent(id, "resumed", at);
+    const existing = this.spans.get(id);
+    if (existing) {
+      existing.addEvent("resumed", at);
       return;
     }
 
+    let ctx = otelContext.active();
+
+    // Root span
     if (id === rId) {
-      // Root span
-      const rootSpan = this.tracer.startSpan(id, { startTime: at });
+      const rootSpan = this.tracer.startSpan(id, {
+        startTime: at,
+      });
       this.spans.set(id, rootSpan);
       return;
     }
 
     // Child span
     const parentSpan = this.spans.get(rId);
-    if (!parentSpan) {
-      throw new Error(`Parent span with id "${rId}" not found.`);
-    }
-
-    const ctx = otelTrace.setSpan(otelContext.active(), parentSpan);
+    util.assertDefined(parentSpan);
+    ctx = otelTrace.setSpan(ctx, parentSpan);
     const childSpan = this.tracer.startSpan(id, { startTime: at }, ctx);
+
     this.spans.set(id, childSpan);
   }
 
-  addEvent(id: string, event: string, at: number) {
+  suspendSpan(id: string, at: number): void {
     const span = this.spans.get(id);
-    if (!span) {
-      throw new Error(`Span with id "${id}" not found.`);
-    }
-    span.addEvent(event, at);
+    util.assertDefined(span);
+    span.addEvent("suspend", at);
   }
 
-  endSpan(id: string, at: number) {
+  endSpan(id: string, at: number): void {
     const span = this.spans.get(id);
-    if (!span) {
-      throw new Error(`Span with id "${id}" not found.`);
-    }
+    util.assertDefined(span);
+    span.setStatus({ code: SpanStatusCode.OK });
     span.end(at);
     this.spans.delete(id);
   }
@@ -60,8 +60,6 @@ export class ResonateTracer implements Tracer {
 
 export class NoopTracer implements Tracer {
   startSpan(id: string, rId: string, at: number): void {}
-
-  addEvent(id: string, event: string, at: number) {}
-
-  endSpan(id: string, at: number) {}
+  suspendSpan(id: string, at: number): void {}
+  endSpan(id: string, at: number): void {}
 }

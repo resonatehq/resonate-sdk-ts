@@ -330,7 +330,7 @@ export class Coroutine<T> {
             // All detached are remotes.
             remote.push({ id: action.id });
           }
-          this.tracer.addEvent(this.ctx.id, "suspended", this.ctx.clock.now());
+          this.tracer.suspendSpan(this.ctx.id, this.ctx.clock.now());
 
           callback(false, { type: "more", todo: { local, remote } });
           return;
