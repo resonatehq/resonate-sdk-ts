@@ -28,8 +28,8 @@ function* fibonacci(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
   }
-  const p1 = yield ctx.beginRun(fibonacci, n - 1, ctx.options({ id: `"fib-${n - 1}` }));
-  const p2 = yield ctx.beginRun(fibonacci, n - 2, ctx.options({ id: `"fib-${n - 2}` }));
+  const p1 = yield ctx.beginRun(fibonacci, n - 1, ctx.options({ id: `fib-${n - 1}` }));
+  const p2 = yield ctx.beginRun(fibonacci, n - 2, ctx.options({ id: `fib-${n - 2}` }));
 
   return (yield p1) + (yield p2);
 }
@@ -60,11 +60,11 @@ resonate.register(countdown);
 
 async function main(): Promise<void> {
   // const v1 = await resonate.run("foo", foo, "hello world", "21");
-  // const v2 = await resonate.run("fib-10", fibonacci, 10);
-  const v3 = await resonate.run("countdown.1", countdown, 5, 1, "http");
+  const v2 = await resonate.run("fib-10", fibonacci, 10);
+  // const v3 = await resonate.run("countdown.1", countdown, 5, 1, "http");
   // console.log(v1);
-  // console.log(v2);
-  console.log(v3);
+  console.log(v2);
+  // console.log(v3);
   resonate.stop();
 }
 

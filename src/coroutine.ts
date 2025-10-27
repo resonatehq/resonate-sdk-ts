@@ -134,7 +134,7 @@ export class Coroutine<T> {
   }
 
   private exec(callback: Callback<More | Done>) {
-    this.tracer.startSpan(this.ctx.id, this.ctx.rId, this.ctx.clock.now());
+    this.tracer.startSpan(this.ctx.id, this.ctx.pId, this.ctx.clock.now());
 
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
@@ -330,7 +330,6 @@ export class Coroutine<T> {
             // All detached are remotes.
             remote.push({ id: action.id });
           }
-          this.tracer.suspendSpan(this.ctx.id, this.ctx.clock.now());
 
           callback(false, { type: "more", todo: { local, remote } });
           return;

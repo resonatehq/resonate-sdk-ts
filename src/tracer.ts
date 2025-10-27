@@ -2,8 +2,7 @@ import type { Tracer as OtelTracer, Span } from "@opentelemetry/api";
 import { context as otelContext, trace as otelTrace, SpanStatusCode } from "@opentelemetry/api";
 import * as util from "./util";
 export interface Tracer {
-  startSpan(id: string, rId: string, at: number): void;
-  suspendSpan(id: string, at: number): void;
+  startSpan(id: string, pId: string, at: number): void;
   endSpan(id: string, at: number): void;
 }
 
@@ -16,7 +15,7 @@ export class ResonateTracer implements Tracer {
     this.spans = new Map();
   }
 
-  startSpan(id: string, rId: string, at: number): void {
+  startSpan(id: string, pId: string, at: number): void {
     const existing = this.spans.get(id);
     if (existing) {
       existing.addEvent("resumed", at);
@@ -26,7 +25,7 @@ export class ResonateTracer implements Tracer {
     let ctx = otelContext.active();
 
     // Root span
-    if (id === rId) {
+    if (id === pId) {
       const rootSpan = this.tracer.startSpan(id, {
         startTime: at,
       });
@@ -35,7 +34,7 @@ export class ResonateTracer implements Tracer {
     }
 
     // Child span
-    const parentSpan = this.spans.get(rId);
+    const parentSpan = this.spans.get(pId);
     util.assertDefined(parentSpan);
     ctx = otelTrace.setSpan(ctx, parentSpan);
     const childSpan = this.tracer.startSpan(id, { startTime: at }, ctx);
@@ -59,7 +58,6 @@ export class ResonateTracer implements Tracer {
 }
 
 export class NoopTracer implements Tracer {
-  startSpan(id: string, rId: string, at: number): void {}
-  suspendSpan(id: string, at: number): void {}
+  startSpan(id: string, pId: string, at: number): void {}
   endSpan(id: string, at: number): void {}
 }

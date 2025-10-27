@@ -234,7 +234,7 @@ export class Computation {
     args: any[],
     done: Callback<DurablePromiseRecord>,
   ) {
-    this.tracer.startSpan(ctx.id, ctx.rId, this.clock.now());
+    this.tracer.startSpan(ctx.id, ctx.pId, this.clock.now());
 
     this.processor.process(
       id,
