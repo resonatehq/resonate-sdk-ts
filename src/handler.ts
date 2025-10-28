@@ -1,3 +1,4 @@
+import type { Clock } from "./clock";
 import type { Encoder } from "./encoder";
 import type { Encryptor } from "./encryptor";
 import exceptions, { type ResonateError } from "./exceptions";
@@ -14,6 +15,7 @@ import type {
   ReadPromiseReq,
   TaskRecord,
 } from "./network/network";
+import type { Tracer } from "./tracer";
 import type { Value } from "./types";
 import * as util from "./util";
 
@@ -60,11 +62,15 @@ export class Handler {
   private network: Network;
   private encoder: Encoder;
   private encryptor: Encryptor;
+  private tracer: Tracer;
+  private clock: Clock;
 
-  constructor(network: Network, encoder: Encoder, encryptor: Encryptor) {
+  constructor(network: Network, encoder: Encoder, encryptor: Encryptor, tracer: Tracer, clock: Clock) {
     this.network = network;
     this.encoder = encoder;
     this.encryptor = encryptor;
+    this.tracer = tracer;
+    this.clock = clock;
   }
 
   public readPromise(req: ReadPromiseReq, done: (err?: ResonateError, res?: DurablePromiseRecord<any>) => void): void {

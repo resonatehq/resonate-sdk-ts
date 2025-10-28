@@ -1,4 +1,4 @@
-import { WallClock } from "../src/clock";
+import { StepClock, WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
 import { Coroutine, type Suspended } from "../src/coroutine";
 import { JsonEncoder } from "../src/encoder";
@@ -109,7 +109,13 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const h = new Handler(
+      new DummyNetwork(),
+      new JsonEncoder(),
+      new NoopEncryptor(),
+      new NoopTracer(),
+      new StepClock(),
+    );
     const r = await exec("foo.1", foo, [], h);
     expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
   });
@@ -129,7 +135,13 @@ describe("Coroutine", () => {
       const v2 = yield* p2;
       return v + v2;
     }
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const h = new Handler(
+      new DummyNetwork(),
+      new JsonEncoder(),
+      new NoopEncryptor(),
+      new NoopTracer(),
+      new StepClock(),
+    );
 
     // First execution - should suspend
     let r = await exec("foo.1", foo, [], h);
@@ -159,7 +171,13 @@ describe("Coroutine", () => {
       return v1;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const h = new Handler(
+      new DummyNetwork(),
+      new JsonEncoder(),
+      new NoopEncryptor(),
+      new NoopTracer(),
+      new StepClock(),
+    );
 
     let r = await exec("foo.1", foo, [], h);
     expect(r.type).toBe("suspended");
@@ -182,7 +200,13 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const h = new Handler(
+      new DummyNetwork(),
+      new JsonEncoder(),
+      new NoopEncryptor(),
+      new NoopTracer(),
+      new StepClock(),
+    );
     let r = await exec("foo.1", foo, [], h);
 
     expect(r.type).toBe("suspended");
@@ -213,7 +237,13 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const h = new Handler(
+      new DummyNetwork(),
+      new JsonEncoder(),
+      new NoopEncryptor(),
+      new NoopTracer(),
+      new StepClock(),
+    );
     let r = await exec("foo.1", foo, [], h);
 
     expect(r.type).toBe("suspended");
@@ -238,7 +268,13 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const h = new Handler(
+      new DummyNetwork(),
+      new JsonEncoder(),
+      new NoopEncryptor(),
+      new NoopTracer(),
+      new StepClock(),
+    );
     let r = await exec("foo.1", foo, [], h);
 
     expect(r.type).toBe("suspended");
@@ -269,7 +305,13 @@ describe("Coroutine", () => {
       return v1 + v2;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const h = new Handler(
+      new DummyNetwork(),
+      new JsonEncoder(),
+      new NoopEncryptor(),
+      new NoopTracer(),
+      new StepClock(),
+    );
 
     let r = await exec("foo.1", foo, [], h);
     expect(r.type).toBe("suspended");

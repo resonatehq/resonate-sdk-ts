@@ -1,5 +1,5 @@
 import { LocalNetwork } from "../dev/network";
-import { WallClock } from "../src/clock";
+import { StepClock, WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
 import type { Context } from "../src/context";
 import { JsonEncoder } from "../src/encoder";
@@ -110,7 +110,7 @@ describe("Computation Event Queue Concurrency", () => {
     jest.clearAllMocks();
     mockProcessor = new MockProcessor();
     network = new LocalNetwork();
-    handler = new Handler(network, new JsonEncoder(), new NoopEncryptor());
+    handler = new Handler(network, new JsonEncoder(), new NoopEncryptor(), new NoopTracer(), new StepClock());
     registry = new Registry();
 
     computation = new Computation(

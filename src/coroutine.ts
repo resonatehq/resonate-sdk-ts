@@ -134,8 +134,6 @@ export class Coroutine<T> {
   }
 
   private exec(callback: Callback<More | Done>) {
-    this.tracer.startSpan(this.ctx.id, this.ctx.pId, this.ctx.clock.now());
-
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
 
@@ -339,8 +337,6 @@ export class Coroutine<T> {
         if (action.type === "internal.return") {
           util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
           util.assertDefined(action.value);
-
-          this.tracer.endSpan(this.ctx.id, this.ctx.clock.now());
 
           callback(false, { type: "done", result: action.value.value });
           return;

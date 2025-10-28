@@ -52,6 +52,7 @@ type SubscriptionEntry = {
 };
 
 export class Resonate {
+  private clock: WallClock;
   private unicast: string;
   private anycastPreference: string;
   private anycastNoPreference: string;
@@ -95,6 +96,7 @@ export class Resonate {
     encryptor?: Encryptor;
     tracer?: Tracer;
   } = {}) {
+    this.clock = new WallClock();
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycastPreference = `poll://any@${group}/${pid}`;
     this.anycastNoPreference = `poll://any@${group}`;
@@ -151,7 +153,7 @@ export class Resonate {
       this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
     }
 
-    this.handler = new Handler(this.network, this.encoder, this.encryptor);
+    this.handler = new Handler(this.network, this.encoder, this.encryptor, this.tracer, this.clock);
     this.registry = new Registry();
     this.dependencies = new Map();
 
@@ -161,7 +163,7 @@ export class Resonate {
       anycastNoPreference: this.anycastNoPreference,
       pid: this.pid,
       ttl: this.ttl,
-      clock: new WallClock(),
+      clock: this.clock,
       network: this.network,
       messageSource: this.messageSource,
       handler: this.handler,

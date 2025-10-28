@@ -234,8 +234,6 @@ export class Computation {
     args: any[],
     done: Callback<DurablePromiseRecord>,
   ) {
-    this.tracer.startSpan(ctx.id, ctx.pId, this.clock.now());
-
     this.processor.process(
       id,
       func.name,
@@ -258,7 +256,6 @@ export class Computation {
               return done(true);
             }
             util.assertDefined(res);
-            this.tracer.endSpan(id, this.clock.now());
 
             done(false, res);
           },
