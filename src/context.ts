@@ -1,11 +1,26 @@
 import type { Clock } from "./clock";
-import exceptions from "./exceptions";
+import exceptions, { type ResonateError } from "./exceptions";
 import type { CreatePromiseReq } from "./network/network";
 import { Options } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
 import type { Func, ParamsWithOptions, Result, Return } from "./types";
 import * as util from "./util";
+
+export class DIE implements Iterable<DIE> {
+  public condition: boolean;
+  public error: ResonateError;
+
+  constructor(condition: boolean, error: ResonateError) {
+    this.condition = condition;
+    this.error = error;
+  }
+
+  *[Symbol.iterator](): Generator<DIE, void, any> {
+    yield this;
+    return;
+  }
+}
 
 export class LFI<T> implements Iterable<LFI<T>> {
   public id: string;
@@ -126,34 +141,34 @@ export interface Context {
   readonly timeout: number;
 
   // core four
-  lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>>;
-  lfi<T>(func: string, ...args: any[]): LFI<T>;
-  lfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFC<Return<F>>;
-  lfc<T>(func: string, ...args: any[]): LFC<T>;
-  rfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
-  rfi<T>(func: string, ...args: any[]): RFI<T>;
-  rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
-  rfc<T>(func: string, ...args: any[]): RFC<T>;
+  lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>> | DIE;
+  lfi<T>(func: string, ...args: any[]): LFI<T> | DIE;
+  lfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFC<Return<F>> | DIE;
+  lfc<T>(func: string, ...args: any[]): LFC<T> | DIE;
+  rfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>> | DIE;
+  rfi<T>(func: string, ...args: any[]): RFI<T> | DIE;
+  rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>> | DIE;
+  rfc<T>(func: string, ...args: any[]): RFC<T> | DIE;
 
   // beginRun (lfi alias)
-  beginRun<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>>;
-  beginRun<T>(func: string, ...args: any[]): LFI<T>;
+  beginRun<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>> | DIE;
+  beginRun<T>(func: string, ...args: any[]): LFI<T> | DIE;
 
   // run (lfc alias)
-  run<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFC<Return<F>>;
-  run<T>(func: string, ...args: any[]): LFC<T>;
+  run<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFC<Return<F>> | DIE;
+  run<T>(func: string, ...args: any[]): LFC<T> | DIE;
 
   // beginRpc (rfi alias)
-  beginRpc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
-  beginRpc<T>(func: string, ...args: any[]): RFI<T>;
+  beginRpc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>> | DIE;
+  beginRpc<T>(func: string, ...args: any[]): RFI<T> | DIE;
 
   // rpc (rfc alias)
-  rpc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
-  rpc<T>(func: string, ...args: any[]): RFC<T>;
+  rpc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>> | DIE;
+  rpc<T>(func: string, ...args: any[]): RFC<T> | DIE;
 
   // detached
-  detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
-  detached<T>(func: string, ...args: any[]): RFI<T>;
+  detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>> | DIE;
+  detached<T>(func: string, ...args: any[]): RFI<T> | DIE;
 
   // sleep
   sleep(ms: number): RFC<void>;
@@ -172,6 +187,14 @@ export interface Context {
     data?: any;
     tags?: Record<string, string>;
   }): RFI<T>;
+
+  // die
+
+  // Aborts the execution of the root promise if condition is true
+  panic(condition: boolean, msg?: string): DIE;
+
+  // Aborts the execution of the root promise if condition is false
+  assert(condition: boolean, msg?: string): DIE;
 
   // getDependency
   getDependency<T = any>(key: string): T | undefined;
@@ -260,14 +283,14 @@ export class InnerContext implements Context {
     );
   }
 
-  lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>>;
-  lfi<T>(func: string, ...args: any[]): LFI<T>;
-  lfi(funcOrName: Func | string, ...args: any[]): LFI<any> {
+  lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>> | DIE;
+  lfi<T>(func: string, ...args: any[]): LFI<T> | DIE;
+  lfi(funcOrName: Func | string, ...args: any[]): LFI<any> | DIE {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "string" && !registered) {
-      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version);
+      return new DIE(true, exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version));
     }
 
     const func = registered ? registered.func : (funcOrName as Func);
@@ -281,14 +304,14 @@ export class InnerContext implements Context {
     );
   }
 
-  lfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFC<Return<F>>;
-  lfc<T>(func: string, ...args: any[]): LFC<T>;
-  lfc(funcOrName: Func | string, ...args: any[]): LFC<any> {
+  lfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFC<Return<F>> | DIE;
+  lfc<T>(func: string, ...args: any[]): LFC<T> | DIE;
+  lfc(funcOrName: Func | string, ...args: any[]): LFC<any> | DIE {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "string" && !registered) {
-      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version);
+      return new DIE(true, exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version));
     }
 
     const func = registered ? registered.func : (funcOrName as Func);
@@ -302,14 +325,14 @@ export class InnerContext implements Context {
     );
   }
 
-  rfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
-  rfi<T>(func: string, ...args: any[]): RFI<T>;
-  rfi(funcOrName: Func | string, ...args: any[]): RFI<any> {
+  rfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>> | DIE;
+  rfi<T>(func: string, ...args: any[]): RFI<T> | DIE;
+  rfi(funcOrName: Func | string, ...args: any[]): RFI<any> | DIE {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "function" && !registered) {
-      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
+      return new DIE(true, exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version));
     }
 
     const data = {
@@ -321,14 +344,14 @@ export class InnerContext implements Context {
     return new RFI(opts.id, this.remoteCreateReq(data, opts));
   }
 
-  rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
-  rfc<T>(func: string, ...args: any[]): RFC<T>;
-  rfc(funcOrName: Func | string, ...args: any[]): RFC<any> {
+  rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>> | DIE;
+  rfc<T>(func: string, ...args: any[]): RFC<T> | DIE;
+  rfc(funcOrName: Func | string, ...args: any[]): RFC<any> | DIE {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "function" && !registered) {
-      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
+      return new DIE(true, exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version));
     }
 
     const data = {
@@ -340,14 +363,14 @@ export class InnerContext implements Context {
     return new RFC(opts.id, this.remoteCreateReq(data, opts));
   }
 
-  detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
-  detached<T>(func: string, ...args: any[]): RFI<T>;
-  detached(funcOrName: Func | string, ...args: any[]): RFI<any> {
+  detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>> | DIE;
+  detached<T>(func: string, ...args: any[]): RFI<T> | DIE;
+  detached(funcOrName: Func | string, ...args: any[]): RFI<any> | DIE {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "function" && !registered) {
-      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
+      return new DIE(true, exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version));
     }
 
     const data = {
@@ -389,6 +412,15 @@ export class InnerContext implements Context {
 
     const id = this.seqid();
     return new RFC(id, this.sleepCreateOpts(id, until));
+  }
+
+  panic(condition: boolean, msg?: string): DIE {
+    const src = util.getCallerInfo();
+    return new DIE(condition, exceptions.PANIC(src, msg));
+  }
+
+  assert(condition: boolean, msg?: string): DIE {
+    return this.panic(!condition, msg);
   }
 
   getDependency<T = any>(name: string): T | undefined {
