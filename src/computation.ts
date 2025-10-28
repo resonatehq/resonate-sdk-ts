@@ -111,15 +111,19 @@ export class Computation {
               return doneProcessing(true);
             }
             util.assertDefined(promise);
-            this.processClaimed({ kind: "claimed", task: task.task, rootPromise: promise }, doneProcessing);
+            this.processClaimed(
+              { kind: "claimed", task: task.task, rootPromise: promise.root, leafPromise: promise.leaf },
+              doneProcessing,
+            );
           },
         );
         break;
     }
   }
 
-  private processClaimed({ task, rootPromise }: ClaimedTask, done: Callback<Status>) {
+  private processClaimed({ task, rootPromise, leafPromise }: ClaimedTask, done: Callback<Status>) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
+    this.tracer.startSpan(this.id, rootPromise.tags["resonate:parent"] ?? this.id, this.clock.now());
 
     const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
       if (err) {
@@ -211,6 +215,7 @@ export class Computation {
       switch (status.type) {
         case "completed":
           done(false, { kind: "completed", promise: status.promise });
+          this.tracer.endSpan(this.id, this.clock.now());
           break;
 
         case "suspended":

@@ -218,7 +218,10 @@ export class Handler {
     });
   }
 
-  public claimTask(req: ClaimTaskReq, done: (err?: ResonateError, res?: DurablePromiseRecord<any>) => void): void {
+  public claimTask(
+    req: ClaimTaskReq,
+    done: (err?: ResonateError, res?: { root: DurablePromiseRecord<any>; leaf?: DurablePromiseRecord<any> }) => void,
+  ): void {
     const task = this.cache.getTask(req.id);
     if (task && task.counter >= req.counter) {
       done(
@@ -254,7 +257,7 @@ export class Handler {
 
       this.cache.setTask({ id: req.id, counter: req.counter });
 
-      done(undefined, rootPromise);
+      done(undefined, { root: rootPromise, leaf: leafPromise });
     });
   }
 

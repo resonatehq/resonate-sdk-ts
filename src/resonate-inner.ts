@@ -19,6 +19,7 @@ export type ClaimedTask = {
   kind: "claimed";
   task: TaskRecord;
   rootPromise: DurablePromiseRecord<any>;
+  leafPromise?: DurablePromiseRecord<any>;
 };
 
 export type UnclaimedTask = {

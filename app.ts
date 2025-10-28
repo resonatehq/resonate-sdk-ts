@@ -28,8 +28,8 @@ function* fibonacci(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
   }
-  const p1 = yield ctx.beginRun(fibonacci, n - 1, ctx.options({ id: `fib-${n - 1}` }));
-  const p2 = yield ctx.beginRun(fibonacci, n - 2, ctx.options({ id: `fib-${n - 2}` }));
+  const p1 = yield ctx.beginRpc("fibonacci", n - 1, ctx.options({ id: `fib-${n - 1}` }));
+  const p2 = yield ctx.beginRpc("fibonacci", n - 2, ctx.options({ id: `fib-${n - 2}` }));
 
   return (yield p1) + (yield p2);
 }
@@ -51,7 +51,7 @@ export function* countdown(ctx: Context, count: number, delay: number, url: stri
 
 sdk.start();
 
-const resonate = Resonate.local({ tracer: new ResonateTracer({ tracer: trace.getTracer("resonate") }) });
+const resonate = Resonate.remote({ tracer: new ResonateTracer({ tracer: trace.getTracer("resonate") }) });
 
 resonate.register(foo);
 resonate.register(baz);
