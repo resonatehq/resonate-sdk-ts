@@ -241,7 +241,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator(
-      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Map())),
+      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Registry(), new Map())),
     );
     const r = d.next({ type: "internal.nothing" });
 
@@ -262,7 +262,7 @@ describe("Decorator", () => {
     }
 
     const d = new Decorator(
-      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Map())),
+      foo(InnerContext.root("foo", "poll://any@default", 0, new Never(), new WallClock(), new Registry(), new Map())),
     );
     d.next({ type: "internal.nothing" }); // Process the die with condition=false
     const r = d.next({ type: "internal.nothing" }); // Continue to return

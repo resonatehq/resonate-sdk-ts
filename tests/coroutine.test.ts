@@ -294,7 +294,7 @@ describe("Coroutine", () => {
       Coroutine.exec(
         "foo.1",
         false,
-        InnerContext.root("foo.1", "poll://any@default", 0, new Never(), new WallClock(), new Map()),
+        InnerContext.root("foo.1", "poll://any@default", 0, new Never(), new WallClock(), new Registry(), new Map()),
         foo,
         [],
         h,
