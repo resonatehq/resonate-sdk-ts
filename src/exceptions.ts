@@ -69,7 +69,9 @@ export default {
     return new ResonateError("04", "Dependencies", `Dependency '${d}' is already registered`);
   },
   DEPENDENCY_NOT_REGISTERED: (d: string) => {
-    return new ResonateError("05", "Dependencies", `Dependency '${d}' is not registered`, { next: "Will drop" });
+    return new ResonateError("05", "Dependencies", `Dependency '${d}' is not registered`, {
+      next: "Will drop",
+    });
   },
   ENCODING_ARGS_UNENCODEABLE: (f: string, c: any) => {
     return new ResonateError("06", "Encoding", `Argument(s) for function '${f}' cannot be encoded`, {
