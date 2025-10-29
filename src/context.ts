@@ -223,8 +223,8 @@ export class InnerContext implements Context {
   readonly retryPolicy: RetryPolicy;
 
   private rId: string;
-  private pId: string;
-  private clock: Clock;
+  readonly pId: string;
+  readonly clock: Clock;
   private anycastNoPreference: string;
   private dependencies: Map<string, any>;
   private seq = 0;

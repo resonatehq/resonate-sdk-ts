@@ -1,5 +1,5 @@
 import { LocalNetwork } from "../dev/network";
-import { WallClock } from "../src/clock";
+import { StepClock, WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
 import type { Context } from "../src/context";
 import { JsonEncoder } from "../src/encoder";
@@ -10,6 +10,7 @@ import type { DurablePromiseRecord, TaskRecord } from "../src/network/network";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
 import type { ClaimedTask } from "../src/resonate-inner";
+import { NoopTracer } from "../src/tracer";
 import type { Result } from "../src/types";
 import * as util from "../src/util";
 
@@ -109,7 +110,7 @@ describe("Computation Event Queue Concurrency", () => {
     jest.clearAllMocks();
     mockProcessor = new MockProcessor();
     network = new LocalNetwork();
-    handler = new Handler(network, new JsonEncoder(), new NoopEncryptor());
+    handler = new Handler(network, new JsonEncoder(), new NoopEncryptor(), new NoopTracer(), new StepClock());
     registry = new Registry();
 
     computation = new Computation(
@@ -126,6 +127,7 @@ describe("Computation Event Queue Concurrency", () => {
       new NoopHeartbeat(),
       new Map(),
       false,
+      new NoopTracer(),
       mockProcessor,
     );
   });

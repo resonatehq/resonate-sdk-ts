@@ -360,7 +360,7 @@ export class Server {
       }
 
       default:
-        throw exceptions.SERVER_ERROR(`Unsupported request kind ${(requ as any).kind}`);
+        util.assertNever(requ);
     }
   }
 

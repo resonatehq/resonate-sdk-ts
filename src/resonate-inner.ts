@@ -4,6 +4,7 @@ import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
 import type { Registry } from "./registry";
+import type { Tracer } from "./tracer";
 import type { Callback } from "./types";
 import * as util from "./util";
 
@@ -18,6 +19,7 @@ export type ClaimedTask = {
   kind: "claimed";
   task: TaskRecord;
   rootPromise: DurablePromiseRecord<any>;
+  leafPromise?: DurablePromiseRecord<any>;
 };
 
 export type UnclaimedTask = {
@@ -36,6 +38,7 @@ export class ResonateInner {
   private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
+  private tracer: Tracer;
   private dependencies: Map<string, any>;
   private verbose: boolean;
   private computations: Map<string, Computation> = new Map();
@@ -51,6 +54,7 @@ export class ResonateInner {
     handler,
     registry,
     heartbeat,
+    tracer,
     dependencies,
     verbose,
     messageSource = undefined,
@@ -65,6 +69,7 @@ export class ResonateInner {
     handler: Handler;
     registry: Registry;
     heartbeat: Heartbeat;
+    tracer: Tracer;
     dependencies: Map<string, any>;
     verbose: boolean;
     messageSource?: MessageSource;
@@ -79,6 +84,7 @@ export class ResonateInner {
     this.handler = handler;
     this.registry = registry;
     this.heartbeat = heartbeat;
+    this.tracer = tracer;
     this.dependencies = dependencies;
     this.verbose = verbose;
 
@@ -104,6 +110,7 @@ export class ResonateInner {
         this.heartbeat,
         this.dependencies,
         this.verbose,
+        this.tracer,
       );
       this.computations.set(task.task.rootPromiseId, computation);
     }

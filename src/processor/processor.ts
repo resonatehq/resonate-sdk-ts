@@ -25,11 +25,10 @@ export class AsyncProcessor implements Processor {
     timeout: number,
     verbose: boolean,
   ): void {
-    void this.run(id, name, func, cb, retryPolicy, timeout, verbose);
+    void this.run(name, func, cb, retryPolicy, timeout, verbose);
   }
 
   private async run<T>(
-    id: string,
     name: string,
     func: () => Promise<T>,
     cb: (result: Result<T>) => void,

@@ -22,6 +22,7 @@ import { Options } from "./options";
 import { Promises } from "./promises";
 import { ResonateInner } from "./resonate-inner";
 import { Schedules } from "./schedules";
+import { NoopTracer, type Tracer } from "./tracer";
 import type { Func, ParamsWithOptions, Return } from "./types";
 import * as util from "./util";
 
@@ -51,6 +52,7 @@ type SubscriptionEntry = {
 };
 
 export class Resonate {
+  private clock: WallClock;
   private unicast: string;
   private anycastPreference: string;
   private anycastNoPreference: string;
@@ -61,6 +63,7 @@ export class Resonate {
   private network: Network;
   private encoder: Encoder;
   private encryptor: Encryptor;
+  private tracer: Tracer;
   private verbose: boolean;
   private messageSource: MessageSource;
   private handler: Handler;
@@ -82,6 +85,7 @@ export class Resonate {
     auth = undefined,
     verbose = false,
     encryptor = undefined,
+    tracer = undefined,
   }: {
     url?: string;
     group?: string;
@@ -90,13 +94,16 @@ export class Resonate {
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
+    tracer?: Tracer;
   } = {}) {
+    this.clock = new WallClock();
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycastPreference = `poll://any@${group}/${pid}`;
     this.anycastNoPreference = `poll://any@${group}`;
     this.pid = pid;
     this.ttl = ttl;
     this.encryptor = encryptor ?? new NoopEncryptor();
+    this.tracer = tracer ?? new NoopTracer();
     this.encoder = new JsonEncoder();
 
     this.verbose = verbose;
@@ -146,7 +153,7 @@ export class Resonate {
       this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
     }
 
-    this.handler = new Handler(this.network, this.encoder, this.encryptor);
+    this.handler = new Handler(this.network, this.encoder, this.encryptor, this.tracer, this.clock);
     this.registry = new Registry();
     this.dependencies = new Map();
 
@@ -156,7 +163,7 @@ export class Resonate {
       anycastNoPreference: this.anycastNoPreference,
       pid: this.pid,
       ttl: this.ttl,
-      clock: new WallClock(),
+      clock: this.clock,
       network: this.network,
       messageSource: this.messageSource,
       handler: this.handler,
@@ -164,6 +171,7 @@ export class Resonate {
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
       verbose: this.verbose,
+      tracer: this.tracer,
     });
 
     this.promises = new Promises(this.network);
@@ -220,9 +228,11 @@ export class Resonate {
   static local({
     verbose = false,
     encryptor = undefined,
+    tracer = undefined,
   }: {
     verbose?: boolean;
     encryptor?: Encryptor;
+    tracer?: Tracer;
   } = {}): Resonate {
     return new Resonate({
       group: "default",
@@ -230,6 +240,7 @@ export class Resonate {
       ttl: Number.MAX_SAFE_INTEGER,
       verbose,
       encryptor,
+      tracer,
     });
   }
 
@@ -276,6 +287,7 @@ export class Resonate {
     auth = undefined,
     verbose = false,
     encryptor = undefined,
+    tracer = undefined,
   }: {
     url?: string;
     group?: string;
@@ -284,9 +296,10 @@ export class Resonate {
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
+    tracer?: Tracer;
     messageSourceAuth?: { username: string; password: string };
   } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth, verbose, encryptor });
+    return new Resonate({ url, group, pid, ttl, auth, verbose, encryptor, tracer });
   }
 
   /**

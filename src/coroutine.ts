@@ -2,6 +2,7 @@ import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
 import type { DurablePromiseRecord } from "./network/network";
+import type { Tracer } from "./tracer";
 import { type Callback, ko, ok, type Result, type Yieldable } from "./types";
 import * as util from "./util";
 
@@ -41,14 +42,23 @@ export class Coroutine<T> {
   private verbose: boolean;
   private decorator: Decorator<T>;
   private handler: Handler;
+  private tracer: Tracer;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
 
-  constructor(ctx: InnerContext, verbose: boolean, decorator: Decorator<T>, handler: Handler, depth = 1) {
+  constructor(
+    ctx: InnerContext,
+    verbose: boolean,
+    decorator: Decorator<T>,
+    handler: Handler,
+    tracer: Tracer,
+    depth = 1,
+  ) {
     this.ctx = ctx;
     this.verbose = verbose;
     this.decorator = decorator;
     this.handler = handler;
+    this.tracer = tracer;
     this.depth = depth;
 
     if (typeof process !== "undefined" && process.env.QUEUE_MICROTASK_EVERY_N) {
@@ -63,6 +73,7 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     handler: Handler,
+    tracer: Tracer,
     callback: Callback<Suspended | Completed>,
   ): void {
     handler.createPromise(
@@ -82,8 +93,7 @@ export class Coroutine<T> {
         if (res.state !== "pending") {
           return callback(false, { type: "completed", promise: res });
         }
-
-        const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), handler);
+        const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), handler, tracer);
         coroutine.exec((err, status) => {
           if (err) return callback(err);
           util.assertDefined(status);
@@ -172,6 +182,7 @@ export class Coroutine<T> {
                   this.verbose,
                   new Decorator(action.func(ctx, ...action.args)),
                   this.handler,
+                  this.tracer,
                   this.depth + 1,
                 );
 
@@ -330,6 +341,7 @@ export class Coroutine<T> {
             // All detached are remotes.
             remote.push({ id: action.id });
           }
+
           callback(false, { type: "more", todo: { local, remote } });
           return;
         }

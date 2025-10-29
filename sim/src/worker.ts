@@ -14,6 +14,7 @@ import type {
 } from "../../src/network/network";
 import type { Registry } from "../../src/registry";
 import { ResonateInner } from "../../src/resonate-inner";
+import { NoopTracer } from "../../src/tracer";
 import type { Callback } from "../../src/types";
 import * as util from "../../src/util";
 import { type Address, Message, Process, type Random, unicast } from "./simulator";
@@ -176,12 +177,13 @@ export class WorkerProcess extends Process {
       ttl: 5000,
       clock: this.clock,
       network: this.network,
-      handler: new Handler(this.network, encoder, new NoopEncryptor()),
+      handler: new Handler(this.network, encoder, new NoopEncryptor(), new NoopTracer(), this.clock),
       messageSource: this.network.getMessageSource(),
       registry: registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
       verbose: false,
+      tracer: new NoopTracer(),
     });
   }
 
