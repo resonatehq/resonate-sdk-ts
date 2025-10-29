@@ -1,6 +1,5 @@
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
-import { ResonateError } from "./exceptions";
 import type { Handler } from "./handler";
 import type { DurablePromiseRecord } from "./network/network";
 import { type Callback, ko, ok, type Result, type Yieldable } from "./types";
@@ -339,19 +338,6 @@ export class Coroutine<T> {
         if (action.type === "internal.return") {
           util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
           util.assertDefined(action.value);
-
-          // If the error is a ResonateError and should lead to the task being
-          // dropped, log the error and return true. This is probably not the
-          // most ideal way to drop a task, but it permits us to throw an
-          // exception in the context and easily handle it here.
-          if (
-            !action.value.value.success &&
-            action.value.value.error instanceof ResonateError &&
-            action.value.value.error.shouldDrop
-          ) {
-            action.value.value.error.log(this.verbose);
-            return callback(true);
-          }
 
           callback(false, { type: "done", result: action.value.value });
           return;
