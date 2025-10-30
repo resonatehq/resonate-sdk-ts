@@ -745,7 +745,6 @@ export class Resonate {
     return new Promise((resolve, reject) =>
       this.handler.createSubscription(
         req,
-        headers,
         (err, res) => {
           if (err) {
             reject(err);
@@ -753,6 +752,7 @@ export class Resonate {
             resolve(res!);
           }
         },
+        headers,
         true,
       ),
     );

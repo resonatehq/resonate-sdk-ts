@@ -320,8 +320,8 @@ export class Handler {
 
   public createSubscription(
     req: CreateSubscriptionReq,
-    headers: Record<string, string>,
     done: (err?: ResonateError, res?: DurablePromiseRecord<any>) => void,
+    headers: Record<string, string> = {},
     retryForever = false,
   ) {
     const id = `__notify:${req.promiseId}:${req.id}`;
