@@ -170,6 +170,7 @@ export class HttpNetwork implements Network {
 
   send<T extends Request>(
     req: T,
+    headers: Record<string, string>,
     callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
     retryForever = false,
   ): void {

@@ -13,7 +13,11 @@ import { ok, type Result } from "../src/types";
 class DummyNetwork implements Network {
   private promises = new Map<string, DurablePromiseRecord>();
 
-  send<T extends Request>(request: T, callback: (err?: ResonateError, res?: ResponseFor<T>) => void): void {
+  send<T extends Request>(
+    request: T,
+    headers: Record<string, string>,
+    callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
+  ): void {
     switch (request.kind) {
       case "createPromise": {
         const p: DurablePromiseRecord = {

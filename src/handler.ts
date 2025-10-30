@@ -80,7 +80,7 @@ export class Handler {
       return;
     }
 
-    this.network.send(req, (err, res) => {
+    this.network.send(req, {}, (err, res) => {
       if (err) return done(err);
       util.assertDefined(res);
 
@@ -118,6 +118,7 @@ export class Handler {
 
     this.network.send(
       { ...req, param },
+      {},
       (err, res) => {
         if (err) return done(err);
         util.assertDefined(res);
@@ -158,6 +159,7 @@ export class Handler {
 
     this.network.send(
       { ...req, promise: { ...req.promise, param } },
+      {},
       (err, res) => {
         if (err) return done(err);
         util.assertDefined(res);
@@ -202,7 +204,7 @@ export class Handler {
       return;
     }
 
-    this.network.send({ ...req, value }, (err, res) => {
+    this.network.send({ ...req, value }, {}, (err, res) => {
       if (err) return done(err);
       util.assertDefined(res);
 
@@ -233,7 +235,7 @@ export class Handler {
       return;
     }
 
-    this.network.send(req, (err, res) => {
+    this.network.send(req, {}, (err, res) => {
       if (err) return done(err);
       util.assertDefined(res);
       util.assertDefined(res.message.promises.root);
@@ -283,7 +285,7 @@ export class Handler {
       return;
     }
 
-    this.network.send(req, (err, res) => {
+    this.network.send(req, {}, (err, res) => {
       if (err) return done(err);
       util.assertDefined(res);
 
@@ -331,6 +333,7 @@ export class Handler {
 
     this.network.send(
       req,
+      {},
       (err, res) => {
         if (err) return done(err);
         util.assertDefined(res);

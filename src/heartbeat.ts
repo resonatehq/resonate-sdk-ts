@@ -35,6 +35,7 @@ export class AsyncHeartbeat implements Heartbeat {
           kind: "heartbeatTasks",
           processId: this.pid,
         },
+        {},
         (err, res) => {
           if (err) return;
           util.assertDefined(res);

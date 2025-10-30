@@ -68,7 +68,11 @@ export class LocalNetwork implements Network {
     // No-op for LocalNetwork, MessageSource handles polling cleanup
   }
 
-  send<T extends Request>(req: Request, callback: (err?: ResonateError, res?: ResponseFor<T>) => void): void {
+  send<T extends Request>(
+    req: Request,
+    headers: Record<string, string>,
+    callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
+  ): void {
     setTimeout(() => {
       try {
         const res = this.server.process(req, Date.now());
