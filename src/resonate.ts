@@ -193,7 +193,6 @@ export class Resonate {
           };
 
           const headers: Record<string, string> = {};
-
           const res = await this.createSubscription(createSubscriptionReq, headers);
           if (res.state !== "pending") {
             sub.resolve(res);
@@ -584,7 +583,6 @@ export class Resonate {
     }
 
     const headers: Record<string, string> = {};
-
     const promise = await this.createPromise(
       {
         kind: "createPromise",
