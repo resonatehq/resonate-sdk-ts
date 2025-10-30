@@ -11,13 +11,22 @@ export class LFI<T> implements Iterable<LFI<T>> {
   public id: string;
   public func: Func;
   public args: any[];
+  public version: number;
   public retryPolicy: RetryPolicy;
   public createReq: CreatePromiseReq<any>;
 
-  constructor(id: string, func: Func, args: any[], retryPolicy: RetryPolicy, createReq: CreatePromiseReq<any>) {
+  constructor(
+    id: string,
+    func: Func,
+    args: any[],
+    version: number,
+    retryPolicy: RetryPolicy,
+    createReq: CreatePromiseReq<any>,
+  ) {
     this.id = id;
     this.func = func;
     this.args = args;
+    this.version = version;
     this.retryPolicy = retryPolicy;
     this.createReq = createReq;
   }
@@ -33,13 +42,22 @@ export class LFC<T> implements Iterable<LFC<T>> {
   public id: string;
   public func: Func;
   public args: any[];
+  public version: number;
   public retryPolicy: RetryPolicy;
   public createReq: CreatePromiseReq;
 
-  constructor(id: string, func: Func, args: any[], retryPolicy: RetryPolicy, createReq: CreatePromiseReq) {
+  constructor(
+    id: string,
+    func: Func,
+    args: any[],
+    version: number,
+    retryPolicy: RetryPolicy,
+    createReq: CreatePromiseReq,
+  ) {
     this.id = id;
     this.func = func;
     this.args = args;
+    this.version = version;
     this.retryPolicy = retryPolicy;
     this.createReq = createReq;
   }
@@ -138,7 +156,7 @@ export class Future<T> implements Iterable<Future<T>> {
 
 export interface Context {
   readonly id: string;
-  readonly timeout: number;
+  readonly info: { readonly attempt: number; readonly timeout: number; readonly version: number };
 
   // core four
   lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>>;
@@ -219,7 +237,7 @@ export interface ResonateMath {
 
 export class InnerContext implements Context {
   readonly id: string;
-  readonly timeout: number;
+  readonly info: { attempt: number; readonly timeout: number; readonly version: number };
   readonly retryPolicy: RetryPolicy;
 
   private rId: string;
@@ -235,52 +253,68 @@ export class InnerContext implements Context {
   beginRun = this.lfi.bind(this);
   beginRpc = this.rfi.bind(this);
 
-  private constructor(
-    id: string,
-    rId: string,
-    pId: string,
-    anycast: string,
-    timeout: number,
-    retryPolicy: RetryPolicy,
-    clock: Clock,
-    registry: Registry,
-    dependencies: Map<string, any>,
-  ) {
+  constructor({
+    id,
+    rId = id,
+    pId = id,
+    anycast,
+    clock,
+    registry,
+    dependencies,
+    timeout,
+    version,
+    retryPolicy,
+  }: {
+    id: string;
+    rId?: string;
+    pId?: string;
+    anycast: string;
+    clock: Clock;
+    registry: Registry;
+    dependencies: Map<string, any>;
+    timeout: number;
+    version: number;
+    retryPolicy: RetryPolicy;
+  }) {
     this.id = id;
     this.rId = rId;
     this.pId = pId;
     this.anycast = anycast;
-    this.timeout = timeout;
-    this.retryPolicy = retryPolicy;
     this.clock = clock;
     this.registry = registry;
     this.dependencies = dependencies;
-  }
+    this.retryPolicy = retryPolicy;
 
-  static root(
-    id: string,
-    anycast: string,
-    timeout: number,
-    retryPolicy: RetryPolicy,
-    clock: Clock,
-    registry: Registry,
-    dependencies: Map<string, any>,
-  ) {
-    return new InnerContext(id, id, id, anycast, timeout, retryPolicy, clock, registry, dependencies);
-  }
-
-  child(id: string, timeout: number, retryPolicy: RetryPolicy) {
-    return new InnerContext(
-      id,
-      this.rId,
-      this.id,
-      this.anycast,
+    this.info = {
+      attempt: 1,
       timeout,
+      version,
+    };
+  }
+
+  child({
+    id,
+    timeout,
+    version,
+    retryPolicy,
+  }: {
+    id: string;
+    timeout: number;
+    version: number;
+    retryPolicy: RetryPolicy;
+  }) {
+    return new InnerContext({
+      id,
+      rId: this.rId,
+      pId: this.id,
+      anycast: this.anycast,
+      clock: this.clock,
+      registry: this.registry,
+      dependencies: this.dependencies,
+      timeout,
+      version,
       retryPolicy,
-      this.clock,
-      this.registry,
-      this.dependencies,
-    );
+    });
   }
 
   lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>>;
@@ -302,6 +336,7 @@ export class InnerContext implements Context {
       opts.id,
       func,
       argu,
+      registered ? registered.version : 1,
       opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
       this.localCreateReq(opts),
     );
@@ -326,6 +361,7 @@ export class InnerContext implements Context {
       opts.id,
       func,
       argu,
+      registered ? registered.version : 1,
       opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
       this.localCreateReq(opts),
     );
@@ -463,7 +499,7 @@ export class InnerContext implements Context {
     };
 
     // timeout cannot be greater than parent timeout
-    const timeout = Math.min(this.clock.now() + opts.timeout, this.timeout);
+    const timeout = Math.min(this.clock.now() + opts.timeout, this.info.timeout);
 
     return {
       kind: "createPromise",
@@ -476,7 +512,7 @@ export class InnerContext implements Context {
     };
   }
 
-  remoteCreateReq(data: any, opts: Options, maxTimeout = this.timeout): CreatePromiseReq {
+  remoteCreateReq(data: any, opts: Options, maxTimeout = this.info.timeout): CreatePromiseReq {
     const tags = {
       "resonate:scope": "global",
       "resonate:invoke": opts.target,
@@ -508,7 +544,7 @@ export class InnerContext implements Context {
     };
 
     // timeout cannot be greater than parent timeout
-    const cTimeout = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.timeout);
+    const cTimeout = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.info.timeout);
 
     return {
       kind: "createPromise",
@@ -530,7 +566,7 @@ export class InnerContext implements Context {
     };
 
     // timeout cannot be greater than parent timeout
-    const timeout = Math.min(time, this.timeout);
+    const timeout = Math.min(time, this.info.timeout);
 
     return {
       kind: "createPromise",
