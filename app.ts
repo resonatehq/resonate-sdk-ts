@@ -14,14 +14,14 @@ const sdk = new NodeSDK({
 function* foo(ctx: Context, s: string): Generator<any, string, any> {
   let v: string = "";
   for (let i = 1; i <= 10; i++) {
-    v = yield ctx.rpc("bar", s, ctx.options({ id: `bar.${i}` }));
+    v = yield ctx.run(bar, s, ctx.options({ id: `bar.${i}` }));
   }
 
   return v;
 }
 
 function* bar(ctx: Context, s: string): Generator<any, string, any> {
-  const v = yield ctx.rpc("baz", s, ctx.options({ id: "baz" }));
+  const v = yield ctx.run(baz, s, ctx.options({ id: "baz" }));
   return v;
 }
 function* baz(ctx: Context, s: string): Generator<any, string, any> {
