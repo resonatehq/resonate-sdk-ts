@@ -308,8 +308,8 @@ export type ResponseFor<T extends Request> = Extract<Response, { kind: T["kind"]
 export interface Network {
   send<T extends Request>(
     req: T,
-    headers: Record<string, string>,
     callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
+    headers?: Record<string, string>,
     retryForever?: boolean,
   ): void;
   stop(): void;

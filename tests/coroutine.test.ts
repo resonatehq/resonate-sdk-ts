@@ -15,8 +15,8 @@ class DummyNetwork implements Network {
 
   send<T extends Request>(
     request: T,
-    headers: Record<string, string>,
     callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
+    headers: Record<string, string>,
   ): void {
     switch (request.kind) {
       case "createPromise": {

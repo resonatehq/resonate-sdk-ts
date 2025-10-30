@@ -127,7 +127,7 @@ export class Computation {
 
     const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
       if (err) {
-        return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, {}, () => {
+        return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, () => {
           // ignore the drop task response, if the request failed the
           // task will eventually expire anyways
           done(true);
@@ -172,7 +172,7 @@ export class Computation {
           return nursery.done(err);
         }
 
-        this.network.send({ kind: "completeTask", id: task.id, counter: task.counter }, {}, (err) => {
+        this.network.send({ kind: "completeTask", id: task.id, counter: task.counter }, (err) => {
           nursery.done(!!err, res);
         });
       };

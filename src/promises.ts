@@ -9,7 +9,7 @@ export class Promises {
 
   get(id: string): Promise<DurablePromiseRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send({ kind: "readPromise", id }, {}, (err, res) => {
+      this.network.send({ kind: "readPromise", id }, (err, res) => {
         if (err) {
           reject(err);
           return;
@@ -48,7 +48,6 @@ export class Promises {
           iKey: ikey,
           strict: strict,
         },
-        {},
         (err, res) => {
           if (err) {
             reject(err);
@@ -97,7 +96,6 @@ export class Promises {
           iKey: ikey,
           strict: strict,
         },
-        {},
         (err, res) => {
           if (err) {
             reject(err);
@@ -134,7 +132,6 @@ export class Promises {
           iKey: ikey,
           strict: strict,
         },
-        {},
         (err, res) => {
           if (err) {
             reject(err);
@@ -170,7 +167,6 @@ export class Promises {
           iKey: ikey,
           strict: strict,
         },
-        {},
         (err, res) => {
           if (err) {
             reject(err);
@@ -206,7 +202,6 @@ export class Promises {
           iKey: ikey,
           strict: strict,
         },
-        {},
         (err, res) => {
           if (err) {
             reject(err);
@@ -234,7 +229,6 @@ export class Promises {
             limit,
             cursor,
           },
-          {},
           (err, res) => {
             if (err) return reject(err);
             resolve(res!);
@@ -264,7 +258,6 @@ export class Promises {
           timeout: timeout,
           recv: recv,
         },
-        {},
         (err, res) => {
           if (err) {
             reject(err);
@@ -287,7 +280,7 @@ export class Promises {
     callback: CallbackRecord | undefined;
   }> {
     return new Promise((resolve, reject) => {
-      this.network.send({ kind: "createSubscription", id, promiseId, timeout, recv }, {}, (err, res) => {
+      this.network.send({ kind: "createSubscription", id, promiseId, timeout, recv }, (err, res) => {
         if (err) {
           reject(err);
           return;

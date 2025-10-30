@@ -76,6 +76,7 @@ export class Coroutine<T> {
     tracer: Tracer,
     callback: Callback<Suspended | Completed>,
   ): void {
+    const headers: Record<string, string> = {};
     handler.createPromise(
       {
         // The createReq for this specific creation is not relevant,
@@ -129,6 +130,7 @@ export class Coroutine<T> {
           }
         });
       },
+      headers,
       func.name,
     );
   }
@@ -148,6 +150,7 @@ export class Coroutine<T> {
 
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
+          const headers: Record<string, string> = {};
           this.handler.createPromise(
             action.createReq,
             (err, res) => {
@@ -270,6 +273,7 @@ export class Coroutine<T> {
                 next();
               }
             },
+            headers,
             action.func.name,
           );
           return; // Exit the while loop to wait for async callback

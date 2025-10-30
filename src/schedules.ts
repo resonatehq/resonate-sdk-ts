@@ -15,7 +15,7 @@ export class Schedules {
           kind: "readSchedule",
           id: id,
         },
-        {},
+
         (err, res) => {
           if (err) {
             // TODO: reject with more information
@@ -64,7 +64,7 @@ export class Schedules {
           promiseTags: promiseTags,
           iKey: ikey,
         },
-        {},
+
         (err, res) => {
           if (err) {
             console.log(err);
@@ -86,7 +86,7 @@ export class Schedules {
           kind: "deleteSchedule",
           id: id,
         },
-        {},
+
         (err) => {
           if (err) {
             // TODO: reject with more information
@@ -112,7 +112,7 @@ export class Schedules {
             limit,
             cursor,
           },
-          {},
+
           (err, res) => {
             if (err) return reject(err);
             resolve(res!);

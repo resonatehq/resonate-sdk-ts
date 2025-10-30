@@ -170,8 +170,8 @@ export class HttpNetwork implements Network {
 
   send<T extends Request>(
     req: T,
-    headers: Record<string, string>,
     callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
+    headers: Record<string, string> = {},
     retryForever = false,
   ): void {
     const retryPolicy = retryForever ? { retries: Number.MAX_SAFE_INTEGER, delay: 1000 } : { retries: 0 };

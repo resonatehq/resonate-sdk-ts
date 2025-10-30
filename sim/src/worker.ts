@@ -70,11 +70,7 @@ class SimulatedNetwork implements Network {
     return this.messageSource;
   }
 
-  send<T extends Request>(
-    req: T,
-    headers: Record<string, string>,
-    cb: (err?: ResonateError, res?: ResponseFor<T>) => void,
-  ): void {
+  send<T extends Request>(req: T, cb: (err?: ResonateError, res?: ResponseFor<T>) => void): void {
     const message = new Message<Request>(this.source, this.target, req, {
       requ: true,
       correlationId: this.correlationId++,
