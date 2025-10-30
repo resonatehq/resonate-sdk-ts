@@ -192,7 +192,7 @@ export class Resonate {
             recv: this.unicast,
           };
 
-          const headers: Record<string, string> = {};
+          const headers: Record<string, string> = {}; // TODO
           const res = await this.createSubscription(createSubscriptionReq, headers);
           if (res.state !== "pending") {
             sub.resolve(res);
@@ -462,7 +462,7 @@ export class Resonate {
 
     util.assert(registered.version > 0, "function version must be greater than zero");
 
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {}; // TODO
     const { promise, task } = await this.createPromiseAndTask(
       {
         kind: "createPromiseAndTask",
@@ -582,7 +582,7 @@ export class Resonate {
       throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {}; // TODO
     const promise = await this.createPromise(
       {
         kind: "createPromise",
@@ -671,7 +671,7 @@ export class Resonate {
       id: id,
     });
 
-    const headers: Record<string, string> = {}
+    const headers: Record<string, string> = {}; // TODO
     return this.createHandle(promise, headers);
   }
 
