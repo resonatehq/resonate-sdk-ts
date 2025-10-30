@@ -673,7 +673,8 @@ export class Resonate {
       id: id,
     });
 
-    return this.createHandle(promise, {});
+    const headers: Record<string, string> = {}
+    return this.createHandle(promise, headers);
   }
 
   public options(opts: Partial<Options> = {}): Options {
