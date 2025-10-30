@@ -192,7 +192,9 @@ export class Resonate {
             recv: this.unicast,
           };
 
-          const res = await this.createSubscription(createSubscriptionReq, {});
+          const headers: Record<string, string> = {};
+
+          const res = await this.createSubscription(createSubscriptionReq, headers);
           if (res.state !== "pending") {
             sub.resolve(res);
             this.subscriptions.delete(id);
