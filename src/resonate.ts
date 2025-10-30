@@ -1,3 +1,4 @@
+import { context, propagation, trace } from "@opentelemetry/api";
 import { LocalNetwork } from "../dev/network";
 import { type Encryptor, NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
@@ -462,7 +463,12 @@ export class Resonate {
 
     util.assert(registered.version > 0, "function version must be greater than zero");
 
-    const headers: Record<string, string> = {}; // TODO
+    const tracer = trace.getTracer("resonate");
+    const span = tracer.startSpan(id, { startTime: this.clock.now() });
+    const ctx = trace.setSpan(context.active(), span);
+    const headers: Record<string, string> = {};
+    propagation.inject(ctx, headers);
+
     const { promise, task } = await this.createPromiseAndTask(
       {
         kind: "createPromiseAndTask",
@@ -493,7 +499,13 @@ export class Resonate {
     );
 
     if (task) {
-      this.inner.process({ kind: "claimed", task: task, rootPromise: promise }, () => {});
+      this.inner.process(
+        { kind: "claimed", task: task, rootPromise: promise },
+        () => {
+          span.end();
+        },
+        headers,
+      );
     }
 
     return this.createHandle(promise, headers);
@@ -582,7 +594,12 @@ export class Resonate {
       throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
-    const headers: Record<string, string> = {}; // TODO
+    const tracer = trace.getTracer("resonate");
+    const span = tracer.startSpan(id, { startTime: this.clock.now() });
+    const ctx = trace.setSpan(context.active(), span);
+    const headers: Record<string, string> = {};
+    propagation.inject(ctx, headers);
+
     const promise = await this.createPromise(
       {
         kind: "createPromise",
@@ -601,6 +618,8 @@ export class Resonate {
       },
       headers,
     );
+
+    span.end();
 
     return this.createHandle(promise, headers);
   }

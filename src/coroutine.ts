@@ -1,3 +1,4 @@
+import { context, propagation, type Span, trace } from "@opentelemetry/api";
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
@@ -74,9 +75,10 @@ export class Coroutine<T> {
     args: any[],
     handler: Handler,
     tracer: Tracer,
+    headers: Record<string, string>,
+    createdSpans: Set<string>,
     callback: Callback<Suspended | Completed>,
   ): void {
-    const headers: Record<string, string> = {};
     handler.createPromise(
       {
         // The createReq for this specific creation is not relevant,
@@ -95,47 +97,51 @@ export class Coroutine<T> {
           return callback(false, { type: "completed", promise: res });
         }
         const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), handler, tracer);
-        coroutine.exec((err, status) => {
-          if (err) return callback(err);
-          util.assertDefined(status);
-          switch (status.type) {
-            case "more":
-              callback(false, { type: "suspended", todo: status.todo });
-              break;
+        coroutine.exec(
+          (err, status) => {
+            if (err) return callback(err);
+            util.assertDefined(status);
+            switch (status.type) {
+              case "more":
+                callback(false, { type: "suspended", todo: status.todo });
+                break;
 
-            case "done":
-              handler.completePromise(
-                {
-                  kind: "completePromise",
-                  id: id,
-                  state: status.result.success ? "resolved" : "rejected",
-                  value: {
-                    data: status.result.success ? status.result.value : status.result.error,
+              case "done":
+                handler.completePromise(
+                  {
+                    kind: "completePromise",
+                    id: id,
+                    state: status.result.success ? "resolved" : "rejected",
+                    value: {
+                      data: status.result.success ? status.result.value : status.result.error,
+                    },
+                    iKey: id,
+                    strict: false,
                   },
-                  iKey: id,
-                  strict: false,
-                },
-                (err, promise) => {
-                  if (err) {
-                    err.log(verbose);
-                    return callback(true);
-                  }
-                  util.assertDefined(promise);
+                  (err, promise) => {
+                    if (err) {
+                      err.log(verbose);
+                      return callback(true);
+                    }
+                    util.assertDefined(promise);
 
-                  callback(false, { type: "completed", promise });
-                },
-                func.name,
-              );
-              break;
-          }
-        });
+                    callback(false, { type: "completed", promise });
+                  },
+                  func.name,
+                );
+                break;
+            }
+          },
+          headers,
+          createdSpans,
+        );
       },
       headers,
       func.name,
     );
   }
 
-  private exec(callback: Callback<More | Done>) {
+  private exec(callback: Callback<More | Done>, headers: Record<string, string>, createdSpans: Set<string>) {
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
 
@@ -143,6 +149,8 @@ export class Coroutine<T> {
       type: "internal.nothing",
     };
 
+    const t = trace.getTracer("resonate");
+    const ctx = propagation.extract(context.active(), headers);
     // next needs to be called when we want to go to the top of the loop but are inside a callback
     const next = () => {
       while (true) {
@@ -150,7 +158,6 @@ export class Coroutine<T> {
 
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
-          const headers: Record<string, string> = {};
           this.handler.createPromise(
             action.createReq,
             (err, res) => {
@@ -255,9 +262,9 @@ export class Coroutine<T> {
                 // Experimenting with the queueMicrotaskEveryN value
                 // shows that a value of 1 (our default) is optimal.
                 if (this.depth % this.queueMicrotaskEveryN === 0) {
-                  queueMicrotask(() => coroutine.exec(cb));
+                  queueMicrotask(() => coroutine.exec(cb, headers, createdSpans));
                 } else {
-                  coroutine.exec(cb);
+                  coroutine.exec(cb, headers, createdSpans);
                 }
               } else {
                 // durable promise is completed
@@ -273,7 +280,7 @@ export class Coroutine<T> {
                 next();
               }
             },
-            headers,
+            {},
             action.func.name,
           );
           return; // Exit the while loop to wait for async callback
@@ -281,35 +288,52 @@ export class Coroutine<T> {
 
         // Handle internal.async.r
         if (action.type === "internal.async.r") {
-          this.handler.createPromise(action.createReq, (err, res) => {
-            if (err) {
-              err.log(this.verbose);
-              return callback(true);
-            }
-            util.assertDefined(res);
+          const newHeaders: Record<string, string> = {};
+          let span: Span | undefined;
+          if (!createdSpans.has(action.createReq.id)) {
+            span = t.startSpan(action.createReq.id, { startTime: this.ctx.clock.now() }, ctx);
+            createdSpans.add(action.createReq.id);
+            const childCtx = trace.setSpan(context.active(), span);
+            propagation.inject(childCtx, newHeaders);
+          }
 
-            if (res.state === "pending") {
-              if (action.mode === "attached") remote.push({ id: action.id });
+          this.handler.createPromise(
+            action.createReq,
+            (err, res) => {
+              if (span) {
+                span.end();
+              }
 
-              input = {
-                type: "internal.promise",
-                state: "pending",
-                mode: action.mode,
-                id: action.id,
-              };
-            } else {
-              input = {
-                type: "internal.promise",
-                state: "completed",
-                id: action.id,
-                value: {
-                  type: "internal.literal",
-                  value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
-                },
-              };
-            }
-            next();
-          });
+              if (err) {
+                err.log(this.verbose);
+                return callback(true);
+              }
+              util.assertDefined(res);
+
+              if (res.state === "pending") {
+                if (action.mode === "attached") remote.push({ id: action.id });
+
+                input = {
+                  type: "internal.promise",
+                  state: "pending",
+                  mode: action.mode,
+                  id: action.id,
+                };
+              } else {
+                input = {
+                  type: "internal.promise",
+                  state: "completed",
+                  id: action.id,
+                  value: {
+                    type: "internal.literal",
+                    value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
+                  },
+                };
+              }
+              next();
+            },
+            newHeaders,
+          );
           return; // Exit the while loop to wait for async callback
         }
 

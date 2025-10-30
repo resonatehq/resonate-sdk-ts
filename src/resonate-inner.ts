@@ -93,7 +93,7 @@ export class ResonateInner {
     messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
-  public process(task: Task, done: Callback<Status>) {
+  public process(task: Task, done: Callback<Status>, headers: Record<string, string>) {
     let computation = this.computations.get(task.task.rootPromiseId);
     if (!computation) {
       computation = new Computation(
@@ -111,6 +111,8 @@ export class ResonateInner {
         this.dependencies,
         this.verbose,
         this.tracer,
+        headers,
+        new Set(),
       );
       this.computations.set(task.task.rootPromiseId, computation);
     }
@@ -122,7 +124,7 @@ export class ResonateInner {
     util.assert(msg.type === "invoke" || msg.type === "resume");
 
     if (msg.type === "invoke" || msg.type === "resume") {
-      this.process({ kind: "unclaimed", task: msg.task }, () => {});
+      this.process({ kind: "unclaimed", task: msg.task }, () => {}, msg.headers);
     }
   }
 }

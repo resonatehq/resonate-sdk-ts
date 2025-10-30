@@ -12,7 +12,11 @@ const sdk = new NodeSDK({
 });
 
 function* foo(ctx: Context, s: string): Generator<any, string, any> {
-  const v = yield* ctx.run(bar, s, ctx.options({ id: "bar" }));
+  let v: string = "";
+  for (let i = 1; i <= 10; i++) {
+    v = yield ctx.rpc("bar", s, ctx.options({ id: `bar.${i}` }));
+  }
+
   return v;
 }
 
@@ -20,7 +24,7 @@ function* bar(ctx: Context, s: string): Generator<any, string, any> {
   const v = yield ctx.rpc("baz", s, ctx.options({ id: "baz" }));
   return v;
 }
-function baz(ctx: Context, s: string): string {
+function* baz(ctx: Context, s: string): Generator<any, string, any> {
   return s;
 }
 
@@ -54,16 +58,17 @@ sdk.start();
 const resonate = Resonate.remote({ tracer: new ResonateTracer({ tracer: trace.getTracer("resonate") }) });
 
 resonate.register(foo);
+resonate.register(bar);
 resonate.register(baz);
 resonate.register(fibonacci);
 resonate.register(countdown);
 
 async function main(): Promise<void> {
-  // const v1 = await resonate.run("foo", foo, "hello world", "21");
-  const v2 = await resonate.run("fib-10", fibonacci, 10);
+  const v1 = await resonate.run("foo.1", "foo", "hello world", "21");
+  // const v2 = await resonate.run("fib-10", fibonacci, 10);
   // const v3 = await resonate.run("countdown.1", countdown, 5, 1, "http");
-  // console.log(v1);
-  console.log(v2);
+  console.log(v1);
+  // console.log(v2);
   // console.log(v3);
   resonate.stop();
 }

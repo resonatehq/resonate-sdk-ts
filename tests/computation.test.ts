@@ -128,6 +128,8 @@ describe("Computation Event Queue Concurrency", () => {
       new Map(),
       false,
       new NoopTracer(),
+      {},
+      new Set(),
       mockProcessor,
     );
   });

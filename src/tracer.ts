@@ -2,7 +2,6 @@ import type { Tracer as OtelTracer, Span } from "@opentelemetry/api";
 import { context as otelContext, trace as otelTrace, SpanStatusCode } from "@opentelemetry/api";
 import * as util from "./util";
 
-
 export interface Tracer {
   startSpan(id: string, pId: string, at: number): void;
   endSpan(id: string, at: number): void;

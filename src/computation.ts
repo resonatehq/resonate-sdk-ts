@@ -42,6 +42,8 @@ export class Computation {
   private heartbeat: Heartbeat;
   private processor: Processor;
   private tracer: Tracer;
+  private headers: Record<string, string>;
+  private createdSpans: Set<string>;
 
   private seen: Set<string> = new Set();
   private processing = false;
@@ -61,6 +63,8 @@ export class Computation {
     dependencies: Map<string, any>,
     verbose: boolean,
     tracer: Tracer,
+    headers: Record<string, string>,
+    createdSpans: Set<string>,
     processor?: Processor,
   ) {
     this.id = id;
@@ -78,6 +82,8 @@ export class Computation {
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
     this.tracer = tracer;
+    this.headers = headers;
+    this.createdSpans = createdSpans;
   }
 
   public process(task: Task, done: Callback<Status>) {
@@ -123,7 +129,6 @@ export class Computation {
 
   private processClaimed({ task, rootPromise, leafPromise }: ClaimedTask, done: Callback<Status>) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
-    this.tracer.startSpan(this.id, rootPromise.tags["resonate:parent"] ?? this.id, this.clock.now());
 
     const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
       if (err) {
@@ -206,30 +211,40 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, this.tracer, (err, status) => {
-      if (err) {
-        return done(err);
-      }
-      util.assertDefined(status);
+    Coroutine.exec(
+      this.id,
+      this.verbose,
+      ctx,
+      func,
+      args,
+      this.handler,
+      this.tracer,
+      this.headers,
+      this.createdSpans,
+      (err, status) => {
+        if (err) {
+          return done(err);
+        }
+        util.assertDefined(status);
 
-      switch (status.type) {
-        case "completed":
-          done(false, { kind: "completed", promise: status.promise });
-          this.tracer.endSpan(this.id, this.clock.now());
-          break;
+        switch (status.type) {
+          case "completed":
+            done(false, { kind: "completed", promise: status.promise });
+            break;
 
-        case "suspended":
-          util.assert(status.todo.local.length > 0 || status.todo.remote.length > 0, "must be at least one todo");
+          case "suspended":
+            util.assert(status.todo.local.length > 0 || status.todo.remote.length > 0, "must be at least one todo");
 
-          if (status.todo.local.length > 0) {
-            this.processLocalTodo(nursery, status.todo.local, done);
-          } else if (status.todo.remote.length > 0) {
-            this.processRemoteTodo(nursery, status.todo.remote, ctx.timeout, done);
-          }
+            if (status.todo.local.length > 0) {
+              this.processLocalTodo(nursery, status.todo.local, done);
+            } else if (status.todo.remote.length > 0) {
+              this.processRemoteTodo(nursery, status.todo.remote, ctx.timeout, done);
+            }
 
-          break;
-      }
-    });
+            break;
+        }
+      },
+    );
   }
 
   private processFunction(

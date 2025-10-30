@@ -298,8 +298,8 @@ export type SearchSchedulesRes = {
 // Message
 
 export type Message =
-  | { type: "invoke" | "resume"; task: TaskRecord }
-  | { type: "notify"; promise: DurablePromiseRecord };
+  | { type: "invoke" | "resume"; task: TaskRecord; headers: Record<string, string> }
+  | { type: "notify"; promise: DurablePromiseRecord; headers: Record<string, string> };
 
 // Network
 
