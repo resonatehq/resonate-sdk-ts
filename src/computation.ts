@@ -1,3 +1,4 @@
+import { propagation, type Span, type Context as TraceContext } from "@opentelemetry/api";
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
@@ -42,6 +43,8 @@ export class Computation {
   private heartbeat: Heartbeat;
   private processor: Processor;
   private tracer: Tracer;
+  private traceContext: TraceContext;
+  private spans: Map<string, Span>;
 
   private seen: Set<string> = new Set();
   private processing = false;
@@ -61,6 +64,7 @@ export class Computation {
     dependencies: Map<string, any>,
     verbose: boolean,
     tracer: Tracer,
+    traceContext: TraceContext,
     processor?: Processor,
   ) {
     this.id = id;
@@ -78,6 +82,8 @@ export class Computation {
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
     this.tracer = tracer;
+    this.traceContext = traceContext;
+    this.spans = new Map();
   }
 
   public process(task: Task, done: Callback<Status>) {
@@ -123,7 +129,6 @@ export class Computation {
 
   private processClaimed({ task, rootPromise, leafPromise }: ClaimedTask, done: Callback<Status>) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
-    this.tracer.startSpan(this.id, rootPromise.tags["resonate:parent"] ?? this.id, this.clock.now());
 
     const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
       if (err) {
@@ -184,6 +189,7 @@ export class Computation {
         util.isGeneratorFunction(registered.func) ? new Never() : new Exponential(),
         this.clock,
         this.dependencies,
+        this.traceContext,
       );
 
       if (util.isGeneratorFunction(registered.func)) {
@@ -206,7 +212,7 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, this.tracer, (err, status) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, this.tracer, this.spans, (err, status) => {
       if (err) {
         return done(err);
       }
@@ -215,7 +221,6 @@ export class Computation {
       switch (status.type) {
         case "completed":
           done(false, { kind: "completed", promise: status.promise });
-          this.tracer.endSpan(this.id, this.clock.now());
           break;
 
         case "suspended":
@@ -224,7 +229,7 @@ export class Computation {
           if (status.todo.local.length > 0) {
             this.processLocalTodo(nursery, status.todo.local, done);
           } else if (status.todo.remote.length > 0) {
-            this.processRemoteTodo(nursery, status.todo.remote, ctx.timeout, done);
+            this.processRemoteTodo(nursery, status.todo.remote, status.spans, ctx.timeout, done);
           }
 
           break;
@@ -269,11 +274,12 @@ export class Computation {
       ctx.retryPolicy,
       ctx.timeout,
       this.verbose,
+      ctx.traceContext,
     );
   }
 
   private processLocalTodo(nursery: Nursery<boolean, Status>, todo: LocalTodo[], done: Callback<Status>) {
-    for (const { id, ctx, func, args } of todo) {
+    for (const { id, ctx, span, func, args } of todo) {
       if (this.seen.has(id)) {
         continue;
       }
@@ -282,6 +288,8 @@ export class Computation {
 
       nursery.hold((next) => {
         this.processFunction(id, ctx, func, args, (err) => {
+          span.end();
+
           next();
 
           if (err) {
@@ -299,9 +307,12 @@ export class Computation {
   private processRemoteTodo(
     nursery: Nursery<boolean, Status>,
     todo: RemoteTodo[],
+    spans: Span[],
     timeout: number,
     done: Callback<Status>,
   ) {
+    const headers: Record<string, string> = {};
+    propagation.inject(this.traceContext, headers);
     nursery.all<
       RemoteTodo,
       { kind: "callback"; callback: CallbackRecord } | { kind: "promise"; promise: DurablePromiseRecord },
@@ -325,6 +336,7 @@ export class Computation {
             util.assertDefined(res);
             done(false, res);
           },
+          headers,
         ),
       (err, results) => {
         if (err) return done(err);
@@ -345,6 +357,9 @@ export class Computation {
         }
 
         // once all callbacks are created we can call done
+        for (const span of spans) {
+          span.end();
+        }
         return done(false, { kind: "suspended", callbacks });
       },
     );

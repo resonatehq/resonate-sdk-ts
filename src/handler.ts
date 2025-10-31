@@ -100,6 +100,7 @@ export class Handler {
     req: CreatePromiseReq<any>,
     done: (err?: ResonateError, res?: DurablePromiseRecord<any>) => void,
     func = "unknown",
+    headers: Record<string, string> = {},
     retryForever = false,
   ): void {
     const promise = this.cache.getPromise(req.id);
@@ -132,6 +133,7 @@ export class Handler {
         this.cache.setPromise(promise);
         done(undefined, promise);
       },
+      headers,
       retryForever,
     );
   }
@@ -139,6 +141,7 @@ export class Handler {
   public createPromiseAndTask(
     req: CreatePromiseAndTaskReq<any>,
     done: (err?: ResonateError, res?: { promise: DurablePromiseRecord<any>; task?: TaskRecord }) => void,
+    headers: Record<string, string> = {},
     func = "unknown",
     retryForever = false,
   ) {
@@ -177,6 +180,7 @@ export class Handler {
 
         done(undefined, { promise, task: res.task });
       },
+      headers,
       retryForever,
     );
   }
@@ -267,6 +271,7 @@ export class Handler {
       err?: ResonateError,
       res?: { kind: "callback"; callback: CallbackRecord } | { kind: "promise"; promise: DurablePromiseRecord<any> },
     ) => void,
+    headers: Record<string, string> = {},
   ): void {
     const id = `__resume:${req.rootPromiseId}:${req.promiseId}`;
     const promise = this.cache.getPromise(req.promiseId);
@@ -283,35 +288,40 @@ export class Handler {
       return;
     }
 
-    this.network.send(req, (err, res) => {
-      if (err) return done(err);
-      util.assertDefined(res);
+    this.network.send(
+      req,
+      (err, res) => {
+        if (err) return done(err);
+        util.assertDefined(res);
 
-      if (res.promise) {
-        let promise: DurablePromiseRecord<any>;
-        try {
-          promise = this.decode(res.promise);
-        } catch (e) {
-          return done(e as ResonateError);
+        if (res.promise) {
+          let promise: DurablePromiseRecord<any>;
+          try {
+            promise = this.decode(res.promise);
+          } catch (e) {
+            return done(e as ResonateError);
+          }
+
+          this.cache.setPromise(promise);
         }
 
-        this.cache.setPromise(promise);
-      }
+        if (res.callback) {
+          this.cache.setCallback(id, res.callback);
+        }
 
-      if (res.callback) {
-        this.cache.setCallback(id, res.callback);
-      }
-
-      done(
-        undefined,
-        res.callback ? { kind: "callback", callback: res.callback } : { kind: "promise", promise: res.promise },
-      );
-    });
+        done(
+          undefined,
+          res.callback ? { kind: "callback", callback: res.callback } : { kind: "promise", promise: res.promise },
+        );
+      },
+      headers,
+    );
   }
 
   public createSubscription(
     req: CreateSubscriptionReq,
     done: (err?: ResonateError, res?: DurablePromiseRecord<any>) => void,
+    headers: Record<string, string> = {},
     retryForever = false,
   ) {
     const id = `__notify:${req.promiseId}:${req.id}`;
@@ -350,6 +360,7 @@ export class Handler {
 
         done(undefined, promise);
       },
+      headers,
       retryForever,
     );
   }

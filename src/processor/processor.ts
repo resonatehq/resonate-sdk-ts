@@ -1,3 +1,4 @@
+import { type Context as TraceContext, trace } from "@opentelemetry/api";
 import type { RetryPolicy } from "../retries";
 import type { Result } from "../types";
 
@@ -12,6 +13,7 @@ export interface Processor {
     retryPolicy: RetryPolicy,
     timeout: number,
     verbose: boolean,
+    traceContext: TraceContext,
   ): void;
 }
 
@@ -24,27 +26,35 @@ export class AsyncProcessor implements Processor {
     retryPolicy: RetryPolicy,
     timeout: number,
     verbose: boolean,
+    traceContext: TraceContext,
   ): void {
-    void this.run(name, func, cb, retryPolicy, timeout, verbose);
+    void this.run(id, name, func, cb, retryPolicy, timeout, verbose, traceContext);
   }
 
   private async run<T>(
+    id: string,
     name: string,
     func: () => Promise<T>,
     cb: (result: Result<T>) => void,
     retryPolicy: RetryPolicy,
     timeout: number,
     verbose: boolean,
+    traceContext: TraceContext,
   ) {
     let attempt = 1;
 
+    const t = trace.getTracer("resonate");
     while (true) {
+      let retryIn: number | null = 0;
+      const span = t.startSpan(`${id}::${attempt}`, {}, traceContext);
+      span.setAttribute("attempt", attempt);
+
       try {
         const data = await func();
         cb({ success: true, value: data });
         return;
       } catch (error) {
-        const retryIn = retryPolicy.next(attempt);
+        retryIn = retryPolicy.next(attempt);
         if (retryIn === null) {
           cb({ success: false, error });
           return;
@@ -59,10 +69,12 @@ export class AsyncProcessor implements Processor {
         if (verbose) {
           console.warn(error);
         }
-
-        await new Promise((resolve) => setTimeout(resolve, retryIn));
-        attempt++;
+      } finally {
+        span.end();
       }
+
+      await new Promise((resolve) => setTimeout(resolve, retryIn));
+      attempt++;
     }
   }
 }

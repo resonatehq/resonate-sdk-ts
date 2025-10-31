@@ -69,6 +69,8 @@ describe("Coroutine", () => {
         args,
         handler,
         new NoopTracer(),
+        {},
+        new Set(),
         (err, res) => {
           expect(err).toBe(false);
           resolve(res);

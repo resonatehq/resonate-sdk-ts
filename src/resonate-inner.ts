@@ -1,3 +1,4 @@
+import { context, propagation } from "@opentelemetry/api";
 import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
@@ -93,9 +94,11 @@ export class ResonateInner {
     messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
-  public process(task: Task, done: Callback<Status>) {
+  public process(headers: Record<string, string>, task: Task, done: Callback<Status>) {
     let computation = this.computations.get(task.task.rootPromiseId);
     if (!computation) {
+      // should we start a span to represent a task lifespan?
+
       computation = new Computation(
         task.task.rootPromiseId,
         this.unicast,
@@ -111,6 +114,7 @@ export class ResonateInner {
         this.dependencies,
         this.verbose,
         this.tracer,
+        propagation.extract(context.active(), headers),
       );
       this.computations.set(task.task.rootPromiseId, computation);
     }
@@ -120,9 +124,9 @@ export class ResonateInner {
 
   private onMessage(msg: Message): void {
     util.assert(msg.type === "invoke" || msg.type === "resume");
-
+    console.log("RECEIVED -> ", msg);
     if (msg.type === "invoke" || msg.type === "resume") {
-      this.process({ kind: "unclaimed", task: msg.task }, () => {});
+      this.process(msg.headers, { kind: "unclaimed", task: msg.task }, () => {});
     }
   }
 }

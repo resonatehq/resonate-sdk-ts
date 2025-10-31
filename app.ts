@@ -11,19 +11,6 @@ const sdk = new NodeSDK({
   instrumentations: [getNodeAutoInstrumentations()],
 });
 
-function* foo(ctx: Context, s: string): Generator<any, string, any> {
-  const v = yield* ctx.run(bar, s, ctx.options({ id: "bar" }));
-  return v;
-}
-
-function* bar(ctx: Context, s: string): Generator<any, string, any> {
-  const v = yield ctx.rpc("baz", s, ctx.options({ id: "baz" }));
-  return v;
-}
-function baz(ctx: Context, s: string): string {
-  return s;
-}
-
 function* fibonacci(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
@@ -53,17 +40,47 @@ sdk.start();
 
 const resonate = Resonate.remote({ tracer: new ResonateTracer({ tracer: trace.getTracer("resonate") }) });
 
+function* foo(ctx: Context, s: string): Generator<any, string, any> {
+  console.log("foo");
+
+  const value = yield ctx.run(bar, s, ctx.options({ id: "bar" }));
+  return value;
+}
+
+function* bar(ctx: Context, s: string): Generator<any, string, any> {
+  console.log("bar");
+  const v = yield ctx.rpc("baz", s, ctx.options({ id: "baz" }));
+  return v;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function baz(ctx: Context, s: string): Promise<string> {
+  console.log("baz");
+  await sleep(2_000);
+
+  // Randomly throw an error 50% of the time
+  if (Math.random() < 0.3) {
+    throw new Error("Random failure in baz");
+  }
+
+  return s;
+}
+
 resonate.register(foo);
+resonate.register(bar);
 resonate.register(baz);
 resonate.register(fibonacci);
 resonate.register(countdown);
 
 async function main(): Promise<void> {
-  // const v1 = await resonate.run("foo", foo, "hello world", "21");
-  const v2 = await resonate.run("fib-10", fibonacci, 10);
+  const v1 = await resonate.run("foo", foo, "hello world", "21");
+  // const v2 = await resonate.run("fib-10", fibonacci, 10);
   // const v3 = await resonate.run("countdown.1", countdown, 5, 1, "http");
-  // console.log(v1);
-  console.log(v2);
+  console.log(v1);
+  // console.log(v2);
   // console.log(v3);
   resonate.stop();
 }

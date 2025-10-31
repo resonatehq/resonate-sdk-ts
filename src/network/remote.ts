@@ -171,11 +171,12 @@ export class HttpNetwork implements Network {
   send<T extends Request>(
     req: T,
     callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
+    headers: Record<string, string> = {},
     retryForever = false,
   ): void {
     const retryPolicy = retryForever ? { retries: Number.MAX_SAFE_INTEGER, delay: 1000 } : { retries: 0 };
 
-    this.handleRequest(req, retryPolicy).then(
+    this.handleRequest(req, headers, retryPolicy).then(
       (res) => {
         util.assert(res.kind === req.kind, "res kind must match req kind");
         callback(undefined, res as ResponseFor<T>);
@@ -190,20 +191,24 @@ export class HttpNetwork implements Network {
     // No-op for HttpNetwork, MessageSource handles connection cleanup
   }
 
-  private async handleRequest(req: Request, retryPolicy: RetryPolicy = {}): Promise<Response> {
+  private async handleRequest(
+    req: Request,
+    headers: Record<string, string>,
+    retryPolicy: RetryPolicy = {},
+  ): Promise<Response> {
     switch (req.kind) {
       case "createPromise":
-        return this.createPromise(req, retryPolicy);
+        return this.createPromise(req, headers, retryPolicy);
       case "createPromiseAndTask":
-        return this.createPromiseAndTask(req, retryPolicy);
+        return this.createPromiseAndTask(req, headers, retryPolicy);
       case "readPromise":
         return this.readPromise(req, retryPolicy);
       case "completePromise":
         return this.completePromise(req, retryPolicy);
       case "createCallback":
-        return this.createCallback(req, retryPolicy);
+        return this.createCallback(req, headers, retryPolicy);
       case "createSubscription":
-        return this.createSubscription(req, retryPolicy);
+        return this.createSubscription(req, headers, retryPolicy);
       case "createSchedule":
         return this.createSchedule(req, retryPolicy);
       case "readSchedule":
@@ -227,8 +232,11 @@ export class HttpNetwork implements Network {
     }
   }
 
-  private async createPromise(req: CreatePromiseReq, retryPolicy: RetryPolicy = {}): Promise<CreatePromiseRes> {
-    const headers: Record<string, string> = {};
+  private async createPromise(
+    req: CreatePromiseReq,
+    headers: Record<string, string>,
+    retryPolicy: RetryPolicy = {},
+  ): Promise<CreatePromiseRes> {
     if (req.iKey) headers["idempotency-key"] = req.iKey;
     if (req.strict !== undefined) headers.strict = req.strict.toString();
 
@@ -253,9 +261,9 @@ export class HttpNetwork implements Network {
 
   private async createPromiseAndTask(
     req: CreatePromiseAndTaskReq,
+    headers: Record<string, string>,
     retryPolicy: RetryPolicy = {},
   ): Promise<CreatePromiseAndTaskRes> {
-    const headers: Record<string, string> = {};
     if (req.iKey) headers["idempotency-key"] = req.iKey;
     if (req.strict !== undefined) headers.strict = req.strict.toString();
 
@@ -317,11 +325,16 @@ export class HttpNetwork implements Network {
     return { kind: "completePromise", promise };
   }
 
-  private async createCallback(req: CreateCallbackReq, retryPolicy: RetryPolicy = {}): Promise<CreateCallbackRes> {
+  private async createCallback(
+    req: CreateCallbackReq,
+    headers: Record<string, string>,
+    retryPolicy: RetryPolicy = {},
+  ): Promise<CreateCallbackRes> {
     const res = await this.fetch(
       `/promises/callback/${encodeURIComponent(req.promiseId)}`,
       {
         method: "POST",
+        headers,
         body: JSON.stringify({
           rootPromiseId: req.rootPromiseId,
           timeout: req.timeout,
@@ -341,6 +354,7 @@ export class HttpNetwork implements Network {
 
   private async createSubscription(
     req: CreateSubscriptionReq,
+    headers: Record<string, string>,
     retryPolicy: RetryPolicy = {},
   ): Promise<CreateSubscriptionRes> {
     const body = {
@@ -353,6 +367,7 @@ export class HttpNetwork implements Network {
       `/promises/subscribe/${encodeURIComponent(req.promiseId)}`,
       {
         method: "POST",
+        headers,
         body: JSON.stringify(body),
       },
       retryPolicy,
@@ -668,9 +683,9 @@ export class HttpMessageSource implements MessageSource {
         const data = JSON.parse(event.data);
 
         if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
-          msg = { type: data.type, task: data.task };
+          msg = { type: data.type, task: data.task, headers: data.head ?? {} };
         } else if (data?.type === "notify" && util.isDurablePromiseRecord(data?.promise)) {
-          msg = { type: data.type, promise: mapPromiseDtoToRecord(data.promise) };
+          msg = { type: data.type, promise: mapPromiseDtoToRecord(data.promise), headers: data.head ?? {} };
         } else {
           throw new Error("invalid message");
         }
@@ -678,7 +693,6 @@ export class HttpMessageSource implements MessageSource {
         console.warn("Networking. Received invalid message. Will continue.");
         return;
       }
-
       this.recv(msg);
     });
 

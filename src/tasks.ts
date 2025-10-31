@@ -18,6 +18,7 @@ export class Tasks {
           processId: pid,
           ttl: ttl,
         },
+
         (err, res) => {
           if (err) {
             // TODO: reject with more information
@@ -39,6 +40,7 @@ export class Tasks {
           id: id,
           counter: counter,
         },
+
         (err, res) => {
           if (err) {
             // TODO: reject with more information

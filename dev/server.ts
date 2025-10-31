@@ -192,6 +192,7 @@ export class Server {
               ...task,
               timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
             },
+            headers: {},
           },
           recv: task.recv,
         };
@@ -203,6 +204,7 @@ export class Server {
               ...task,
               timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
             },
+            headers: {},
           },
           recv: task.recv,
         };
@@ -212,6 +214,7 @@ export class Server {
           msg: {
             type: "notify",
             promise: this.getPromise({ id: task.rootPromiseId }),
+            headers: {},
           },
           recv: task.recv,
         };
