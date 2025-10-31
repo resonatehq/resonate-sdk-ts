@@ -499,13 +499,10 @@ export class Resonate {
     );
 
     if (task) {
-      this.inner.process(
-        { kind: "claimed", task: task, rootPromise: promise },
-        () => {
-          span.end();
-        },
-        headers,
-      );
+      this.inner.process(headers, { kind: "claimed", task: task, rootPromise: promise }, (_, status) => {
+        console.log("status: ", status);
+        span.end();
+      });
     }
 
     return this.createHandle(promise, headers);
@@ -749,8 +746,8 @@ export class Resonate {
             resolve(res!);
           }
         },
-        headers,
         undefined,
+        headers,
         true,
       ),
     );

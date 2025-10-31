@@ -99,8 +99,8 @@ export class Handler {
   public createPromise(
     req: CreatePromiseReq<any>,
     done: (err?: ResonateError, res?: DurablePromiseRecord<any>) => void,
-    headers: Record<string, string> = {},
     func = "unknown",
+    headers: Record<string, string> = {},
     retryForever = false,
   ): void {
     const promise = this.cache.getPromise(req.id);
