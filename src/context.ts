@@ -324,6 +324,10 @@ export class InnerContext implements Context {
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "string" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to LFI "tricks"
+      // the type system to indicate the correct type.
       return new DIE(
         true,
         exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version),
@@ -349,6 +353,10 @@ export class InnerContext implements Context {
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "string" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to LFC "tricks"
+      // the type system to indicate the correct type.
       return new DIE(
         true,
         exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version),
@@ -374,6 +382,10 @@ export class InnerContext implements Context {
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "function" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to RFI "tricks"
+      // the type system to indicate the correct type.
       return new DIE(
         true,
         exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
@@ -396,6 +408,10 @@ export class InnerContext implements Context {
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "function" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to RFC "tricks"
+      // the type system to indicate the correct type.
       return new DIE(
         true,
         exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
@@ -418,6 +434,10 @@ export class InnerContext implements Context {
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "function" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to RFI "tricks"
+      // the type system to indicate the correct type.
       return new DIE(
         true,
         exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
