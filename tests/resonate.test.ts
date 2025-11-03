@@ -618,6 +618,8 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("fid");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
+      "resonate:root": "fid",
+      "resonate:parent": "fid",
       "resonate:invoke": "http://faasurl.com",
     });
     resonate.stop();
@@ -640,6 +642,8 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("fid");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
+      "resonate:root": "fid",
+      "resonate:parent": "fid",
       "resonate:invoke": "poll://any@test",
     });
     resonate.stop();
@@ -662,6 +666,8 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("fid");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
+      "resonate:root": "fid",
+      "resonate:parent": "fid",
       "resonate:invoke": "poll://any@anotherNode",
     });
     resonate.stop();
