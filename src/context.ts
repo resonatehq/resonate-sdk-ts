@@ -335,14 +335,15 @@ export class InnerContext implements Context {
     }
 
     const func = registered ? registered.func : (funcOrName as Func);
+    const version = registered ? registered.version : 1;
 
     return new LFI(
       opts.id,
       func,
       argu,
-      registered ? registered.version : 1,
+      version,
       opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
-      this.localCreateReq(func.name, opts),
+      this.localCreateReq({ func: func.name, version }, opts),
     );
   }
 
@@ -364,14 +365,15 @@ export class InnerContext implements Context {
     }
 
     const func = registered ? registered.func : (funcOrName as Func);
+    const version = registered ? registered.version : 1;
 
     return new LFC(
       opts.id,
       func,
       argu,
-      registered ? registered.version : 1,
+      version,
       opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
-      this.localCreateReq(func.name, opts),
+      this.localCreateReq({ func: func.name, version }, opts),
     );
   }
 
@@ -392,15 +394,13 @@ export class InnerContext implements Context {
       ) as unknown as RFI<any>;
     }
 
-    const func = registered ? registered.name : (funcOrName as string);
-
     const data = {
-      func: func,
+      func: registered ? registered.name : (funcOrName as string),
       args: argu,
-      version: opts.version,
+      version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFI(opts.id, this.remoteCreateReq(data, func, opts));
+    return new RFI(opts.id, this.remoteCreateReq(data, opts));
   }
 
   rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
@@ -420,15 +420,13 @@ export class InnerContext implements Context {
       ) as unknown as RFC<any>;
     }
 
-    const func = registered ? registered.name : (funcOrName as string);
-
     const data = {
-      func: func,
+      func: registered ? registered.name : (funcOrName as string),
       args: argu,
-      version: opts.version,
+      version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFC(opts.id, this.remoteCreateReq(data, func, opts));
+    return new RFC(opts.id, this.remoteCreateReq(data, opts));
   }
 
   detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
@@ -448,15 +446,13 @@ export class InnerContext implements Context {
       ) as unknown as RFI<any>;
     }
 
-    const func = registered ? registered.name : (funcOrName as string);
-
     const data = {
-      func: func,
+      func: registered ? registered.name : (funcOrName as string),
       args: argu,
-      version: opts.version,
+      version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFI(opts.id, this.remoteCreateReq(data, func, opts, Number.MAX_SAFE_INTEGER), "detached");
+    return new RFI(opts.id, this.remoteCreateReq(data, opts, Number.MAX_SAFE_INTEGER), "detached");
   }
 
   promise<T>({
@@ -516,12 +512,11 @@ export class InnerContext implements Context {
     random: () => this.lfc(() => (this.getDependency<Math>("resonate:math") ?? Math).random()),
   };
 
-  localCreateReq(func: string, opts: Options): CreatePromiseReq {
+  localCreateReq(data: any, opts: Options): CreatePromiseReq {
     const tags = {
       "resonate:scope": "local",
       "resonate:root": this.rId,
       "resonate:parent": this.id,
-      "resonate:func": func,
       ...opts.tags,
     };
 
@@ -532,20 +527,19 @@ export class InnerContext implements Context {
       kind: "createPromise",
       id: opts.id,
       timeout: timeout,
-      param: {},
+      param: { data },
       tags,
       iKey: opts.id,
       strict: false,
     };
   }
 
-  remoteCreateReq(data: any, func: string, opts: Options, maxTimeout = this.info.timeout): CreatePromiseReq {
+  remoteCreateReq(data: any, opts: Options, maxTimeout = this.info.timeout): CreatePromiseReq {
     const tags = {
       "resonate:scope": "global",
       "resonate:invoke": opts.target,
       "resonate:root": this.rId,
       "resonate:parent": this.id,
-      "resonate:func": func,
       ...opts.tags,
     };
 
