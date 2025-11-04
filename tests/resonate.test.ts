@@ -320,7 +320,12 @@ describe("Resonate usage tests", () => {
     expect(v.msg).toBe("this is a function");
     const durable = await resonate.promises.get("f.0");
     expect(durable.id).toBe("f.0");
-    expect(durable.tags).toStrictEqual({ "resonate:scope": "local", "resonate:root": "f", "resonate:parent": "f" });
+    expect(durable.tags).toStrictEqual({
+      "resonate:scope": "local",
+      "resonate:root": "f",
+      "resonate:parent": "f",
+      "resonate:func": "g",
+    });
     resonate.stop();
   });
 
@@ -548,6 +553,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:root": "f",
       "resonate:parent": "f",
+      "resonate:func": "g",
       "resonate:invoke": "poll://any@test",
     });
     resonate.stop();
@@ -572,6 +578,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:root": "f",
       "resonate:parent": "f",
+      "resonate:func": "g",
       "resonate:invoke": "poll://any@remoteTarget",
     });
     resonate.stop();
@@ -596,6 +603,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:root": "f",
       "resonate:parent": "f",
+      "resonate:func": "g",
       "resonate:invoke": "http://faasurl.com",
     });
     resonate.stop();
