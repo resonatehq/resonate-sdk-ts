@@ -1,3 +1,4 @@
+import type { Context as TraceContext } from "@opentelemetry/api";
 import type { Clock } from "./clock";
 import type { CreatePromiseReq } from "./network/network";
 import { Options } from "./options";
@@ -201,6 +202,7 @@ export class InnerContext implements Context {
   private rId: string;
   readonly pId: string;
   readonly clock: Clock;
+  readonly traceContext: TraceContext;
   private anycastNoPreference: string;
   private dependencies: Map<string, any>;
   private seq = 0;
@@ -219,6 +221,7 @@ export class InnerContext implements Context {
     retryPolicy: RetryPolicy,
     clock: Clock,
     dependencies: Map<string, any>,
+    traceContext: TraceContext,
   ) {
     this.id = id;
     this.rId = rId;
@@ -228,6 +231,7 @@ export class InnerContext implements Context {
     this.retryPolicy = retryPolicy;
     this.clock = clock;
     this.dependencies = dependencies;
+    this.traceContext = traceContext;
   }
 
   static root(
@@ -237,11 +241,12 @@ export class InnerContext implements Context {
     retryPolicy: RetryPolicy,
     clock: Clock,
     dependencies: Map<string, any>,
+    traceContext: TraceContext,
   ) {
-    return new InnerContext(id, id, id, anycastNoPreference, timeout, retryPolicy, clock, dependencies);
+    return new InnerContext(id, id, id, anycastNoPreference, timeout, retryPolicy, clock, dependencies, traceContext);
   }
 
-  child(id: string, timeout: number, retryPolicy: RetryPolicy) {
+  child(id: string, timeout: number, retryPolicy: RetryPolicy, traceContext: TraceContext) {
     return new InnerContext(
       id,
       this.rId,
@@ -251,6 +256,7 @@ export class InnerContext implements Context {
       retryPolicy,
       this.clock,
       this.dependencies,
+      traceContext,
     );
   }
 

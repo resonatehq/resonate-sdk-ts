@@ -1,3 +1,4 @@
+import { context, propagation, trace } from "@opentelemetry/api";
 import { LocalNetwork } from "../dev/network";
 import { type Encryptor, NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
@@ -192,7 +193,8 @@ export class Resonate {
             recv: this.unicast,
           };
 
-          const res = await this.createSubscription(createSubscriptionReq);
+          const headers: Record<string, string> = {}; // TODO
+          const res = await this.createSubscription(createSubscriptionReq, headers);
           if (res.state !== "pending") {
             sub.resolve(res);
             this.subscriptions.delete(id);
@@ -461,37 +463,49 @@ export class Resonate {
 
     util.assert(registered.version > 0, "function version must be greater than zero");
 
-    const { promise, task } = await this.createPromiseAndTask({
-      kind: "createPromiseAndTask",
-      promise: {
-        id: id,
-        timeout: Date.now() + opts.timeout,
-        param: {
-          data: {
-            func: registered.name,
-            args: args,
-            version: registered.version,
+    const tracer = trace.getTracer("resonate");
+    const span = tracer.startSpan(id, { startTime: this.clock.now() });
+    const ctx = trace.setSpan(context.active(), span);
+    const headers: Record<string, string> = {};
+    propagation.inject(ctx, headers);
+
+    const { promise, task } = await this.createPromiseAndTask(
+      {
+        kind: "createPromiseAndTask",
+        promise: {
+          id: id,
+          timeout: Date.now() + opts.timeout,
+          param: {
+            data: {
+              func: registered.name,
+              args: args,
+              version: registered.version,
+            },
+          },
+          tags: {
+            ...opts.tags,
+            "resonate:invoke": this.anycastPreference,
+            "resonate:scope": "global",
           },
         },
-        tags: {
-          ...opts.tags,
-          "resonate:invoke": this.anycastPreference,
-          "resonate:scope": "global",
+        task: {
+          processId: this.pid,
+          ttl: this.ttl,
         },
+        iKey: id,
+        strict: false,
       },
-      task: {
-        processId: this.pid,
-        ttl: this.ttl,
-      },
-      iKey: id,
-      strict: false,
-    });
+      headers,
+    );
 
     if (task) {
-      this.inner.process({ kind: "claimed", task: task, rootPromise: promise }, () => {});
+      this.inner.process(headers, { kind: "claimed", task: task, rootPromise: promise }, (_, status) => {
+        console.log("status: ", status);
+        span.end();
+      });
     }
 
-    return this.createHandle(promise);
+    return this.createHandle(promise, headers);
   }
 
   /**
@@ -577,23 +591,34 @@ export class Resonate {
       throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
-    const promise = await this.createPromise({
-      kind: "createPromise",
-      id: id,
-      timeout: Date.now() + opts.timeout,
-      param: {
-        data: {
-          func: registered ? registered.name : (funcOrName as string),
-          args: args,
-          version: registered ? registered.version : opts.version || 1,
-        },
-      },
-      tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
-      iKey: id,
-      strict: false,
-    });
+    const tracer = trace.getTracer("resonate");
+    const span = tracer.startSpan(id, { startTime: this.clock.now() });
+    const ctx = trace.setSpan(context.active(), span);
+    const headers: Record<string, string> = {};
+    propagation.inject(ctx, headers);
 
-    return this.createHandle(promise);
+    const promise = await this.createPromise(
+      {
+        kind: "createPromise",
+        id: id,
+        timeout: Date.now() + opts.timeout,
+        param: {
+          data: {
+            func: registered ? registered.name : (funcOrName as string),
+            args: args,
+            version: registered ? registered.version : opts.version || 1,
+          },
+        },
+        tags: { ...opts.tags, "resonate:invoke": opts.target, "resonate:scope": "global" },
+        iKey: id,
+        strict: false,
+      },
+      headers,
+    );
+
+    span.end();
+
+    return this.createHandle(promise, headers);
   }
 
   public async schedule<F extends Func>(
@@ -662,7 +687,8 @@ export class Resonate {
       id: id,
     });
 
-    return this.createHandle(promise);
+    const headers: Record<string, string> = {}; // TODO
+    return this.createHandle(promise, headers);
   }
 
   public options(opts: Partial<Options> = {}): Options {
@@ -687,6 +713,7 @@ export class Resonate {
 
   private createPromiseAndTask(
     req: CreatePromiseAndTaskReq<any>,
+    headers: Record<string, string>,
   ): Promise<{ promise: DurablePromiseRecord; task?: TaskRecord }> {
     return new Promise((resolve, reject) =>
       this.handler.createPromiseAndTask(
@@ -698,13 +725,17 @@ export class Resonate {
             resolve({ promise: res!.promise, task: res!.task });
           }
         },
+        headers,
         undefined,
         true,
       ),
     );
   }
 
-  private createPromise(req: CreatePromiseReq<any>): Promise<DurablePromiseRecord<any>> {
+  private createPromise(
+    req: CreatePromiseReq<any>,
+    headers: Record<string, string>,
+  ): Promise<DurablePromiseRecord<any>> {
     return new Promise((resolve, reject) =>
       this.handler.createPromise(
         req,
@@ -716,12 +747,16 @@ export class Resonate {
           }
         },
         undefined,
+        headers,
         true,
       ),
     );
   }
 
-  private createSubscription(req: CreateSubscriptionReq): Promise<DurablePromiseRecord<any>> {
+  private createSubscription(
+    req: CreateSubscriptionReq,
+    headers: Record<string, string>,
+  ): Promise<DurablePromiseRecord<any>> {
     return new Promise((resolve, reject) =>
       this.handler.createSubscription(
         req,
@@ -732,6 +767,7 @@ export class Resonate {
             resolve(res!);
           }
         },
+        headers,
         true,
       ),
     );
@@ -749,7 +785,7 @@ export class Resonate {
     );
   }
 
-  private createHandle(promise: DurablePromiseRecord<any>): ResonateHandle<any> {
+  private createHandle(promise: DurablePromiseRecord<any>, headers: Record<string, string>): ResonateHandle<any> {
     const createSubscriptionReq: CreateSubscriptionReq = {
       kind: "createSubscription",
       id: this.pid,
@@ -760,8 +796,9 @@ export class Resonate {
 
     return {
       id: promise.id,
-      done: () => this.createSubscription(createSubscriptionReq).then((res) => res.state !== "pending"),
-      result: () => this.createSubscription(createSubscriptionReq).then((res) => this.subscribe(promise.id, res)),
+      done: () => this.createSubscription(createSubscriptionReq, headers).then((res) => res.state !== "pending"),
+      result: () =>
+        this.createSubscription(createSubscriptionReq, headers).then((res) => this.subscribe(promise.id, res)),
     };
   }
 
