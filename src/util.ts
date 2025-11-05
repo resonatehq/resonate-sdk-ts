@@ -1,4 +1,4 @@
-import exceptions from "exceptions";
+import exceptions from "./exceptions";
 import type { DurablePromiseRecord, TaskRecord } from "./network/network";
 import { type Options, RESONATE_OPTIONS } from "./options";
 
