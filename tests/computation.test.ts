@@ -10,6 +10,7 @@ import type { DurablePromiseRecord, TaskRecord } from "../src/network/network";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
 import type { ClaimedTask } from "../src/resonate-inner";
+import { NoopTracer } from "../src/tracer";
 import type { Result } from "../src/types";
 import * as util from "../src/util";
 
@@ -132,6 +133,8 @@ describe("Computation Event Queue Concurrency", () => {
       new NoopHeartbeat(),
       new Map(),
       false,
+      new NoopTracer(),
+      {},
       mockProcessor,
     );
   });

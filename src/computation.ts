@@ -10,6 +10,7 @@ import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
+import type { Span, Tracer } from "./tracer";
 import type { Callback, Func } from "./types";
 import * as util from "./util";
 
@@ -40,6 +41,9 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
+  private tracer: Tracer;
+  private headers: Record<string, string>;
+  private spans: Map<string, Span>;
 
   private seen: Set<string> = new Set();
   private processing = false;
@@ -58,6 +62,8 @@ export class Computation {
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
     verbose: boolean,
+    tracer: Tracer,
+    headers: Record<string, string>,
     processor?: Processor,
   ) {
     this.id = id;
@@ -74,6 +80,9 @@ export class Computation {
     this.dependencies = dependencies;
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
+    this.tracer = tracer;
+    this.headers = headers;
+    this.spans = new Map();
   }
 
   public process(task: Task, done: Callback<Status>) {
@@ -107,7 +116,10 @@ export class Computation {
               return doneProcessing(true);
             }
             util.assertDefined(promise);
-            this.processClaimed({ kind: "claimed", task: task.task, rootPromise: promise.root }, doneProcessing);
+            this.processClaimed(
+              { kind: "claimed", task: task.task, rootPromise: promise.root, leafPromise: promise.leaf },
+              doneProcessing,
+            );
           },
         );
         break;
@@ -200,7 +212,7 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, (err, status) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, this.tracer, this.spans, (err, status) => {
       if (err) {
         return done(err);
       }
@@ -260,6 +272,8 @@ export class Computation {
           func.name,
         ),
       this.verbose,
+      this.tracer,
+      this.headers,
     );
   }
 

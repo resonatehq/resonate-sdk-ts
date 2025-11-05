@@ -2,6 +2,7 @@ import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
 import type { DurablePromiseRecord } from "./network/network";
+import type { Span, Tracer } from "./tracer";
 import { type Callback, ko, ok, type Result, type Yieldable } from "./types";
 import * as util from "./util";
 
@@ -63,6 +64,8 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     handler: Handler,
+    tracer: Tracer,
+    spans: Map<string, Span>,
     callback: Callback<Suspended | Completed>,
   ): void {
     handler.createPromise(

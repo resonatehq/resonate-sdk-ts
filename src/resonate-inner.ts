@@ -4,6 +4,7 @@ import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
 import type { Registry } from "./registry";
+import type { Tracer } from "./tracer";
 import type { Callback } from "./types";
 import * as util from "./util";
 
@@ -35,6 +36,7 @@ export class ResonateInner {
   private clock: Clock;
   private network: Network;
   private handler: Handler;
+  private tracer: Tracer;
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
@@ -50,6 +52,7 @@ export class ResonateInner {
     clock,
     network,
     handler,
+    tracer,
     registry,
     heartbeat,
     dependencies,
@@ -64,6 +67,7 @@ export class ResonateInner {
     clock: Clock;
     network: Network;
     handler: Handler;
+    tracer: Tracer;
     registry: Registry;
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
@@ -78,6 +82,7 @@ export class ResonateInner {
     this.clock = clock;
     this.network = network;
     this.handler = handler;
+    this.tracer = tracer;
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
@@ -88,7 +93,7 @@ export class ResonateInner {
     messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
-  public process(task: Task, done: Callback<Status>) {
+  public process(headers: Record<string, string>, task: Task, done: Callback<Status>) {
     let computation = this.computations.get(task.task.rootPromiseId);
     if (!computation) {
       computation = new Computation(
@@ -105,6 +110,8 @@ export class ResonateInner {
         this.heartbeat,
         this.dependencies,
         this.verbose,
+        this.tracer,
+        headers,
       );
       this.computations.set(task.task.rootPromiseId, computation);
     }
@@ -116,7 +123,7 @@ export class ResonateInner {
     util.assert(msg.type === "invoke" || msg.type === "resume");
 
     if (msg.type === "invoke" || msg.type === "resume") {
-      this.process({ kind: "unclaimed", task: msg.task }, () => {});
+      this.process(msg.headers, { kind: "unclaimed", task: msg.task }, () => {});
     }
   }
 }

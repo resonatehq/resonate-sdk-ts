@@ -22,6 +22,7 @@ import { Options } from "./options";
 import { Promises } from "./promises";
 import { ResonateInner } from "./resonate-inner";
 import { Schedules } from "./schedules";
+import { NoopTracer, type Tracer } from "./tracer";
 import type { Func, ParamsWithOptions, Return } from "./types";
 import * as util from "./util";
 
@@ -51,6 +52,8 @@ type SubscriptionEntry = {
 };
 
 export class Resonate {
+  private clock: WallClock;
+
   private unicast: string;
   private anycastPreference: string;
   private anycastNoPreference: string;
@@ -63,6 +66,8 @@ export class Resonate {
   private encryptor: Encryptor;
   private verbose: boolean;
   private messageSource: MessageSource;
+
+  private tracer: Tracer;
   private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
@@ -82,6 +87,7 @@ export class Resonate {
     auth = undefined,
     verbose = false,
     encryptor = undefined,
+    tracer = undefined,
   }: {
     url?: string;
     group?: string;
@@ -90,13 +96,16 @@ export class Resonate {
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
+    tracer?: Tracer;
   } = {}) {
+    this.clock = new WallClock();
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycastPreference = `poll://any@${group}/${pid}`;
     this.anycastNoPreference = `poll://any@${group}`;
     this.pid = pid;
     this.ttl = ttl;
     this.encryptor = encryptor ?? new NoopEncryptor();
+    this.tracer = tracer ?? new NoopTracer();
     this.encoder = new JsonEncoder();
 
     this.verbose = verbose;
@@ -156,7 +165,7 @@ export class Resonate {
       anycastNoPreference: this.anycastNoPreference,
       pid: this.pid,
       ttl: this.ttl,
-      clock: new WallClock(),
+      clock: this.clock,
       network: this.network,
       messageSource: this.messageSource,
       handler: this.handler,
@@ -164,6 +173,7 @@ export class Resonate {
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
       verbose: this.verbose,
+      tracer: this.tracer,
     });
 
     this.promises = new Promises(this.network);
@@ -220,9 +230,11 @@ export class Resonate {
   static local({
     verbose = false,
     encryptor = undefined,
+    tracer = undefined,
   }: {
     verbose?: boolean;
     encryptor?: Encryptor;
+    tracer?: Tracer;
   } = {}): Resonate {
     return new Resonate({
       group: "default",
@@ -230,6 +242,7 @@ export class Resonate {
       ttl: Number.MAX_SAFE_INTEGER,
       verbose,
       encryptor,
+      tracer,
     });
   }
 
@@ -276,6 +289,7 @@ export class Resonate {
     auth = undefined,
     verbose = false,
     encryptor = undefined,
+    tracer = undefined,
   }: {
     url?: string;
     group?: string;
@@ -284,9 +298,10 @@ export class Resonate {
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
+    tracer?: Tracer;
     messageSourceAuth?: { username: string; password: string };
   } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth, verbose, encryptor });
+    return new Resonate({ url, group, pid, ttl, auth, verbose, encryptor, tracer });
   }
 
   /**
@@ -448,6 +463,9 @@ export class Resonate {
 
     util.assert(registered.version > 0, "function version must be greater than zero");
 
+    const span = this.tracer.startSpan(id, this.clock.now());
+    const headers = this.tracer.propagationHeaders(span);
+
     const { promise, task } = await this.createPromiseAndTask(
       {
         kind: "createPromiseAndTask",
@@ -476,14 +494,16 @@ export class Resonate {
         iKey: id,
         strict: false,
       },
-      {},
+      headers,
     );
 
     if (task) {
-      this.inner.process({ kind: "claimed", task: task, rootPromise: promise }, () => {});
+      this.inner.process(headers, { kind: "claimed", task: task, rootPromise: promise }, () => {
+        span.end();
+      });
     }
 
-    return this.createHandle(promise, {});
+    return this.createHandle(promise, headers);
   }
 
   /**
@@ -569,6 +589,9 @@ export class Resonate {
       throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
+    const span = this.tracer.startSpan(id, this.clock.now());
+    const headers = this.tracer.propagationHeaders(span);
+
     const promise = await this.createPromise(
       {
         kind: "createPromise",
@@ -591,10 +614,10 @@ export class Resonate {
         iKey: id,
         strict: false,
       },
-      {},
+      headers,
     );
 
-    return this.createHandle(promise, {});
+    return this.createHandle(promise, headers);
   }
 
   public async schedule<F extends Func>(
