@@ -617,6 +617,8 @@ export class Resonate {
       headers,
     );
 
+    span.end();
+
     return this.createHandle(promise, headers);
   }
 

@@ -190,6 +190,7 @@ export class Computation {
         timeout: rootPromise.timeout,
         version: registered.version,
         retryPolicy: util.isGeneratorFunction(registered.func) ? new Never() : new Exponential(),
+        headers: this.headers,
       });
 
       if (util.isGeneratorFunction(registered.func)) {

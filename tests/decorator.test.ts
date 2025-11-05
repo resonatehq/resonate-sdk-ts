@@ -39,6 +39,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          headers: {},
         }),
       ),
     );
@@ -85,6 +86,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          headers: {},
         }),
       ),
     );
@@ -158,6 +160,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          headers: {},
         }),
       ),
     );
@@ -202,6 +205,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          headers: {},
         }),
       ),
     );
@@ -253,6 +257,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          headers: {},
         }),
       ),
     );
@@ -306,6 +311,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          headers: {},
         }),
       ),
     );
@@ -338,6 +344,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          headers: {},
         }),
       ),
     );

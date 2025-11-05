@@ -9,6 +9,7 @@ import * as util from "./util";
 export type Suspended = {
   type: "suspended";
   todo: { local: LocalTodo[]; remote: RemoteTodo[] };
+  spans: Span[];
 };
 
 export type Completed = {
@@ -19,6 +20,7 @@ export type Completed = {
 export interface LocalTodo {
   id: string;
   ctx: InnerContext;
+  span: Span;
   func: (ctx: Context, ...args: any[]) => any;
   args: any[];
 }
@@ -30,6 +32,7 @@ export interface RemoteTodo {
 type More = {
   type: "more";
   todo: { local: LocalTodo[]; remote: RemoteTodo[] };
+  spans: Span[];
 };
 
 type Done = {
@@ -42,14 +45,26 @@ export class Coroutine<T> {
   private verbose: boolean;
   private decorator: Decorator<T>;
   private handler: Handler;
+  private tracer: Tracer;
+  private spans: Map<string, Span>;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
 
-  constructor(ctx: InnerContext, verbose: boolean, decorator: Decorator<T>, handler: Handler, depth = 1) {
+  constructor(
+    ctx: InnerContext,
+    verbose: boolean,
+    decorator: Decorator<T>,
+    handler: Handler,
+    tracer: Tracer,
+    spans: Map<string, Span>,
+    depth = 1,
+  ) {
     this.ctx = ctx;
     this.verbose = verbose;
     this.decorator = decorator;
     this.handler = handler;
+    this.tracer = tracer;
+    this.spans = spans;
     this.depth = depth;
 
     if (typeof process !== "undefined" && process.env.QUEUE_MICROTASK_EVERY_N) {
@@ -86,13 +101,13 @@ export class Coroutine<T> {
           return callback(false, { type: "completed", promise: res });
         }
 
-        const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), handler);
+        const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), handler, tracer, spans);
         coroutine.exec((err, status) => {
           if (err) return callback(err);
           util.assertDefined(status);
           switch (status.type) {
             case "more":
-              callback(false, { type: "suspended", todo: status.todo });
+              callback(false, { type: "suspended", todo: status.todo, spans: status.spans });
               break;
 
             case "done":
@@ -129,6 +144,7 @@ export class Coroutine<T> {
   private exec(callback: Callback<More | Done>) {
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
+    const spans: Span[] = [];
 
     let input: Value<any> = {
       type: "internal.nothing",
@@ -141,6 +157,14 @@ export class Coroutine<T> {
 
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
+          let span: Span;
+          if (!this.spans.has(action.createReq.id)) {
+            span = this.tracer.startSpan(action.createReq.id, this.ctx.clock.now(), this.ctx.headers);
+            this.spans.set(action.createReq.id, span);
+          } else {
+            span = this.spans.get(action.createReq.id)!;
+          }
+
           this.handler.createPromise(
             action.createReq,
             (err, res) => {
@@ -155,13 +179,15 @@ export class Coroutine<T> {
                 timeout: res.timeout,
                 version: action.version,
                 retryPolicy: action.retryPolicy,
+                headers: this.tracer.propagationHeaders(span),
               });
 
               if (res.state === "pending") {
                 if (!util.isGeneratorFunction(action.func)) {
                   local.push({
                     id: action.id,
-                    ctx: ctx,
+                    ctx,
+                    span,
                     func: action.func,
                     args: action.args,
                   });
@@ -180,6 +206,8 @@ export class Coroutine<T> {
                   this.verbose,
                   new Decorator(action.func(ctx, ...action.args)),
                   this.handler,
+                  this.tracer,
+                  this.spans,
                   this.depth + 1,
                 );
 
@@ -210,6 +238,9 @@ export class Coroutine<T> {
                         strict: false,
                       },
                       (err, res) => {
+                        span.end();
+                        spans.splice(spans.indexOf(span));
+
                         if (err) {
                           err.log(this.verbose);
                           return callback(true);
@@ -274,35 +305,49 @@ export class Coroutine<T> {
 
         // Handle internal.async.r
         if (action.type === "internal.async.r") {
-          this.handler.createPromise(action.createReq, (err, res) => {
-            if (err) {
-              err.log(this.verbose);
-              return callback(true);
-            }
-            util.assertDefined(res);
+          let span: Span;
+          if (!this.spans.has(action.createReq.id)) {
+            span = this.tracer.startSpan(action.createReq.id, this.ctx.clock.now(), this.ctx.headers);
+            this.spans.set(action.createReq.id, span);
+          } else {
+            span = this.spans.get(action.createReq.id)!;
+          }
+          const headers = this.tracer.propagationHeaders(span);
 
-            if (res.state === "pending") {
-              if (action.mode === "attached") remote.push({ id: action.id });
+          this.handler.createPromise(
+            action.createReq,
+            (err, res) => {
+              if (err) {
+                err.log(this.verbose);
+                return callback(true);
+              }
+              util.assertDefined(res);
 
-              input = {
-                type: "internal.promise",
-                state: "pending",
-                mode: action.mode,
-                id: action.id,
-              };
-            } else {
-              input = {
-                type: "internal.promise",
-                state: "completed",
-                id: action.id,
-                value: {
-                  type: "internal.literal",
-                  value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
-                },
-              };
-            }
-            next();
-          });
+              if (res.state === "pending") {
+                if (action.mode === "attached") remote.push({ id: action.id });
+
+                input = {
+                  type: "internal.promise",
+                  state: "pending",
+                  mode: action.mode,
+                  id: action.id,
+                };
+              } else {
+                input = {
+                  type: "internal.promise",
+                  state: "completed",
+                  id: action.id,
+                  value: {
+                    type: "internal.literal",
+                    value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
+                  },
+                };
+              }
+              next();
+            },
+            "unknown",
+            headers,
+          );
           return; // Exit the while loop to wait for async callback
         }
 
@@ -338,7 +383,7 @@ export class Coroutine<T> {
             // All detached are remotes.
             remote.push({ id: action.id });
           }
-          callback(false, { type: "more", todo: { local, remote } });
+          callback(false, { type: "more", todo: { local, remote }, spans });
           return;
         }
 
@@ -346,6 +391,7 @@ export class Coroutine<T> {
         if (action.type === "internal.return") {
           util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
           util.assertDefined(action.value);
+          util.assert(spans.length === 0, "all spans should've been closed");
 
           callback(false, { type: "done", result: action.value.value });
           return;

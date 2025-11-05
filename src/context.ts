@@ -241,9 +241,10 @@ export class InnerContext implements Context {
   readonly retryPolicy: RetryPolicy;
 
   private rId: string;
-  private pId: string;
+  readonly pId: string;
+  readonly clock: Clock;
+  readonly headers: Record<string, string>;
   private anycast: string;
-  private clock: Clock;
   private registry: Registry;
   private dependencies: Map<string, any>;
   private seq = 0;
@@ -264,6 +265,7 @@ export class InnerContext implements Context {
     timeout,
     version,
     retryPolicy,
+    headers,
   }: {
     id: string;
     rId?: string;
@@ -275,6 +277,7 @@ export class InnerContext implements Context {
     timeout: number;
     version: number;
     retryPolicy: RetryPolicy;
+    headers: Record<string, string>;
   }) {
     this.id = id;
     this.rId = rId;
@@ -284,6 +287,7 @@ export class InnerContext implements Context {
     this.registry = registry;
     this.dependencies = dependencies;
     this.retryPolicy = retryPolicy;
+    this.headers = headers;
 
     this.info = {
       attempt: 1,
@@ -297,11 +301,13 @@ export class InnerContext implements Context {
     timeout,
     version,
     retryPolicy,
+    headers,
   }: {
     id: string;
     timeout: number;
     version: number;
     retryPolicy: RetryPolicy;
+    headers: Record<string, string>;
   }) {
     return new InnerContext({
       id,
@@ -314,6 +320,7 @@ export class InnerContext implements Context {
       timeout,
       version,
       retryPolicy,
+      headers,
     });
   }
 
