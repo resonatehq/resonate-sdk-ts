@@ -230,7 +230,7 @@ export class Computation {
           if (status.todo.local.length > 0) {
             this.processLocalTodo(nursery, status.todo.local, done);
           } else if (status.todo.remote.length > 0) {
-            this.processRemoteTodo(nursery, status.todo.remote, ctx.info.timeout, done);
+            this.processRemoteTodo(nursery, status.todo.remote, status.spans, ctx.info.timeout, done);
           }
 
           break;
@@ -279,7 +279,7 @@ export class Computation {
   }
 
   private processLocalTodo(nursery: Nursery<boolean, Status>, todo: LocalTodo[], done: Callback<Status>) {
-    for (const { id, ctx, func, args } of todo) {
+    for (const { id, ctx, span, func, args } of todo) {
       if (this.seen.has(id)) {
         continue;
       }
@@ -288,6 +288,7 @@ export class Computation {
 
       nursery.hold((next) => {
         this.processFunction(id, ctx, func, args, (err) => {
+          span.end();
           next();
 
           if (err) {
@@ -305,6 +306,7 @@ export class Computation {
   private processRemoteTodo(
     nursery: Nursery<boolean, Status>,
     todo: RemoteTodo[],
+    spans: Span[],
     timeout: number,
     done: Callback<Status>,
   ) {
@@ -348,6 +350,10 @@ export class Computation {
               callbacks.push(res.callback);
               break;
           }
+        }
+
+        for (const span of spans) {
+          span.end();
         }
 
         // once all callbacks are created we can call done

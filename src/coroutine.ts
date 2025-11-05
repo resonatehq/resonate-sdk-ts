@@ -201,6 +201,7 @@ export class Coroutine<T> {
                   return;
                 }
 
+                spans.push(span);
                 const coroutine = new Coroutine(
                   ctx,
                   this.verbose,
@@ -317,6 +318,7 @@ export class Coroutine<T> {
           this.handler.createPromise(
             action.createReq,
             (err, res) => {
+              span.end();
               if (err) {
                 err.log(this.verbose);
                 return callback(true);
