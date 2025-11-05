@@ -4,7 +4,7 @@ import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
 import type { Registry } from "./registry";
-import type { Tracer } from "./tracer";
+import type { ITracer } from "./tracer";
 import type { Callback } from "./types";
 import * as util from "./util";
 
@@ -36,7 +36,7 @@ export class ResonateInner {
   private clock: Clock;
   private network: Network;
   private handler: Handler;
-  private tracer: Tracer;
+  private tracer: ITracer;
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
@@ -67,7 +67,7 @@ export class ResonateInner {
     clock: Clock;
     network: Network;
     handler: Handler;
-    tracer: Tracer;
+    tracer: ITracer;
     registry: Registry;
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
@@ -96,6 +96,7 @@ export class ResonateInner {
   public process(headers: Record<string, string>, task: Task, done: Callback<Status>) {
     let computation = this.computations.get(task.task.rootPromiseId);
     if (!computation) {
+      console.log("headers", headers);
       computation = new Computation(
         task.task.rootPromiseId,
         this.unicast,

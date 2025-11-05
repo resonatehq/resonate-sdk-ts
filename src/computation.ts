@@ -10,7 +10,7 @@ import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
-import type { Span, Tracer } from "./tracer";
+import type { ISpan, ITracer } from "./tracer";
 import type { Callback, Func } from "./types";
 import * as util from "./util";
 
@@ -41,9 +41,9 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
-  private tracer: Tracer;
+  private tracer: ITracer;
   private headers: Record<string, string>;
-  private spans: Map<string, Span>;
+  private spans: Map<string, ISpan>;
 
   private seen: Set<string> = new Set();
   private processing = false;
@@ -62,7 +62,7 @@ export class Computation {
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
     verbose: boolean,
-    tracer: Tracer,
+    tracer: ITracer,
     headers: Record<string, string>,
     processor?: Processor,
   ) {
@@ -306,7 +306,7 @@ export class Computation {
   private processRemoteTodo(
     nursery: Nursery<boolean, Status>,
     todo: RemoteTodo[],
-    spans: Span[],
+    spans: ISpan[],
     timeout: number,
     done: Callback<Status>,
   ) {
@@ -333,6 +333,7 @@ export class Computation {
             util.assertDefined(res);
             done(false, res);
           },
+          this.headers,
         ),
       (err, results) => {
         if (err) return done(err);

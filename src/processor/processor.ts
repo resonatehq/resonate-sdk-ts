@@ -1,5 +1,5 @@
 import type { InnerContext } from "../context";
-import type { Tracer } from "../tracer";
+import type { ITracer } from "../tracer";
 import type { Result } from "../types";
 
 type F = () => Promise<unknown>;
@@ -12,7 +12,7 @@ export interface Processor {
     func: F,
     done: (result: Result<unknown>) => void,
     verbose: boolean,
-    tracer: Tracer,
+    tracer: ITracer,
     headers: Record<string, string>,
   ): void;
 }
@@ -25,7 +25,7 @@ export class AsyncProcessor implements Processor {
     func: () => Promise<T>,
     done: (result: Result<T>) => void,
     verbose: boolean,
-    tracer: Tracer,
+    tracer: ITracer,
     headers: Record<string, string>,
   ): void {
     this.run(id, ctx, name, func, done, verbose, tracer, headers);
@@ -38,7 +38,7 @@ export class AsyncProcessor implements Processor {
     func: () => Promise<T>,
     done: (result: Result<T>) => void,
     verbose: boolean,
-    tracer: Tracer,
+    tracer: ITracer,
     headers: Record<string, string>,
   ) {
     const attempt = 1;

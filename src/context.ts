@@ -241,7 +241,7 @@ export class InnerContext implements Context {
   readonly retryPolicy: RetryPolicy;
 
   private rId: string;
-  readonly pId: string;
+  private pId: string;
   readonly clock: Clock;
   readonly headers: Record<string, string>;
   private anycast: string;

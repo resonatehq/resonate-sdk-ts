@@ -22,7 +22,7 @@ import { Options } from "./options";
 import { Promises } from "./promises";
 import { ResonateInner } from "./resonate-inner";
 import { Schedules } from "./schedules";
-import { NoopTracer, type Tracer } from "./tracer";
+import { type ITracer, NoopTracer } from "./tracer";
 import type { Func, ParamsWithOptions, Return } from "./types";
 import * as util from "./util";
 
@@ -67,7 +67,7 @@ export class Resonate {
   private verbose: boolean;
   private messageSource: MessageSource;
 
-  private tracer: Tracer;
+  private tracer: ITracer;
   private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
@@ -96,7 +96,7 @@ export class Resonate {
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
-    tracer?: Tracer;
+    tracer?: ITracer;
   } = {}) {
     this.clock = new WallClock();
     this.unicast = `poll://uni@${group}/${pid}`;
@@ -234,7 +234,7 @@ export class Resonate {
   }: {
     verbose?: boolean;
     encryptor?: Encryptor;
-    tracer?: Tracer;
+    tracer?: ITracer;
   } = {}): Resonate {
     return new Resonate({
       group: "default",
@@ -298,7 +298,7 @@ export class Resonate {
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
-    tracer?: Tracer;
+    tracer?: ITracer;
     messageSourceAuth?: { username: string; password: string };
   } = {}): Resonate {
     return new Resonate({ url, group, pid, ttl, auth, verbose, encryptor, tracer });
