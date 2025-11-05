@@ -192,6 +192,7 @@ export class Server {
               ...task,
               timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
             },
+            headers: {},
           },
           recv: task.recv,
         };
@@ -203,6 +204,7 @@ export class Server {
               ...task,
               timeout: this.getPromise({ id: task.rootPromiseId }).timeout,
             },
+            headers: {},
           },
           recv: task.recv,
         };
@@ -212,6 +214,7 @@ export class Server {
           msg: {
             type: "notify",
             promise: this.getPromise({ id: task.rootPromiseId }),
+            headers: {},
           },
           recv: task.recv,
         };
@@ -360,7 +363,7 @@ export class Server {
       }
 
       default:
-        throw exceptions.SERVER_ERROR(`Unsupported request kind ${(requ as any).kind}`);
+        util.assertNever(requ);
     }
   }
 
@@ -663,8 +666,11 @@ export class Server {
           },
         };
       }
+      case "notify":
+        throw exceptions.SERVER_ERROR(`Unexpected task type '${task.type}' notify`);
+
       default:
-        throw exceptions.SERVER_ERROR(`Unexpected task type '${task.type}'`);
+        util.assertNever(task.type);
     }
   }
 

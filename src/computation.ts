@@ -107,14 +107,14 @@ export class Computation {
               return doneProcessing(true);
             }
             util.assertDefined(promise);
-            this.processClaimed({ kind: "claimed", task: task.task, rootPromise: promise }, doneProcessing);
+            this.processClaimed({ kind: "claimed", task: task.task, rootPromise: promise.root }, doneProcessing);
           },
         );
         break;
     }
   }
 
-  private processClaimed({ task, rootPromise }: ClaimedTask, done: Callback<Status>) {
+  private processClaimed({ task, rootPromise, leafPromise }: ClaimedTask, done: Callback<Status>) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
 
     const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
