@@ -569,27 +569,30 @@ export class Resonate {
       throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
-    const promise = await this.createPromise({
-      kind: "createPromise",
-      id: id,
-      timeout: Date.now() + opts.timeout,
-      param: {
-        data: {
-          func: registered ? registered.name : (funcOrName as string),
-          args: args,
-          version: registered ? registered.version : opts.version || 1,
+    const promise = await this.createPromise(
+      {
+        kind: "createPromise",
+        id: id,
+        timeout: Date.now() + opts.timeout,
+        param: {
+          data: {
+            func: registered ? registered.name : (funcOrName as string),
+            args: args,
+            version: registered ? registered.version : opts.version || 1,
+          },
         },
+        tags: {
+          ...opts.tags,
+          "resonate:root": id,
+          "resonate:parent": id,
+          "resonate:scope": "global",
+          "resonate:invoke": opts.target,
+        },
+        iKey: id,
+        strict: false,
       },
-      tags: {
-        ...opts.tags,
-        "resonate:root": id,
-        "resonate:parent": id,
-        "resonate:scope": "global",
-        "resonate:invoke": opts.target,
-      },
-      iKey: id,
-      strict: false,
-    }, {});
+      {},
+    );
 
     return this.createHandle(promise, {});
   }
