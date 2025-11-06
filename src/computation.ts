@@ -10,7 +10,7 @@ import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
-import type { ISpan, ISpanContext, ITracer } from "./tracer";
+import type { SpanAdapter, SpanContextAdapter, TracerAdapter } from "./tracer";
 import type { Callback, Func } from "./types";
 import * as util from "./util";
 
@@ -41,9 +41,9 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
-  private tracer: ITracer;
-  private spanContext: ISpanContext;
-  private spans: Map<string, ISpan>;
+  private tracer: TracerAdapter;
+  private spanContext: SpanContextAdapter;
+  private spans: Map<string, SpanAdapter>;
 
   private seen: Set<string> = new Set();
   private processing = false;
@@ -62,8 +62,8 @@ export class Computation {
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
     verbose: boolean,
-    tracer: ITracer,
-    spanContext: ISpanContext,
+    tracer: TracerAdapter,
+    spanContext: SpanContextAdapter,
     processor?: Processor,
   ) {
     this.id = id;
@@ -306,7 +306,7 @@ export class Computation {
   private processRemoteTodo(
     nursery: Nursery<boolean, Status>,
     todo: RemoteTodo[],
-    spans: ISpan[],
+    spans: SpanAdapter[],
     timeout: number,
     done: Callback<Status>,
   ) {

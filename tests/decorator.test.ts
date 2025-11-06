@@ -1,9 +1,9 @@
-import { NoopSpanContext } from "tracer";
 import { WallClock } from "../src/clock";
 import { type Context, Future, InnerContext, type LFI } from "../src/context";
 import { Decorator } from "../src/decorator";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
+import { NoopSpanContext } from "../src/tracer";
 import { ok, type Yieldable } from "../src/types";
 
 describe("Decorator", () => {

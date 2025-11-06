@@ -1,5 +1,5 @@
 import type { InnerContext } from "../context";
-import type { ISpanContext, ITracer } from "../tracer";
+import type { SpanContextAdapter, TracerAdapter } from "../tracer";
 import type { Result } from "../types";
 
 type F = () => Promise<unknown>;
@@ -12,8 +12,8 @@ export interface Processor {
     func: F,
     done: (result: Result<unknown>) => void,
     verbose: boolean,
-    tracer: ITracer,
-    spanContext: ISpanContext,
+    tracer: TracerAdapter,
+    spanContext: SpanContextAdapter,
   ): void;
 }
 
@@ -25,8 +25,8 @@ export class AsyncProcessor implements Processor {
     func: () => Promise<T>,
     done: (result: Result<T>) => void,
     verbose: boolean,
-    tracer: ITracer,
-    spanContext: ISpanContext,
+    tracer: TracerAdapter,
+    spanContext: SpanContextAdapter,
   ): void {
     this.run(id, ctx, name, func, done, verbose, tracer, spanContext);
   }
@@ -38,8 +38,8 @@ export class AsyncProcessor implements Processor {
     func: () => Promise<T>,
     done: (result: Result<T>) => void,
     verbose: boolean,
-    tracer: ITracer,
-    spanContext: ISpanContext,
+    tracer: TracerAdapter,
+    spanContext: SpanContextAdapter,
   ) {
     const attempt = 1;
 

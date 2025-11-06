@@ -3,7 +3,7 @@ import { ZipkinExporter } from "@opentelemetry/exporter-zipkin";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import type { Context } from "./src/context";
 import { Resonate } from "./src/resonate";
-import { OtelTracer } from "./src/tracer";
+import { OpenTelemetryTracer } from "./src/tracer";
 
 const sdk = new NodeSDK({
   traceExporter: new ZipkinExporter({ serviceName: "resonate" }),
@@ -37,7 +37,7 @@ export function* countdown(ctx: Context, count: number, delay: number, url: stri
 
 sdk.start();
 
-const resonate = Resonate.remote({ tracer: new OtelTracer("resonate") });
+const resonate = Resonate.remote({ tracer: new OpenTelemetryTracer("resonate") });
 
 function* foo(ctx: Context, s: string): Generator<any, string, any> {
   const value = yield ctx.rpc(bar, s, ctx.options({ id: "bar" }));
