@@ -4,7 +4,7 @@ import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
 import type { Registry } from "./registry";
-import type { ITracer } from "./tracer";
+import type { ISpanContext, ITracer } from "./tracer";
 import type { Callback } from "./types";
 import * as util from "./util";
 
@@ -93,10 +93,9 @@ export class ResonateInner {
     messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
-  public process(headers: Record<string, string>, task: Task, done: Callback<Status>) {
+  public process(spanContext: ISpanContext, task: Task, done: Callback<Status>) {
     let computation = this.computations.get(task.task.rootPromiseId);
     if (!computation) {
-      console.log("headers", headers);
       computation = new Computation(
         task.task.rootPromiseId,
         this.unicast,
@@ -112,7 +111,7 @@ export class ResonateInner {
         this.dependencies,
         this.verbose,
         this.tracer,
-        headers,
+        spanContext,
       );
       this.computations.set(task.task.rootPromiseId, computation);
     }
@@ -124,7 +123,7 @@ export class ResonateInner {
     util.assert(msg.type === "invoke" || msg.type === "resume");
 
     if (msg.type === "invoke" || msg.type === "resume") {
-      this.process(msg.headers, { kind: "unclaimed", task: msg.task }, () => {});
+      this.process(this.tracer.decode(msg.headers), { kind: "unclaimed", task: msg.task }, () => {});
     }
   }
 }

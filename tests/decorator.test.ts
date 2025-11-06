@@ -1,3 +1,4 @@
+import { NoopSpanContext } from "tracer";
 import { WallClock } from "../src/clock";
 import { type Context, Future, InnerContext, type LFI } from "../src/context";
 import { Decorator } from "../src/decorator";
@@ -39,7 +40,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          headers: {},
+          spanContext: new NoopSpanContext(),
         }),
       ),
     );
@@ -86,7 +87,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          headers: {},
+          spanContext: new NoopSpanContext(),
         }),
       ),
     );
@@ -160,7 +161,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          headers: {},
+          spanContext: new NoopSpanContext(),
         }),
       ),
     );
@@ -205,7 +206,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          headers: {},
+          spanContext: new NoopSpanContext(),
         }),
       ),
     );
@@ -257,7 +258,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          headers: {},
+          spanContext: new NoopSpanContext(),
         }),
       ),
     );
@@ -311,7 +312,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          headers: {},
+          spanContext: new NoopSpanContext(),
         }),
       ),
     );
@@ -344,7 +345,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          headers: {},
+          spanContext: new NoopSpanContext(),
         }),
       ),
     );

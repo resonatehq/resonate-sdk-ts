@@ -104,8 +104,8 @@ export class Resonate {
     this.anycastNoPreference = `poll://any@${group}`;
     this.pid = pid;
     this.ttl = ttl;
-    this.encryptor = encryptor ?? new NoopEncryptor();
     this.tracer = tracer ?? new NoopTracer();
+    this.encryptor = encryptor ?? new NoopEncryptor();
     this.encoder = new JsonEncoder();
 
     this.verbose = verbose;
@@ -464,7 +464,7 @@ export class Resonate {
     util.assert(registered.version > 0, "function version must be greater than zero");
 
     const span = this.tracer.startSpan(id, this.clock.now());
-    const headers = this.tracer.propagationHeaders(span);
+    const spanContext = span.context();
 
     const { promise, task } = await this.createPromiseAndTask(
       {
@@ -494,16 +494,16 @@ export class Resonate {
         iKey: id,
         strict: false,
       },
-      headers,
+      spanContext.encode(),
     );
 
     if (task) {
-      this.inner.process(headers, { kind: "claimed", task: task, rootPromise: promise }, () => {
+      this.inner.process(spanContext, { kind: "claimed", task: task, rootPromise: promise }, () => {
         span.end();
       });
     }
 
-    return this.createHandle(promise, headers);
+    return this.createHandle(promise, spanContext.encode());
   }
 
   /**
@@ -590,7 +590,7 @@ export class Resonate {
     }
 
     const span = this.tracer.startSpan(id, this.clock.now());
-    const headers = this.tracer.propagationHeaders(span);
+    const spanContext = span.context();
 
     const promise = await this.createPromise(
       {
@@ -614,12 +614,12 @@ export class Resonate {
         iKey: id,
         strict: false,
       },
-      headers,
+      spanContext.encode(),
     );
 
     span.end();
 
-    return this.createHandle(promise, headers);
+    return this.createHandle(promise, spanContext.encode());
   }
 
   public async schedule<F extends Func>(

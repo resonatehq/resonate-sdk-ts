@@ -1,5 +1,5 @@
 import type { InnerContext } from "../context";
-import type { ITracer } from "../tracer";
+import type { ISpanContext, ITracer } from "../tracer";
 import type { Result } from "../types";
 
 type F = () => Promise<unknown>;
@@ -13,7 +13,7 @@ export interface Processor {
     done: (result: Result<unknown>) => void,
     verbose: boolean,
     tracer: ITracer,
-    headers: Record<string, string>,
+    spanContext: ISpanContext,
   ): void;
 }
 
@@ -26,9 +26,9 @@ export class AsyncProcessor implements Processor {
     done: (result: Result<T>) => void,
     verbose: boolean,
     tracer: ITracer,
-    headers: Record<string, string>,
+    spanContext: ISpanContext,
   ): void {
-    this.run(id, ctx, name, func, done, verbose, tracer, headers);
+    this.run(id, ctx, name, func, done, verbose, tracer, spanContext);
   }
 
   private async run<T>(
@@ -39,13 +39,13 @@ export class AsyncProcessor implements Processor {
     done: (result: Result<T>) => void,
     verbose: boolean,
     tracer: ITracer,
-    headers: Record<string, string>,
+    spanContext: ISpanContext,
   ) {
     const attempt = 1;
 
     while (true) {
       const retryIn: number | null = 0;
-      const span = tracer.startSpan(`${id}::${attempt}`, undefined, headers);
+      const span = spanContext.startSpan(`${id}::${attempt}`, undefined);
       span.setAttribute("attempt", attempt);
 
       try {

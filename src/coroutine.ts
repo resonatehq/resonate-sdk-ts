@@ -159,13 +159,12 @@ export class Coroutine<T> {
         if (action.type === "internal.async.l") {
           let span: ISpan;
           if (!this.spans.has(action.createReq.id)) {
-            span = this.tracer.startSpan(action.createReq.id, this.ctx.clock.now(), this.ctx.headers);
+            span = this.ctx.spanContext.startSpan(action.createReq.id, this.ctx.clock.now());
             this.spans.set(action.createReq.id, span);
           } else {
             span = this.spans.get(action.createReq.id)!;
           }
-
-          const headers = this.tracer.propagationHeaders(span);
+          const childContext = span.context();
 
           this.handler.createPromise(
             action.createReq,
@@ -181,7 +180,7 @@ export class Coroutine<T> {
                 timeout: res.timeout,
                 version: action.version,
                 retryPolicy: action.retryPolicy,
-                headers: this.tracer.propagationHeaders(span),
+                spanContext: childContext,
               });
 
               if (res.state === "pending") {
@@ -302,7 +301,7 @@ export class Coroutine<T> {
               }
             },
             action.func.name,
-            headers,
+            childContext.encode(),
           );
           return; // Exit the while loop to wait for async callback
         }
@@ -311,12 +310,11 @@ export class Coroutine<T> {
         if (action.type === "internal.async.r") {
           let span: ISpan;
           if (!this.spans.has(action.createReq.id)) {
-            span = this.tracer.startSpan(action.createReq.id, this.ctx.clock.now(), this.ctx.headers);
+            span = this.ctx.spanContext.startSpan(action.createReq.id, this.ctx.clock.now());
             this.spans.set(action.createReq.id, span);
           } else {
             span = this.spans.get(action.createReq.id)!;
           }
-          const headers = this.tracer.propagationHeaders(span);
 
           this.handler.createPromise(
             action.createReq,
@@ -351,7 +349,7 @@ export class Coroutine<T> {
               next();
             },
             "unknown",
-            headers,
+            span.context().encode(),
           );
           return; // Exit the while loop to wait for async callback
         }

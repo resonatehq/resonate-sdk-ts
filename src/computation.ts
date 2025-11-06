@@ -10,7 +10,7 @@ import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
-import type { ISpan, ITracer } from "./tracer";
+import type { ISpan, ISpanContext, ITracer } from "./tracer";
 import type { Callback, Func } from "./types";
 import * as util from "./util";
 
@@ -42,7 +42,7 @@ export class Computation {
   private heartbeat: Heartbeat;
   private processor: Processor;
   private tracer: ITracer;
-  private headers: Record<string, string>;
+  private spanContext: ISpanContext;
   private spans: Map<string, ISpan>;
 
   private seen: Set<string> = new Set();
@@ -63,7 +63,7 @@ export class Computation {
     dependencies: Map<string, any>,
     verbose: boolean,
     tracer: ITracer,
-    headers: Record<string, string>,
+    spanContext: ISpanContext,
     processor?: Processor,
   ) {
     this.id = id;
@@ -81,7 +81,7 @@ export class Computation {
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
     this.tracer = tracer;
-    this.headers = headers;
+    this.spanContext = spanContext;
     this.spans = new Map();
   }
 
@@ -190,7 +190,7 @@ export class Computation {
         timeout: rootPromise.timeout,
         version: registered.version,
         retryPolicy: util.isGeneratorFunction(registered.func) ? new Never() : new Exponential(),
-        headers: this.headers,
+        spanContext: this.spanContext,
       });
 
       if (util.isGeneratorFunction(registered.func)) {
@@ -274,7 +274,7 @@ export class Computation {
         ),
       this.verbose,
       this.tracer,
-      this.headers,
+      this.spanContext,
     );
   }
 
@@ -333,7 +333,7 @@ export class Computation {
             util.assertDefined(res);
             done(false, res);
           },
-          this.headers,
+          this.spanContext.encode(),
         ),
       (err, results) => {
         if (err) return done(err);
