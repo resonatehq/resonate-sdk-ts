@@ -10,7 +10,7 @@ import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
-import type { SpanAdapter, SpanContextAdapter, TracerAdapter } from "./tracer";
+import type { SpanAdapter, SpanContext, Tracer } from "./tracer";
 import type { Callback, Func } from "./types";
 import * as util from "./util";
 
@@ -41,8 +41,8 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
-  private tracer: TracerAdapter;
-  private spanContext: SpanContextAdapter;
+  private tracer: Tracer;
+  private spanContext: SpanContext;
   private spans: Map<string, SpanAdapter>;
 
   private seen: Set<string> = new Set();
@@ -62,8 +62,8 @@ export class Computation {
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
     verbose: boolean,
-    tracer: TracerAdapter,
-    spanContext: SpanContextAdapter,
+    tracer: Tracer,
+    spanContext: SpanContext,
     processor?: Processor,
   ) {
     this.id = id;

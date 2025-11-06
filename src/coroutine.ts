@@ -2,7 +2,7 @@ import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
 import type { DurablePromiseRecord } from "./network/network";
-import type { SpanAdapter, TracerAdapter } from "./tracer";
+import type { SpanAdapter, Tracer } from "./tracer";
 import { type Callback, ko, ok, type Result, type Yieldable } from "./types";
 import * as util from "./util";
 
@@ -45,7 +45,7 @@ export class Coroutine<T> {
   private verbose: boolean;
   private decorator: Decorator<T>;
   private handler: Handler;
-  private tracer: TracerAdapter;
+  private tracer: Tracer;
   private spans: Map<string, SpanAdapter>;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
@@ -55,7 +55,7 @@ export class Coroutine<T> {
     verbose: boolean,
     decorator: Decorator<T>,
     handler: Handler,
-    tracer: TracerAdapter,
+    tracer: Tracer,
     spans: Map<string, SpanAdapter>,
     depth = 1,
   ) {
@@ -79,7 +79,7 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     handler: Handler,
-    tracer: TracerAdapter,
+    tracer: Tracer,
     spans: Map<string, SpanAdapter>,
     callback: Callback<Suspended | Completed>,
   ): void {

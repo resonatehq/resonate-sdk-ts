@@ -4,7 +4,7 @@ import type { CreatePromiseReq } from "./network/network";
 import { Options } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
-import type { SpanContextAdapter } from "./tracer";
+import type { SpanContext } from "./tracer";
 import type { Func, ParamsWithOptions, Result, Return } from "./types";
 import * as util from "./util";
 
@@ -244,7 +244,7 @@ export class InnerContext implements Context {
   private rId: string;
   private pId: string;
   readonly clock: Clock;
-  readonly spanContext: SpanContextAdapter;
+  readonly spanContext: SpanContext;
   private anycast: string;
   private registry: Registry;
   private dependencies: Map<string, any>;
@@ -278,7 +278,7 @@ export class InnerContext implements Context {
     timeout: number;
     version: number;
     retryPolicy: RetryPolicy;
-    spanContext: SpanContextAdapter;
+    spanContext: SpanContext;
   }) {
     this.id = id;
     this.rId = rId;
@@ -308,7 +308,7 @@ export class InnerContext implements Context {
     timeout: number;
     version: number;
     retryPolicy: RetryPolicy;
-    spanContext: SpanContextAdapter;
+    spanContext: SpanContext;
   }) {
     return new InnerContext({
       id,
