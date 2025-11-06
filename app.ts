@@ -29,14 +29,13 @@ function baz(ctx: Context) {
 }
 
 resonate.register(foo);
-resonate.register(bar);
-resonate.register(baz);
 
 async function main(): Promise<void> {
   // const v1 = await resonate.rpc("foo", foo, "hello world", "21");
-  const v1 = await resonate.rpc("foo.1", foo);
+  // resonate.run("f1", foo);
+  const v = await resonate.rpc("f1", foo);
   // const v3 = await resonate.run("countdown.1", countdown, 5, 1, "http");
-  console.log(v1);
+  console.log(v);
   // console.log(v2);
   // console.log(v3);
   resonate.stop();

@@ -40,7 +40,7 @@ export class AsyncProcessor implements Processor {
   ) {
     while (true) {
       const retryIn: number | null = 0;
-      const span = spanContext.startSpan(`${id}::${ctx.info.attempt}`, Date.now());
+      const span = spanContext.startSpan(`${id}::${ctx.info.attempt}`, ctx.clock.now());
       span.setAttribute("attempt", ctx.info.attempt);
 
       try {
@@ -64,7 +64,7 @@ export class AsyncProcessor implements Processor {
           console.warn(error);
         }
       } finally {
-        span.end(Date.now());
+        span.end(ctx.clock.now());
       }
       await new Promise((resolve) => setTimeout(resolve, retryIn));
       ctx.info.attempt++;
