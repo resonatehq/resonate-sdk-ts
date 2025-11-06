@@ -1,7 +1,7 @@
 import { LocalNetwork } from "../dev/network";
-import { type Encryptor, NoopEncryptor } from "../src/encryptor";
 import { WallClock } from "./clock";
 import { type Encoder, JsonEncoder } from "./encoder";
+import { type Encryptor, NoopEncryptor } from "./encryptor";
 import exceptions from "./exceptions";
 import { Handler } from "./handler";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";

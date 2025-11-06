@@ -1,8 +1,8 @@
-import { Never } from "retries";
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
 import type { DurablePromiseRecord } from "./network/network";
+import { Never } from "./retries";
 import { type Callback, ko, ok, type Result, type Yieldable } from "./types";
 import * as util from "./util";
 
