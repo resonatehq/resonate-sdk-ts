@@ -1,3 +1,4 @@
+import { Never } from "retries";
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
@@ -50,6 +51,11 @@ export class Coroutine<T> {
     this.decorator = decorator;
     this.handler = handler;
     this.depth = depth;
+
+    if (!(this.ctx.retryPolicy instanceof Never)) {
+      // TODO: use ctx.log to suppress duplicate warnings
+      console.warn(`Options. Generator function '${this.ctx.func}' does not support retries. Will ignore.`);
+    }
 
     if (typeof process !== "undefined" && process.env.QUEUE_MICROTASK_EVERY_N) {
       this.queueMicrotaskEveryN = Number.parseInt(process.env.QUEUE_MICROTASK_EVERY_N, 10);
@@ -149,6 +155,7 @@ export class Coroutine<T> {
 
               const ctx = this.ctx.child({
                 id: res.id,
+                func: action.func.name,
                 timeout: res.timeout,
                 version: action.version,
                 retryPolicy: action.retryPolicy,
