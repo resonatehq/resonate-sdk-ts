@@ -41,12 +41,10 @@ export class AsyncProcessor implements Processor {
     tracer: TracerAdapter,
     spanContext: SpanContextAdapter,
   ) {
-    const attempt = 1;
-
     while (true) {
       const retryIn: number | null = 0;
-      const span = spanContext.startSpan(`${id}::${attempt}`, undefined);
-      span.setAttribute("attempt", attempt);
+      const span = spanContext.startSpan(`${id}::${ctx.info.attempt}`, undefined);
+      span.setAttribute("attempt", ctx.info.attempt);
 
       try {
         const data = await func();
