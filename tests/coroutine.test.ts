@@ -8,7 +8,7 @@ import { Handler } from "../src/handler";
 import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
-import { NoopSpanContext, NoopTracer } from "../src/tracer";
+import { NoopSpanContext } from "../src/tracer";
 import { ok, type Result } from "../src/types";
 
 class DummyNetwork implements Network {
@@ -79,7 +79,6 @@ describe("Coroutine", () => {
         func,
         args,
         handler,
-        new NoopTracer(),
         new Map(),
         (err, res) => {
           expect(err).toBe(false);
@@ -321,7 +320,6 @@ describe("Coroutine", () => {
         foo,
         [],
         h,
-        new NoopTracer(),
         new Map(),
         (err, res) => {
           resolve({ err, res });

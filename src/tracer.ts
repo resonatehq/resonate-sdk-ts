@@ -1,21 +1,21 @@
 export interface Tracer {
-  startSpan(id: string, startTime?: number): SpanAdapter;
+  startSpan(id: string, startTime: number): Span;
   decode(headers: Record<string, string>): SpanContext;
 }
 
 export interface SpanContext {
-  startSpan(id: string, startTime?: number): SpanAdapter;
+  startSpan(id: string, startTime: number): Span;
   encode(): Record<string, string>;
 }
 
-export interface SpanAdapter {
-  setAttribute(key: string, value: any): void;
+export interface Span {
+  setAttribute(key: string, value: string | number | boolean): void;
   context(): SpanContext;
-  end(): void;
+  end(endTime: number): void;
 }
 
 export class NoopTracer {
-  startSpan(id: string, startTime?: number): SpanAdapter {
+  startSpan(id: string, startTime: number): Span {
     return new NoopSpan();
   }
   decode(headers: Record<string, string>): SpanContext {
@@ -24,7 +24,7 @@ export class NoopTracer {
 }
 
 export class NoopSpanContext {
-  startSpan(id: string, startTime?: number): SpanAdapter {
+  startSpan(id: string, startTime: number): Span {
     return new NoopSpan();
   }
   encode(): Record<string, string> {
@@ -33,65 +33,74 @@ export class NoopSpanContext {
 }
 
 export class NoopSpan {
-  setAttribute(key: string, value: any): void {}
+  setAttribute(key: string, value: string | number | boolean): void {}
   context(): SpanContext {
     return new NoopSpanContext();
   }
-  end(): void {}
+  end(endTime: number): void {}
 }
 
-// import { type Context, context, propagation, type Span, type Tracer, trace } from "@opentelemetry/api";
+import {
+  type Context,
+  context,
+  type Span as OSpan,
+  type Tracer as OTracer,
+  propagation,
+  trace,
+} from "@opentelemetry/api";
 
-// export class OpenTelemetryTracer {
-//   private t: Tracer;
-//   constructor(name: string, version?: string) {
-//     this.t = trace.getTracer(name, version);
-//   }
-//   startSpan(id: string, startTime?: number): SpanAdapter {
-//     const span = this.t.startSpan(id, { startTime: startTime });
-//     return new OpenTelemetrySpan(this.t, span);
-//   }
-//   decode(headers: Record<string, string>): SpanContext {
-//     const ctx = propagation.extract(context.active(), headers);
-//     return new OpenTelemetrySpanContext(this.t, ctx);
-//   }
-// }
+export class OpenTelemetryTracer {
+  private t: OTracer;
+  constructor(name: string, version?: string) {
+    this.t = trace.getTracer(name, version);
+  }
+  startSpan(id: string, startTime: number): Span {
+    const span = this.t.startSpan(id, { startTime: startTime });
+    return new OpenTelemetrySpan(this.t, span);
+  }
+  decode(headers: Record<string, string>): SpanContext {
+    const ctx = propagation.extract(context.active(), headers);
+    return new OpenTelemetrySpanContext(this.t, ctx);
+  }
+}
 
-// export class OpenTelemetrySpanContext {
-//   private t: Tracer;
-//   private c: Context;
-//   constructor(t: Tracer, c: Context) {
-//     this.t = t;
-//     this.c = c;
-//   }
-//   startSpan(id: string, startTime?: number): SpanAdapter {
-//     const span = this.t.startSpan(id, { startTime: startTime }, this.c);
-//     return new OpenTelemetrySpan(this.t, span);
-//   }
+export class OpenTelemetrySpanContext {
+  private t: OTracer;
+  private c: Context;
 
-//   encode(): Record<string, string> {
-//     const headers: Record<string, string> = {};
-//     propagation.inject(this.c, headers);
-//     return headers;
-//   }
-// }
+  constructor(t: OTracer, c: Context) {
+    this.t = t;
+    this.c = c;
+  }
+  startSpan(id: string, startTime: number): Span {
+    const span = this.t.startSpan(id, { startTime: startTime }, this.c);
+    return new OpenTelemetrySpan(this.t, span);
+  }
 
-// export class OpenTelemetrySpan {
-//   private t: Tracer;
-//   private s: Span;
-//   constructor(t: Tracer, s: Span) {
-//     this.t = t;
-//     this.s = s;
-//   }
-//   setAttribute(key: string, value: any): void {
-//     this.s.setAttribute(key, value);
-//   }
+  encode(): Record<string, string> {
+    const headers: Record<string, string> = {};
+    propagation.inject(this.c, headers);
+    return headers;
+  }
+}
 
-//   context(): SpanContext {
-//     const ctx = trace.setSpan(context.active(), this.s);
-//     return new OpenTelemetrySpanContext(this.t, ctx);
-//   }
-//   end(): void {
-//     this.s.end();
-//   }
-// }
+export class OpenTelemetrySpan {
+  private t: OTracer;
+  private s: OSpan;
+
+  constructor(t: OTracer, s: OSpan) {
+    this.t = t;
+    this.s = s;
+  }
+  setAttribute(key: string, value: string | number | boolean): void {
+    this.s.setAttribute(key, value);
+  }
+
+  context(): SpanContext {
+    const ctx = trace.setSpan(context.active(), this.s);
+    return new OpenTelemetrySpanContext(this.t, ctx);
+  }
+  end(endTime: number): void {
+    this.s.end(endTime);
+  }
+}

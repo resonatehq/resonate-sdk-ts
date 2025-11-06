@@ -1,0 +1,46 @@
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { ZipkinExporter } from "@opentelemetry/exporter-zipkin";
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import type { Context } from "./src/context";
+import { Resonate } from "./src/resonate";
+import { OpenTelemetryTracer } from "./src/tracer";
+
+const sdk = new NodeSDK({
+  traceExporter: new ZipkinExporter({ serviceName: "resonate" }),
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+
+sdk.start();
+
+const resonate = Resonate.remote({ tracer: new OpenTelemetryTracer("resonate") });
+
+function* foo(ctx: Context) {
+  console.log(`[foo] '${ctx.id}'`);
+  yield* ctx.run(bar);
+}
+
+function* bar(ctx: Context) {
+  console.log(`[bar] '${ctx.id}'`);
+  yield* ctx.run(baz);
+}
+
+function baz(ctx: Context) {
+  console.log(`[baz] '${ctx.id}'`);
+}
+
+resonate.register(foo);
+resonate.register(bar);
+resonate.register(baz);
+
+async function main(): Promise<void> {
+  // const v1 = await resonate.rpc("foo", foo, "hello world", "21");
+  const v1 = await resonate.rpc("foo.1", foo);
+  // const v3 = await resonate.run("countdown.1", countdown, 5, 1, "http");
+  console.log(v1);
+  // console.log(v2);
+  // console.log(v3);
+  resonate.stop();
+}
+
+await main();
+await sdk.shutdown();

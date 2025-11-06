@@ -2,14 +2,14 @@ import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
 import type { DurablePromiseRecord } from "./network/network";
-import type { SpanAdapter, Tracer } from "./tracer";
+import type { Span } from "./tracer";
 import { type Callback, ko, ok, type Result, type Yieldable } from "./types";
 import * as util from "./util";
 
 export type Suspended = {
   type: "suspended";
   todo: { local: LocalTodo[]; remote: RemoteTodo[] };
-  spans: SpanAdapter[];
+  spans: Span[];
 };
 
 export type Completed = {
@@ -20,7 +20,7 @@ export type Completed = {
 export interface LocalTodo {
   id: string;
   ctx: InnerContext;
-  span: SpanAdapter;
+  span: Span;
   func: (ctx: Context, ...args: any[]) => any;
   args: any[];
 }
@@ -32,7 +32,7 @@ export interface RemoteTodo {
 type More = {
   type: "more";
   todo: { local: LocalTodo[]; remote: RemoteTodo[] };
-  spans: SpanAdapter[];
+  spans: Span[];
 };
 
 type Done = {
@@ -45,8 +45,7 @@ export class Coroutine<T> {
   private verbose: boolean;
   private decorator: Decorator<T>;
   private handler: Handler;
-  private tracer: Tracer;
-  private spans: Map<string, SpanAdapter>;
+  private spans: Map<string, Span>;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
 
@@ -55,15 +54,13 @@ export class Coroutine<T> {
     verbose: boolean,
     decorator: Decorator<T>,
     handler: Handler,
-    tracer: Tracer,
-    spans: Map<string, SpanAdapter>,
+    spans: Map<string, Span>,
     depth = 1,
   ) {
     this.ctx = ctx;
     this.verbose = verbose;
     this.decorator = decorator;
     this.handler = handler;
-    this.tracer = tracer;
     this.spans = spans;
     this.depth = depth;
 
@@ -79,8 +76,7 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     handler: Handler,
-    tracer: Tracer,
-    spans: Map<string, SpanAdapter>,
+    spans: Map<string, Span>,
     callback: Callback<Suspended | Completed>,
   ): void {
     handler.createPromise(
@@ -101,7 +97,7 @@ export class Coroutine<T> {
           return callback(false, { type: "completed", promise: res });
         }
 
-        const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), handler, tracer, spans);
+        const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), handler, spans);
         coroutine.exec((err, status) => {
           if (err) return callback(err);
           util.assertDefined(status);
@@ -144,7 +140,7 @@ export class Coroutine<T> {
   private exec(callback: Callback<More | Done>) {
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
-    const spans: SpanAdapter[] = [];
+    const spans: Span[] = [];
 
     let input: Value<any> = {
       type: "internal.nothing",
@@ -157,14 +153,13 @@ export class Coroutine<T> {
 
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
-          let span: SpanAdapter;
+          let span: Span;
           if (!this.spans.has(action.createReq.id)) {
             span = this.ctx.spanContext.startSpan(action.createReq.id, this.ctx.clock.now());
             this.spans.set(action.createReq.id, span);
           } else {
             span = this.spans.get(action.createReq.id)!;
           }
-          const childContext = span.context();
 
           this.handler.createPromise(
             action.createReq,
@@ -180,7 +175,7 @@ export class Coroutine<T> {
                 timeout: res.timeout,
                 version: action.version,
                 retryPolicy: action.retryPolicy,
-                spanContext: childContext,
+                spanContext: span.context(),
               });
 
               if (res.state === "pending") {
@@ -208,7 +203,6 @@ export class Coroutine<T> {
                   this.verbose,
                   new Decorator(action.func(ctx, ...action.args)),
                   this.handler,
-                  this.tracer,
                   this.spans,
                   this.depth + 1,
                 );
@@ -240,7 +234,7 @@ export class Coroutine<T> {
                         strict: false,
                       },
                       (err, res) => {
-                        span.end();
+                        span.end(this.ctx.clock.now());
                         spans.splice(spans.indexOf(span));
 
                         if (err) {
@@ -301,14 +295,14 @@ export class Coroutine<T> {
               }
             },
             action.func.name,
-            childContext.encode(),
+            span.context().encode(),
           );
           return; // Exit the while loop to wait for async callback
         }
 
         // Handle internal.async.r
         if (action.type === "internal.async.r") {
-          let span: SpanAdapter;
+          let span: Span;
           if (!this.spans.has(action.createReq.id)) {
             span = this.ctx.spanContext.startSpan(action.createReq.id, this.ctx.clock.now());
             this.spans.set(action.createReq.id, span);
@@ -319,7 +313,7 @@ export class Coroutine<T> {
           this.handler.createPromise(
             action.createReq,
             (err, res) => {
-              span.end();
+              span.end(this.ctx.clock.now());
               if (err) {
                 err.log(this.verbose);
                 return callback(true);

@@ -194,7 +194,7 @@ export class Resonate {
             recv: this.unicast,
           };
 
-          const res = await this.createSubscription(createSubscriptionReq, {});
+          const res = await this.createSubscription(createSubscriptionReq);
           if (res.state !== "pending") {
             sub.resolve(res);
             this.subscriptions.delete(id);
@@ -499,11 +499,11 @@ export class Resonate {
 
     if (task) {
       this.inner.process(spanContext, { kind: "claimed", task: task, rootPromise: promise }, () => {
-        span.end();
+        span.end(this.clock.now());
       });
     }
 
-    return this.createHandle(promise, spanContext.encode());
+    return this.createHandle(promise);
   }
 
   /**
@@ -617,9 +617,9 @@ export class Resonate {
       spanContext.encode(),
     );
 
-    span.end();
+    span.end(this.clock.now());
 
-    return this.createHandle(promise, spanContext.encode());
+    return this.createHandle(promise);
   }
 
   public async schedule<F extends Func>(
@@ -688,7 +688,7 @@ export class Resonate {
       id: id,
     });
 
-    return this.createHandle(promise, {});
+    return this.createHandle(promise);
   }
 
   public options(opts: Partial<Options> = {}): Options {
@@ -753,10 +753,7 @@ export class Resonate {
     );
   }
 
-  private createSubscription(
-    req: CreateSubscriptionReq,
-    headers: Record<string, string>,
-  ): Promise<DurablePromiseRecord<any>> {
+  private createSubscription(req: CreateSubscriptionReq): Promise<DurablePromiseRecord<any>> {
     return new Promise((resolve, reject) =>
       this.handler.createSubscription(
         req,
@@ -767,7 +764,6 @@ export class Resonate {
             resolve(res!);
           }
         },
-        headers,
         true,
       ),
     );
@@ -785,7 +781,7 @@ export class Resonate {
     );
   }
 
-  private createHandle(promise: DurablePromiseRecord<any>, headers: Record<string, string>): ResonateHandle<any> {
+  private createHandle(promise: DurablePromiseRecord<any>): ResonateHandle<any> {
     const createSubscriptionReq: CreateSubscriptionReq = {
       kind: "createSubscription",
       id: this.pid,
@@ -796,9 +792,8 @@ export class Resonate {
 
     return {
       id: promise.id,
-      done: () => this.createSubscription(createSubscriptionReq, headers).then((res) => res.state !== "pending"),
-      result: () =>
-        this.createSubscription(createSubscriptionReq, headers).then((res) => this.subscribe(promise.id, res)),
+      done: () => this.createSubscription(createSubscriptionReq).then((res) => res.state !== "pending"),
+      result: () => this.createSubscription(createSubscriptionReq).then((res) => this.subscribe(promise.id, res)),
     };
   }
 

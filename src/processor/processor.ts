@@ -1,5 +1,5 @@
 import type { InnerContext } from "../context";
-import type { SpanContext, Tracer } from "../tracer";
+import type { SpanContext } from "../tracer";
 import type { Result } from "../types";
 
 type F = () => Promise<unknown>;
@@ -12,7 +12,6 @@ export interface Processor {
     func: F,
     done: (result: Result<unknown>) => void,
     verbose: boolean,
-    tracer: Tracer,
     spanContext: SpanContext,
   ): void;
 }
@@ -25,10 +24,9 @@ export class AsyncProcessor implements Processor {
     func: () => Promise<T>,
     done: (result: Result<T>) => void,
     verbose: boolean,
-    tracer: Tracer,
     spanContext: SpanContext,
   ): void {
-    this.run(id, ctx, name, func, done, verbose, tracer, spanContext);
+    this.run(id, ctx, name, func, done, verbose, spanContext);
   }
 
   private async run<T>(
@@ -38,12 +36,11 @@ export class AsyncProcessor implements Processor {
     func: () => Promise<T>,
     done: (result: Result<T>) => void,
     verbose: boolean,
-    tracer: Tracer,
     spanContext: SpanContext,
   ) {
     while (true) {
       const retryIn: number | null = 0;
-      const span = spanContext.startSpan(`${id}::${ctx.info.attempt}`, undefined);
+      const span = spanContext.startSpan(`${id}::${ctx.info.attempt}`, Date.now());
       span.setAttribute("attempt", ctx.info.attempt);
 
       try {
@@ -67,7 +64,7 @@ export class AsyncProcessor implements Processor {
           console.warn(error);
         }
       } finally {
-        span.end();
+        span.end(Date.now());
       }
       await new Promise((resolve) => setTimeout(resolve, retryIn));
       ctx.info.attempt++;

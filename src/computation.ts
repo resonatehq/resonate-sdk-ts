@@ -10,7 +10,7 @@ import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never } from "./retries";
-import type { SpanAdapter, SpanContext, Tracer } from "./tracer";
+import type { Span, SpanContext, Tracer } from "./tracer";
 import type { Callback, Func } from "./types";
 import * as util from "./util";
 
@@ -41,9 +41,8 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
-  private tracer: Tracer;
   private spanContext: SpanContext;
-  private spans: Map<string, SpanAdapter>;
+  private spans: Map<string, Span>;
 
   private seen: Set<string> = new Set();
   private processing = false;
@@ -80,7 +79,6 @@ export class Computation {
     this.dependencies = dependencies;
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
-    this.tracer = tracer;
     this.spanContext = spanContext;
     this.spans = new Map();
   }
@@ -213,7 +211,7 @@ export class Computation {
     args: any[],
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, this.tracer, this.spans, (err, status) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, this.spans, (err, status) => {
       if (err) {
         return done(err);
       }
@@ -273,7 +271,6 @@ export class Computation {
           func.name,
         ),
       this.verbose,
-      this.tracer,
       this.spanContext,
     );
   }
@@ -288,7 +285,7 @@ export class Computation {
 
       nursery.hold((next) => {
         this.processFunction(id, ctx, func, args, (err) => {
-          span.end();
+          span.end(this.clock.now());
           next();
 
           if (err) {
@@ -306,7 +303,7 @@ export class Computation {
   private processRemoteTodo(
     nursery: Nursery<boolean, Status>,
     todo: RemoteTodo[],
-    spans: SpanAdapter[],
+    spans: Span[],
     timeout: number,
     done: Callback<Status>,
   ) {
@@ -354,7 +351,7 @@ export class Computation {
         }
 
         for (const span of spans) {
-          span.end();
+          span.end(this.clock.now());
         }
 
         // once all callbacks are created we can call done
