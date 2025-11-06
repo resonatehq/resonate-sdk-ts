@@ -55,12 +55,10 @@ export class OpenTelemetryTracer {
     this.t = trace.getTracer(name, version);
   }
   startSpan(id: string, startTime: number): Span {
-    const span = this.t.startSpan(id, { startTime: startTime });
-    return new OpenTelemetrySpan(this.t, span);
+    return new OpenTelemetrySpan(this.t, this.t.startSpan(id, { startTime: startTime }));
   }
   decode(headers: Record<string, string>): SpanContext {
-    const ctx = propagation.extract(context.active(), headers);
-    return new OpenTelemetrySpanContext(this.t, ctx);
+    return new OpenTelemetrySpanContext(this.t, propagation.extract(context.active(), headers));
   }
 }
 
@@ -73,8 +71,7 @@ export class OpenTelemetrySpanContext {
     this.c = c;
   }
   startSpan(id: string, startTime: number): Span {
-    const span = this.t.startSpan(id, { startTime: startTime }, this.c);
-    return new OpenTelemetrySpan(this.t, span);
+    return new OpenTelemetrySpan(this.t, this.t.startSpan(id, { startTime: startTime }, this.c));
   }
 
   encode(): Record<string, string> {
@@ -97,8 +94,7 @@ export class OpenTelemetrySpan {
   }
 
   context(): SpanContext {
-    const ctx = trace.setSpan(context.active(), this.s);
-    return new OpenTelemetrySpanContext(this.t, ctx);
+    return new OpenTelemetrySpanContext(this.t, trace.setSpan(context.active(), this.s));
   }
   end(endTime: number): void {
     this.s.end(endTime);
