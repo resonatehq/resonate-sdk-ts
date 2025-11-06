@@ -466,44 +466,49 @@ export class Resonate {
     const span = this.tracer.startSpan(id, this.clock.now());
     const spanContext = span.context();
 
-    const { promise, task } = await this.createPromiseAndTask(
-      {
-        kind: "createPromiseAndTask",
-        promise: {
-          id: id,
-          timeout: Date.now() + opts.timeout,
-          param: {
-            data: {
-              func: registered.name,
-              args: args,
-              version: registered.version,
+    try {
+      const { promise, task } = await this.createPromiseAndTask(
+        {
+          kind: "createPromiseAndTask",
+          promise: {
+            id: id,
+            timeout: Date.now() + opts.timeout,
+            param: {
+              data: {
+                func: registered.name,
+                args: args,
+                version: registered.version,
+              },
+            },
+            tags: {
+              ...opts.tags,
+              "resonate:root": id,
+              "resonate:parent": id,
+              "resonate:scope": "global",
+              "resonate:invoke": this.anycastPreference,
             },
           },
-          tags: {
-            ...opts.tags,
-            "resonate:root": id,
-            "resonate:parent": id,
-            "resonate:scope": "global",
-            "resonate:invoke": this.anycastPreference,
+          task: {
+            processId: this.pid,
+            ttl: this.ttl,
           },
+          iKey: id,
+          strict: false,
         },
-        task: {
-          processId: this.pid,
-          ttl: this.ttl,
-        },
-        iKey: id,
-        strict: false,
-      },
-      spanContext.encode(),
-    );
+        spanContext.encode(),
+      );
 
-    if (task) {
-      this.inner.process(spanContext, { kind: "claimed", task: task, rootPromise: promise }, () => {
-        span.end(this.clock.now());
-      });
+      if (task) {
+        this.inner.process(spanContext, { kind: "claimed", task: task, rootPromise: promise }, () => {
+          span.end(this.clock.now());
+        });
+      }
+
+      return this.createHandle(promise);
+    } catch (e) {
+      span.end(this.clock.now());
+      throw e;
     }
-
-    return this.createHandle(promise);
   }
 
   /**
@@ -592,34 +597,38 @@ export class Resonate {
     const span = this.tracer.startSpan(id, this.clock.now());
     const spanContext = span.context();
 
-    const promise = await this.createPromise(
-      {
-        kind: "createPromise",
-        id: id,
-        timeout: Date.now() + opts.timeout,
-        param: {
-          data: {
-            func: registered ? registered.name : (funcOrName as string),
-            args: args,
-            version: registered ? registered.version : opts.version || 1,
+    try {
+      const promise = await this.createPromise(
+        {
+          kind: "createPromise",
+          id: id,
+          timeout: Date.now() + opts.timeout,
+          param: {
+            data: {
+              func: registered ? registered.name : (funcOrName as string),
+              args: args,
+              version: registered ? registered.version : opts.version || 1,
+            },
           },
+          tags: {
+            ...opts.tags,
+            "resonate:root": id,
+            "resonate:parent": id,
+            "resonate:scope": "global",
+            "resonate:invoke": opts.target,
+          },
+          iKey: id,
+          strict: false,
         },
-        tags: {
-          ...opts.tags,
-          "resonate:root": id,
-          "resonate:parent": id,
-          "resonate:scope": "global",
-          "resonate:invoke": opts.target,
-        },
-        iKey: id,
-        strict: false,
-      },
-      spanContext.encode(),
-    );
+        spanContext.encode(),
+      );
 
-    span.end(this.clock.now());
+      span.end(this.clock.now());
 
-    return this.createHandle(promise);
+      return this.createHandle(promise);
+    } finally {
+      span.end(this.clock.now());
+    }
   }
 
   public async schedule<F extends Func>(

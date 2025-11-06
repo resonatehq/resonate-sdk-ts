@@ -166,6 +166,7 @@ export class Coroutine<T> {
             (err, res) => {
               if (err) {
                 err.log(this.verbose);
+                span.end(this.ctx.clock.now());
                 return callback(true);
               }
               util.assertDefined(res);
@@ -208,7 +209,10 @@ export class Coroutine<T> {
                 );
 
                 const cb: Callback<More | Done> = (err, status) => {
-                  if (err) return callback(err);
+                  if (err) {
+                    span.end(this.ctx.clock.now());
+                    return callback(err);
+                  }
                   util.assertDefined(status);
 
                   if (status.type === "more") {
