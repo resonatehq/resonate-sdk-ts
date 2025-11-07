@@ -1,41 +1,31 @@
 export interface Tracer {
   startSpan(id: string, startTime: number): Span;
-  decode(headers: Record<string, string>): SpanContext;
-}
-
-export interface SpanContext {
-  startSpan(id: string, startTime: number): Span;
-  encode(): Record<string, string>;
+  decode(headers: Record<string, string>): Span;
 }
 
 export interface Span {
+  startSpan(id: string, startTime: number): Span;
+  encode(): Record<string, string>;
   setAttribute(key: string, value: string | number | boolean): void;
-  context(): SpanContext;
   end(endTime: number): void;
 }
 
 export class NoopTracer {
-  startSpan(id: string, startTime: number): Span {
+  startSpan(id: string, startTime: number): NoopSpan {
     return new NoopSpan();
   }
-  decode(headers: Record<string, string>): SpanContext {
-    return new NoopSpanContext();
-  }
-}
-
-export class NoopSpanContext {
-  startSpan(id: string, startTime: number): Span {
+  decode(headers: Record<string, string>): Span {
     return new NoopSpan();
-  }
-  encode(): Record<string, string> {
-    return {};
   }
 }
 
 export class NoopSpan {
+  startSpan(id: string, startTime: number): Span {
+    return new NoopSpan();
+  }
   setAttribute(key: string, value: string | number | boolean): void {}
-  context(): SpanContext {
-    return new NoopSpanContext();
+  encode(): Record<string, string> {
+    return {};
   }
   end(endTime: number): void {}
 }

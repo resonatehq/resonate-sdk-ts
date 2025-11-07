@@ -5,7 +5,7 @@ import type { Heartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
 import type { Registry } from "./registry";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries";
-import type { SpanContext, Tracer } from "./tracer";
+import type { Span, Tracer } from "./tracer";
 import type { Callback } from "./types";
 import * as util from "./util";
 
@@ -103,7 +103,7 @@ export class ResonateInner {
     messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
-  public process(spanContext: SpanContext, task: Task, done: Callback<Status>) {
+  public process(span: Span, task: Task, done: Callback<Status>) {
     let computation = this.computations.get(task.task.rootPromiseId);
     if (!computation) {
       computation = new Computation(
@@ -122,7 +122,7 @@ export class ResonateInner {
         this.dependencies,
         this.verbose,
         this.tracer,
-        spanContext,
+        span,
       );
       this.computations.set(task.task.rootPromiseId, computation);
     }

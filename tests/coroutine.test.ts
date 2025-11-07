@@ -8,7 +8,7 @@ import { Handler } from "../src/handler";
 import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
-import { NoopSpanContext } from "../src/tracer";
+import { NoopSpan } from "../src/tracer";
 import { ok, type Result } from "../src/types";
 
 class DummyNetwork implements Network {
@@ -75,7 +75,7 @@ describe("Coroutine", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          spanContext: new NoopSpanContext(),
+          span: new NoopSpan(),
         }),
         func,
         args,
@@ -317,7 +317,7 @@ describe("Coroutine", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          spanContext: new NoopSpanContext(),
+          span: new NoopSpan(),
         }),
         foo,
         [],

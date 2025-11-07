@@ -464,7 +464,6 @@ export class Resonate {
     util.assert(registered.version > 0, "function version must be greater than zero");
 
     const span = this.tracer.startSpan(id, this.clock.now());
-    const spanContext = span.context();
 
     try {
       const { promise, task } = await this.createPromiseAndTask(
@@ -496,11 +495,11 @@ export class Resonate {
           iKey: id,
           strict: false,
         },
-        spanContext.encode(),
+        span.encode(),
       );
 
       if (task) {
-        this.inner.process(spanContext, { kind: "claimed", task: task, rootPromise: promise }, () => {
+        this.inner.process(span, { kind: "claimed", task: task, rootPromise: promise }, () => {
           span.end(this.clock.now());
         });
       } else {
@@ -598,7 +597,6 @@ export class Resonate {
     }
 
     const span = this.tracer.startSpan(id, this.clock.now());
-    const spanContext = span.context();
 
     try {
       const promise = await this.createPromise(
@@ -624,7 +622,7 @@ export class Resonate {
           iKey: id,
           strict: false,
         },
-        spanContext.encode(),
+        span.encode(),
       );
       return this.createHandle(promise);
     } finally {

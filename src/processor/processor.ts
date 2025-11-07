@@ -1,5 +1,5 @@
 import type { InnerContext } from "../context";
-import type { SpanContext } from "../tracer";
+import type { Span } from "../tracer";
 import type { Result } from "../types";
 
 type F = () => Promise<unknown>;
@@ -12,7 +12,7 @@ export interface Processor {
     func: F,
     done: (result: Result<unknown>) => void,
     verbose: boolean,
-    spanContext: SpanContext,
+    span: Span,
   ): void;
 }
 
@@ -24,9 +24,9 @@ export class AsyncProcessor implements Processor {
     func: () => Promise<T>,
     done: (result: Result<T>) => void,
     verbose: boolean,
-    spanContext: SpanContext,
+    span: Span,
   ): void {
-    this.run(id, ctx, name, func, done, verbose, spanContext);
+    this.run(id, ctx, name, func, done, verbose, span);
   }
 
   private async run<T>(
@@ -36,12 +36,12 @@ export class AsyncProcessor implements Processor {
     func: () => Promise<T>,
     done: (result: Result<T>) => void,
     verbose: boolean,
-    spanContext: SpanContext,
+    span: Span,
   ) {
     while (true) {
       let retryIn: number | null = null;
-      const span = spanContext.startSpan(`${id}::${ctx.info.attempt}`, ctx.clock.now());
-      span.setAttribute("attempt", ctx.info.attempt);
+      const childSpan = span.startSpan(`${id}::${ctx.info.attempt}`, ctx.clock.now());
+      childSpan.setAttribute("attempt", ctx.info.attempt);
 
       try {
         const data = await func();
@@ -65,7 +65,7 @@ export class AsyncProcessor implements Processor {
           console.warn(error);
         }
       } finally {
-        span.end(ctx.clock.now());
+        childSpan.end(ctx.clock.now());
       }
 
       // Ensure a numeric delay for setTimeout; guard against null just in case

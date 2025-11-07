@@ -165,7 +165,7 @@ export class Coroutine<T> {
         if (action.type === "internal.async.l") {
           let span: Span;
           if (!this.spans.has(action.createReq.id)) {
-            span = this.ctx.spanContext.startSpan(action.createReq.id, this.ctx.clock.now());
+            span = this.ctx.span.startSpan(action.createReq.id, this.ctx.clock.now());
             this.spans.set(action.createReq.id, span);
           } else {
             span = this.spans.get(action.createReq.id)!;
@@ -187,7 +187,7 @@ export class Coroutine<T> {
                 timeout: res.timeout,
                 version: action.version,
                 retryPolicy: action.retryPolicy,
-                spanContext: span.context(),
+                span: span,
               });
 
               if (res.state === "pending") {
@@ -311,7 +311,7 @@ export class Coroutine<T> {
               }
             },
             action.func.name,
-            span.context().encode(),
+            span.encode(),
           );
           return; // Exit the while loop to wait for async callback
         }
@@ -320,7 +320,7 @@ export class Coroutine<T> {
         if (action.type === "internal.async.r") {
           let span: Span;
           if (!this.spans.has(action.createReq.id)) {
-            span = this.ctx.spanContext.startSpan(action.createReq.id, this.ctx.clock.now());
+            span = this.ctx.span.startSpan(action.createReq.id, this.ctx.clock.now());
             this.spans.set(action.createReq.id, span);
           } else {
             span = this.spans.get(action.createReq.id)!;
@@ -359,7 +359,7 @@ export class Coroutine<T> {
               next();
             },
             "unknown",
-            span.context().encode(),
+            span.encode(),
           );
           return; // Exit the while loop to wait for async callback
         }
