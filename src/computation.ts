@@ -271,7 +271,7 @@ export class Computation {
           func.name,
         ),
       this.verbose,
-      this.spanContext,
+      ctx.spanContext,
     );
   }
 

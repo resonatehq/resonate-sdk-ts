@@ -26,6 +26,13 @@ function* bar(ctx: Context) {
 
 function baz(ctx: Context) {
   console.log(`[baz] '${ctx.id}'`);
+
+  // Randomly fail 50% of the time
+  if (Math.random() < 0.5) {
+    throw new Error(`[baz] Failed for '${ctx.id}'`);
+  }
+
+  console.log(`[baz] Succeeded for '${ctx.id}'`);
 }
 
 resonate.register(foo);
