@@ -176,6 +176,10 @@ export class Computation {
           ? new Never()
           : new Exponential();
 
+      if (retry && !retryCtor) {
+        console.warn(`Options. Retry policy '${retry.type}' not found. Will ignore.`);
+      }
+
       const ctx = new InnerContext({
         id: this.id,
         func: registered.func.name,
@@ -187,10 +191,6 @@ export class Computation {
         version: registered.version,
         retryPolicy: retryPolicy,
       });
-
-      if (retry && !retryCtor) {
-        console.warn(`Options. Retry policy '${retry.type}' not found. Will ignore.`);
-      }
 
       if (util.isGeneratorFunction(registered.func)) {
         this.processGenerator(nursery, ctx, registered.func, args, done);
