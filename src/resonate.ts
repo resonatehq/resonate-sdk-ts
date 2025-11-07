@@ -502,6 +502,8 @@ export class Resonate {
         this.inner.process(spanContext, { kind: "claimed", task: task, rootPromise: promise }, () => {
           span.end(this.clock.now());
         });
+      } else {
+        span.end(this.clock.now());
       }
 
       return this.createHandle(promise);

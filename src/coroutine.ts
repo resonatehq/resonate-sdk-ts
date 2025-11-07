@@ -285,6 +285,7 @@ export class Coroutine<T> {
                   coroutine.exec(cb);
                 }
               } else {
+                span.end(ctx.clock.now());
                 // durable promise is completed
                 input = {
                   type: "internal.promise",
