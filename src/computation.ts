@@ -189,7 +189,6 @@ export class Computation {
       });
 
       if (retry && !retryCtor) {
-        // TODO: use ctx.log to suppress duplicate warnings
         console.warn(`Options. Retry policy '${retry.type}' not found. Will ignore.`);
       }
 

@@ -37,6 +37,10 @@ type Done = {
   result: Result<any>;
 };
 
+// a simple map to suppress duplicate warnings, necessary due to
+// micro retries
+const logged: Map<string, boolean> = new Map();
+
 export class Coroutine<T> {
   private ctx: InnerContext;
   private verbose: boolean;
@@ -52,9 +56,9 @@ export class Coroutine<T> {
     this.handler = handler;
     this.depth = depth;
 
-    if (!(this.ctx.retryPolicy instanceof Never)) {
-      // TODO: use ctx.log to suppress duplicate warnings
+    if (!(this.ctx.retryPolicy instanceof Never) && !logged.has(this.ctx.id)) {
       console.warn(`Options. Generator function '${this.ctx.func}' does not support retries. Will ignore.`);
+      logged.set(this.ctx.id, true);
     }
 
     if (typeof process !== "undefined" && process.env.QUEUE_MICROTASK_EVERY_N) {
