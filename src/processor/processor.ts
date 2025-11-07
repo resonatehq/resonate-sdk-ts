@@ -39,7 +39,7 @@ export class AsyncProcessor implements Processor {
     spanContext: SpanContext,
   ) {
     while (true) {
-      const retryIn: number | null = 0;
+      let retryIn: number | null = null;
       const span = spanContext.startSpan(`${id}::${ctx.info.attempt}`, ctx.clock.now());
       span.setAttribute("attempt", ctx.info.attempt);
 
@@ -48,13 +48,14 @@ export class AsyncProcessor implements Processor {
         done({ success: true, value: data });
         return;
       } catch (error) {
-        const retryIn = ctx.retryPolicy.next(ctx.info.attempt);
+        retryIn = ctx.retryPolicy.next(ctx.info.attempt);
         if (retryIn === null) {
           done({ success: false, error });
           return;
         }
 
-        if (Date.now() + retryIn >= ctx.info.timeout) {
+        // Use the same clock sourced from ctx for consistency
+        if (ctx.clock.now() + retryIn >= ctx.info.timeout) {
           done({ success: false, error });
           return;
         }
@@ -66,7 +67,9 @@ export class AsyncProcessor implements Processor {
       } finally {
         span.end(ctx.clock.now());
       }
-      await new Promise((resolve) => setTimeout(resolve, retryIn));
+
+      // Ensure a numeric delay for setTimeout; guard against null just in case
+      await new Promise((resolve) => setTimeout(resolve, retryIn ?? 0));
       ctx.info.attempt++;
     }
   }
