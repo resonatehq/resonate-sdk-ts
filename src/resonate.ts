@@ -624,9 +624,6 @@ export class Resonate {
         },
         spanContext.encode(),
       );
-
-      span.end(this.clock.now());
-
       return this.createHandle(promise);
     } finally {
       span.end(this.clock.now());
