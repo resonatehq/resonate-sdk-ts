@@ -33,6 +33,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
           registry: new Registry(),
@@ -80,6 +81,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
           registry: new Registry(),
@@ -154,6 +156,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
           registry: new Registry(),
@@ -199,6 +202,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
           registry: new Registry(),
@@ -251,6 +255,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
           registry: new Registry(),
@@ -305,6 +310,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
           registry: new Registry(),
@@ -338,6 +344,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
           registry: new Registry(),

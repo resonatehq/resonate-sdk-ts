@@ -67,6 +67,7 @@ describe("Coroutine", () => {
         false,
         new InnerContext({
           id: uuid,
+          func: func.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
           registry: new Registry(),
@@ -308,6 +309,7 @@ describe("Coroutine", () => {
         false,
         new InnerContext({
           id: "foo.1",
+          func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
           registry: new Registry(),
