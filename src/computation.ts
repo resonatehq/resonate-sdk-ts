@@ -333,7 +333,12 @@ export class Computation {
           this.spanContext.encode(),
         ),
       (err, results) => {
-        if (err) return done(err);
+        if (err) {
+          for (const span of spans) {
+            span.end(this.clock.now());
+          }
+          return done(err);
+        }
         util.assertDefined(results);
 
         const callbacks: CallbackRecord[] = [];
