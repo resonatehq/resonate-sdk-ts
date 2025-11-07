@@ -227,8 +227,6 @@ export class HttpNetwork implements Network {
         return this.searchPromises(req, retryPolicy);
       case "searchSchedules":
         return this.searchSchedules(req, retryPolicy);
-      default:
-        util.assertNever(req);
     }
   }
 

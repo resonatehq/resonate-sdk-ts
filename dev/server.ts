@@ -361,9 +361,6 @@ export class Server {
       case "searchSchedules": {
         return { kind: "searchSchedules", schedules: this.searchSchedules({ ...requ }) };
       }
-
-      default:
-        util.assertNever(requ);
     }
   }
 
@@ -668,9 +665,6 @@ export class Server {
       }
       case "notify":
         throw exceptions.SERVER_ERROR(`Unexpected task type '${task.type}' notify`);
-
-      default:
-        util.assertNever(task.type);
     }
   }
 

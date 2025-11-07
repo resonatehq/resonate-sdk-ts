@@ -1,4 +1,3 @@
-import exceptions from "./exceptions";
 import type { DurablePromiseRecord, TaskRecord } from "./network/network";
 import { type Options, RESONATE_OPTIONS } from "./options";
 
@@ -121,8 +120,4 @@ export function getCallerInfo(): string {
   const callerLine = stack?.[3];
 
   return callerLine.trim();
-}
-
-export function assertNever(x: never): never {
-  throw exceptions.SERVER_ERROR(`Unsupported object ${x}`);
 }

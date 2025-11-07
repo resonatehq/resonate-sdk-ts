@@ -16,19 +16,19 @@ const resonate = Resonate.remote({ tracer: new OpenTelemetryTracer("resonate") }
 
 function* foo(ctx: Context) {
   console.log(`[foo] '${ctx.id}'`);
-  yield* ctx.run(bar);
+  yield* ctx.rpc(bar);
 }
 
 function* bar(ctx: Context) {
   console.log(`[bar] '${ctx.id}'`);
-  yield* ctx.run(baz);
+  yield* ctx.rpc(baz);
 }
 
 function baz(ctx: Context) {
   console.log(`[baz] '${ctx.id}'`);
 
   // Randomly fail 50% of the time
-  if (Math.random() < 0.5) {
+  if (Math.random() < 0.9) {
     throw new Error(`[baz] Failed for '${ctx.id}'`);
   }
 
@@ -36,6 +36,8 @@ function baz(ctx: Context) {
 }
 
 resonate.register(foo);
+resonate.register(bar);
+resonate.register(baz);
 
 async function main(): Promise<void> {
   // const v1 = await resonate.rpc("foo", foo, "hello world", "21");
