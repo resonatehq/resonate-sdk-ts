@@ -33,6 +33,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          task: { id: "__invoke:foo", counter: 1, timeout: 0, rootPromiseId: "foo" },
           func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
@@ -81,6 +82,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          task: { id: "__invoke:foo", counter: 1, timeout: 0, rootPromiseId: "foo" },
           func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
@@ -156,6 +158,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          task: { id: "__invoke:foo", counter: 1, timeout: 0, rootPromiseId: "foo" },
           func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
@@ -202,6 +205,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          task: { id: "__invoke:foo", counter: 1, timeout: 0, rootPromiseId: "foo" },
           func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
@@ -255,6 +259,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          task: { id: "__invoke:foo", counter: 1, timeout: 0, rootPromiseId: "foo" },
           func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
@@ -310,6 +315,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          task: { id: "__invoke:foo", counter: 1, timeout: 0, rootPromiseId: "foo" },
           func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
@@ -344,6 +350,7 @@ describe("Decorator", () => {
       foo(
         new InnerContext({
           id: "foo",
+          task: { id: "__invoke:foo", counter: 1, timeout: 0, rootPromiseId: "foo" },
           func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),

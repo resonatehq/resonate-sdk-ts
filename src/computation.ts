@@ -134,7 +134,7 @@ export class Computation {
     }
   }
 
-  private processClaimed({ task, rootPromise, leafPromise }: ClaimedTask, done: Callback<Status>) {
+  private processClaimed({ task, rootPromise }: ClaimedTask, done: Callback<Status>) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
 
     const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
@@ -192,6 +192,7 @@ export class Computation {
 
       const ctx = new InnerContext({
         id: this.id,
+        task: task,
         func: registered.func.name,
         anycast: this.anycastNoPreference,
         clock: this.clock,
@@ -258,7 +259,6 @@ export class Computation {
     this.processor.process(
       id,
       ctx,
-      func.name,
       async () => await func(ctx, ...args),
       (res) =>
         this.handler.completePromise(

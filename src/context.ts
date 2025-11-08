@@ -1,6 +1,6 @@
 import type { Clock } from "./clock";
 import exceptions, { type ResonateError } from "./exceptions";
-import type { CreatePromiseReq } from "./network/network";
+import type { CreatePromiseReq, TaskRecord } from "./network/network";
 import { Options } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
@@ -72,11 +72,21 @@ export class LFC<T> implements Iterable<LFC<T>> {
 
 export class RFI<T> implements Iterable<RFI<T>> {
   public id: string;
+  public func: string;
+  public version: number;
   public createReq: CreatePromiseReq;
   public mode: "attached" | "detached";
 
-  constructor(id: string, createReq: CreatePromiseReq, mode: "attached" | "detached" = "attached") {
+  constructor(
+    id: string,
+    func: string,
+    version: number,
+    createReq: CreatePromiseReq,
+    mode: "attached" | "detached" = "attached",
+  ) {
     this.id = id;
+    this.func = func;
+    this.version = version;
     this.createReq = createReq;
     this.mode = mode;
   }
@@ -90,11 +100,15 @@ export class RFI<T> implements Iterable<RFI<T>> {
 
 export class RFC<T> implements Iterable<RFC<T>> {
   public id: string;
+  public func: string;
+  public version: number;
   public createReq: CreatePromiseReq;
   public mode = "attached" as const;
 
-  constructor(id: string, createReq: CreatePromiseReq) {
+  constructor(id: string, func: string, version: number, createReq: CreatePromiseReq) {
     this.id = id;
+    this.func = func;
+    this.version = version;
     this.createReq = createReq;
   }
 
@@ -239,6 +253,7 @@ export interface ResonateMath {
 export class InnerContext implements Context {
   readonly id: string;
   readonly info: { attempt: number; readonly timeout: number; readonly version: number };
+  readonly task: TaskRecord;
   readonly func: string;
   readonly retryPolicy: RetryPolicy;
 
@@ -260,6 +275,7 @@ export class InnerContext implements Context {
     id,
     rId = id,
     pId = id,
+    task,
     func,
     anycast,
     clock,
@@ -273,6 +289,7 @@ export class InnerContext implements Context {
     id: string;
     rId?: string;
     pId?: string;
+    task: TaskRecord;
     func: string;
     anycast: string;
     clock: Clock;
@@ -286,6 +303,7 @@ export class InnerContext implements Context {
     this.id = id;
     this.rId = rId;
     this.pId = pId;
+    this.task = task;
     this.func = func;
     this.anycast = anycast;
     this.clock = clock;
@@ -320,6 +338,7 @@ export class InnerContext implements Context {
       id,
       rId: this.rId,
       pId: this.id,
+      task: this.task,
       func,
       anycast: this.anycast,
       clock: this.clock,
@@ -418,14 +437,17 @@ export class InnerContext implements Context {
     const id = opts.id ?? this.seqid();
     this.seq++;
 
+    const func = registered ? registered.name : (funcOrName as string);
+    const version = registered ? registered.version : 1;
+
     const data = {
-      func: registered ? registered.name : (funcOrName as string),
+      func: func,
       args: argu,
       retry: opts.retryPolicy?.encode(),
       version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFI(id, this.remoteCreateReq(id, data, opts));
+    return new RFI(id, func, version, this.remoteCreateReq(id, data, opts));
   }
 
   rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
@@ -448,14 +470,17 @@ export class InnerContext implements Context {
     const id = opts.id ?? this.seqid();
     this.seq++;
 
+    const func = registered ? registered.name : (funcOrName as string);
+    const version = registered ? registered.version : 1;
+
     const data = {
-      func: registered ? registered.name : (funcOrName as string),
+      func: func,
       args: argu,
       retry: opts.retryPolicy?.encode(),
       version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFC(id, this.remoteCreateReq(id, data, opts));
+    return new RFC(id, func, version, this.remoteCreateReq(id, data, opts));
   }
 
   detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
@@ -478,14 +503,17 @@ export class InnerContext implements Context {
     const id = opts.id ?? this.seqid();
     this.seq++;
 
+    const func = registered ? registered.name : (funcOrName as string);
+    const version = registered ? registered.version : 1;
+
     const data = {
-      func: registered ? registered.name : (funcOrName as string),
+      func: func,
       args: argu,
       retry: opts.retryPolicy?.encode(),
       version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFI(id, this.remoteCreateReq(id, data, opts, Number.MAX_SAFE_INTEGER), "detached");
+    return new RFI(id, func, version, this.remoteCreateReq(id, data, opts, Number.MAX_SAFE_INTEGER), "detached");
   }
 
   promise<T>({
@@ -502,7 +530,7 @@ export class InnerContext implements Context {
     id = id ?? this.seqid();
     this.seq++;
 
-    return new RFI(id, this.latentCreateOpts(id, timeout, data, tags));
+    return new RFI(id, "unknown", 1, this.latentCreateOpts(id, timeout, data, tags));
   }
 
   sleep(msOrOpts: number | { for?: number; until?: Date }): RFC<void> {
@@ -521,7 +549,7 @@ export class InnerContext implements Context {
     const id = this.seqid();
     this.seq++;
 
-    return new RFC(id, this.sleepCreateOpts(id, until));
+    return new RFC(id, "sleep", 1, this.sleepCreateOpts(id, until));
   }
 
   panic(condition: boolean, msg?: string): DIE {

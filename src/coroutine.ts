@@ -166,6 +166,11 @@ export class Coroutine<T> {
           let span: Span;
           if (!this.spans.has(action.createReq.id)) {
             span = this.ctx.span.startSpan(action.createReq.id, this.ctx.clock.now());
+            span.setAttribute("type", "run");
+            span.setAttribute("func", action.func.name);
+            span.setAttribute("version", action.version);
+            span.setAttribute("task.id", this.ctx.task.id);
+            span.setAttribute("task.counter", this.ctx.task.counter);
             this.spans.set(action.createReq.id, span);
           } else {
             span = this.spans.get(action.createReq.id)!;
@@ -176,10 +181,14 @@ export class Coroutine<T> {
             (err, res) => {
               if (err) {
                 err.log(this.verbose);
+                span.setStatus(false, String(err));
                 span.end(this.ctx.clock.now());
                 return callback(true);
               }
               util.assertDefined(res);
+
+              // if the promise is created, the span is considered successful
+              span.setStatus(true);
 
               const ctx = this.ctx.child({
                 id: res.id,
@@ -321,6 +330,12 @@ export class Coroutine<T> {
           let span: Span;
           if (!this.spans.has(action.createReq.id)) {
             span = this.ctx.span.startSpan(action.createReq.id, this.ctx.clock.now());
+            span.setAttribute("type", "rpc");
+            span.setAttribute("mode", action.mode);
+            span.setAttribute("func", action.func);
+            span.setAttribute("version", action.version);
+            span.setAttribute("task.id", this.ctx.task.id);
+            span.setAttribute("task.counter", this.ctx.task.counter);
             this.spans.set(action.createReq.id, span);
           } else {
             span = this.spans.get(action.createReq.id)!;
@@ -329,11 +344,17 @@ export class Coroutine<T> {
           this.handler.createPromise(
             action.createReq,
             (err, res) => {
-              span.end(this.ctx.clock.now());
               if (err) {
                 err.log(this.verbose);
+                span.setStatus(false, String(err));
+                span.end(this.ctx.clock.now());
                 return callback(true);
               }
+
+              // if the promise is created, the span is considered successful
+              span.setStatus(true);
+              span.end(this.ctx.clock.now());
+
               util.assertDefined(res);
 
               if (res.state === "pending") {
