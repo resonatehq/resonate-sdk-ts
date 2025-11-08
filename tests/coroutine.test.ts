@@ -67,7 +67,6 @@ describe("Coroutine", () => {
         false,
         new InnerContext({
           id: uuid,
-          task: { id: `__invoke:${uuid}`, counter: 1, timeout: 0, rootPromiseId: uuid },
           func: func.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
@@ -80,6 +79,7 @@ describe("Coroutine", () => {
         }),
         func,
         args,
+        { id: `__invoke:${uuid}`, counter: 1, timeout: 0, rootPromiseId: uuid },
         handler,
         new Map(),
         (err, res) => {
@@ -310,7 +310,6 @@ describe("Coroutine", () => {
         false,
         new InnerContext({
           id: "foo.1",
-          task: { id: "__invoke:foo.1", counter: 1, timeout: 0, rootPromiseId: "foo" },
           func: foo.name,
           anycast: "poll://any@default",
           clock: new WallClock(),
@@ -323,6 +322,7 @@ describe("Coroutine", () => {
         }),
         foo,
         [],
+        { id: "__invoke:foo.1", counter: 1, timeout: 0, rootPromiseId: "foo" },
         h,
         new Map(),
         (err, res) => {

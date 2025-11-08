@@ -1,6 +1,6 @@
 import type { Clock } from "./clock";
 import exceptions, { type ResonateError } from "./exceptions";
-import type { CreatePromiseReq, TaskRecord } from "./network/network";
+import type { CreatePromiseReq } from "./network/network";
 import { Options } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
@@ -253,7 +253,6 @@ export interface ResonateMath {
 export class InnerContext implements Context {
   readonly id: string;
   readonly info: { attempt: number; readonly timeout: number; readonly version: number };
-  readonly task: TaskRecord;
   readonly func: string;
   readonly retryPolicy: RetryPolicy;
 
@@ -275,7 +274,6 @@ export class InnerContext implements Context {
     id,
     rId = id,
     pId = id,
-    task,
     func,
     anycast,
     clock,
@@ -289,7 +287,6 @@ export class InnerContext implements Context {
     id: string;
     rId?: string;
     pId?: string;
-    task: TaskRecord;
     func: string;
     anycast: string;
     clock: Clock;
@@ -303,7 +300,6 @@ export class InnerContext implements Context {
     this.id = id;
     this.rId = rId;
     this.pId = pId;
-    this.task = task;
     this.func = func;
     this.anycast = anycast;
     this.clock = clock;
@@ -338,7 +334,6 @@ export class InnerContext implements Context {
       id,
       rId: this.rId,
       pId: this.id,
-      task: this.task,
       func,
       anycast: this.anycast,
       clock: this.clock,

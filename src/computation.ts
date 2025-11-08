@@ -4,7 +4,7 @@ import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
 import exceptions from "./exceptions";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
-import type { CallbackRecord, DurablePromiseRecord, Network } from "./network/network";
+import type { CallbackRecord, DurablePromiseRecord, Network, TaskRecord } from "./network/network";
 import { Nursery } from "./nursery";
 import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
@@ -192,7 +192,6 @@ export class Computation {
 
       const ctx = new InnerContext({
         id: this.id,
-        task: task,
         func: registered.func.name,
         anycast: this.anycastNoPreference,
         clock: this.clock,
@@ -205,7 +204,7 @@ export class Computation {
       });
 
       if (util.isGeneratorFunction(registered.func)) {
-        this.processGenerator(nursery, ctx, registered.func, args, done);
+        this.processGenerator(nursery, ctx, registered.func, args, task, done);
       } else {
         this.processFunction(this.id, ctx, registered.func, args, (err, promise) => {
           if (err) return done(true);
@@ -222,9 +221,10 @@ export class Computation {
     ctx: InnerContext,
     func: Func,
     args: any[],
+    task: TaskRecord,
     done: Callback<Status>,
   ) {
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, this.handler, this.spans, (err, status) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.handler, this.spans, (err, status) => {
       if (err) {
         return done(err);
       }
