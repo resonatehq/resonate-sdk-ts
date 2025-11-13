@@ -4,6 +4,7 @@ export * as core from "./core";
 export { JsonEncoder } from "./encoder";
 export { Handler } from "./handler";
 export { AsyncHeartbeat, NoopHeartbeat } from "./heartbeat";
+export { KafkaNetwork } from "./network/kafka";
 export { HttpNetwork } from "./network/remote";
 export { Registry } from "./registry";
 export { Resonate, ResonateFunc, ResonateHandle } from "./resonate";

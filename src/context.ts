@@ -214,7 +214,7 @@ export interface Context {
     timeout,
     data,
     tags,
-  }?: {
+  }: {
     id?: string;
     timeout?: number;
     data?: any;

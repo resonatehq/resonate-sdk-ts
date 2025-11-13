@@ -88,6 +88,7 @@ export class Resonate {
     verbose = false,
     encryptor = undefined,
     tracer = undefined,
+    network = undefined,
   }: {
     url?: string;
     group?: string;
@@ -97,6 +98,7 @@ export class Resonate {
     verbose?: boolean;
     encryptor?: Encryptor;
     tracer?: Tracer;
+    network?: Network;
   } = {}) {
     this.clock = new WallClock();
     this.unicast = `poll://uni@${group}/${pid}`;
@@ -138,21 +140,27 @@ export class Resonate {
       }
     }
 
-    if (!resolvedUrl) {
-      const localNetwork = new LocalNetwork();
-      this.network = localNetwork;
-      this.messageSource = localNetwork.getMessageSource();
-      this.heartbeat = new NoopHeartbeat();
-    } else {
-      this.network = new HttpNetwork({
-        verbose: this.verbose,
-        url: resolvedUrl,
-        auth: resolvedAuth,
-        timeout: 1 * util.MIN,
-        headers: {},
-      });
-      this.messageSource = new HttpMessageSource({ url: resolvedUrl, pid, group, auth: resolvedAuth });
+    if (network) {
+      this.network = network;
       this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
+      this.messageSource = new HttpMessageSource({ url: "http://localhost:8001/poll", pid, group, auth: resolvedAuth });
+    } else {
+      if (!resolvedUrl) {
+        const localNetwork = new LocalNetwork();
+        this.network = localNetwork;
+        this.messageSource = localNetwork.getMessageSource();
+        this.heartbeat = new NoopHeartbeat();
+      } else {
+        this.network = new HttpNetwork({
+          verbose: this.verbose,
+          url: resolvedUrl,
+          auth: resolvedAuth,
+          timeout: 1 * util.MIN,
+          headers: {},
+        });
+        this.messageSource = new HttpMessageSource({ url: resolvedUrl, pid, group, auth: resolvedAuth });
+        this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
+      }
     }
 
     this.handler = new Handler(this.network, this.encoder, this.encryptor);

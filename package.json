@@ -30,6 +30,7 @@
     "type-check": "npx tsc --noEmit"
   },
   "dependencies": {
+    "@confluentinc/kafka-javascript": "^1.6.0",
     "cron-parser": "^5.3.0",
     "eventsource": "^4.0.0"
   },
@@ -41,11 +42,15 @@
     "commander": "^14.0.0",
     "esbuild": "^0.27.0",
     "ts-jest": "^29.3.4",
+    "ts-node": "^10.9.2",
     "tsx": "^4.20.5",
     "typedoc": "^0.28.0",
     "typedoc-material-theme": "^1.4.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.3"
   },
+  "trustedDependencies": [
+    "@confluentinc/kafka-javascript"
+  ],
   "engines": {
     "node": ">= 22"
   }
