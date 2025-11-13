@@ -126,7 +126,7 @@ interface KafkaResponse {
 }
 
 export interface KafkaNetworkConfig {
-  verbose: boolean;
+  verbose?: boolean;
 }
 
 export class KafkaNetwork implements Network {
@@ -142,7 +142,7 @@ export class KafkaNetwork implements Network {
     }
   >;
 
-  constructor({ verbose }: KafkaNetworkConfig) {
+  constructor({ verbose }: KafkaNetworkConfig = {}) {
     this.requestTopic = "resonate.requests";
     this.replyTopic = "resonate.replies";
     this.clientId = "my-app";
@@ -152,8 +152,6 @@ export class KafkaNetwork implements Network {
       kafkaJS: {
         clientId: "my-app",
         brokers: ["localhost:9092"], // adjust broker list
-        // ssl: true,
-        // sasl: { mechanism: "plain", username: "...", password: "..." }
       },
     });
 
@@ -162,10 +160,10 @@ export class KafkaNetwork implements Network {
 
     // Initialize consumer
     this.consumer = kafka.consumer({
-      // kafkaJS: { groupId: "group-ID" },
       "allow.auto.create.topics": true,
-      "enable.auto.commit": false,
       "group.id":"groupId",
+      "auto.offset.reset": "earliest",
+      "enable.auto.commit": false
     });
   }
 
@@ -175,6 +173,7 @@ export class KafkaNetwork implements Network {
     await this.consumer.connect();
 
     // Subscribe and start consuming
+    console.log("subscribing to", this.replyTopic);
     await this.consumer.subscribe({ topic: this.replyTopic });
 
     // // Start consumer loop
@@ -188,6 +187,14 @@ export class KafkaNetwork implements Network {
           key: message.key?.toString(),
           value: message.value?.toString(),
         });
+
+        await this.consumer.commitOffsets([
+          {
+            topic,
+            partition,
+            offset: (Number(message.offset) + 1).toString(), // wtf
+          },
+        ]);
       },
     });
   }
@@ -213,6 +220,9 @@ export class KafkaNetwork implements Network {
       operation: mapRequestToOperation(req),
       payload: req,
     };
+
+    console.log("req", JSON.stringify(kafkaRequest));
+
     try {
       await this.producer.send({ topic: this.requestTopic, messages: [{ value: JSON.stringify(kafkaRequest) }] });
     } catch (e) {
