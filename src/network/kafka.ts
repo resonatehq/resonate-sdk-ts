@@ -179,34 +179,59 @@ function mapRequestToOperation(req: Request): { op: string; payload: any } {
       return {
         op: "promises.callback",
         payload: {
-          id: req.promiseId,
+          id: `__resume:${req.rootPromiseId}:${req.promiseId}`,
           promiseId: req.rootPromiseId,
           recv: req.recv,
+          mesg: { type: "resume", head: {}, root: req.rootPromiseId, leaf: req.promiseId },
           timeout: req.timeout,
         },
       };
     case "createSubscription":
-      return { op: "promises.subscribe", payload: {} };
-    case "searchPromises":
-      return { op: "promises.search", payload: {} };
-
+      return {
+        op: "promises.subscribe",
+        payload: {
+          id: `__notify:${req.promiseId}:${req.id}`,
+          promiseId: req.promiseId,
+          recv: req.recv,
+          mesg: { type: "notify", head: {}, root: req.promiseId },
+          timeout: req.timeout,
+        },
+      };
     case "createSchedule":
-      return { op: "schedules.create", payload: {} };
+      return {
+        op: "schedules.create",
+        payload: {
+          id: req.id,
+          description: req.description,
+          cron: req.cron,
+          tags: req.tags,
+          promiseId: req.promiseId,
+          promiseTimeout: req.promiseTimeout,
+          promiseParam: req.promiseParam,
+          promiseTags: req.promiseTags,
+          idempotencyKey: req.iKey,
+        },
+      };
     case "readSchedule":
-      return { op: "schedules.read", payload: {} };
+      return { op: "schedules.read", payload: { id: req.id } };
     case "deleteSchedule":
-      return { op: "schedules.delete", payload: {} };
+      return { op: "schedules.delete", payload: { id: req.id } };
     case "searchSchedules":
       return { op: "schedules.search", payload: {} };
 
     case "claimTask":
-      return { op: "tasks.claim", payload: {} };
+      return {
+        op: "tasks.claim",
+        payload: { id: req.id, counter: req.counter, processId: req.processId, ttl: req.ttl },
+      };
     case "completeTask":
-      return { op: "tasks.complete", payload: {} };
+      return { op: "tasks.complete", payload: { id: req.id, counter: req.counter } };
     case "dropTask":
-      return { op: "tasks.drop", payload: {} };
+      return { op: "tasks.drop", payload: { id: req.id, counter: req.counter } };
     case "heartbeatTasks":
-      return { op: "tasks.heartbeat", payload: {} };
+      return { op: "tasks.heartbeat", payload: { processId: req.processId } };
+    default:
+      throw new Error("unhandled");
   }
 }
 
