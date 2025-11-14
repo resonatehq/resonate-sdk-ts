@@ -1,9 +1,19 @@
-import { randomUUID, type UUID } from "node:crypto";
-import type { KafkaJS } from "@confluentinc/kafka-javascript";
+import { KafkaJS } from "@confluentinc/kafka-javascript";
 import type { ResonateError, ResonateServerError } from "../exceptions";
 import exceptions from "../exceptions";
 import * as util from "../util";
-import type { Message, MessageSource, Network, Request, Response, ResponseFor } from "./network";
+import type {
+  CallbackRecord,
+  DurablePromiseRecord,
+  Message,
+  MessageSource,
+  Network,
+  Request,
+  Response,
+  ResponseFor,
+  ScheduleRecord,
+  TaskRecord,
+} from "./network";
 
 interface KafkaRequest {
   target: string;
@@ -19,6 +29,7 @@ interface KafkaRequest {
 interface KafkaResponse {
   target: string;
   correlationId: string;
+  operation: string;
   success: boolean;
   response?: any;
   error?: {
@@ -27,30 +38,43 @@ interface KafkaResponse {
   };
 }
 
-export interface KafkaNetworkConfig {
-  kafka: KafkaJS.Kafka;
-}
-
 export class KafkaNetwork implements Network {
-  private producer: KafkaJS.Producer;
-  private consumer: KafkaJS.Consumer;
+  private group: string;
+  private pid: string;
   private requestTopic: string;
   private replyTopic: string;
-  private clientId: UUID;
+
+  private producer: KafkaJS.Producer;
+  private consumer: KafkaJS.Consumer;
+
   private pendingRequests: Map<string, (err?: ResonateError, res?: Response) => void>;
 
-  constructor({ kafka }: KafkaNetworkConfig) {
+  constructor({
+    group = "default",
+    pid = crypto.randomUUID().replace(/-/g, ""),
+  }: { group?: string; pid?: string } = {}) {
+    const kafka = new KafkaJS.Kafka({
+      kafkaJS: {
+        clientId: pid,
+        brokers: ["localhost:9092"],
+        logLevel: 3,
+      },
+    });
+
+    this.group = group;
+    this.pid = pid;
+
     this.requestTopic = "resonate.requests";
     this.replyTopic = "resonate.replies";
-    this.clientId = randomUUID();
     this.pendingRequests = new Map();
 
     this.producer = kafka.producer();
     this.consumer = kafka.consumer({
       "allow.auto.create.topics": true,
-      "group.id": "groupId",
-      "auto.offset.reset": "earliest",
-      "enable.auto.commit": false,
+      "auto.offset.reset": "earliest", // this should probably be "lateset"
+      "enable.auto.commit": true,
+      "group.id": this.pid,
+      "session.timeout.ms": 6000,
     });
   }
 
@@ -64,28 +88,21 @@ export class KafkaNetwork implements Network {
 
     // Start consumer loop
     await this.consumer.run({
-      eachMessage: async ({ topic, partition, message }) => {
-        await this.consumer.commitOffsets([
-          {
-            topic,
-            partition,
-            offset: (Number(message.offset) + 1).toString(), // wtf
-          },
-        ]);
-
+      eachMessage: async ({ message }) => {
         const res: KafkaResponse = JSON.parse(message.value?.toString()!);
-        if (res.target !== this.clientId) {
+        if (res.target !== this.pid) {
           return;
         }
 
         const callback = this.pendingRequests.get(res.correlationId);
-        if (callback === undefined) {
+        if (!callback) {
           return;
         }
-        if (res.error !== undefined) {
+
+        if (res.error) {
           callback(exceptions.SERVER_ERROR(res.error.message, true, res.error as ResonateServerError));
         } else {
-          callback(undefined, res.response);
+          callback(undefined, mapKafkaResponseToResponse(res));
         }
 
         this.pendingRequests.delete(res.correlationId);
@@ -98,17 +115,16 @@ export class KafkaNetwork implements Network {
     callback: (err?: ResonateError, res?: ResponseFor<T>) => void,
     headers: Record<string, string> = {},
   ): Promise<void> {
-    console.log("sending", req);
-    const correlationId = randomUUID();
+    const correlationId = crypto.randomUUID();
 
     this.pendingRequests.set(correlationId, callback as (err?: ResonateError, res?: Response) => void);
 
-    const { op, payload } = mapRequestToOperation(req);
+    const { op, payload } = mapRequestToKafkaRequest(req);
     const kafkaRequest: KafkaRequest = {
       target: "resonate.server",
       replyTo: {
         topic: this.replyTopic,
-        target: this.clientId.toString(),
+        target: this.pid,
       },
       correlationId: correlationId,
       operation: op,
@@ -128,7 +144,7 @@ export class KafkaNetwork implements Network {
   }
 }
 
-function mapRequestToOperation(req: Request): { op: string; payload: any } {
+function mapRequestToKafkaRequest(req: Request): { op: string; payload: any } {
   switch (req.kind) {
     case "createPromise":
       return {
@@ -214,10 +230,10 @@ function mapRequestToOperation(req: Request): { op: string; payload: any } {
       };
     case "readSchedule":
       return { op: "schedules.read", payload: { id: req.id } };
-    case "deleteSchedule":
-      return { op: "schedules.delete", payload: { id: req.id } };
     case "searchSchedules":
       return { op: "schedules.search", payload: {} };
+    case "deleteSchedule":
+      return { op: "schedules.delete", payload: { id: req.id } };
 
     case "claimTask":
       return {
@@ -235,8 +251,111 @@ function mapRequestToOperation(req: Request): { op: string; payload: any } {
   }
 }
 
+function mapKafkaResponseToResponse({ operation, response }: KafkaResponse): Response {
+  switch (operation) {
+    case "promises.create":
+      return {
+        kind: "createPromise",
+        promise: convertPromise(response),
+      };
+    case "promises.createtask":
+      return {
+        kind: "createPromiseAndTask",
+        promise: convertPromise(response.promise),
+        task: response.task ? convertTask(response.task) : undefined,
+      };
+    case "promises.read":
+      return {
+        kind: "readPromise",
+        promise: convertPromise(response),
+      };
+    case "promises.search":
+      return {
+        kind: "searchPromises",
+        promises: (response.promises ?? []).map(convertPromise),
+        cursor: response.cursor,
+      };
+    case "promises.complete":
+      return {
+        kind: "completePromise",
+        promise: convertPromise(response),
+      };
+    case "promises.callback":
+      return {
+        kind: "createCallback",
+        callback: response.callback ? convertCallback(response.callback) : undefined,
+        promise: convertPromise(response.promise),
+      };
+    case "promises.subscribe":
+      return {
+        kind: "createSubscription",
+        callback: response.callback ? convertCallback(response.callback) : undefined,
+        promise: convertPromise(response.promise),
+      };
+    case "schedules.create":
+      return {
+        kind: "createSchedule",
+        schedule: convertSchedule(response),
+      };
+    case "schedules.read":
+      return {
+        kind: "readSchedule",
+        schedule: convertSchedule(response),
+      };
+    case "schedules.search":
+      return {
+        kind: "searchSchedules",
+        schedules: (response.schedules ?? []).map(convertSchedule),
+        cursor: response.cursor,
+      };
+    case "schedules.delete":
+      return {
+        kind: "deleteSchedule",
+      };
+    case "tasks.claim":
+      return {
+        kind: "claimTask",
+        message: {
+          kind: response.type,
+          promises: {
+            root: response.promises.root
+              ? {
+                  id: response.promises.root.id,
+                  data: convertPromise(response.promises.root.data),
+                }
+              : undefined,
+            leaf: response.promises.leaf
+              ? {
+                  id: response.promises.leaf.id,
+                  data: convertPromise(response.promises.leaf.data),
+                }
+              : undefined,
+          },
+        },
+      };
+    case "tasks.complete":
+      return {
+        kind: "completeTask",
+        task: convertTask(response),
+      };
+    case "tasks.drop":
+      return {
+        kind: "dropTask",
+      };
+    case "tasks.heartbeat":
+      return {
+        kind: "heartbeatTasks",
+        tasksAffected: response.tasksAffected,
+      };
+    default:
+      throw new Error("unhandled");
+  }
+}
+
 export class KafkaMessageSource implements MessageSource {
-  public readonly ready: Promise<void>;
+  private group: string;
+  private pid: string;
+
   private consumer: KafkaJS.Consumer;
   private subscriptions: {
     invoke: Array<(msg: Message) => void>;
@@ -244,32 +363,43 @@ export class KafkaMessageSource implements MessageSource {
     notify: Array<(msg: Message) => void>;
   } = { invoke: [], resume: [], notify: [] };
 
-  constructor({ kafka }: { kafka: KafkaJS.Kafka }) {
-    // Initialize consumer
-    this.consumer = kafka.consumer({
-      "allow.auto.create.topics": true,
-      "group.id": "otherGroupId",
-      "auto.offset.reset": "earliest",
-      "enable.auto.commit": false,
+  constructor({
+    group = "default",
+    pid = crypto.randomUUID().replace(/-/g, ""),
+  }: { group?: string; pid?: string } = {}) {
+    const kafka = new KafkaJS.Kafka({
+      kafkaJS: {
+        clientId: pid,
+        brokers: ["localhost:9092"],
+      },
     });
 
-    this.ready = this.connect();
+    this.group = group;
+    this.pid = pid;
+
+    this.consumer = kafka.consumer({
+      "allow.auto.create.topics": true,
+      "auto.offset.reset": "earliest",
+      "enable.auto.commit": true,
+      "group.id": this.group,
+      "session.timeout.ms": 6000,
+    });
   }
 
-  private async connect(): Promise<void> {
+  async start(): Promise<void> {
     await this.consumer.connect();
-    await this.consumer.subscribe({ topic: "resonate.messages" });
+    await this.consumer.subscribe({ topic: this.group });
     await this.consumer.run({
       eachMessage: async ({ message }) => {
         let msg: Message;
 
         try {
-          const data = JSON.parse(message.value?.toString()!);
+          const data = JSON.parse(message.value?.toString() ?? "{}");
 
           if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
             msg = { type: data.type, task: data.task, headers: data.head ?? {} };
           } else if (data?.type === "notify" && util.isDurablePromiseRecord(data?.promise)) {
-            msg = { type: data.type, promise: data.promise, headers: data.head ?? {} };
+            msg = { type: data.type, promise: convertPromise(data.promise), headers: data.head ?? {} };
           } else {
             throw new Error("invalid message");
           }
@@ -296,4 +426,74 @@ export class KafkaMessageSource implements MessageSource {
   public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void {
     this.subscriptions[type].push(callback);
   }
+}
+
+function convertPromise(promise: any): DurablePromiseRecord {
+  return {
+    id: promise.id,
+    state: convertState(promise.state),
+    timeout: promise.timeout,
+    param: promise.param,
+    value: promise.value,
+    tags: promise.tags || {},
+    iKeyForCreate: promise.idempotencyKeyForCreate,
+    iKeyForComplete: promise.idempotencyKeyForComplete,
+    createdOn: promise.createdOn,
+    completedOn: promise.completedOn,
+  };
+}
+
+function convertState(state: string): "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout" {
+  switch (state) {
+    case "PENDING":
+      return "pending";
+    case "RESOLVED":
+      return "resolved";
+    case "REJECTED":
+      return "rejected";
+    case "REJECTED_CANCELED":
+      return "rejected_canceled";
+    case "REJECTED_TIMEDOUT":
+      return "rejected_timedout";
+    default:
+      throw new Error(`Unknown API state: ${state}`);
+  }
+}
+
+function convertSchedule(schedule: any): ScheduleRecord {
+  return {
+    id: schedule.id,
+    description: schedule.description,
+    cron: schedule.cron,
+    tags: schedule.tags || {},
+    promiseId: schedule.promiseId,
+    promiseTimeout: schedule.promiseTimeout,
+    promiseParam: schedule.promiseParam,
+    promiseTags: schedule.promiseTags || {},
+    iKey: schedule.idempotencyKey,
+    lastRunTime: schedule.lastRunTime,
+    nextRunTime: schedule.nextRunTime,
+    createdOn: schedule.createdOn,
+  };
+}
+
+function convertCallback(callback: any): CallbackRecord {
+  return {
+    id: callback.id,
+    promiseId: callback.promiseId,
+    timeout: callback.timeout,
+    createdOn: callback.createdOn,
+  };
+}
+
+function convertTask(task: any): TaskRecord {
+  return {
+    id: task.id,
+    rootPromiseId: task.rootPromiseId,
+    counter: task.counter,
+    timeout: task.timeout,
+    processId: task.processId,
+    createdOn: task.createdOn,
+    completedOn: task.completedOn,
+  };
 }

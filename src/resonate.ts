@@ -84,6 +84,7 @@ export class Resonate {
     group = "default",
     pid = crypto.randomUUID().replace(/-/g, ""),
     ttl = 1 * util.MIN,
+    addr = undefined,
     auth = undefined,
     verbose = false,
     encryptor = undefined,
@@ -95,6 +96,7 @@ export class Resonate {
     group?: string;
     pid?: string;
     ttl?: number;
+    addr?: string;
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
@@ -103,9 +105,9 @@ export class Resonate {
     messageSource?: MessageSource;
   } = {}) {
     this.clock = new WallClock();
-    this.unicast = `poll://uni@${group}/${pid}`;
-    this.anycastPreference = `poll://any@${group}/${pid}`;
-    this.anycastNoPreference = `poll://any@${group}`;
+    this.unicast = addr ?? `poll://uni@${group}/${pid}`;
+    this.anycastPreference = addr ?? `poll://any@${group}/${pid}`;
+    this.anycastNoPreference = addr ?? `poll://any@${group}`;
     this.pid = pid;
     this.ttl = ttl;
     this.tracer = tracer ?? new NoopTracer();
