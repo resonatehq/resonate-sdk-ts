@@ -1,19 +1,30 @@
-import { type Context, KafkaNetwork, Resonate } from "./src/index";
+import { KafkaJS } from "@confluentinc/kafka-javascript";
+import { type Context, KafkaMessageSource, KafkaNetwork, Resonate } from "./src/index";
 
 function foo(ctx: Context): string {
+  console.log("foo run")
   return "foo";
 }
 
 async function main() {
-  const network = new KafkaNetwork({ verbose: true });
-  await network.start();
+  const kafka = new KafkaJS.Kafka({
+    kafkaJS: {
+      clientId: "my-app",
+      brokers: ["localhost:9092"], // adjust broker list
+    },
+  });
 
-  const resonate = new Resonate({ network });
+  const network = new KafkaNetwork({ kafka });
+  await network.start();
+  const msgSource = new KafkaMessageSource({ kafka });
+
+  const resonate = new Resonate({ network, messageSource: msgSource });
 
   resonate.register(foo);
 
-  const v = await resonate.run("foo.1", foo);
-  console.log(v);
+  const v = resonate.run("foo.102", foo)
+  console.log(v)
+
 }
 
 main();

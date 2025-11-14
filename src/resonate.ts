@@ -89,6 +89,7 @@ export class Resonate {
     encryptor = undefined,
     tracer = undefined,
     network = undefined,
+    messageSource = undefined,
   }: {
     url?: string;
     group?: string;
@@ -99,6 +100,7 @@ export class Resonate {
     encryptor?: Encryptor;
     tracer?: Tracer;
     network?: Network;
+    messageSource?: MessageSource;
   } = {}) {
     this.clock = new WallClock();
     this.unicast = `poll://uni@${group}/${pid}`;
@@ -143,7 +145,10 @@ export class Resonate {
     if (network) {
       this.network = network;
       this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
-      this.messageSource = new HttpMessageSource({ url: "http://localhost:8001/poll", pid, group, auth: resolvedAuth });
+      if (messageSource === undefined) {
+        throw new Error("message source must be set");
+      }
+      this.messageSource = messageSource;
     } else {
       if (!resolvedUrl) {
         const localNetwork = new LocalNetwork();

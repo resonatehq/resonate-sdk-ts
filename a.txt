@@ -1,0 +1,1 @@
+echo '{"target":"resonate.server","replyTo":{"topic":"resonate.replies","target":"my-client"},"correlationId":"req-003","operation":"promises.create","payload":{"id":"foo.3","timeout":1763123939000, "tags":{"resonate:invoke":"kafka://resonate.messages"}}}' | rpk topic produce resonate.requests
