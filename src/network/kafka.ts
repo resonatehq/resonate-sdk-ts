@@ -1,7 +1,9 @@
 import { KafkaJS } from "@confluentinc/kafka-javascript";
 import type { ResonateError, ResonateServerError } from "../exceptions";
 import exceptions from "../exceptions";
+import type { Value } from "../types";
 import * as util from "../util";
+
 import type {
   CallbackRecord,
   DurablePromiseRecord,
@@ -15,6 +17,154 @@ import type {
   TaskRecord,
 } from "./network";
 
+type Operation =
+  // PROMISES
+  | "promises.create"
+  | "promises.createtask"
+  | "promises.read"
+  | "promises.complete"
+  | "promises.callback"
+  | "promises.search"
+  | "promises.subscribe"
+
+  // SCHEDULES
+  | "schedules.create"
+  | "schedules.read"
+  | "schedules.search"
+  | "schedules.delete"
+
+  // TASKS
+  | "tasks.claim"
+  | "tasks.complete"
+  | "tasks.drop"
+  | "tasks.heartbeat";
+
+type KafkaPayload =
+  // PROMISES
+  | CreatePromisePayload
+  | CreatePromiseAndTaskPayload
+  | ReadPromisePayload
+  | CompletePromisePayload
+  | CreateCallbackPayload
+  | SearchPromisesPayload
+  | CreateSubscriptionPayload
+
+  // SCHEDULES
+  | CreateSchedulePayload
+  | ReadSchedulePayload
+  | SearchSchedulesPayload
+  | DeleteSchedulePayload
+
+  // TASKS
+  | ClaimTaskPayload
+  | CompleteTaskPayload
+  | DropTaskPayload
+  | HeartbeatTasksPayload;
+
+type CreatePromisePayload<T = string> = {
+  id: string;
+  timeout: number;
+  param?: Value<T>;
+  tags?: Record<string, string>;
+  iKey?: string;
+  strict?: boolean;
+};
+
+type CreatePromiseAndTaskPayload<T = string> = {
+  promise: {
+    id: string;
+    timeout: number;
+    param?: Value<T>;
+    tags?: Record<string, string>;
+  };
+  task: {
+    processId: string;
+    ttl: number;
+  };
+  iKey?: string;
+  strict?: boolean;
+};
+
+type ReadPromisePayload = {
+  id: string;
+};
+
+type CompletePromisePayload<T = string> = {
+  id: string;
+  state: "resolved" | "rejected" | "rejected_canceled";
+  value?: Value<T>;
+  iKey?: string;
+  strict?: boolean;
+};
+
+type CreateCallbackPayload = {
+  promiseId: string;
+  rootPromiseId: string;
+  timeout: number;
+  recv: string;
+};
+
+type CreateSubscriptionPayload = {
+  id: string;
+  promiseId: string;
+  timeout: number;
+  recv: string;
+};
+
+type CreateSchedulePayload = {
+  id?: string;
+  description?: string;
+  cron?: string;
+  tags?: Record<string, string>;
+  promiseId?: string;
+  promiseTimeout?: number;
+  promiseParam?: Value<string>;
+  promiseTags?: Record<string, string>;
+  iKey?: string;
+};
+
+type ReadSchedulePayload = {
+  id: string;
+};
+
+type DeleteSchedulePayload = {
+  id: string;
+};
+
+type ClaimTaskPayload = {
+  id: string;
+  counter: number;
+  processId: string;
+  ttl: number;
+};
+
+type CompleteTaskPayload = {
+  id: string;
+  counter: number;
+};
+
+type DropTaskPayload = {
+  id: string;
+  counter: number;
+};
+
+type HeartbeatTasksPayload = {
+  processId: string;
+};
+
+type SearchPromisesPayload = {
+  id: string;
+  state?: "pending" | "resolved" | "rejected";
+  limit?: number;
+  cursor?: string;
+};
+
+type SearchSchedulesPayload = {
+  id: string;
+  limit?: number;
+  cursor?: string;
+};
+
 interface KafkaRequest {
   target: string;
   replyTo: {
@@ -23,13 +173,13 @@ interface KafkaRequest {
   };
   correlationId: string;
   operation: string;
-  payload: any;
+  payload: KafkaPayload;
 }
 
 interface KafkaResponse {
   target: string;
   correlationId: string;
-  operation: string;
+  operation: Operation;
   success: boolean;
   response?: any;
   error?: {
@@ -71,7 +221,7 @@ export class KafkaNetwork implements Network {
     this.producer = kafka.producer();
     this.consumer = kafka.consumer({
       "allow.auto.create.topics": true,
-      "auto.offset.reset": "earliest", // this should probably be "lateset"
+      "auto.offset.reset": "earliest", // this should probably be "latest"
       "enable.auto.commit": true,
       "group.id": this.pid,
       "session.timeout.ms": 6000,
@@ -144,18 +294,18 @@ export class KafkaNetwork implements Network {
   }
 }
 
-function mapRequestToKafkaRequest(req: Request): { op: string; payload: any } {
+function mapRequestToKafkaRequest(req: Request): { op: Operation; payload: KafkaPayload } {
   switch (req.kind) {
     case "createPromise":
       return {
         op: "promises.create",
         payload: {
           id: req.id,
-          idempotencyKey: req.iKey,
-          strict: req.strict,
-          param: req.param,
           timeout: req.timeout,
+          param: req.param,
           tags: req.tags,
+          iKey: req.iKey,
+          strict: req.strict,
         },
       };
     case "createPromiseAndTask":
@@ -164,18 +314,13 @@ function mapRequestToKafkaRequest(req: Request): { op: string; payload: any } {
         payload: {
           promise: {
             id: req.promise.id,
-            idempotencyKey: req.iKey,
-            strict: req.strict,
-            param: req.promise.param,
             timeout: req.promise.timeout,
+            param: req.promise.param,
             tags: req.promise.tags,
           },
-          task: {
-            promiseId: req.promise.id,
-            processId: req.task.processId,
-            ttl: req.task.ttl,
-            timeout: req.promise.timeout,
-          },
+          task: { processId: req.task.processId, ttl: req.task.ttl },
+          iKey: req.iKey,
+          strict: req.strict,
         },
       };
     case "readPromise":
@@ -185,32 +330,32 @@ function mapRequestToKafkaRequest(req: Request): { op: string; payload: any } {
         op: "promises.complete",
         payload: {
           id: req.id,
-          idempotencyKey: req.iKey,
-          strict: req.strict,
           state: req.state,
           value: req.value,
+          iKey: req.iKey,
+          strict: req.strict,
         },
       };
     case "createCallback":
       return {
         op: "promises.callback",
         payload: {
-          id: `__resume:${req.rootPromiseId}:${req.promiseId}`,
-          promiseId: req.rootPromiseId,
-          recv: req.recv,
-          mesg: { type: "resume", head: {}, root: req.rootPromiseId, leaf: req.promiseId },
+          promiseId: req.promiseId,
+          rootPromiseId: req.rootPromiseId,
           timeout: req.timeout,
+          recv: req.recv,
         },
       };
+    case "searchPromises":
+      return { op: "promises.search", payload: { id: req.id, state: req.state, limit: req.limit, cursor: req.cursor } };
     case "createSubscription":
       return {
         op: "promises.subscribe",
         payload: {
-          id: `__notify:${req.promiseId}:${req.id}`,
+          id: req.id,
           promiseId: req.promiseId,
-          recv: req.recv,
-          mesg: { type: "notify", head: {}, root: req.promiseId },
           timeout: req.timeout,
+          recv: req.recv,
         },
       };
     case "createSchedule":
@@ -225,16 +370,15 @@ function mapRequestToKafkaRequest(req: Request): { op: string; payload: any } {
           promiseTimeout: req.promiseTimeout,
           promiseParam: req.promiseParam,
           promiseTags: req.promiseTags,
-          idempotencyKey: req.iKey,
+          iKey: req.iKey,
         },
       };
     case "readSchedule":
       return { op: "schedules.read", payload: { id: req.id } };
     case "searchSchedules":
-      return { op: "schedules.search", payload: {} };
+      return { op: "schedules.search", payload: { id: req.id, limit: req.limit, cursor: req.cursor } };
     case "deleteSchedule":
       return { op: "schedules.delete", payload: { id: req.id } };
-
     case "claimTask":
       return {
         op: "tasks.claim",
@@ -246,8 +390,6 @@ function mapRequestToKafkaRequest(req: Request): { op: string; payload: any } {
       return { op: "tasks.drop", payload: { id: req.id, counter: req.counter } };
     case "heartbeatTasks":
       return { op: "tasks.heartbeat", payload: { processId: req.processId } };
-    default:
-      throw new Error("unhandled");
   }
 }
 
@@ -347,8 +489,6 @@ function mapKafkaResponseToResponse({ operation, response }: KafkaResponse): Res
         kind: "heartbeatTasks",
         tasksAffected: response.tasksAffected,
       };
-    default:
-      throw new Error("unhandled");
   }
 }
 
@@ -379,7 +519,7 @@ export class KafkaMessageSource implements MessageSource {
 
     this.consumer = kafka.consumer({
       "allow.auto.create.topics": true,
-      "auto.offset.reset": "earliest",
+      "auto.offset.reset": "earliest", // this should probably be "latest"
       "enable.auto.commit": true,
       "group.id": this.group,
       "session.timeout.ms": 6000,
