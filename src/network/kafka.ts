@@ -170,6 +170,7 @@ interface KafkaRequest {
   replyTo: {
     topic: string;
     target: string;
+    partition?: number;
   };
   correlationId: string;
   operation: string;
@@ -204,24 +205,23 @@ export class KafkaNetwork implements Network {
     pid = crypto.randomUUID().replace(/-/g, ""),
   }: { group?: string; pid?: string } = {}) {
     const kafka = new KafkaJS.Kafka({
-      kafkaJS: {
-        clientId: pid,
-        brokers: ["localhost:9092"],
-        logLevel: 3,
-      },
+      "allow.auto.create.topics": true,
+      "client.id": pid,
+      log_level: 3,
+      "metadata.broker.list": "localhost:9092",
+      "metadata.max.age.ms": 1000,
     });
 
     this.group = group;
     this.pid = pid;
 
-    this.requestTopic = "resonate.requests";
-    this.replyTopic = "resonate.replies";
+    this.requestTopic = "resonate";
+    this.replyTopic = "resonate";
     this.pendingRequests = new Map();
 
     this.producer = kafka.producer();
     this.consumer = kafka.consumer({
-      "allow.auto.create.topics": true,
-      "auto.offset.reset": "earliest", // this should probably be "latest"
+      "auto.offset.reset": "latest",
       "enable.auto.commit": true,
       "group.id": this.pid,
       "session.timeout.ms": 6000,
@@ -275,6 +275,7 @@ export class KafkaNetwork implements Network {
       replyTo: {
         topic: this.replyTopic,
         target: this.pid,
+        partition: 0,
       },
       correlationId: correlationId,
       operation: op,
@@ -508,18 +509,18 @@ export class KafkaMessageSource implements MessageSource {
     pid = crypto.randomUUID().replace(/-/g, ""),
   }: { group?: string; pid?: string } = {}) {
     const kafka = new KafkaJS.Kafka({
-      kafkaJS: {
-        clientId: pid,
-        brokers: ["localhost:9092"],
-      },
+      "allow.auto.create.topics": true,
+      "client.id": pid,
+      log_level: 3,
+      "metadata.broker.list": "localhost:9092",
+      "metadata.max.age.ms": 1000,
     });
 
     this.group = group;
     this.pid = pid;
 
     this.consumer = kafka.consumer({
-      "allow.auto.create.topics": true,
-      "auto.offset.reset": "earliest", // this should probably be "latest"
+      "auto.offset.reset": "earliest",
       "enable.auto.commit": true,
       "group.id": this.group,
       "session.timeout.ms": 6000,
