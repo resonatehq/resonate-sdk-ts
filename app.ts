@@ -1,4 +1,4 @@
-import { type Context, KafkaMessageSource, KafkaNetwork, Resonate } from "./src/index";
+import { type Context, KafkaTransport, Resonate } from "./src/index";
 
 function* fibonacci(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
@@ -16,17 +16,14 @@ async function main() {
 
   const addr = "kafka://default";
 
-  const network = new KafkaNetwork({ group, pid });
-  await network.start();
+  const transport = new KafkaTransport({ group, pid });
+  await transport.start();
 
-  const messageSource = new KafkaMessageSource({ group, pid });
-  await messageSource.start();
-
-  const resonate = new Resonate({ group, pid, addr, network, messageSource });
+  const resonate = new Resonate({ group, pid, addr, network: transport, messageSource: transport });
 
   resonate.register("fib", fibonacci);
 
-  const v = await resonate.rpc("fib.1", fibonacci, 10);
+  const v = await resonate.rpc("fib.6", fibonacci, 15);
   console.log(v);
 }
 
