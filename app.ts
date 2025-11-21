@@ -16,14 +16,17 @@ async function main() {
 
   const addr = "kafka://default";
 
-  const transport = new KafkaTransport({ group, pid });
+  const transport = new KafkaTransport({
+    group,
+    pid,
+  });
   await transport.start();
 
   const resonate = new Resonate({ group, pid, addr, network: transport, messageSource: transport });
 
   resonate.register("fib", fibonacci);
 
-  const v = await resonate.rpc("fib.6", fibonacci, 15);
+  const v = await resonate.rpc("fib.1", fibonacci, 7);
   console.log(v);
 }
 
