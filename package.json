@@ -41,10 +41,11 @@
     "commander": "^14.0.0",
     "esbuild": "^0.27.0",
     "ts-jest": "^29.3.4",
+    "ts-node": "^10.9.2",
     "tsx": "^4.20.5",
     "typedoc": "^0.28.0",
     "typedoc-material-theme": "^1.4.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">= 22"

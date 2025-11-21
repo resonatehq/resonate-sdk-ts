@@ -84,24 +84,30 @@ export class Resonate {
     group = "default",
     pid = crypto.randomUUID().replace(/-/g, ""),
     ttl = 1 * util.MIN,
+    addr = undefined,
     auth = undefined,
     verbose = false,
     encryptor = undefined,
     tracer = undefined,
+    network = undefined,
+    messageSource = undefined,
   }: {
     url?: string;
     group?: string;
     pid?: string;
     ttl?: number;
+    addr?: string;
     auth?: { username: string; password: string };
     verbose?: boolean;
     encryptor?: Encryptor;
     tracer?: Tracer;
+    network?: Network;
+    messageSource?: MessageSource;
   } = {}) {
     this.clock = new WallClock();
-    this.unicast = `poll://uni@${group}/${pid}`;
-    this.anycastPreference = `poll://any@${group}/${pid}`;
-    this.anycastNoPreference = `poll://any@${group}`;
+    this.unicast = addr ?? `poll://uni@${group}/${pid}`;
+    this.anycastPreference = addr ?? `poll://any@${group}/${pid}`;
+    this.anycastNoPreference = addr ?? `poll://any@${group}`;
     this.pid = pid;
     this.ttl = ttl;
     this.tracer = tracer ?? new NoopTracer();
@@ -138,21 +144,30 @@ export class Resonate {
       }
     }
 
-    if (!resolvedUrl) {
-      const localNetwork = new LocalNetwork();
-      this.network = localNetwork;
-      this.messageSource = localNetwork.getMessageSource();
-      this.heartbeat = new NoopHeartbeat();
-    } else {
-      this.network = new HttpNetwork({
-        verbose: this.verbose,
-        url: resolvedUrl,
-        auth: resolvedAuth,
-        timeout: 1 * util.MIN,
-        headers: {},
-      });
-      this.messageSource = new HttpMessageSource({ url: resolvedUrl, pid, group, auth: resolvedAuth });
+    if (network) {
+      this.network = network;
       this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
+      if (messageSource === undefined) {
+        throw new Error("message source must be set");
+      }
+      this.messageSource = messageSource;
+    } else {
+      if (!resolvedUrl) {
+        const localNetwork = new LocalNetwork();
+        this.network = localNetwork;
+        this.messageSource = localNetwork.getMessageSource();
+        this.heartbeat = new NoopHeartbeat();
+      } else {
+        this.network = new HttpNetwork({
+          verbose: this.verbose,
+          url: resolvedUrl,
+          auth: resolvedAuth,
+          timeout: 1 * util.MIN,
+          headers: {},
+        });
+        this.messageSource = new HttpMessageSource({ url: resolvedUrl, pid, group, auth: resolvedAuth });
+        this.heartbeat = new AsyncHeartbeat(pid, ttl / 2, this.network);
+      }
     }
 
     this.handler = new Handler(this.network, this.encoder, this.encryptor);
