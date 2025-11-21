@@ -189,14 +189,20 @@ interface KafkaResponse {
   };
 }
 
-export class KafkaNetwork implements Network {
+export class KafkaTransport implements Network, MessageSource {
   private group: string;
   private pid: string;
-  private requestTopic: string;
-  private replyTopic: string;
+  private topic: string;
 
   private producer: KafkaJS.Producer;
-  private consumer: KafkaJS.Consumer;
+  private consumerResponse: KafkaJS.Consumer;
+  private consumerMessages: KafkaJS.Consumer;
+
+  private subscriptions: {
+    invoke: Array<(msg: Message) => void>;
+    resume: Array<(msg: Message) => void>;
+    notify: Array<(msg: Message) => void>;
+  } = { invoke: [], resume: [], notify: [] };
 
   private pendingRequests: Map<string, (err?: ResonateError, res?: Response) => void>;
 
@@ -214,30 +220,39 @@ export class KafkaNetwork implements Network {
 
     this.group = group;
     this.pid = pid;
+    this.topic = "resonate";
 
-    this.requestTopic = "resonate";
-    this.replyTopic = "resonate";
     this.pendingRequests = new Map();
 
     this.producer = kafka.producer();
-    this.consumer = kafka.consumer({
+    this.consumerResponse = kafka.consumer({
       "auto.offset.reset": "latest",
       "enable.auto.commit": true,
       "group.id": this.pid,
       "session.timeout.ms": 6000,
     });
+
+    this.consumerMessages = kafka.consumer({
+      "auto.offset.reset": "earliest",
+      "enable.auto.commit": true,
+      "group.id": this.group,
+      "session.timeout.ms": 6000,
+    });
   }
 
   async start(): Promise<void> {
+    await this.consumerMessages.connect();
+    await this.consumerMessages.subscribe({ topic: this.group });
+
     // Connect producer
     await this.producer.connect();
-    await this.consumer.connect();
+    await this.consumerResponse.connect();
 
     // Subscribe and start consuming
-    await this.consumer.subscribe({ topic: this.replyTopic });
+    await this.consumerResponse.subscribe({ topic: this.topic });
 
     // Start consumer loop
-    await this.consumer.run({
+    await this.consumerResponse.run({
       eachMessage: async ({ message }) => {
         const res: KafkaResponse = JSON.parse(message.value?.toString()!);
         if (res.target !== this.pid) {
@@ -258,6 +273,35 @@ export class KafkaNetwork implements Network {
         this.pendingRequests.delete(res.correlationId);
       },
     });
+
+    await this.consumerMessages.run({
+      eachMessage: async ({ message }) => {
+        let msg: Message;
+
+        try {
+          const data = JSON.parse(message.value?.toString() ?? "{}");
+
+          if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
+            msg = { type: data.type, task: data.task, headers: data.head ?? {} };
+          } else if (data?.type === "notify" && util.isDurablePromiseRecord(data?.promise)) {
+            msg = { type: data.type, promise: convertPromise(data.promise), headers: data.head ?? {} };
+          } else {
+            throw new Error("invalid message");
+          }
+        } catch (e) {
+          console.warn("Networking. Received invalid message. Will continue.");
+          return;
+        }
+
+        this.recv(msg);
+      },
+    });
+  }
+
+  recv(msg: Message): void {
+    for (const callback of this.subscriptions[msg.type]) {
+      callback(msg);
+    }
   }
 
   async send<T extends Request>(
@@ -273,7 +317,7 @@ export class KafkaNetwork implements Network {
     const kafkaRequest: KafkaRequest = {
       target: "resonate.server",
       replyTo: {
-        topic: this.replyTopic,
+        topic: this.topic,
         target: this.pid,
         partition: 0,
       },
@@ -283,15 +327,20 @@ export class KafkaNetwork implements Network {
     };
 
     try {
-      await this.producer.send({ topic: this.requestTopic, messages: [{ value: JSON.stringify(kafkaRequest) }] });
+      await this.producer.send({ topic: this.topic, messages: [{ value: JSON.stringify(kafkaRequest) }] });
     } catch (e) {
       console.log(e);
     }
   }
 
   public async stop(): Promise<void> {
-    await this.consumer.disconnect();
     await this.producer.disconnect();
+    await this.consumerResponse.disconnect();
+    await this.consumerMessages.disconnect();
+  }
+
+  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void {
+    this.subscriptions[type].push(callback);
   }
 }
 
@@ -490,82 +539,6 @@ function mapKafkaResponseToResponse({ operation, response }: KafkaResponse): Res
         kind: "heartbeatTasks",
         tasksAffected: response.tasksAffected,
       };
-  }
-}
-
-export class KafkaMessageSource implements MessageSource {
-  private group: string;
-  private pid: string;
-
-  private consumer: KafkaJS.Consumer;
-  private subscriptions: {
-    invoke: Array<(msg: Message) => void>;
-    resume: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
-  } = { invoke: [], resume: [], notify: [] };
-
-  constructor({
-    group = "default",
-    pid = crypto.randomUUID().replace(/-/g, ""),
-  }: { group?: string; pid?: string } = {}) {
-    const kafka = new KafkaJS.Kafka({
-      "allow.auto.create.topics": true,
-      "client.id": pid,
-      log_level: 3,
-      "metadata.broker.list": "localhost:9092",
-      "metadata.max.age.ms": 1000,
-    });
-
-    this.group = group;
-    this.pid = pid;
-
-    this.consumer = kafka.consumer({
-      "auto.offset.reset": "earliest",
-      "enable.auto.commit": true,
-      "group.id": this.group,
-      "session.timeout.ms": 6000,
-    });
-  }
-
-  async start(): Promise<void> {
-    await this.consumer.connect();
-    await this.consumer.subscribe({ topic: this.group });
-    await this.consumer.run({
-      eachMessage: async ({ message }) => {
-        let msg: Message;
-
-        try {
-          const data = JSON.parse(message.value?.toString() ?? "{}");
-
-          if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
-            msg = { type: data.type, task: data.task, headers: data.head ?? {} };
-          } else if (data?.type === "notify" && util.isDurablePromiseRecord(data?.promise)) {
-            msg = { type: data.type, promise: convertPromise(data.promise), headers: data.head ?? {} };
-          } else {
-            throw new Error("invalid message");
-          }
-        } catch (e) {
-          console.warn("Networking. Received invalid message. Will continue.");
-          return;
-        }
-
-        this.recv(msg);
-      },
-    });
-  }
-
-  recv(msg: Message): void {
-    for (const callback of this.subscriptions[msg.type]) {
-      callback(msg);
-    }
-  }
-
-  public stop(): void {
-    this.consumer.disconnect();
-  }
-
-  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void {
-    this.subscriptions[type].push(callback);
   }
 }
 
