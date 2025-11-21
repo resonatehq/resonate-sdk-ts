@@ -250,7 +250,7 @@ export class KafkaTransport implements Network, MessageSource {
     });
 
     this.consumerMessages = kafka.consumer({
-      "auto.offset.reset": "earliest",
+      "auto.offset.reset": "latest",
       "enable.auto.commit": true,
       "group.id": this.group,
       "session.timeout.ms": 6000,
