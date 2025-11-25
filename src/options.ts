@@ -16,17 +16,17 @@ export class Options {
 
   constructor({
     match,
+    target,
     id = undefined,
     tags = {},
-    target = "default",
     timeout = 24 * util.HOUR,
     version = 0,
     retryPolicy = undefined,
   }: {
     match: (target: string) => string;
+    target: string;
     id?: string;
     tags?: Record<string, string>;
-    target?: string;
     timeout?: number;
     version?: number;
     retryPolicy?: RetryPolicy;
@@ -38,7 +38,6 @@ export class Options {
     this.timeout = timeout;
     this.version = version;
     this.retryPolicy = retryPolicy;
-    console.log("CREATEING", this.id, this.target);
   }
 
   public merge({
