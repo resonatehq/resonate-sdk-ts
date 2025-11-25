@@ -1,4 +1,3 @@
-import { Options } from "options";
 import { LocalMessageSource } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
@@ -8,6 +7,7 @@ import { NoopEncryptor } from "../src/encryptor";
 import type { ResonateError } from "../src/exceptions";
 import { Handler } from "../src/handler";
 import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
+import { Options } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { NoopSpan } from "../src/tracer";

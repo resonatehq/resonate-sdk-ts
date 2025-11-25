@@ -1,4 +1,3 @@
-import { Options } from "options";
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
@@ -8,6 +7,7 @@ import { NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
 import { NoopHeartbeat } from "../src/heartbeat";
 import type { DurablePromiseRecord, TaskRecord } from "../src/network/network";
+import { Options } from "../src/options";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
 import type { ClaimedTask } from "../src/resonate-inner";

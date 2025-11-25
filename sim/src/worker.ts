@@ -1,4 +1,3 @@
-import { Options } from "options";
 import type { StepClock } from "../../src/clock";
 import type { Encoder } from "../../src/encoder";
 import { NoopEncryptor } from "../../src/encryptor";
@@ -13,6 +12,7 @@ import type {
   Response,
   ResponseFor,
 } from "../../src/network/network";
+import { Options } from "../../src/options";
 import type { Registry } from "../../src/registry";
 import { ResonateInner } from "../../src/resonate-inner";
 import { NoopTracer } from "../../src/tracer";
