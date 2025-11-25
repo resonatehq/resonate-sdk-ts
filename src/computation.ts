@@ -40,7 +40,7 @@ export class Computation {
   private ttl: number;
   private clock: Clock;
   private unicast: string;
-  private anycastPreference: string;
+  private anycast: string;
   private network: Network;
   private handler: Handler;
   private retries: Map<string, RetryPolicyConstructor>;
@@ -59,7 +59,7 @@ export class Computation {
   constructor(
     id: string,
     unicast: string,
-    anycastPreference: string,
+    anycast: string,
     pid: string,
     ttl: number,
     clock: Clock,
@@ -77,7 +77,7 @@ export class Computation {
   ) {
     this.id = id;
     this.unicast = unicast;
-    this.anycastPreference = anycastPreference;
+    this.anycast = anycast;
     this.pid = pid;
     this.ttl = ttl;
     this.clock = clock;
@@ -334,7 +334,7 @@ export class Computation {
             promiseId: id,
             rootPromiseId: this.id,
             timeout: timeout,
-            recv: this.anycastPreference,
+            recv: this.anycast,
           },
           (err, res) => {
             if (err) {

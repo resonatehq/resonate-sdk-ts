@@ -189,7 +189,7 @@ export class WorkerProcess extends Process {
     const messageSource = this.network.getMessageSource();
     this.resonate = new ResonateInner({
       unicast: messageSource.unicast,
-      anycastPreference: messageSource.anycast,
+      anycast: messageSource.anycast,
       pid: iaddr,
       ttl: 5000,
       clock: this.clock,

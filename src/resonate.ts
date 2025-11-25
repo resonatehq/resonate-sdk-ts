@@ -134,7 +134,7 @@ export class Resonate {
     }
 
     if (!resolvedUrl) {
-      const localNetwork = new LocalNetwork({ pid: this.pid, group });
+      const localNetwork = new LocalNetwork({ pid, group });
       this.network = localNetwork;
       this.messageSource = localNetwork.getMessageSource();
       this.heartbeat = new NoopHeartbeat();
@@ -157,7 +157,7 @@ export class Resonate {
 
     this.inner = new ResonateInner({
       unicast: this.messageSource.unicast,
-      anycastPreference: this.messageSource.anycast,
+      anycast: this.messageSource.anycast,
       pid: this.pid,
       ttl: this.ttl,
       clock: this.clock,
