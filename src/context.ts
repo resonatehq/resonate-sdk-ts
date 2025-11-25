@@ -565,7 +565,9 @@ export class InnerContext implements Context {
     return this.dependencies.get(name);
   }
 
-  options(opts: Partial<Options> = {}): Options {
+  options(
+    opts: Partial<Pick<Options, "id" | "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {},
+  ): Options {
     return this.opts.merge({ ...opts });
   }
 

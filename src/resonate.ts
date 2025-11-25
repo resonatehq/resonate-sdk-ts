@@ -153,7 +153,7 @@ export class Resonate {
     this.handler = new Handler(this.network, this.encoder, this.encryptor);
     this.registry = new Registry();
     this.dependencies = new Map();
-    this.opts = new Options({ match: this.messageSource.match });
+    this.opts = new Options({ match: this.messageSource.match, target: group });
 
     this.inner = new ResonateInner({
       unicast: this.messageSource.unicast,
@@ -715,7 +715,9 @@ export class Resonate {
     return this.createHandle(promise);
   }
 
-  public options(opts: Partial<Options> = {}): Options {
+  public options(
+    opts: Partial<Pick<Options, "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {},
+  ): Options {
     return this.opts.merge({ ...opts });
   }
 

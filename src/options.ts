@@ -38,6 +38,7 @@ export class Options {
     this.timeout = timeout;
     this.version = version;
     this.retryPolicy = retryPolicy;
+    console.log("CREATEING", this.id, this.target);
   }
 
   public merge({
