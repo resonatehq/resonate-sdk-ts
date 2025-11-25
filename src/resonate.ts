@@ -716,7 +716,7 @@ export class Resonate {
   }
 
   public options(opts: Partial<Options> = {}): Options {
-    return this.opts.merge({ target: this.opts.target, ...opts });
+    return this.opts.merge({ ...opts });
   }
 
   private getArgsAndOpts(args: any[], version?: number): [any[], Options] {

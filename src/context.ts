@@ -566,7 +566,7 @@ export class InnerContext implements Context {
   }
 
   options(opts: Partial<Options> = {}): Options {
-    return this.opts.merge({ target: this.anycast, ...opts });
+    return this.opts.merge({ ...opts });
   }
 
   readonly date = {
