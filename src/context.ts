@@ -1,7 +1,7 @@
 import type { Clock } from "./clock";
 import exceptions, { type ResonateError } from "./exceptions";
 import type { CreatePromiseReq } from "./network/network";
-import { Options } from "./options";
+import type { Options } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
 import type { Span } from "./tracer";
@@ -262,6 +262,7 @@ export class InnerContext implements Context {
   readonly span: Span;
   private anycast: string;
   private registry: Registry;
+  private rootOptions: Options;
   private dependencies: Map<string, any>;
   private seq = 0;
 
@@ -279,6 +280,7 @@ export class InnerContext implements Context {
     clock,
     registry,
     dependencies,
+    rootOptions,
     timeout,
     version,
     retryPolicy,
@@ -291,6 +293,7 @@ export class InnerContext implements Context {
     anycast: string;
     clock: Clock;
     registry: Registry;
+    rootOptions: Options;
     dependencies: Map<string, any>;
     timeout: number;
     version: number;
@@ -305,6 +308,7 @@ export class InnerContext implements Context {
     this.clock = clock;
     this.registry = registry;
     this.dependencies = dependencies;
+    this.rootOptions = rootOptions;
     this.retryPolicy = retryPolicy;
     this.span = span;
 
@@ -339,6 +343,7 @@ export class InnerContext implements Context {
       clock: this.clock,
       registry: this.registry,
       dependencies: this.dependencies,
+      rootOptions: this.rootOptions,
       timeout,
       version,
       retryPolicy,
@@ -560,8 +565,10 @@ export class InnerContext implements Context {
     return this.dependencies.get(name);
   }
 
-  options(opts: Partial<Options> = {}): Options {
-    return new Options({ target: this.anycast, ...opts });
+  options(
+    opts: Partial<Pick<Options, "id" | "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {},
+  ): Options {
+    return this.rootOptions.merge({ target: this.anycast, ...opts });
   }
 
   readonly date = {

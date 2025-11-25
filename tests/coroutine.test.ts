@@ -1,3 +1,5 @@
+import { Options } from "options";
+import { LocalMessageSource } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
 import { Coroutine, type Suspended } from "../src/coroutine";
@@ -59,6 +61,8 @@ class DummyNetwork implements Network {
 }
 
 describe("Coroutine", () => {
+  const m = new LocalMessageSource();
+
   // Helper functions to write test easily
   const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], handler: Handler) => {
     return new Promise<any>((resolve) => {
@@ -68,10 +72,11 @@ describe("Coroutine", () => {
         new InnerContext({
           id: uuid,
           func: func.name,
-          anycast: "poll://any@default",
+          anycast: m.anycastNoPreference,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
+          rootOptions: new Options({ match: m.match }),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
@@ -302,7 +307,7 @@ describe("Coroutine", () => {
     }
 
     const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-
+    const m = new LocalMessageSource();
     // DIE with condition=true causes callback to be called with err=true
     const result = await new Promise<any>((resolve) => {
       Coroutine.exec(
@@ -311,10 +316,11 @@ describe("Coroutine", () => {
         new InnerContext({
           id: "foo.1",
           func: foo.name,
-          anycast: "poll://any@default",
+          anycast: m.anycastNoPreference,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
+          rootOptions: new Options({ match: m.match }),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),

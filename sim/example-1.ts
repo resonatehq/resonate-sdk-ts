@@ -39,7 +39,7 @@ const worker1 = new WorkerProcess(
   clock,
   encoder,
   registry,
-  { charFlipProb: options.charFlipProb ?? rnd.random(0.05) },
+  { charFlipProb: options.charFlipProb ?? rnd.random(0) },
   "worker-1",
   "default",
 );
@@ -48,7 +48,7 @@ const worker2 = new WorkerProcess(
   clock,
   encoder,
   registry,
-  { charFlipProb: options.charFlipProb ?? rnd.random(0.05) },
+  { charFlipProb: options.charFlipProb ?? rnd.random(0) },
   "worker-2",
   "default",
 );
@@ -57,7 +57,7 @@ const worker3 = new WorkerProcess(
   clock,
   encoder,
   registry,
-  { charFlipProb: options.charFlipProb ?? rnd.random(0.05) },
+  { charFlipProb: options.charFlipProb ?? rnd.random(0) },
   "worker-3",
   "default",
 );
@@ -81,7 +81,7 @@ sim.delay(0, () => {
       id,
       timeout: 10000000000,
       iKey: id,
-      tags: { "resonate:invoke": "local://any@default" },
+      tags: { "resonate:invoke": "sim://any@default" },
       param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
     },
     { requ: true, correlationId: 1 },

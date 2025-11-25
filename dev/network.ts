@@ -3,7 +3,17 @@ import type { Message, MessageSource, Network, Request, ResponseFor } from "../s
 import * as util from "../src/util";
 import { Server } from "./server";
 
+export interface LocalConfig {
+  server?: Server;
+  pid?: string;
+  group?: string;
+}
+
 export class LocalMessageSource implements MessageSource {
+  readonly unicast: string;
+  readonly anycastPreference: string;
+  readonly anycastNoPreference: string;
+
   private server: Server;
   private timeoutId: ReturnType<typeof setTimeout> | undefined;
   private shouldStop = false;
@@ -13,7 +23,11 @@ export class LocalMessageSource implements MessageSource {
     notify: Array<(msg: Message) => void>;
   } = { invoke: [], resume: [], notify: [] };
 
-  constructor(server: Server) {
+  constructor({ pid = "0", group = "default", server = new Server() }: LocalConfig = {}) {
+    this.unicast = `poll://uni@${group}/${pid}`;
+    this.anycastPreference = `poll://any@${group}/${pid}`;
+    this.anycastNoPreference = `poll://any@${group}`;
+
     this.server = server;
     this.timeoutId = undefined;
   }
@@ -49,15 +63,18 @@ export class LocalMessageSource implements MessageSource {
       }, next);
     }
   }
+  match(target: string): string {
+    return `poll://any@${target}`;
+  }
 }
 
 export class LocalNetwork implements Network {
   private server: Server;
   private messageSource: LocalMessageSource;
 
-  constructor(server: Server = new Server()) {
+  constructor({ pid = "0", group = "default", server = new Server() }: LocalConfig = {}) {
     this.server = server;
-    this.messageSource = new LocalMessageSource(server);
+    this.messageSource = new LocalMessageSource({ pid, group, server });
   }
 
   getMessageSource(): MessageSource {

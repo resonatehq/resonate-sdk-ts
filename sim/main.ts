@@ -257,7 +257,7 @@ export function run(options: Options) {
               id,
               timeout,
               iKey: id,
-              tags: { "resonate:invoke": "local://any@default" },
+              tags: { "resonate:invoke": "sim://any@default" },
               param: encoder.encode({ func: funcName, args: [], version: 1 }),
             },
             { requ: true, correlationId: i },

@@ -1,3 +1,4 @@
+import { Options } from "options";
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
@@ -109,15 +110,16 @@ describe("Computation Event Queue Concurrency", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockProcessor = new MockProcessor();
-    network = new LocalNetwork();
+    network = new LocalNetwork({ group: "test-group", pid: "test-pid" });
     handler = new Handler(network, new JsonEncoder(), new NoopEncryptor());
     registry = new Registry();
 
+    const messageSource = network.getMessageSource();
     computation = new Computation(
       "root-promise-1",
-      "poll://uni@test-group/test-pid",
-      "poll://any@test-group/test-pid",
-      "poll://any@test-group",
+      messageSource.unicast,
+      messageSource.anycastPreference,
+      messageSource.anycastNoPreference,
       "test-pid",
       3600,
       new WallClock(),
@@ -127,6 +129,7 @@ describe("Computation Event Queue Concurrency", () => {
       registry,
       new NoopHeartbeat(),
       new Map(),
+      new Options({ match: messageSource.match }),
       false,
       new NoopTracer(),
       new NoopSpan(),

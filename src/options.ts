@@ -10,10 +10,12 @@ export class Options {
   public readonly timeout: number;
   public readonly version: number;
   public readonly retryPolicy: RetryPolicy | undefined;
+  public readonly match: (target: string) => string;
 
   [RESONATE_OPTIONS] = true;
 
   constructor({
+    match,
     id = undefined,
     tags = {},
     target = "default",
@@ -21,6 +23,7 @@ export class Options {
     version = 0,
     retryPolicy = undefined,
   }: {
+    match: (target: string) => string;
     id?: string;
     tags?: Record<string, string>;
     target?: string;
@@ -28,6 +31,7 @@ export class Options {
     version?: number;
     retryPolicy?: RetryPolicy;
   }) {
+    this.match = (target: string) => (util.isUrl(target) ? target : match(target));
     this.id = id;
     this.tags = tags;
     this.target = this.match(target);
@@ -36,8 +40,29 @@ export class Options {
     this.retryPolicy = retryPolicy;
   }
 
-  private match(target: string): string {
-    // can be refactored to be configurable
-    return util.isUrl(target) ? target : `poll://any@${target}`;
+  public merge({
+    id = undefined,
+    tags = undefined,
+    target = undefined,
+    timeout = undefined,
+    version = undefined,
+    retryPolicy = undefined,
+  }: {
+    id?: string;
+    tags?: Record<string, string>;
+    target?: string;
+    timeout?: number;
+    version?: number;
+    retryPolicy?: RetryPolicy;
+  } = {}): Options {
+    return new Options({
+      match: this.match,
+      id: id ?? this.id,
+      tags: tags ?? this.tags,
+      target: target ?? this.target,
+      timeout: timeout ?? this.timeout,
+      version: version ?? this.version,
+      retryPolicy: retryPolicy ?? this.retryPolicy,
+    });
   }
 }
