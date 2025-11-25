@@ -1,3 +1,4 @@
+import { HttpMessageSource } from "network/remote";
 import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
 import { Coroutine, type Suspended } from "../src/coroutine";
@@ -6,6 +7,7 @@ import { NoopEncryptor } from "../src/encryptor";
 import type { ResonateError } from "../src/exceptions";
 import { Handler } from "../src/handler";
 import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
+import { Options } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { NoopSpan } from "../src/tracer";
@@ -61,6 +63,8 @@ class DummyNetwork implements Network {
 describe("Coroutine", () => {
   // Helper functions to write test easily
   const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], handler: Handler) => {
+    const m = new HttpMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
+
     return new Promise<any>((resolve) => {
       Coroutine.exec(
         uuid,
@@ -68,13 +72,15 @@ describe("Coroutine", () => {
         new InnerContext({
           id: uuid,
           func: func.name,
-          anycast: "poll://any@default",
+          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+
+          opts: new Options({ match: m.match }),
           span: new NoopSpan(),
         }),
         func,
@@ -303,6 +309,7 @@ describe("Coroutine", () => {
 
     const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
 
+    const m = new HttpMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     // DIE with condition=true causes callback to be called with err=true
     const result = await new Promise<any>((resolve) => {
       Coroutine.exec(
@@ -311,13 +318,14 @@ describe("Coroutine", () => {
         new InnerContext({
           id: "foo.1",
           func: foo.name,
-          anycast: "poll://any@default",
+          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          opts: new Options({ match: m.match }),
           span: new NoopSpan(),
         }),
         foo,

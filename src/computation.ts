@@ -6,6 +6,7 @@ import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { CallbackRecord, DurablePromiseRecord, Network, TaskRecord } from "./network/network";
 import { Nursery } from "./nursery";
+import type { Options } from "./options";
 import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
@@ -40,12 +41,12 @@ export class Computation {
   private clock: Clock;
   private unicast: string;
   private anycastPreference: string;
-  private anycastNoPreference: string;
   private network: Network;
   private handler: Handler;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
   private dependencies: Map<string, any>;
+  private opts: Options;
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
@@ -59,7 +60,6 @@ export class Computation {
     id: string,
     unicast: string,
     anycastPreference: string,
-    anycastNoPreference: string,
     pid: string,
     ttl: number,
     clock: Clock,
@@ -69,6 +69,7 @@ export class Computation {
     registry: Registry,
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
+    opts: Options,
     verbose: boolean,
     tracer: Tracer,
     span: Span,
@@ -77,7 +78,6 @@ export class Computation {
     this.id = id;
     this.unicast = unicast;
     this.anycastPreference = anycastPreference;
-    this.anycastNoPreference = anycastNoPreference;
     this.pid = pid;
     this.ttl = ttl;
     this.clock = clock;
@@ -87,6 +87,7 @@ export class Computation {
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
+    this.opts = opts;
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
     this.span = span;
@@ -193,10 +194,11 @@ export class Computation {
       const ctx = new InnerContext({
         id: this.id,
         func: registered.func.name,
-        anycast: this.anycastNoPreference,
+        anycast: this.opts.target,
         clock: this.clock,
         registry: this.registry,
         dependencies: this.dependencies,
+        opts: this.opts,
         timeout: rootPromise.timeout,
         version: registered.version,
         retryPolicy: retryPolicy,

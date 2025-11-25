@@ -1,7 +1,7 @@
 import type { Clock } from "./clock";
 import exceptions, { type ResonateError } from "./exceptions";
 import type { CreatePromiseReq } from "./network/network";
-import { Options } from "./options";
+import type { Options } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
 import type { Span } from "./tracer";
@@ -263,6 +263,7 @@ export class InnerContext implements Context {
   private anycast: string;
   private registry: Registry;
   private dependencies: Map<string, any>;
+  private opts: Options;
   private seq = 0;
 
   run = this.lfc.bind(this);
@@ -279,6 +280,7 @@ export class InnerContext implements Context {
     clock,
     registry,
     dependencies,
+    opts,
     timeout,
     version,
     retryPolicy,
@@ -292,6 +294,7 @@ export class InnerContext implements Context {
     clock: Clock;
     registry: Registry;
     dependencies: Map<string, any>;
+    opts: Options;
     timeout: number;
     version: number;
     retryPolicy: RetryPolicy;
@@ -305,6 +308,7 @@ export class InnerContext implements Context {
     this.clock = clock;
     this.registry = registry;
     this.dependencies = dependencies;
+    this.opts = opts;
     this.retryPolicy = retryPolicy;
     this.span = span;
 
@@ -339,6 +343,7 @@ export class InnerContext implements Context {
       clock: this.clock,
       registry: this.registry,
       dependencies: this.dependencies,
+      opts: this.opts,
       timeout,
       version,
       retryPolicy,
@@ -561,7 +566,7 @@ export class InnerContext implements Context {
   }
 
   options(opts: Partial<Options> = {}): Options {
-    return new Options({ target: this.anycast, ...opts });
+    return this.opts.merge({ target: this.anycast, ...opts });
   }
 
   readonly date = {

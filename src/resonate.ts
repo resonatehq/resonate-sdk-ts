@@ -54,9 +54,6 @@ type SubscriptionEntry = {
 export class Resonate {
   private clock: WallClock;
 
-  private unicast: string;
-  private anycastPreference: string;
-  private anycastNoPreference: string;
   private pid: string;
   private ttl: number;
 
@@ -72,6 +69,7 @@ export class Resonate {
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
+  private opts: Options;
   private subscriptions: Map<string, SubscriptionEntry> = new Map();
   private subscribeEvery: number;
   private intervalId: ReturnType<typeof setInterval>;
@@ -99,9 +97,6 @@ export class Resonate {
     tracer?: Tracer;
   } = {}) {
     this.clock = new WallClock();
-    this.unicast = `poll://uni@${group}/${pid}`;
-    this.anycastPreference = `poll://any@${group}/${pid}`;
-    this.anycastNoPreference = `poll://any@${group}`;
     this.pid = pid;
     this.ttl = ttl;
     this.tracer = tracer ?? new NoopTracer();
@@ -139,7 +134,7 @@ export class Resonate {
     }
 
     if (!resolvedUrl) {
-      const localNetwork = new LocalNetwork();
+      const localNetwork = new LocalNetwork({ pid: this.pid, group });
       this.network = localNetwork;
       this.messageSource = localNetwork.getMessageSource();
       this.heartbeat = new NoopHeartbeat();
@@ -158,11 +153,11 @@ export class Resonate {
     this.handler = new Handler(this.network, this.encoder, this.encryptor);
     this.registry = new Registry();
     this.dependencies = new Map();
+    this.opts = new Options({ match: this.messageSource.match });
 
     this.inner = new ResonateInner({
-      unicast: this.unicast,
-      anycastPreference: this.anycastPreference,
-      anycastNoPreference: this.anycastNoPreference,
+      unicast: this.messageSource.unicast,
+      anycastPreference: this.messageSource.anycast,
       pid: this.pid,
       ttl: this.ttl,
       clock: this.clock,
@@ -172,6 +167,7 @@ export class Resonate {
       registry: this.registry,
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
+      opts: this.opts,
       verbose: this.verbose,
       tracer: this.tracer,
     });
@@ -191,7 +187,7 @@ export class Resonate {
             id: this.pid,
             promiseId: id,
             timeout: sub.timeout + 1 * util.MIN, // add a buffer
-            recv: this.unicast,
+            recv: this.messageSource.unicast,
           };
 
           const res = await this.createSubscription(createSubscriptionReq);
@@ -488,7 +484,7 @@ export class Resonate {
               "resonate:root": id,
               "resonate:parent": id,
               "resonate:scope": "global",
-              "resonate:invoke": this.anycastPreference,
+              "resonate:invoke": this.messageSource.anycast,
             },
           },
           task: {
@@ -720,7 +716,7 @@ export class Resonate {
   }
 
   public options(opts: Partial<Options> = {}): Options {
-    return new Options({ target: this.anycastNoPreference, ...opts });
+    return this.opts.merge({ target: this.opts.target, ...opts });
   }
 
   private getArgsAndOpts(args: any[], version?: number): [any[], Options] {
@@ -814,7 +810,7 @@ export class Resonate {
       id: this.pid,
       promiseId: promise.id,
       timeout: promise.timeout + 1 * util.MIN, // add a buffer
-      recv: this.unicast,
+      recv: this.messageSource.unicast,
     };
 
     return {

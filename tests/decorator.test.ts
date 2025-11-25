@@ -1,6 +1,8 @@
+import { HttpMessageSource } from "network/remote";
 import { WallClock } from "../src/clock";
 import { type Context, Future, InnerContext, type LFI } from "../src/context";
 import { Decorator } from "../src/decorator";
+import { Options } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { NoopSpan } from "../src/tracer";
@@ -29,18 +31,20 @@ describe("Decorator", () => {
       yield* ctx.beginRun((_ctx: Context) => 42);
     }
 
+    const m = new HttpMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     const d = new Decorator(
       foo(
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: "poll://any@default",
+          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          opts: new Options({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -77,18 +81,20 @@ describe("Decorator", () => {
       return v1 + v2;
     }
 
+    const m = new HttpMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     const d = new Decorator(
       foo(
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: "poll://any@default",
+          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          opts: new Options({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -152,18 +158,20 @@ describe("Decorator", () => {
       return 30;
     }
 
+    const m = new HttpMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     const d = new Decorator(
       foo(
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: "poll://any@default",
+          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          opts: new Options({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -198,18 +206,20 @@ describe("Decorator", () => {
       return 30; // D
     }
 
+    const m = new HttpMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     const d = new Decorator(
       foo(
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: "poll://any@default",
+          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          opts: new Options({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -251,18 +261,20 @@ describe("Decorator", () => {
       return 42; // D
     }
 
+    const m = new HttpMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     const d = new Decorator(
       foo(
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: "poll://any@default",
+          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          opts: new Options({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -306,18 +318,20 @@ describe("Decorator", () => {
       return "should not reach here";
     }
 
+    const m = new HttpMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     const d = new Decorator(
       foo(
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: "poll://any@default",
+          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          opts: new Options({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -340,18 +354,20 @@ describe("Decorator", () => {
       return 42;
     }
 
+    const m = new HttpMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     const d = new Decorator(
       foo(
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: "poll://any@default",
+          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
+          opts: new Options({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),

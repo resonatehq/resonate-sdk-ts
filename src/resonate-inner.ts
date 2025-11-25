@@ -3,6 +3,7 @@ import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
+import type { Options } from "./options";
 import type { Registry } from "./registry";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries";
 import type { Span, Tracer } from "./tracer";
@@ -31,7 +32,6 @@ export type UnclaimedTask = {
 export class ResonateInner {
   private unicast: string;
   private anycastPreference: string;
-  private anycastNoPreference: string;
   private pid: string;
   private ttl: number;
   private clock: Clock;
@@ -42,13 +42,13 @@ export class ResonateInner {
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
+  private opts: Options;
   private verbose: boolean;
   private computations: Map<string, Computation> = new Map();
 
   constructor({
     unicast,
     anycastPreference,
-    anycastNoPreference,
     pid,
     ttl,
     clock,
@@ -58,12 +58,12 @@ export class ResonateInner {
     registry,
     heartbeat,
     dependencies,
+    opts,
     verbose,
     messageSource = undefined,
   }: {
     unicast: string;
     anycastPreference: string;
-    anycastNoPreference: string;
     pid: string;
     ttl: number;
     clock: Clock;
@@ -73,12 +73,12 @@ export class ResonateInner {
     registry: Registry;
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
+    opts: Options;
     verbose: boolean;
     messageSource?: MessageSource;
   }) {
     this.unicast = unicast;
     this.anycastPreference = anycastPreference;
-    this.anycastNoPreference = anycastNoPreference;
     this.pid = pid;
     this.ttl = ttl;
     this.clock = clock;
@@ -88,6 +88,7 @@ export class ResonateInner {
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
+    this.opts = opts;
     this.verbose = verbose;
 
     // default retry policies
@@ -110,7 +111,6 @@ export class ResonateInner {
         task.task.rootPromiseId,
         this.unicast,
         this.anycastPreference,
-        this.anycastNoPreference,
         this.pid,
         this.ttl,
         this.clock,
@@ -120,6 +120,7 @@ export class ResonateInner {
         this.registry,
         this.heartbeat,
         this.dependencies,
+        this.opts,
         this.verbose,
         this.tracer,
         span,
