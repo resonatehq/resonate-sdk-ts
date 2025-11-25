@@ -16,20 +16,20 @@ export class Options {
 
   constructor({
     match,
-    target,
     id = undefined,
+    retryPolicy = undefined,
     tags = {},
+    target = "default",
     timeout = 24 * util.HOUR,
     version = 0,
-    retryPolicy = undefined,
   }: {
     match: (target: string) => string;
-    target: string;
     id?: string;
+    retryPolicy?: RetryPolicy;
     tags?: Record<string, string>;
+    target?: string;
     timeout?: number;
     version?: number;
-    retryPolicy?: RetryPolicy;
   }) {
     this.match = (target: string) => (util.isUrl(target) ? target : match(target));
     this.id = id;
