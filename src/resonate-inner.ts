@@ -3,7 +3,7 @@ import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
-import type { Options } from "./options";
+import type { OptionsBuilder } from "./options";
 import type { Registry } from "./registry";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries";
 import type { Span, Tracer } from "./tracer";
@@ -42,7 +42,7 @@ export class ResonateInner {
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
-  private opts: Options;
+  private optsBuilder: OptionsBuilder;
   private verbose: boolean;
   private computations: Map<string, Computation> = new Map();
 
@@ -58,7 +58,7 @@ export class ResonateInner {
     registry,
     heartbeat,
     dependencies,
-    opts,
+    optsBuilder,
     verbose,
     messageSource = undefined,
   }: {
@@ -73,7 +73,7 @@ export class ResonateInner {
     registry: Registry;
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
-    opts: Options;
+    optsBuilder: OptionsBuilder;
     verbose: boolean;
     messageSource?: MessageSource;
   }) {
@@ -88,7 +88,7 @@ export class ResonateInner {
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
-    this.opts = opts;
+    this.optsBuilder = optsBuilder;
     this.verbose = verbose;
 
     // default retry policies
@@ -120,7 +120,7 @@ export class ResonateInner {
         this.registry,
         this.heartbeat,
         this.dependencies,
-        this.opts,
+        this.optsBuilder,
         this.verbose,
         this.tracer,
         span,

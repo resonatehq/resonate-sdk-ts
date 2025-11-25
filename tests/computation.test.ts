@@ -7,7 +7,7 @@ import { NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
 import { NoopHeartbeat } from "../src/heartbeat";
 import type { DurablePromiseRecord, TaskRecord } from "../src/network/network";
-import { Options } from "../src/options";
+import { OptionsBuilder } from "../src/options";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
 import type { ClaimedTask } from "../src/resonate-inner";
@@ -110,18 +110,16 @@ describe("Computation Event Queue Concurrency", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockProcessor = new MockProcessor();
-    const group = "test-group";
-    network = new LocalNetwork({ pid: "test-pid", group });
+    network = new LocalNetwork({ pid: "test-pid", group: "test-group" });
     handler = new Handler(network, new JsonEncoder(), new NoopEncryptor());
     registry = new Registry();
     const messsageSource = network.getMessageSource();
-    const opts = new Options({ match: messsageSource.match });
 
     computation = new Computation(
       "root-promise-1",
       messsageSource.unicast,
       messsageSource.anycast,
-      opts.target,
+      messsageSource.match("default"),
       3600,
       new WallClock(),
       network,
@@ -130,7 +128,7 @@ describe("Computation Event Queue Concurrency", () => {
       registry,
       new NoopHeartbeat(),
       new Map(),
-      opts,
+      new OptionsBuilder({ match: messsageSource.match }),
       false,
       new NoopTracer(),
       new NoopSpan(),

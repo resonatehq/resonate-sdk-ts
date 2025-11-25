@@ -17,7 +17,7 @@ import type {
   TaskRecord,
 } from "./network/network";
 import { HttpMessageSource, HttpNetwork } from "./network/remote";
-import { Options } from "./options";
+import { type Options, OptionsBuilder } from "./options";
 import { Promises } from "./promises";
 import { Registry } from "./registry";
 import { ResonateInner } from "./resonate-inner";
@@ -73,7 +73,7 @@ export class Resonate {
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
-  private opts: Options;
+  private optsBuilder: OptionsBuilder;
   private subscriptions: Map<string, SubscriptionEntry> = new Map();
   private subscribeEvery: number;
   private intervalId: ReturnType<typeof setInterval>;
@@ -162,7 +162,7 @@ export class Resonate {
     this.anycast = this.messageSource.anycast;
     this.match = this.messageSource.match;
 
-    this.opts = new Options({ match: this.match });
+    this.optsBuilder = new OptionsBuilder({ match: this.match });
 
     this.inner = new ResonateInner({
       unicast: this.unicast,
@@ -176,7 +176,7 @@ export class Resonate {
       registry: this.registry,
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
-      opts: this.opts,
+      optsBuilder: this.optsBuilder,
       verbose: this.verbose,
       tracer: this.tracer,
     });
@@ -727,7 +727,7 @@ export class Resonate {
   public options(
     opts: Partial<Pick<Options, "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {},
   ): Options {
-    return this.opts.merge(opts);
+    return this.optsBuilder.build(opts);
   }
 
   private getArgsAndOpts(args: any[], version?: number): [any[], Options] {

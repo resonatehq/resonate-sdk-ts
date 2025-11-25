@@ -3,19 +3,13 @@ import * as util from "./util";
 
 export const RESONATE_OPTIONS: unique symbol = Symbol("ResonateOptions");
 
-export class Options {
-  public readonly id: string | undefined;
-  public readonly tags: Record<string, string>;
-  public readonly target: string;
-  public readonly timeout: number;
-  public readonly version: number;
-  public readonly retryPolicy: RetryPolicy | undefined;
-  public readonly match: (target: string) => string;
+export class OptionsBuilder {
+  private match: (target: string) => string;
+  constructor({ match }: { match: (target: string) => string }) {
+    this.match = (target: string) => (util.isUrl(target) ? target : match(target));
+  }
 
-  [RESONATE_OPTIONS] = true;
-
-  constructor({
-    match,
+  build({
     id = undefined,
     retryPolicy = undefined,
     tags = {},
@@ -23,7 +17,35 @@ export class Options {
     timeout = 24 * util.HOUR,
     version = 0,
   }: {
-    match: (target: string) => string;
+    id?: string;
+    retryPolicy?: RetryPolicy;
+    tags?: Record<string, string>;
+    target?: string;
+    timeout?: number;
+    version?: number;
+  } = {}): Options {
+    return new Options({ id, retryPolicy, tags, target: this.match(target), timeout, version });
+  }
+}
+
+export class Options {
+  public readonly id: string | undefined;
+  public readonly tags: Record<string, string>;
+  public readonly target: string;
+  public readonly timeout: number;
+  public readonly version: number;
+  public readonly retryPolicy: RetryPolicy | undefined;
+
+  [RESONATE_OPTIONS] = true;
+
+  constructor({
+    id = undefined,
+    retryPolicy = undefined,
+    tags = {},
+    target = "default",
+    timeout = 24 * util.HOUR,
+    version = 0,
+  }: {
     id?: string;
     retryPolicy?: RetryPolicy;
     tags?: Record<string, string>;
@@ -31,38 +53,11 @@ export class Options {
     timeout?: number;
     version?: number;
   }) {
-    this.match = (target: string) => (util.isUrl(target) ? target : match(target));
     this.id = id;
     this.tags = tags;
-    this.target = this.match(target);
+    this.target = target;
     this.timeout = timeout;
     this.version = version;
     this.retryPolicy = retryPolicy;
-  }
-
-  public merge({
-    id = undefined,
-    tags = undefined,
-    target = undefined,
-    timeout = undefined,
-    version = undefined,
-    retryPolicy = undefined,
-  }: {
-    id?: string;
-    tags?: Record<string, string>;
-    target?: string;
-    timeout?: number;
-    version?: number;
-    retryPolicy?: RetryPolicy;
-  } = {}): Options {
-    return new Options({
-      match: this.match,
-      id: id ?? this.id,
-      tags: tags ?? this.tags,
-      target: target ?? this.target,
-      timeout: timeout ?? this.timeout,
-      version: version ?? this.version,
-      retryPolicy: retryPolicy ?? this.retryPolicy,
-    });
   }
 }

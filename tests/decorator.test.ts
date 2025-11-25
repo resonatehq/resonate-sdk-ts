@@ -2,7 +2,7 @@ import { WallClock } from "../src/clock";
 import { type Context, Future, InnerContext, type LFI } from "../src/context";
 import { Decorator } from "../src/decorator";
 import { HttpMessageSource } from "../src/network/remote";
-import { Options } from "../src/options";
+import { OptionsBuilder } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { NoopSpan } from "../src/tracer";
@@ -43,7 +43,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          optsBuilder: new OptionsBuilder({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -92,7 +92,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          optsBuilder: new OptionsBuilder({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -168,7 +168,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          optsBuilder: new OptionsBuilder({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -215,7 +215,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          optsBuilder: new OptionsBuilder({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -269,7 +269,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          optsBuilder: new OptionsBuilder({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -325,7 +325,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          optsBuilder: new OptionsBuilder({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),
@@ -360,7 +360,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          optsBuilder: new OptionsBuilder({ match: m.match }),
           span: new NoopSpan(),
         }),
       ),

@@ -6,7 +6,7 @@ import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { CallbackRecord, DurablePromiseRecord, Network, TaskRecord } from "./network/network";
 import { Nursery } from "./nursery";
-import type { Options } from "./options";
+import type { OptionsBuilder } from "./options";
 import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
@@ -46,7 +46,7 @@ export class Computation {
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
   private dependencies: Map<string, any>;
-  private opts: Options;
+  private optsBuilder: OptionsBuilder;
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
@@ -69,7 +69,7 @@ export class Computation {
     registry: Registry,
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
-    opts: Options,
+    optsBuilder: OptionsBuilder,
     verbose: boolean,
     tracer: Tracer,
     span: Span,
@@ -87,7 +87,7 @@ export class Computation {
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
-    this.opts = opts;
+    this.optsBuilder = optsBuilder;
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
     this.span = span;
@@ -197,7 +197,7 @@ export class Computation {
         clock: this.clock,
         registry: this.registry,
         dependencies: this.dependencies,
-        opts: this.opts,
+        optsBuilder: this.optsBuilder,
         timeout: rootPromise.timeout,
         version: registered.version,
         retryPolicy: retryPolicy,
