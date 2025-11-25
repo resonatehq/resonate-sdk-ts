@@ -199,7 +199,7 @@ export class WorkerProcess extends Process {
       registry: registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
-      opts: new Options({ match: messageSource.match }),
+      opts: new Options({ match: messageSource.match, target: gaddr }),
       verbose: false,
       tracer: new NoopTracer(),
     });

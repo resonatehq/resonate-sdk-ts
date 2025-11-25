@@ -110,11 +110,12 @@ describe("Computation Event Queue Concurrency", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockProcessor = new MockProcessor();
-    network = new LocalNetwork({ pid: "test-pid", group: "test-group" });
+    const group = "test-group";
+    network = new LocalNetwork({ pid: "test-pid", group });
     handler = new Handler(network, new JsonEncoder(), new NoopEncryptor());
     registry = new Registry();
     const messsageSource = network.getMessageSource();
-    const opts = new Options({ match: messsageSource.match });
+    const opts = new Options({ match: messsageSource.match, target: group });
 
     computation = new Computation(
       "root-promise-1",

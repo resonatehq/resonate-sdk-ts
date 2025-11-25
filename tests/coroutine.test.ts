@@ -79,8 +79,7 @@ describe("Coroutine", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-
-          opts: new Options({ match: m.match }),
+          opts: new Options({ match: m.match, target: "default" }),
           span: new NoopSpan(),
         }),
         func,
@@ -325,7 +324,7 @@ describe("Coroutine", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          opts: new Options({ match: m.match, target: "default" }),
           span: new NoopSpan(),
         }),
         foo,
