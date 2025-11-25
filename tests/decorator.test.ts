@@ -37,7 +37,6 @@ describe("Decorator", () => {
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
@@ -87,7 +86,6 @@ describe("Decorator", () => {
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
@@ -164,7 +162,6 @@ describe("Decorator", () => {
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
@@ -212,7 +209,6 @@ describe("Decorator", () => {
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
@@ -267,7 +263,6 @@ describe("Decorator", () => {
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
@@ -324,7 +319,6 @@ describe("Decorator", () => {
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
@@ -360,7 +354,6 @@ describe("Decorator", () => {
         new InnerContext({
           id: "foo",
           func: foo.name,
-          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),

@@ -115,7 +115,7 @@ describe("Computation Event Queue Concurrency", () => {
     handler = new Handler(network, new JsonEncoder(), new NoopEncryptor());
     registry = new Registry();
     const messsageSource = network.getMessageSource();
-    const opts = new Options({ match: messsageSource.match, target: group });
+    const opts = new Options({ match: messsageSource.match });
 
     computation = new Computation(
       "root-promise-1",

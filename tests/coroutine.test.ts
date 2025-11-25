@@ -72,7 +72,6 @@ describe("Coroutine", () => {
         new InnerContext({
           id: uuid,
           func: func.name,
-          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),
@@ -317,7 +316,6 @@ describe("Coroutine", () => {
         new InnerContext({
           id: "foo.1",
           func: foo.name,
-          anycast: m.anycast,
           clock: new WallClock(),
           registry: new Registry(),
           dependencies: new Map(),

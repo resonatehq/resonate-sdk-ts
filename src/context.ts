@@ -209,6 +209,7 @@ export interface Context {
   sleep(msOrOpts: number | { for?: number; until?: Date }): RFC<void>;
 
   // promise
+  promise<T>(): RFI<T>;
   promise<T>({
     id,
     timeout,
@@ -260,7 +261,6 @@ export class InnerContext implements Context {
   private pId: string;
   readonly clock: Clock;
   readonly span: Span;
-  private anycast: string;
   private registry: Registry;
   private dependencies: Map<string, any>;
   private opts: Options;
@@ -276,7 +276,6 @@ export class InnerContext implements Context {
     rId = id,
     pId = id,
     func,
-    anycast,
     clock,
     registry,
     dependencies,
@@ -290,7 +289,6 @@ export class InnerContext implements Context {
     rId?: string;
     pId?: string;
     func: string;
-    anycast: string;
     clock: Clock;
     registry: Registry;
     dependencies: Map<string, any>;
@@ -304,7 +302,6 @@ export class InnerContext implements Context {
     this.rId = rId;
     this.pId = pId;
     this.func = func;
-    this.anycast = anycast;
     this.clock = clock;
     this.registry = registry;
     this.dependencies = dependencies;
@@ -339,7 +336,6 @@ export class InnerContext implements Context {
       rId: this.rId,
       pId: this.id,
       func,
-      anycast: this.anycast,
       clock: this.clock,
       registry: this.registry,
       dependencies: this.dependencies,
@@ -568,7 +564,7 @@ export class InnerContext implements Context {
   options(
     opts: Partial<Pick<Options, "id" | "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {},
   ): Options {
-    return this.opts.merge({ ...opts });
+    return this.opts.merge(opts);
   }
 
   readonly date = {

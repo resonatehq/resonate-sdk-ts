@@ -194,7 +194,6 @@ export class Computation {
       const ctx = new InnerContext({
         id: this.id,
         func: registered.func.name,
-        anycast: this.opts.target,
         clock: this.clock,
         registry: this.registry,
         dependencies: this.dependencies,
