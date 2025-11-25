@@ -115,14 +115,12 @@ describe("Computation Event Queue Concurrency", () => {
     handler = new Handler(network, new JsonEncoder(), new NoopEncryptor());
     registry = new Registry();
     const messsageSource = network.getMessageSource();
-    const optsBuilder = new OptionsBuilder({ match: messsageSource.match });
-    const opts = optsBuilder.build({});
 
     computation = new Computation(
       "root-promise-1",
       messsageSource.unicast,
       messsageSource.anycast,
-      opts.target,
+      messsageSource.match("default"),
       3600,
       new WallClock(),
       network,
@@ -131,7 +129,7 @@ describe("Computation Event Queue Concurrency", () => {
       registry,
       new NoopHeartbeat(),
       new Map(),
-      optsBuilder,
+      new OptionsBuilder({ match: messsageSource.match }),
       false,
       new NoopTracer(),
       new NoopSpan(),
