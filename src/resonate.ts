@@ -57,6 +57,10 @@ export class Resonate {
   private pid: string;
   private ttl: number;
 
+  private unicast: string;
+  private anycast: string;
+  private match: (target: string) => string;
+
   private inner: ResonateInner;
   private network: Network;
   private encoder: Encoder;
@@ -153,11 +157,16 @@ export class Resonate {
     this.handler = new Handler(this.network, this.encoder, this.encryptor);
     this.registry = new Registry();
     this.dependencies = new Map();
-    this.opts = new Options({ match: this.messageSource.match });
+
+    this.unicast = this.messageSource.unicast;
+    this.anycast = this.messageSource.anycast;
+    this.match = this.messageSource.match;
+
+    this.opts = new Options({ match: this.match });
 
     this.inner = new ResonateInner({
-      unicast: this.messageSource.unicast,
-      anycast: this.messageSource.anycast,
+      unicast: this.unicast,
+      anycast: this.anycast,
       pid: this.pid,
       ttl: this.ttl,
       clock: this.clock,
@@ -187,7 +196,7 @@ export class Resonate {
             id: this.pid,
             promiseId: id,
             timeout: sub.timeout + 1 * util.MIN, // add a buffer
-            recv: this.messageSource.unicast,
+            recv: this.unicast,
           };
 
           const res = await this.createSubscription(createSubscriptionReq);
@@ -484,7 +493,7 @@ export class Resonate {
               "resonate:root": id,
               "resonate:parent": id,
               "resonate:scope": "global",
-              "resonate:invoke": this.messageSource.anycast,
+              "resonate:invoke": this.anycast,
             },
           },
           task: {
@@ -812,7 +821,7 @@ export class Resonate {
       id: this.pid,
       promiseId: promise.id,
       timeout: promise.timeout + 1 * util.MIN, // add a buffer
-      recv: this.messageSource.unicast,
+      recv: this.unicast,
     };
 
     return {
