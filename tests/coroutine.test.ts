@@ -1,4 +1,3 @@
-import { HttpMessageSource } from "network/remote";
 import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
 import { Coroutine, type Suspended } from "../src/coroutine";
@@ -7,6 +6,7 @@ import { NoopEncryptor } from "../src/encryptor";
 import type { ResonateError } from "../src/exceptions";
 import { Handler } from "../src/handler";
 import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
+import { HttpMessageSource } from "../src/network/remote";
 import { Options } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";

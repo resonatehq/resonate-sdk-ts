@@ -1,7 +1,7 @@
-import { HttpMessageSource } from "network/remote";
 import { WallClock } from "../src/clock";
 import { type Context, Future, InnerContext, type LFI } from "../src/context";
 import { Decorator } from "../src/decorator";
+import { HttpMessageSource } from "../src/network/remote";
 import { Options } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
