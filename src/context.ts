@@ -1,7 +1,7 @@
 import type { Clock } from "./clock";
 import exceptions, { type ResonateError } from "./exceptions";
 import type { CreatePromiseReq } from "./network/network";
-import type { Options } from "./options";
+import type { Options, OptionsBuilder } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
 import type { Span } from "./tracer";
@@ -263,7 +263,7 @@ export class InnerContext implements Context {
   readonly span: Span;
   private registry: Registry;
   private dependencies: Map<string, any>;
-  private opts: Options;
+  private optsBuilder: OptionsBuilder;
   private seq = 0;
 
   run = this.lfc.bind(this);
@@ -279,7 +279,7 @@ export class InnerContext implements Context {
     clock,
     registry,
     dependencies,
-    opts,
+    optsBuilder,
     timeout,
     version,
     retryPolicy,
@@ -292,7 +292,7 @@ export class InnerContext implements Context {
     clock: Clock;
     registry: Registry;
     dependencies: Map<string, any>;
-    opts: Options;
+    optsBuilder: OptionsBuilder;
     timeout: number;
     version: number;
     retryPolicy: RetryPolicy;
@@ -305,7 +305,7 @@ export class InnerContext implements Context {
     this.clock = clock;
     this.registry = registry;
     this.dependencies = dependencies;
-    this.opts = opts;
+    this.optsBuilder = optsBuilder;
     this.retryPolicy = retryPolicy;
     this.span = span;
 
@@ -339,7 +339,7 @@ export class InnerContext implements Context {
       clock: this.clock,
       registry: this.registry,
       dependencies: this.dependencies,
-      opts: this.opts,
+      optsBuilder: this.optsBuilder,
       timeout,
       version,
       retryPolicy,
@@ -564,7 +564,7 @@ export class InnerContext implements Context {
   options(
     opts: Partial<Pick<Options, "id" | "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {},
   ): Options {
-    return this.opts.merge(opts);
+    return this.optsBuilder.build(opts);
   }
 
   readonly date = {

@@ -12,7 +12,7 @@ import type {
   Response,
   ResponseFor,
 } from "../../src/network/network";
-import { Options } from "../../src/options";
+import { OptionsBuilder } from "../../src/options";
 import type { Registry } from "../../src/registry";
 import { ResonateInner } from "../../src/resonate-inner";
 import { NoopTracer } from "../../src/tracer";
@@ -199,7 +199,7 @@ export class WorkerProcess extends Process {
       registry: registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
-      opts: new Options({ match: messageSource.match }),
+      optsBuilder: new OptionsBuilder({ match: messageSource.match }),
       verbose: false,
       tracer: new NoopTracer(),
     });

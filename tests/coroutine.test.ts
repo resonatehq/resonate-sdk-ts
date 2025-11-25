@@ -7,7 +7,7 @@ import type { ResonateError } from "../src/exceptions";
 import { Handler } from "../src/handler";
 import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
 import { HttpMessageSource } from "../src/network/remote";
-import { Options } from "../src/options";
+import { OptionsBuilder } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { NoopSpan } from "../src/tracer";
@@ -78,7 +78,7 @@ describe("Coroutine", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          optsBuilder: new OptionsBuilder({ match: m.match }),
           span: new NoopSpan(),
         }),
         func,
@@ -322,7 +322,7 @@ describe("Coroutine", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          opts: new Options({ match: m.match }),
+          optsBuilder: new OptionsBuilder({ match: m.match }),
           span: new NoopSpan(),
         }),
         foo,
