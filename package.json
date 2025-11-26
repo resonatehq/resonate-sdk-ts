@@ -35,7 +35,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.6",
-    "@confluentinc/kafka-javascript": "^1.6.0",
     "@jest/globals": "^30.0.0",
     "@types/jest": "30.0.0",
     "@types/node": "^24.0.0",
@@ -47,9 +46,6 @@
     "typedoc-material-theme": "^1.4.0",
     "typescript": "^5.8.3"
   },
-  "trustedDependencies": [
-		"@confluentinc/kafka-javascript"
-	],
   "engines": {
     "node": ">= 22"
   }
