@@ -91,6 +91,7 @@ export class Resonate {
     encryptor = undefined,
     tracer = undefined,
     transport = undefined,
+    webapp = false,
   }: {
     url?: string;
     group?: string;
@@ -101,6 +102,7 @@ export class Resonate {
     encryptor?: Encryptor;
     tracer?: Tracer;
     transport?: Network & MessageSource;
+    webapp?: boolean;
   } = {}) {
     this.clock = new WallClock();
     this.ttl = ttl;
@@ -146,6 +148,7 @@ export class Resonate {
     } else {
       if (!resolvedUrl) {
         const localNetwork = new LocalNetwork({ pid, group });
+        if (webapp) localNetwork.start();
         this.network = localNetwork;
         this.messageSource = localNetwork.getMessageSource();
         this.pid = pid ?? this.messageSource.pid;
@@ -246,10 +249,12 @@ export class Resonate {
     verbose = false,
     encryptor = undefined,
     tracer = undefined,
+    webapp = false,
   }: {
     verbose?: boolean;
     encryptor?: Encryptor;
     tracer?: Tracer;
+    webapp?: boolean;
   } = {}): Resonate {
     return new Resonate({
       group: "default",
@@ -258,6 +263,7 @@ export class Resonate {
       verbose,
       encryptor,
       tracer,
+      webapp,
     });
   }
 

@@ -187,7 +187,7 @@ export class HttpNetwork implements Network {
     );
   }
 
-  public stop(): void {
+  stop(): void {
     // No-op for HttpNetwork, MessageSource handles connection cleanup
   }
 
