@@ -141,7 +141,9 @@ export class Resonate {
     if (transport) {
       this.network = transport;
 
-      if (transport.getMessageSource) {
+      if (util.isMessageSource(transport)) {
+        this.messageSource = transport;
+      } else if (transport.getMessageSource) {
         this.messageSource = transport.getMessageSource();
       } else {
         // TODO: instantiate default message source instead
