@@ -16,7 +16,7 @@ import { ok, type Result } from "../src/types";
 class DummyNetwork implements Network {
   private promises = new Map<string, DurablePromiseRecord>();
 
-  start(): void { }
+  start(): void {}
   send<T extends Request>(request: T, callback: (err?: ResonateError, res?: ResponseFor<T>) => void): void {
     switch (request.kind) {
       case "createPromise": {
