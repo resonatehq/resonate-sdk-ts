@@ -130,7 +130,7 @@ export class Resonate {
     }
 
     // Determine the token based on priority: token arg > RESONATE_TOKEN
-    let resolvedToken = token ?? process.env.RESONATE_TOKEN;
+    const resolvedToken = token ?? process.env.RESONATE_TOKEN;
 
     // Determine the auth based on priority: auth arg > RESONATE_USERNAME+RESONATE_PASSWORD
     let resolvedAuth = auth;
