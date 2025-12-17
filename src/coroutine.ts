@@ -4,7 +4,7 @@ import type { Handler } from "./handler";
 import type { DurablePromiseRecord, TaskRecord } from "./network/network";
 import { Never } from "./retries";
 import type { Span } from "./tracer";
-import { type Callback, ko, ok, type Result, type Yieldable } from "./types";
+import * as types from "./types";
 import * as util from "./util";
 
 export type Suspended = {
@@ -38,7 +38,7 @@ type More = {
 
 type Done = {
   type: "done";
-  result: Result<any>;
+  result: types.Result<any>;
 };
 
 // a simple map to suppress duplicate warnings, necessary due to
@@ -86,12 +86,12 @@ export class Coroutine<T> {
     id: string,
     verbose: boolean,
     ctx: InnerContext,
-    func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
+    func: (ctx: Context, ...args: any[]) => Generator<types.Yieldable, any, any>,
     args: any[],
     task: TaskRecord,
     handler: Handler,
     spans: Map<string, Span>,
-    callback: Callback<Suspended | Completed>,
+    callback: types.Callback<Suspended | Completed>,
   ): void {
     handler.createPromise(
       {
@@ -104,30 +104,33 @@ export class Coroutine<T> {
         strict: false,
       },
       (err, res) => {
-        if (err) return callback(true);
+        if (err) return callback(types.error("oops!"));
         util.assertDefined(res);
 
         if (res.state !== "pending") {
-          return callback(false, { type: "completed", promise: res });
+          return callback(types.value({ type: "completed", promise: res }));
         }
 
         const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), handler, spans);
-        coroutine.exec((err, status) => {
-          if (err) return callback(err);
-          util.assertDefined(status);
+        coroutine.exec((res) => {
+          if (res.tag !== "value") return callback(res);
+
+          const status = res.value;
+
           switch (status.type) {
             case "more":
-              callback(false, { type: "suspended", todo: status.todo, spans: status.spans });
+              callback(types.value({ type: "suspended", todo: status.todo, spans: status.spans }));
               break;
 
             case "done":
+              util.assert(status.result.tag !== "fatal");
               handler.completePromise(
                 {
                   kind: "completePromise",
                   id: id,
-                  state: status.result.success ? "resolved" : "rejected",
+                  state: status.result.tag === "value" ? "resolved" : "rejected",
                   value: {
-                    data: status.result.success ? status.result.value : status.result.error,
+                    data: status.result.tag === "value" ? status.result.value : status.result.error,
                   },
                   iKey: id,
                   strict: false,
@@ -135,11 +138,11 @@ export class Coroutine<T> {
                 (err, promise) => {
                   if (err) {
                     err.log(verbose);
-                    return callback(true);
+                    return callback(types.error("oops!"));
                   }
                   util.assertDefined(promise);
 
-                  callback(false, { type: "completed", promise });
+                  callback(types.value({ type: "completed", promise }));
                 },
                 func.name,
               );
@@ -151,7 +154,7 @@ export class Coroutine<T> {
     );
   }
 
-  private exec(callback: Callback<More | Done>) {
+  private exec(callback: types.Callback<More | Done>) {
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
     const spans: Span[] = [];
@@ -187,7 +190,7 @@ export class Coroutine<T> {
                 err.log(this.verbose);
                 span.setStatus(false, String(err));
                 span.end(this.ctx.clock.now());
-                return callback(true);
+                return callback(types.error("oops!"));
               }
               util.assertDefined(res);
 
@@ -233,12 +236,13 @@ export class Coroutine<T> {
                   this.depth + 1,
                 );
 
-                const cb: Callback<More | Done> = (err, status) => {
-                  if (err) {
+                const cb: types.Callback<More | Done> = (res) => {
+                  util.assert(res.tag !== "fatal");
+                  if (res.tag === "error") {
                     span.end(this.ctx.clock.now());
-                    return callback(err);
+                    return callback(res);
                   }
-                  util.assertDefined(status);
+                  const status = res.value;
 
                   if (status.type === "more") {
                     local.push(...status.todo.local);
@@ -251,13 +255,14 @@ export class Coroutine<T> {
                     };
                     next();
                   } else {
+                    util.assert(status.result.tag !== "fatal");
                     this.handler.completePromise(
                       {
                         kind: "completePromise",
                         id: action.id,
-                        state: status.result.success ? "resolved" : "rejected",
+                        state: status.result.tag === "value" ? "resolved" : "rejected",
                         value: {
-                          data: status.result.success ? status.result.value : status.result.error,
+                          data: status.result.tag === "value" ? status.result.value : status.result.error,
                         },
                         iKey: action.id,
                         strict: false,
@@ -268,7 +273,7 @@ export class Coroutine<T> {
 
                         if (err) {
                           err.log(this.verbose);
-                          return callback(true);
+                          return callback(types.error("oops!"));
                         }
                         util.assertDefined(res);
                         util.assert(res.state !== "pending", "promise must be completed");
@@ -279,7 +284,8 @@ export class Coroutine<T> {
                           id: action.id,
                           value: {
                             type: "internal.literal",
-                            value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
+                            value:
+                              res.state === "resolved" ? types.value(res.value?.data) : types.error(res.value?.data),
                           },
                         };
                         next();
@@ -318,7 +324,7 @@ export class Coroutine<T> {
                   id: action.id,
                   value: {
                     type: "internal.literal",
-                    value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
+                    value: res.state === "resolved" ? types.value(res.value?.data) : types.error(res.value?.data),
                   },
                 };
                 next();
@@ -353,7 +359,7 @@ export class Coroutine<T> {
                 err.log(this.verbose);
                 span.setStatus(false, String(err));
                 span.end(this.ctx.clock.now());
-                return callback(true);
+                return callback(types.error("oops!"));
               }
 
               // if the promise is created, the span is considered successful
@@ -378,7 +384,7 @@ export class Coroutine<T> {
                   id: action.id,
                   value: {
                     type: "internal.literal",
-                    value: res.state === "resolved" ? ok(res.value?.data) : ko(res.value?.data),
+                    value: res.state === "resolved" ? types.value(res.value?.data) : types.error(res.value?.data),
                   },
                 };
               }
@@ -400,7 +406,7 @@ export class Coroutine<T> {
 
         if (action.type === "internal.die" && action.condition) {
           action.error.log(this.verbose);
-          return callback(true);
+          return callback(types.error("oops!"));
         }
 
         // Handle await
@@ -422,7 +428,7 @@ export class Coroutine<T> {
             // All detached are remotes.
             remote.push({ id: action.id });
           }
-          callback(false, { type: "more", todo: { local, remote }, spans });
+          callback(types.value({ type: "more", todo: { local, remote }, spans }));
           return;
         }
 
@@ -432,7 +438,7 @@ export class Coroutine<T> {
           util.assertDefined(action.value);
           util.assert(spans.length === 0, "all spans should've been closed");
 
-          callback(false, { type: "done", result: action.value.value });
+          callback(types.value({ type: "done", result: action.value.value }));
           return;
         }
       }

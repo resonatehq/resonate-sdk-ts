@@ -1,4 +1,5 @@
 import { Nursery } from "../src/nursery";
+import * as types from "../src//types";
 
 describe("Nursery", () => {
   test("nursery function executed only until done", async () => {
@@ -9,7 +10,7 @@ describe("Nursery", () => {
     new Nursery<any, number>(
       (nursery) => {
         if (n === 3) {
-          return nursery.done(null, n);
+          return nursery.done(types.value(n));
         }
 
         // bump n
@@ -26,9 +27,8 @@ describe("Nursery", () => {
 
         nursery.cont();
       },
-      (err, res) => {
-        expect(err).toBeNull();
-        expect(res).toBe(3);
+      (res) => {
+        expect(res.tag).toBe("value");
         signal.resolve(true);
       },
     );
@@ -59,15 +59,14 @@ describe("Nursery", () => {
         // - once on init
         // - once after each hold is released (3 total)
         if (n === 4) {
-          return nursery.done(null, true);
+          return nursery.done(types.value(true));
         }
 
         // continue so more can happen
         nursery.cont();
       },
-      (err, res) => {
-        expect(err).toBeNull();
-        expect(res).toBe(true);
+      (res) => {
+        expect(res.tag).toBe("value");
         signal.resolve(true);
       },
     );
@@ -99,11 +98,11 @@ describe("Nursery", () => {
         nursery.all<number, number, any>(
           [1, 2, 3],
           (n, c) => c(undefined, n + 1),
-          (err, res) => nursery.done(err, res),
+          (res) => nursery.done(res),
         ),
-      (err, res) => {
-        expect(err).toBeUndefined();
-        expect(res).toEqual([2, 3, 4]);
+      (res) => {
+        expect(res.tag).toBe("value");
+        expect(res.value).toEqual([2, 3, 4]);
       },
     );
   });
@@ -114,10 +113,10 @@ describe("Nursery", () => {
         nursery.all<number, number, any>(
           [1, 2, 3],
           (n, c) => c(true),
-          (err, res) => nursery.done(err, res),
+          (res) => nursery.done(res),
         ),
-      (err, res) => {
-        expect(err).toBe(true);
+      (res) => {
+        expect(res).toBe(true);
       },
     );
   });

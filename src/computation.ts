@@ -12,7 +12,7 @@ import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries";
 import type { Span, Tracer } from "./tracer";
-import type { Callback, Func } from "./types";
+import * as types from "./types";
 import * as util from "./util";
 
 export type Status = Completed | Suspended;
@@ -94,15 +94,15 @@ export class Computation {
     this.spans = new Map();
   }
 
-  public process(task: Task, done: Callback<Status>) {
+  public process(task: Task, done: types.Callback<Status>) {
     // If we are already processing there is nothing to do, the
     // caller will be notified via the promise handler
-    if (this.processing) return done(true);
+    if (this.processing) return done(types.error("already processing"));
     this.processing = true;
 
-    const doneProcessing = (err: boolean, res?: Status) => {
+    const doneProcessing = (res: types.Result<Status>) => {
       this.processing = false;
-      err ? done(err) : done(err, res!);
+      res.tag !== "value" ? done(types.error("done processing")) : done(types.value(res.value));
     };
 
     switch (task.kind) {
@@ -122,7 +122,7 @@ export class Computation {
           (err, promise) => {
             if (err) {
               err.log(this.verbose);
-              return doneProcessing(true);
+              return doneProcessing(types.error("oops!"));
             }
             util.assertDefined(promise);
             this.processClaimed(
@@ -135,23 +135,22 @@ export class Computation {
     }
   }
 
-  private processClaimed({ task, rootPromise }: ClaimedTask, done: Callback<Status>) {
+  private processClaimed({ task, rootPromise }: ClaimedTask, done: types.Callback<Status>) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
 
-    const doneAndDropTaskIfErr = (err?: boolean, res?: Status) => {
-      if (err) {
+    const doneAndDropTaskIfErr = (res: types.Result<Status>) => {
+      if (res.tag !== "value") {
         return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, () => {
           // ignore the drop task response, if the request failed the
           // task will eventually expire anyways
-          done(true);
+          done(types.error("couldn't drop task"));
         });
       }
-
-      done(false, res!);
+      done(res);
     };
 
     if (!isValidData(rootPromise.param?.data)) {
-      return doneAndDropTaskIfErr(true);
+      return doneAndDropTaskIfErr(types.fatal("invalid data"));
     }
 
     const { func, args, retry, version = 1 } = rootPromise.param.data;
@@ -160,7 +159,7 @@ export class Computation {
     // function must be registered
     if (!registered) {
       exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(func, version).log(this.verbose);
-      return doneAndDropTaskIfErr(true);
+      return doneAndDropTaskIfErr(types.fatal("function not registered"));
     }
 
     if (version !== 0) util.assert(version === registered.version, "versions must match");
@@ -170,13 +169,13 @@ export class Computation {
     this.heartbeat.start();
 
     return new Nursery<boolean, Status>((nursery) => {
-      const done = (err: boolean, res?: Status) => {
-        if (err) {
-          return nursery.done(err);
+      const done = (res: types.Result<Status>) => {
+        if (res.tag !== "value") {
+          return nursery.done(res);
         }
 
         this.network.send({ kind: "completeTask", id: task.id, counter: task.counter }, (err) => {
-          nursery.done(!!err, res);
+          nursery.done(res);
         });
       };
 
@@ -207,11 +206,10 @@ export class Computation {
       if (util.isGeneratorFunction(registered.func)) {
         this.processGenerator(nursery, ctx, registered.func, args, task, done);
       } else {
-        this.processFunction(this.id, ctx, registered.func, args, (err, promise) => {
-          if (err) return done(true);
-          util.assertDefined(promise);
+        this.processFunction(this.id, ctx, registered.func, args, (res) => {
+          if (res.tag !== "value") return done(res);
 
-          done(false, { kind: "completed", promise });
+          done(types.value({ kind: "completed", promise: res.value }));
         });
       }
     }, doneAndDropTaskIfErr);
@@ -220,20 +218,21 @@ export class Computation {
   private processGenerator(
     nursery: Nursery<boolean, Status>,
     ctx: InnerContext,
-    func: Func,
+    func: types.Func,
     args: any[],
     task: TaskRecord,
-    done: Callback<Status>,
+    done: types.Callback<Status>,
   ) {
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.handler, this.spans, (err, status) => {
-      if (err) {
-        return done(err);
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.handler, this.spans, (res) => {
+      if (res.tag !== "value") {
+        return done(res);
       }
-      util.assertDefined(status);
+
+      const status = res.value;
 
       switch (status.type) {
         case "completed":
-          done(false, { kind: "completed", promise: status.promise });
+          done(types.value({ kind: "completed", promise: status.promise }));
           break;
 
         case "suspended":
@@ -253,22 +252,23 @@ export class Computation {
   private processFunction(
     id: string,
     ctx: InnerContext,
-    func: Func,
+    func: types.Func,
     args: any[],
-    done: Callback<DurablePromiseRecord>,
+    done: types.Callback<DurablePromiseRecord>,
   ) {
     this.processor.process(
       id,
       ctx,
       async () => await func(ctx, ...args),
-      (res) =>
+      (res) => {
+        util.assert(res.tag !== "fatal");
         this.handler.completePromise(
           {
             kind: "completePromise",
             id: id,
-            state: res.success ? "resolved" : "rejected",
+            state: res.tag === "value" ? "resolved" : "rejected",
             value: {
-              data: res.success ? res.value : res.error,
+              data: res.tag === "value" ? res.value : res.error,
             },
             iKey: id,
             strict: false,
@@ -276,19 +276,20 @@ export class Computation {
           (err, res) => {
             if (err) {
               err.log(this.verbose);
-              return done(true);
+              return done(types.error("oops!"));
             }
             util.assertDefined(res);
-            done(false, res);
+            done(types.value(res));
           },
           func.name,
-        ),
+        );
+      },
       this.verbose,
       ctx.span,
     );
   }
 
-  private processLocalTodo(nursery: Nursery<boolean, Status>, todo: LocalTodo[], done: Callback<Status>) {
+  private processLocalTodo(nursery: Nursery<boolean, Status>, todo: LocalTodo[], done: types.Callback<Status>) {
     for (const { id, ctx, span, func, args } of todo) {
       if (this.seen.has(id)) {
         continue;
@@ -297,13 +298,13 @@ export class Computation {
       this.seen.add(id);
 
       nursery.hold((next) => {
-        this.processFunction(id, ctx, func, args, (err) => {
+        this.processFunction(id, ctx, func, args, (res) => {
           span.end(this.clock.now());
           next();
 
-          if (err) {
+          if (res.tag !== "value") {
             this.seen.delete(id);
-            done(err);
+            done(res);
           }
         });
       });
@@ -318,7 +319,7 @@ export class Computation {
     todo: RemoteTodo[],
     spans: Span[],
     timeout: number,
-    done: Callback<Status>,
+    done: types.Callback<Status>,
   ) {
     nursery.all<
       RemoteTodo,
@@ -350,7 +351,7 @@ export class Computation {
           for (const span of spans) {
             span.end(this.clock.now());
           }
-          return done(err);
+          return done(types.error("oops!"));
         }
         util.assertDefined(results);
 
@@ -373,7 +374,7 @@ export class Computation {
         }
 
         // once all callbacks are created we can call done
-        return done(false, { kind: "suspended", callbacks });
+        return done(types.value({ kind: "suspended", callbacks }));
       },
     );
   }
