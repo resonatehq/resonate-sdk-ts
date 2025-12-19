@@ -54,7 +54,7 @@ export type Nothing = {
 
 export type Literal<T> = {
   type: "internal.literal";
-  value: Result<T>;
+  value: Result<T, any>;
 };
 
 export type PromisePending = {
@@ -131,7 +131,7 @@ export class Decorator<TRet> {
   // From internal type to external type
   // Having to return a Result<> is an artifact of not being able to check
   // the instance of "Result" at runtime
-  private toExternal<T>(value: Value<T>): Result<Future<T> | T | undefined> {
+  private toExternal<T>(value: Value<T>): Result<Future<T> | T | undefined, any> {
     switch (value.type) {
       case "internal.nothing":
         return ok(undefined);
@@ -232,17 +232,19 @@ export class Decorator<TRet> {
     throw new Error("Unexpected input to extToInt");
   }
 
-  private toLiteral<T>(result: Result<T>): Literal<T> {
+  private toLiteral<T>(result: Result<T, any>): Literal<T> {
     return {
       type: "internal.literal",
       value: result,
     };
   }
 
-  private safeGeneratorNext<T>(value: Result<Future<T> | T | undefined>): IteratorResult<Yieldable, Result<TRet>> {
+  private safeGeneratorNext<T>(
+    value: Result<Future<T> | T | undefined, any>,
+  ): IteratorResult<Yieldable, Result<TRet, any>> {
     try {
       let itResult: IteratorResult<Yieldable, TRet>;
-      if (!value.success) {
+      if (value.tag === "error") {
         itResult = this.generator.throw(value.error);
       } else {
         itResult = this.generator.next(value.value);

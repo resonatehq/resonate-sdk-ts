@@ -104,7 +104,7 @@ export class ResonateInner {
     messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
-  public process(span: Span, task: Task, done: Callback<Status>) {
+  public process(span: Span, task: Task, done: Callback<Status, undefined>) {
     let computation = this.computations.get(task.task.rootPromiseId);
     if (!computation) {
       computation = new Computation(
