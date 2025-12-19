@@ -344,8 +344,7 @@ describe("Coroutine", () => {
       );
     });
 
-    expect(result.err).toBe(true);
-    expect(result.res).toBeUndefined();
+    expect(result.tag).toBe("error");
   });
 
   test("DIE with condition false continues execution", async () => {

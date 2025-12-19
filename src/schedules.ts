@@ -84,8 +84,8 @@ export class Schedules {
           kind: "deleteSchedule",
           id: id,
         },
-        (err) => {
-          if (err) {
+        (res) => {
+          if (res.tag === "error") {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
