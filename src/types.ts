@@ -18,33 +18,21 @@ export type Return<T> = T extends (...args: any[]) => Generator<infer __, infer 
 
 // Result
 
-export type Result<T> = Ok<T> | Ko;
+export type Result<T> = { tag: "value"; value: T } | { tag: "error"; error: unknown } | { tag: "fatal"; fatal: string };
 
-type Ok<T> = {
-  success: true;
-  value: T;
-};
-
-type Ko = {
-  success: false;
-  error: any;
-};
-
-export function ok<T>(value: T): Result<T> {
-  return { success: true, value };
+export function value<T>(value: T): Result<T> {
+  return { tag: "value", value };
 }
 
-export function ko(error: any): Result<any> {
-  return { success: false, error };
+export function error(error: unknown): Result<never> {
+  return { tag: "error", error };
+}
+export function fatal(fatal: string): Result<never> {
+  return { tag: "fatal", fatal };
 }
 
 // Callback
-
-export type Callback<T> = {
-  (err: false, res: T): void;
-  (err: true, res?: undefined): void;
-};
-
+export type Callback<T> = (res: Result<T>) => void;
 // Value
 
 export interface Value<T> {

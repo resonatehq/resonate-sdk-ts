@@ -1,3 +1,6 @@
+import type { Result } from "./types";
+import * as util from "./util";
+
 export class Nursery<E, R> {
   // event queue, these functions are ensured to execute sequentially
   private q: Array<() => void> = [];
@@ -8,19 +11,16 @@ export class Nursery<E, R> {
 
   // the callback the nursery is instantiated with, called once when
   // the nursery is done and all holds are released
-  private c: (e?: E, r?: R) => void;
-
-  // the error value done is called with, if any
-  private e?: E;
+  private c: (r: Result<R>) => void;
 
   // the return value done is called with, if any
-  private r?: R;
+  private r?: Result<R>;
 
   private holds = 0;
   private running = false;
   private completed = false;
 
-  constructor(f: (n: Nursery<E, R>) => void, c: (e?: E, r?: R) => void) {
+  constructor(f: (n: Nursery<E, R>) => void, c: (r: Result<R>) => void) {
     this.f = () => f(this);
     this.c = c;
 
@@ -53,10 +53,9 @@ export class Nursery<E, R> {
     }
   }
 
-  done(err?: E, res?: R) {
+  done(res?: Result<R>) {
     if (this.completed) return;
 
-    this.e = err;
     this.r = res;
     this.running = false;
     this.completed = true;
@@ -111,6 +110,9 @@ export class Nursery<E, R> {
 
   private complete() {
     if (!this.completed || this.holds > 0) return;
-    this.c(this.e, this.r);
+    if (this.r) {
+      this.c(this.r);
+    }
+
   }
 }

@@ -2,7 +2,7 @@ import { DIE, Future, LFC, LFI, RFC, RFI } from "./context";
 import type { ResonateError } from "./exceptions";
 import type { CreatePromiseReq } from "./network/network";
 import type { RetryPolicy } from "./retries";
-import { type Func, ko, ok, type Result, type Yieldable } from "./types";
+import * as types from "./types";
 import * as util from "./util";
 
 // Expr
@@ -27,7 +27,7 @@ export type InternalAsyncR = {
 export type InternalAsyncL = {
   type: "internal.async.l";
   id: string;
-  func: Func;
+  func: types.Func;
   args: any[];
   version: number;
   retryPolicy: RetryPolicy;
@@ -54,7 +54,7 @@ export type Nothing = {
 
 export type Literal<T> = {
   type: "internal.literal";
-  value: Result<T>;
+  value: types.Result<T>;
 };
 
 export type PromisePending = {
@@ -73,10 +73,10 @@ export type PromiseCompleted<T> = {
 
 export class Decorator<TRet> {
   private invokes: { kind: "call" | "invoke"; id: string }[];
-  private generator: Generator<Yieldable, TRet, any>;
+  private generator: Generator<types.Yieldable, TRet, any>;
   private nextState: "internal.nothing" | "internal.promise" | "internal.literal" | "over" = "internal.nothing";
 
-  constructor(generator: Generator<Yieldable, TRet, any>) {
+  constructor(generator: Generator<types.Yieldable, TRet, any>) {
     this.generator = generator;
     this.invokes = [];
   }
@@ -131,18 +131,18 @@ export class Decorator<TRet> {
   // From internal type to external type
   // Having to return a Result<> is an artifact of not being able to check
   // the instance of "Result" at runtime
-  private toExternal<T>(value: Value<T>): Result<Future<T> | T | undefined> {
+  private toExternal<T>(value: Value<T>): types.Result<Future<T> | T | undefined> {
     switch (value.type) {
       case "internal.nothing":
-        return ok(undefined);
+        return types.value(undefined);
       case "internal.promise":
         if (value.state === "pending") {
-          return ok(new Future<T>(value.id, "pending", undefined, value.mode));
+          return types.value(new Future<T>(value.id, "pending", undefined, value.mode));
         }
         // promise === "complete"
         // We know for sure this promise relates to the last invoke inserted
         this.invokes.pop();
-        return ok(new Future<T>(value.id, "completed", value.value.value));
+        return types.value(new Future<T>(value.id, "completed", value.value.value));
       case "internal.literal":
         return value.value;
     }
@@ -232,19 +232,22 @@ export class Decorator<TRet> {
     throw new Error("Unexpected input to extToInt");
   }
 
-  private toLiteral<T>(result: Result<T>): Literal<T> {
+  private toLiteral<T>(result: types.Result<T>): Literal<T> {
     return {
       type: "internal.literal",
       value: result,
     };
   }
 
-  private safeGeneratorNext<T>(value: Result<Future<T> | T | undefined>): IteratorResult<Yieldable, Result<TRet>> {
+  private safeGeneratorNext<T>(
+    value: types.Result<Future<T> | T | undefined>,
+  ): IteratorResult<types.Yieldable, types.Result<TRet>> {
     try {
-      let itResult: IteratorResult<Yieldable, TRet>;
-      if (!value.success) {
+      let itResult: IteratorResult<types.Yieldable, TRet>;
+      if (value.tag === "error") {
         itResult = this.generator.throw(value.error);
       } else {
+        util.assert(value.tag === "value");
         itResult = this.generator.next(value.value);
       }
 
@@ -253,12 +256,12 @@ export class Decorator<TRet> {
       }
       return {
         done: true,
-        value: ok(itResult.value),
+        value: types.value(itResult.value),
       };
     } catch (e) {
       return {
         done: true,
-        value: ko(e),
+        value: types.error(e),
       };
     }
   }

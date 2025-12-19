@@ -150,21 +150,19 @@ export class Future<T> implements Iterable<Future<T>> {
     this.mode = mode;
   }
 
-  getValue() {
+  getValue(): T {
     if (!this.value) {
       throw new Error("Future is not ready");
     }
+    util.assert(this.value.tag === "value");
 
-    if (this.value.success) {
-      return this.value.value;
-    }
-    throw this.value.error; // Should be unreachble
+    return this.value.value;
   }
 
   *[Symbol.iterator](): Generator<Future<T>, T, undefined> {
     yield this;
     util.assertDefined(this.value);
-    util.assert(this.value.success, "The value must be and ok result at this point.");
+    util.assert(this.value.tag === "value", "The value must be and ok result at this point.");
     return this.getValue();
   }
 }
