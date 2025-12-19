@@ -1,4 +1,6 @@
-export class Nursery<E, R> {
+import * as types from "./types";
+import * as util from "./util";
+export class Nursery<T> {
   // event queue, these functions are ensured to execute sequentially
   private q: Array<() => void> = [];
 
@@ -8,19 +10,14 @@ export class Nursery<E, R> {
 
   // the callback the nursery is instantiated with, called once when
   // the nursery is done and all holds are released
-  private c: (e?: E, r?: R) => void;
-
-  // the error value done is called with, if any
-  private e?: E;
-
-  // the return value done is called with, if any
-  private r?: R;
+  private c: types.Callback<T, any>;
+  private res?: types.Result<T, any>;
 
   private holds = 0;
   private running = false;
   private completed = false;
 
-  constructor(f: (n: Nursery<E, R>) => void, c: (e?: E, r?: R) => void) {
+  constructor(f: (n: Nursery<T>) => void, c: types.Callback<T, any>) {
     this.f = () => f(this);
     this.c = c;
 
@@ -53,38 +50,36 @@ export class Nursery<E, R> {
     }
   }
 
-  done(err?: E, res?: R) {
+  done(res: types.Result<T, any>) {
     if (this.completed) return;
-
-    this.e = err;
-    this.r = res;
+    this.res = res;
     this.running = false;
     this.completed = true;
     this.complete();
   }
 
-  all<T, U, E>(
-    list: T[],
-    func: (item: T, done: (err?: E, res?: U) => void) => void,
-    done: (err?: E, res?: U[]) => void,
-  ) {
+  all<T, U>(list: T[], func: (item: T, done: types.Callback<U, any>) => void, done: types.Callback<U[], any>) {
     const results: U[] = new Array(list.length);
 
     let remaining = list.length;
     let completed = false;
 
-    const finalize = (err?: E) => {
+    const finalize = (err?: any) => {
       if (completed) return;
       completed = true;
-      done(err, results);
+      if (err) {
+        done(types.ko(err));
+      } else {
+        done(types.ok(results));
+      }
     };
 
     list.forEach((item, index) => {
-      func(item, (err, res) => {
+      func(item, (res) => {
         if (completed) return;
-        if (err) return finalize(err);
+        if (res.tag === "error") return finalize(res.error);
 
-        results[index] = res!;
+        results[index] = res.value!;
         remaining--;
 
         if (remaining === 0) {
@@ -111,6 +106,7 @@ export class Nursery<E, R> {
 
   private complete() {
     if (!this.completed || this.holds > 0) return;
-    this.c(this.e, this.r);
+    util.assertDefined(this.res);
+    this.c(this.res);
   }
 }

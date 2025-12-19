@@ -11,13 +11,14 @@ import { OptionsBuilder } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { NoopSpan } from "../src/tracer";
-import { ok, type Result } from "../src/types";
+import { type Callback, ok, type Result } from "../src/types";
+import { assert } from "../src/util";
 
 class DummyNetwork implements Network {
   private promises = new Map<string, DurablePromiseRecord>();
 
   start(): void {}
-  send<T extends Request>(request: T, callback: (err?: ResonateError, res?: ResponseFor<T>) => void): void {
+  send<T extends Request>(request: T, callback: Callback<ResponseFor<T>, ResonateError>): void {
     switch (request.kind) {
       case "createPromise": {
         const p: DurablePromiseRecord = {
@@ -30,10 +31,12 @@ class DummyNetwork implements Network {
           iKeyForCreate: request.iKey,
         };
         this.promises.set(p.id, p);
-        callback(undefined, {
-          kind: "createPromise",
-          promise: p,
-        } as ResponseFor<T>);
+        callback(
+          ok({
+            kind: "createPromise",
+            promise: p,
+          } as ResponseFor<T>),
+        );
         return;
       }
 
@@ -42,10 +45,12 @@ class DummyNetwork implements Network {
         p.state = "resolved";
         p.value = request.value!;
         this.promises.set(p.id, p);
-        callback(undefined, {
-          kind: "completePromise",
-          promise: p,
-        } as ResponseFor<T>);
+        callback(
+          ok({
+            kind: "completePromise",
+            promise: p,
+          } as ResponseFor<T>),
+        );
         break;
       }
       default:
@@ -87,30 +92,32 @@ describe("Coroutine", () => {
         { id: `__invoke:${uuid}`, counter: 1, timeout: 0, rootPromiseId: uuid },
         handler,
         new Map(),
-        (err, res) => {
-          expect(err).toBe(false);
-          resolve(res);
+        (res) => {
+          expect(res.tag).toBe("value");
+          assert(res.tag === "value");
+          resolve(res.value);
         },
       );
     });
   };
 
-  const completePromise = (handler: Handler, id: string, result: Result<any>) => {
+  const completePromise = (handler: Handler, id: string, result: Result<any, any>) => {
     return new Promise<any>((resolve) => {
       handler.completePromise(
         {
           kind: "completePromise",
           id: id,
-          state: result.success ? "resolved" : "rejected",
+          state: result.tag === "value" ? "resolved" : "rejected",
           value: {
-            data: result.success ? result.value : result.error,
+            data: result.tag === "value" ? result.value : result.error,
           },
           iKey: id,
           strict: false,
         },
-        (err, res) => {
-          expect(err).toBeUndefined();
-          resolve(res);
+        (res) => {
+          expect(res.tag).toBe("value");
+          assert(res.tag === "value");
+          resolve(res.value);
         },
       );
     });
@@ -331,8 +338,8 @@ describe("Coroutine", () => {
         { id: "__invoke:foo.1", counter: 1, timeout: 0, rootPromiseId: "foo" },
         h,
         new Map(),
-        (err, res) => {
-          resolve({ err, res });
+        (res) => {
+          resolve(res);
         },
       );
     });
