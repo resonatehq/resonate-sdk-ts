@@ -12,7 +12,7 @@ import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
 import type { ClaimedTask } from "../src/resonate-inner";
 import { NoopSpan, NoopTracer } from "../src/tracer";
-import { type Callback, ok } from "../src/types";
+import { ok, type Result } from "../src/types";
 import * as util from "../src/util";
 
 async function createPromiseAndTask(
@@ -45,7 +45,7 @@ async function createPromiseAndTask(
         strict: false,
       },
       (res) => {
-        util.assert(res.tag === "value");
+        util.assert(res.kind === "value");
         resolve({ promise: res.value.promise, task: res.value.task! });
       },
     );
@@ -56,7 +56,7 @@ async function createPromiseAndTask(
 interface PendingTodo {
   id: string;
   func: () => Promise<any>;
-  callback: Callback<any, any>;
+  callback: (res: Result<any, any>) => void;
 }
 
 // This mock allows us to control when "async" tasks complete.
@@ -64,7 +64,7 @@ class MockProcessor implements Processor {
   public pendingTodos: Map<string, PendingTodo> = new Map();
   private todoNotifier?: { expectedCount: number; resolve: () => void };
 
-  process(id: string, ctx: InnerContext, func: () => Promise<any>, callback: Callback<any, any>): void {
+  process(id: string, ctx: InnerContext, func: () => Promise<any>, callback: (res: Result<any, any>) => void): void {
     // Instead of running the work, we just store it.
     this.pendingTodos.set(id, { id, func, callback });
 
@@ -160,7 +160,7 @@ describe("Computation Event Queue Concurrency", () => {
 
     const computationPromise: Promise<Status> = new Promise((resolve) => {
       computation.process(testTask, (res) => {
-        if (res.tag === "error") {
+        if (res.kind === "error") {
           throw new Error("Computation processing failed");
         }
 

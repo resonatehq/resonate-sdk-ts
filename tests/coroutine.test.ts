@@ -1,6 +1,6 @@
 import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
-import { Coroutine, type Suspended } from "../src/coroutine";
+import { type Completed, Coroutine, type Suspended } from "../src/coroutine";
 import { JsonEncoder } from "../src/encoder";
 import { NoopEncryptor } from "../src/encryptor";
 import type { ResonateError } from "../src/exceptions";
@@ -11,14 +11,14 @@ import { OptionsBuilder } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { NoopSpan } from "../src/tracer";
-import { type Callback, ok, type Result } from "../src/types";
+import { ok, type Result } from "../src/types";
 import { assert } from "../src/util";
 
 class DummyNetwork implements Network {
   private promises = new Map<string, DurablePromiseRecord>();
 
   start(): void {}
-  send<T extends Request>(request: T, callback: Callback<ResponseFor<T>, ResonateError>): void {
+  send<T extends Request>(request: T, callback: (res: Result<ResponseFor<T>, ResonateError>) => void): void {
     switch (request.kind) {
       case "createPromise": {
         const p: DurablePromiseRecord = {
@@ -93,8 +93,8 @@ describe("Coroutine", () => {
         handler,
         new Map(),
         (res) => {
-          expect(res.tag).toBe("value");
-          assert(res.tag === "value");
+          expect(res.kind).toBe("value");
+          assert(res.kind === "value");
           resolve(res.value);
         },
       );
@@ -107,16 +107,16 @@ describe("Coroutine", () => {
         {
           kind: "completePromise",
           id: id,
-          state: result.tag === "value" ? "resolved" : "rejected",
+          state: result.kind === "value" ? "resolved" : "rejected",
           value: {
-            data: result.tag === "value" ? result.value : result.error,
+            data: result.kind === "value" ? result.value : result.error,
           },
           iKey: id,
           strict: false,
         },
         (res) => {
-          expect(res.tag).toBe("value");
-          assert(res.tag === "value");
+          expect(res.kind).toBe("value");
+          assert(res.kind === "value");
           resolve(res.value);
         },
       );
@@ -317,7 +317,7 @@ describe("Coroutine", () => {
 
     const m = new PollMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     // DIE with condition=true causes callback to be called with err=true
-    const result = await new Promise<any>((resolve) => {
+    const result = await new Promise<Result<Suspended | Completed, any>>((resolve) => {
       Coroutine.exec(
         "foo.1",
         false,
@@ -344,7 +344,7 @@ describe("Coroutine", () => {
       );
     });
 
-    expect(result.tag).toBe("error");
+    expect(result.kind).toBe("error");
   });
 
   test("DIE with condition false continues execution", async () => {

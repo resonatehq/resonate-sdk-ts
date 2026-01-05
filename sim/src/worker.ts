@@ -95,14 +95,14 @@ class SimulatedNetwork implements Network {
     return this.messageSource;
   }
 
-  send<T extends Request>(req: T, cb: types.Callback<ResponseFor<T>, ResonateError>): void {
+  send<T extends Request>(req: T, cb: (res: types.Result<ResponseFor<T>, ResonateError>) => void): void {
     const message = new Message<Request>(this.source, this.target, req, {
       requ: true,
       correlationId: this.correlationId++,
     });
 
-    const callback: types.Callback<Response, any> = (res) => {
-      if (res.tag === "error") {
+    const callback: (res: types.Result<Response, any>) => void = (res) => {
+      if (res.kind === "error") {
         cb(types.ko(res.error as ResonateError));
       } else {
         util.assert(res.value.kind === req.kind, "res kind must match req kind");

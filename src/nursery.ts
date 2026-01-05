@@ -10,14 +10,14 @@ export class Nursery<T> {
 
   // the callback the nursery is instantiated with, called once when
   // the nursery is done and all holds are released
-  private c: types.Callback<T, any>;
+  private c: (res: types.Result<T, any>) => void;
   private res?: types.Result<T, any>;
 
   private holds = 0;
   private running = false;
   private completed = false;
 
-  constructor(f: (n: Nursery<T>) => void, c: types.Callback<T, any>) {
+  constructor(f: (n: Nursery<T>) => void, c: (res: types.Result<T, any>) => void) {
     this.f = () => f(this);
     this.c = c;
 
@@ -58,7 +58,11 @@ export class Nursery<T> {
     this.complete();
   }
 
-  all<T, U>(list: T[], func: (item: T, done: types.Callback<U, any>) => void, done: types.Callback<U[], any>) {
+  all<T, U>(
+    list: T[],
+    func: (item: T, done: (res: types.Result<U, any>) => void) => void,
+    done: (res: types.Result<U[], any>) => void,
+  ) {
     const results: U[] = new Array(list.length);
 
     let remaining = list.length;
@@ -77,9 +81,9 @@ export class Nursery<T> {
     list.forEach((item, index) => {
       func(item, (res) => {
         if (completed) return;
-        if (res.tag === "error") return finalize(res.error);
+        if (res.kind === "error") return finalize(res.error);
 
-        results[index] = res.value!;
+        results[index] = res.value;
         remaining--;
 
         if (remaining === 0) {

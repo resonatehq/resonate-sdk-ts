@@ -91,7 +91,7 @@ export class Coroutine<T> {
     task: TaskRecord,
     handler: Handler,
     spans: Map<string, Span>,
-    callback: types.Callback<Suspended | Completed, any>,
+    callback: (res: types.Result<Suspended | Completed, any>) => void,
   ): void {
     handler.createPromise(
       {
@@ -104,7 +104,7 @@ export class Coroutine<T> {
         strict: false,
       },
       (res) => {
-        if (res.tag === "error") return callback(types.ko(undefined));
+        if (res.kind === "error") return callback(types.ko(undefined));
 
         if (res.value.state !== "pending") {
           return callback(types.ok({ type: "completed", promise: res.value }));
@@ -112,7 +112,7 @@ export class Coroutine<T> {
 
         const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), handler, spans);
         coroutine.exec((res) => {
-          if (res.tag === "error") return callback(res);
+          if (res.kind === "error") return callback(res);
           const status = res.value;
           switch (status.type) {
             case "more":
@@ -124,15 +124,15 @@ export class Coroutine<T> {
                 {
                   kind: "completePromise",
                   id: id,
-                  state: status.result.tag === "value" ? "resolved" : "rejected",
+                  state: status.result.kind === "value" ? "resolved" : "rejected",
                   value: {
-                    data: status.result.tag === "value" ? status.result.value : status.result.error,
+                    data: status.result.kind === "value" ? status.result.value : status.result.error,
                   },
                   iKey: id,
                   strict: false,
                 },
                 (res) => {
-                  if (res.tag === "error") {
+                  if (res.kind === "error") {
                     res.error.log(verbose);
                     return callback(types.ko(undefined));
                   }
@@ -150,7 +150,7 @@ export class Coroutine<T> {
     );
   }
 
-  private exec(callback: types.Callback<More | Done, any>) {
+  private exec(callback: (res: types.Result<More | Done, any>) => void) {
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
     const spans: Span[] = [];
@@ -182,7 +182,7 @@ export class Coroutine<T> {
           this.handler.createPromise(
             action.createReq,
             (res) => {
-              if (res.tag === "error") {
+              if (res.kind === "error") {
                 res.error.log(this.verbose);
                 span.setStatus(false, String(res.error));
                 span.end(this.ctx.clock.now());
@@ -232,8 +232,8 @@ export class Coroutine<T> {
                   this.depth + 1,
                 );
 
-                const cb: types.Callback<More | Done, any> = (res) => {
-                  if (res.tag === "error") {
+                const cb: (res: types.Result<More | Done, any>) => void = (res) => {
+                  if (res.kind === "error") {
                     span.end(this.ctx.clock.now());
                     return callback(res);
                   }
@@ -254,9 +254,9 @@ export class Coroutine<T> {
                       {
                         kind: "completePromise",
                         id: action.id,
-                        state: status.result.tag === "value" ? "resolved" : "rejected",
+                        state: status.result.kind === "value" ? "resolved" : "rejected",
                         value: {
-                          data: status.result.tag === "value" ? status.result.value : status.result.error,
+                          data: status.result.kind === "value" ? status.result.value : status.result.error,
                         },
                         iKey: action.id,
                         strict: false,
@@ -265,7 +265,7 @@ export class Coroutine<T> {
                         span.end(this.ctx.clock.now());
                         spans.splice(spans.indexOf(span));
 
-                        if (res.tag === "error") {
+                        if (res.kind === "error") {
                           res.error.log(this.verbose);
                           return callback(types.ko(undefined));
                         }
@@ -353,7 +353,7 @@ export class Coroutine<T> {
           this.handler.createPromise(
             action.createReq,
             (res) => {
-              if (res.tag === "error") {
+              if (res.kind === "error") {
                 res.error.log(this.verbose);
                 span.setStatus(false, String(res.error));
                 span.end(this.ctx.clock.now());

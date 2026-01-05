@@ -29,8 +29,8 @@ describe("Nursery", () => {
         nursery.cont();
       },
       (res) => {
-        expect(res.tag).toBe("value");
-        assert(res.tag === "value");
+        expect(res.kind).toBe("value");
+        assert(res.kind === "value");
         expect(res.value).toBe(3);
         signal.resolve(true);
       },
@@ -69,8 +69,8 @@ describe("Nursery", () => {
         nursery.cont();
       },
       (res) => {
-        expect(res.tag).toBe("value");
-        assert(res.tag === "value");
+        expect(res.kind).toBe("value");
+        assert(res.kind === "value");
         signal.resolve(true);
       },
     );
@@ -105,8 +105,8 @@ describe("Nursery", () => {
           (res) => nursery.done(res),
         ),
       (res) => {
-        expect(res.tag).toBe("value");
-        assert(res.tag === "value");
+        expect(res.kind).toBe("value");
+        assert(res.kind === "value");
         expect(res.value).toEqual([2, 3, 4]);
       },
     );
@@ -121,7 +121,7 @@ describe("Nursery", () => {
           (res) => nursery.done(res),
         ),
       (res) => {
-        expect(res.tag).toBe("value");
+        expect(res.kind).toBe("value");
       },
     );
   });

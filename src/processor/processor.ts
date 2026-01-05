@@ -1,6 +1,6 @@
 import type { InnerContext } from "../context";
 import type { Span } from "../tracer";
-import type { Callback, Result } from "../types";
+import type { Result } from "../types";
 import { ko, ok } from "../types";
 
 type F = () => Promise<unknown>;
@@ -21,7 +21,7 @@ export class AsyncProcessor implements Processor {
     id: string,
     ctx: InnerContext,
     func: () => Promise<T>,
-    done: Callback<T, any>,
+    done: (res: Result<T, any>) => void,
     verbose: boolean,
     span: Span,
   ) {

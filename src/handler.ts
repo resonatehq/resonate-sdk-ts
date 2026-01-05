@@ -67,7 +67,10 @@ export class Handler {
     this.encryptor = encryptor;
   }
 
-  public readPromise(req: ReadPromiseReq, done: types.Callback<DurablePromiseRecord<any>, ResonateError>): void {
+  public readPromise(
+    req: ReadPromiseReq,
+    done: (res: types.Result<DurablePromiseRecord<any>, ResonateError>) => void,
+  ): void {
     const promise = this.cache.getPromise(req.id);
     if (promise) {
       done(types.ok(promise));
@@ -75,7 +78,7 @@ export class Handler {
     }
 
     this.network.send(req, (res) => {
-      if (res.tag === "error") return done(res);
+      if (res.kind === "error") return done(res);
 
       let promise: DurablePromiseRecord<any>;
       try {
@@ -91,7 +94,7 @@ export class Handler {
 
   public createPromise(
     req: CreatePromiseReq<any>,
-    done: types.Callback<DurablePromiseRecord<any>, ResonateError>,
+    done: (res: types.Result<DurablePromiseRecord<any>, ResonateError>) => void,
     func = "unknown",
     headers: Record<string, string> = {},
     retryForever = false,
@@ -113,7 +116,7 @@ export class Handler {
     this.network.send(
       { ...req, param },
       (res) => {
-        if (res.tag === "error") return done(res);
+        if (res.kind === "error") return done(res);
 
         let promise: DurablePromiseRecord<any>;
         try {
@@ -132,7 +135,7 @@ export class Handler {
 
   public createPromiseAndTask(
     req: CreatePromiseAndTaskReq<any>,
-    done: types.Callback<{ promise: DurablePromiseRecord<any>; task?: TaskRecord }, ResonateError>,
+    done: (res: types.Result<{ promise: DurablePromiseRecord<any>; task?: TaskRecord }, ResonateError>) => void,
     func = "unknown",
     headers: Record<string, string> = {},
     retryForever = false,
@@ -154,7 +157,7 @@ export class Handler {
     this.network.send(
       { ...req, promise: { ...req.promise, param } },
       (res) => {
-        if (res.tag === "error") return done(res);
+        if (res.kind === "error") return done(res);
 
         let promise: DurablePromiseRecord<any>;
         try {
@@ -178,7 +181,7 @@ export class Handler {
 
   public completePromise(
     req: CompletePromiseReq<any>,
-    done: types.Callback<DurablePromiseRecord<any>, ResonateError>,
+    done: (res: types.Result<DurablePromiseRecord<any>, ResonateError>) => void,
     func = "unknown",
   ): void {
     const promise = this.cache.getPromise(req.id);
@@ -198,7 +201,7 @@ export class Handler {
     }
 
     this.network.send({ ...req, value }, (res) => {
-      if (res.tag === "error") return done(res);
+      if (res.kind === "error") return done(res);
 
       let promise: DurablePromiseRecord<any>;
       try {
@@ -214,7 +217,9 @@ export class Handler {
 
   public claimTask(
     req: ClaimTaskReq,
-    done: types.Callback<{ root: DurablePromiseRecord<any>; leaf?: DurablePromiseRecord<any> }, ResonateError>,
+    done: (
+      res: types.Result<{ root: DurablePromiseRecord<any>; leaf?: DurablePromiseRecord<any> }, ResonateError>,
+    ) => void,
   ): void {
     const task = this.cache.getTask(req.id);
     if (task && task.counter >= req.counter) {
@@ -230,7 +235,7 @@ export class Handler {
     }
 
     this.network.send(req, (res) => {
-      if (res.tag === "error") return done(res);
+      if (res.kind === "error") return done(res);
       util.assertDefined(res);
       util.assertDefined(res.value.message.promises.root);
 
@@ -259,10 +264,12 @@ export class Handler {
 
   public createCallback(
     req: CreateCallbackReq,
-    done: types.Callback<
-      { kind: "callback"; callback: CallbackRecord } | { kind: "promise"; promise: DurablePromiseRecord<any> },
-      ResonateError
-    >,
+    done: (
+      res: types.Result<
+        { kind: "callback"; callback: CallbackRecord } | { kind: "promise"; promise: DurablePromiseRecord<any> },
+        ResonateError
+      >,
+    ) => void,
     headers: Record<string, string> = {},
   ): void {
     const id = `__resume:${req.rootPromiseId}:${req.promiseId}`;
@@ -283,7 +290,7 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (res.tag === "error") return done(res);
+        if (res.kind === "error") return done(res);
 
         if (res.value.promise) {
           let promise: DurablePromiseRecord<any>;
@@ -314,7 +321,7 @@ export class Handler {
 
   public createSubscription(
     req: CreateSubscriptionReq,
-    done: types.Callback<DurablePromiseRecord<any>, ResonateError>,
+    done: (res: types.Result<DurablePromiseRecord<any>, ResonateError>) => void,
     retryForever = false,
   ) {
     const id = `__notify:${req.promiseId}:${req.id}`;
@@ -335,7 +342,7 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (res.tag === "error") return done(res);
+        if (res.kind === "error") return done(res);
 
         let promise: DurablePromiseRecord<any>;
         try {

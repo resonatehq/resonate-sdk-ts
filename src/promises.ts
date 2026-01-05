@@ -10,7 +10,7 @@ export class Promises {
   get(id: string): Promise<DurablePromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send({ kind: "readPromise", id }, (res) => {
-        if (res.tag === "error") {
+        if (res.kind === "error") {
           reject(res.error);
           return;
         }
@@ -49,7 +49,7 @@ export class Promises {
           strict: strict,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             reject(res.error);
             return;
           }
@@ -97,7 +97,7 @@ export class Promises {
           strict: strict,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             reject(res.error);
             return;
           }
@@ -133,7 +133,7 @@ export class Promises {
           strict: strict,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             reject(res.error);
             return;
           }
@@ -168,7 +168,7 @@ export class Promises {
           strict: strict,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             reject(res.error);
             return;
           }
@@ -203,7 +203,7 @@ export class Promises {
           strict: strict,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             reject(res.error);
             return;
           }
@@ -230,7 +230,7 @@ export class Promises {
             cursor,
           },
           (res) => {
-            if (res.tag === "error") return reject(res.error);
+            if (res.kind === "error") return reject(res.error);
             resolve(res.value);
           },
         );
@@ -259,7 +259,7 @@ export class Promises {
           recv: recv,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             reject(res.error);
             return;
           }
@@ -281,7 +281,7 @@ export class Promises {
   }> {
     return new Promise((resolve, reject) => {
       this.network.send({ kind: "createSubscription", id, promiseId, timeout, recv }, (res) => {
-        if (res.tag === "error") {
+        if (res.kind === "error") {
           reject(res.error);
           return;
         }

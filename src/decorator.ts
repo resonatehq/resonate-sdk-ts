@@ -244,7 +244,7 @@ export class Decorator<TRet> {
   ): IteratorResult<Yieldable, Result<TRet, any>> {
     try {
       let itResult: IteratorResult<Yieldable, TRet>;
-      if (value.tag === "error") {
+      if (value.kind === "error") {
         itResult = this.generator.throw(value.error);
       } else {
         itResult = this.generator.next(value.value);

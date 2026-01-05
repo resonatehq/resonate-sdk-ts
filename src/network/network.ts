@@ -310,7 +310,7 @@ export interface Network {
 
   send<T extends Request>(
     req: T,
-    callback: types.Callback<ResponseFor<T>, ResonateError>,
+    callback: (res: types.Result<ResponseFor<T>, ResonateError>) => void,
     headers?: Record<string, string>,
     retryForever?: boolean,
   ): void;

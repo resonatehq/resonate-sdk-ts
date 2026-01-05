@@ -799,7 +799,7 @@ export class Resonate {
       this.handler.createPromiseAndTask(
         req,
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             reject(res.error);
           } else {
             resolve({ promise: res.value.promise, task: res.value.task });
@@ -820,7 +820,7 @@ export class Resonate {
       this.handler.createPromise(
         req,
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             reject(res.error);
           } else {
             resolve(res.value);
@@ -838,7 +838,7 @@ export class Resonate {
       this.handler.createSubscription(
         req,
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             reject(res.error);
           } else {
             resolve(res.value);
@@ -852,7 +852,7 @@ export class Resonate {
   private readPromise(req: ReadPromiseReq): Promise<DurablePromiseRecord<any>> {
     return new Promise((resolve, reject) =>
       this.handler.readPromise(req, (res) => {
-        if (res.tag === "error") {
+        if (res.kind === "error") {
           reject(res.error);
         } else {
           resolve(res.value);

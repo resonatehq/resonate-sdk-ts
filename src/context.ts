@@ -155,7 +155,7 @@ export class Future<T> implements Iterable<Future<T>> {
       throw new Error("Future is not ready");
     }
 
-    if (this.value.tag === "value") {
+    if (this.value.kind === "value") {
       return this.value.value;
     }
     throw this.value.error; // Should be unreachble
@@ -164,7 +164,7 @@ export class Future<T> implements Iterable<Future<T>> {
   *[Symbol.iterator](): Generator<Future<T>, T, undefined> {
     yield this;
     util.assertDefined(this.value);
-    util.assert(this.value.tag === "value", "The value must be and ok result at this point.");
+    util.assert(this.value.kind === "value", "The value must be and ok result at this point.");
     return this.getValue();
   }
 }

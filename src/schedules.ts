@@ -16,7 +16,7 @@ export class Schedules {
           id: id,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -64,7 +64,7 @@ export class Schedules {
           iKey: ikey,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             console.log(res.error);
             // TODO: reject with more information
             reject(Error("not implemented"));
@@ -85,7 +85,7 @@ export class Schedules {
           id: id,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -110,7 +110,7 @@ export class Schedules {
             cursor,
           },
           (res) => {
-            if (res.tag === "error") return reject(res.error);
+            if (res.kind === "error") return reject(res.error);
             resolve(res.value);
           },
         );

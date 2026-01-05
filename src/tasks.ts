@@ -19,7 +19,7 @@ export class Tasks {
           ttl: ttl,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -40,7 +40,7 @@ export class Tasks {
           counter: counter,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -60,7 +60,7 @@ export class Tasks {
           processId: pid,
         },
         (res) => {
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;

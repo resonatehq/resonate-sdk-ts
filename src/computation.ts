@@ -94,13 +94,13 @@ export class Computation {
     this.spans = new Map();
   }
 
-  public process(task: Task, done: types.Callback<Status, undefined>) {
+  public process(task: Task, done: (res: types.Result<Status, undefined>) => void) {
     // If we are already processing there is nothing to do, the
     // caller will be notified via the promise handler
     if (this.processing) return done(types.ko(undefined));
     this.processing = true;
 
-    const doneProcessing: types.Callback<Status, undefined> = (res) => {
+    const doneProcessing: (res: types.Result<Status, undefined>) => void = (res) => {
       this.processing = false;
       done(res);
     };
@@ -120,7 +120,7 @@ export class Computation {
             ttl: this.ttl,
           },
           (res) => {
-            if (res.tag === "error") {
+            if (res.kind === "error") {
               res.error.log(this.verbose);
               return doneProcessing(types.ko(undefined));
             }
@@ -134,11 +134,11 @@ export class Computation {
     }
   }
 
-  private processClaimed({ task, rootPromise }: ClaimedTask, done: types.Callback<Status, undefined>) {
+  private processClaimed({ task, rootPromise }: ClaimedTask, done: (res: types.Result<Status, undefined>) => void) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
 
-    const doneAndDropTaskIfErr: types.Callback<Status, undefined> = (res) => {
-      if (res.tag === "error") {
+    const doneAndDropTaskIfErr: (res: types.Result<Status, undefined>) => void = (res) => {
+      if (res.kind === "error") {
         return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, () => {
           // ignore the drop task response, if the request failed the
           // task will eventually expire anyways
@@ -169,13 +169,13 @@ export class Computation {
     this.heartbeat.start();
 
     return new Nursery<Status>((nursery) => {
-      const done: types.Callback<Status, undefined> = (res) => {
-        if (res.tag === "error") {
+      const done: (res: types.Result<Status, undefined>) => void = (res) => {
+        if (res.kind === "error") {
           return nursery.done(res);
         }
 
         this.network.send({ kind: "completeTask", id: task.id, counter: task.counter }, (r) => {
-          if (r.tag === "error") {
+          if (r.kind === "error") {
             nursery.done(r);
           } else {
             nursery.done(res);
@@ -211,7 +211,7 @@ export class Computation {
         this.processGenerator(nursery, ctx, registered.func, args, task, done);
       } else {
         this.processFunction(this.id, ctx, registered.func, args, (res) => {
-          if (res.tag === "error") return done(types.ko(undefined));
+          if (res.kind === "error") return done(types.ko(undefined));
 
           done(types.ok({ kind: "completed", promise: res.value }));
         });
@@ -225,10 +225,10 @@ export class Computation {
     func: types.Func,
     args: any[],
     task: TaskRecord,
-    done: types.Callback<Status, undefined>,
+    done: (res: types.Result<Status, undefined>) => void,
   ) {
     Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.handler, this.spans, (res) => {
-      if (res.tag === "error") {
+      if (res.kind === "error") {
         return done(res);
       }
       const status = res.value;
@@ -257,7 +257,7 @@ export class Computation {
     ctx: InnerContext,
     func: types.Func,
     args: any[],
-    done: types.Callback<DurablePromiseRecord, undefined>,
+    done: (res: types.Result<DurablePromiseRecord, undefined>) => void,
   ) {
     this.processor.process(
       id,
@@ -268,15 +268,15 @@ export class Computation {
           {
             kind: "completePromise",
             id: id,
-            state: res.tag === "value" ? "resolved" : "rejected",
+            state: res.kind === "value" ? "resolved" : "rejected",
             value: {
-              data: res.tag === "value" ? res.value : res.error,
+              data: res.kind === "value" ? res.value : res.error,
             },
             iKey: id,
             strict: false,
           },
           (res) => {
-            if (res.tag === "error") {
+            if (res.kind === "error") {
               res.error.log(this.verbose);
               return done(types.ko(undefined));
             }
@@ -289,7 +289,11 @@ export class Computation {
     );
   }
 
-  private processLocalTodo(nursery: Nursery<Status>, todo: LocalTodo[], done: types.Callback<Status, undefined>) {
+  private processLocalTodo(
+    nursery: Nursery<Status>,
+    todo: LocalTodo[],
+    done: (res: types.Result<Status, undefined>) => void,
+  ) {
     for (const { id, ctx, span, func, args } of todo) {
       if (this.seen.has(id)) {
         continue;
@@ -302,7 +306,7 @@ export class Computation {
           span.end(this.clock.now());
           next();
 
-          if (res.tag === "error") {
+          if (res.kind === "error") {
             this.seen.delete(id);
             done(res);
           }
@@ -319,7 +323,7 @@ export class Computation {
     todo: RemoteTodo[],
     spans: Span[],
     timeout: number,
-    done: types.Callback<Status, undefined>,
+    done: (res: types.Result<Status, undefined>) => void,
   ) {
     nursery.all<
       RemoteTodo,
@@ -336,7 +340,7 @@ export class Computation {
             recv: this.anycast,
           },
           (res) => {
-            if (res.tag === "error") {
+            if (res.kind === "error") {
               res.error.log(this.verbose);
               return done(types.ko(undefined));
             }
@@ -345,7 +349,7 @@ export class Computation {
           this.span.encode(),
         ),
       (res) => {
-        if (res.tag === "error") {
+        if (res.kind === "error") {
           for (const span of spans) {
             span.end(this.clock.now());
           }

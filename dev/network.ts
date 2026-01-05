@@ -24,7 +24,7 @@ export class LocalNetwork implements Network {
   start() {}
   stop() {}
 
-  send<T extends Request>(req: Request, callback: types.Callback<ResponseFor<T>, ResonateError>): void {
+  send<T extends Request>(req: Request, callback: (res: types.Result<ResponseFor<T>, ResonateError>) => void): void {
     setTimeout(() => {
       try {
         const res = this.server.process(req, Date.now());

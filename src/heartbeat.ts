@@ -35,7 +35,7 @@ export class AsyncHeartbeat implements Heartbeat {
           processId: this.pid,
         },
         (res) => {
-          if (res.tag === "error") return;
+          if (res.kind === "error") return;
 
           if (res.value.tasksAffected === 0) {
             this.clearIntervalIfMatch(counter);
