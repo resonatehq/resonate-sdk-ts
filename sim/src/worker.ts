@@ -101,7 +101,7 @@ class SimulatedNetwork implements Network {
       correlationId: this.correlationId++,
     });
 
-    const callback: (res: types.Result<Response, any>) => void = (res) => {
+    const callback = (res: types.Result<Response, any>) => {
       if (res.kind === "error") {
         cb(types.ko(res.error as ResonateError));
       } else {

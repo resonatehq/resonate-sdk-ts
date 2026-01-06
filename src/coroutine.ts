@@ -232,7 +232,7 @@ export class Coroutine<T> {
                   this.depth + 1,
                 );
 
-                const cb: (res: types.Result<More | Done, any>) => void = (res) => {
+                const cb = (res: types.Result<More | Done, any>) => {
                   if (res.kind === "error") {
                     span.end(this.ctx.clock.now());
                     return callback(res);

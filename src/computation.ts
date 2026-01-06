@@ -100,7 +100,7 @@ export class Computation {
     if (this.processing) return done(types.ko(undefined));
     this.processing = true;
 
-    const doneProcessing: (res: types.Result<Status, undefined>) => void = (res) => {
+    const doneProcessing = (res: types.Result<Status, undefined>) => {
       this.processing = false;
       done(res);
     };
@@ -137,7 +137,7 @@ export class Computation {
   private processClaimed({ task, rootPromise }: ClaimedTask, done: (res: types.Result<Status, undefined>) => void) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
 
-    const doneAndDropTaskIfErr: (res: types.Result<Status, undefined>) => void = (res) => {
+    const doneAndDropTaskIfErr = (res: types.Result<Status, undefined>) => {
       if (res.kind === "error") {
         return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, () => {
           // ignore the drop task response, if the request failed the
@@ -169,7 +169,7 @@ export class Computation {
     this.heartbeat.start();
 
     return new Nursery<Status>((nursery) => {
-      const done: (res: types.Result<Status, undefined>) => void = (res) => {
+      const done = (res: types.Result<Status, undefined>) => {
         if (res.kind === "error") {
           return nursery.done(res);
         }
