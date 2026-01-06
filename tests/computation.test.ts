@@ -12,7 +12,7 @@ import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
 import type { ClaimedTask } from "../src/resonate-inner";
 import { NoopSpan, NoopTracer } from "../src/tracer";
-import { ok, type Result } from "../src/types";
+import type { Result } from "../src/types";
 import * as util from "../src/util";
 
 async function createPromiseAndTask(
@@ -93,7 +93,7 @@ class MockProcessor implements Processor {
     // Fire all callbacks in the same event loop tick to simulate concurrency
     for (const todo of todosToComplete) {
       // We resolve with a simple value for the test
-      todo.callback(ok(`completed-${todo.id}`));
+      todo.callback({ kind: "value", value: `completed-${todo.id}` });
     }
   }
 }

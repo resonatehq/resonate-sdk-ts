@@ -1,7 +1,6 @@
 import type { InnerContext } from "../context";
 import type { Span } from "../tracer";
 import type { Result } from "../types";
-import { ko, ok } from "../types";
 
 type F = () => Promise<unknown>;
 
@@ -33,20 +32,20 @@ export class AsyncProcessor implements Processor {
       try {
         const data = await func();
         childSpan.setStatus(true);
-        done(ok(data));
+        done({ kind: "value", value: data });
         return;
       } catch (error) {
         childSpan.setStatus(false, String(error));
 
         retryIn = ctx.retryPolicy.next(ctx.info.attempt);
         if (retryIn === null) {
-          done(ko(error));
+          done({ kind: "error", error: error });
           return;
         }
 
         // Use the same clock sourced from ctx for consistency
         if (ctx.clock.now() + retryIn >= ctx.info.timeout) {
-          done(ko(error));
+          done({ kind: "error", error: error });
           return;
         }
 

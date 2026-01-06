@@ -17,7 +17,7 @@ import { OptionsBuilder } from "../../src/options";
 import type { Registry } from "../../src/registry";
 import { ResonateInner } from "../../src/resonate-inner";
 import { NoopTracer } from "../../src/tracer";
-import * as types from "../../src/types";
+import type { Result } from "../../src/types";
 import * as util from "../../src/util";
 import { type Address, Message, Process, type Random, unicast } from "./simulator";
 
@@ -95,18 +95,18 @@ class SimulatedNetwork implements Network {
     return this.messageSource;
   }
 
-  send<T extends Request>(req: T, cb: (res: types.Result<ResponseFor<T>, ResonateError>) => void): void {
+  send<T extends Request>(req: T, cb: (res: Result<ResponseFor<T>, ResonateError>) => void): void {
     const message = new Message<Request>(this.source, this.target, req, {
       requ: true,
       correlationId: this.correlationId++,
     });
 
-    const callback = (res: types.Result<Response, any>) => {
+    const callback = (res: Result<Response, any>) => {
       if (res.kind === "error") {
-        cb(types.ko(res.error as ResonateError));
+        cb({ kind: "error", error: res.error as ResonateError });
       } else {
         util.assert(res.value.kind === req.kind, "res kind must match req kind");
-        cb(types.ok(res.value as ResponseFor<T>));
+        cb({ kind: "value", value: res.value as ResponseFor<T> });
       }
     };
 

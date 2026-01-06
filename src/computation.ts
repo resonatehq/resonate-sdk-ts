@@ -12,7 +12,7 @@ import type { Registry } from "./registry";
 import type { ClaimedTask, Task } from "./resonate-inner";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries";
 import type { Span, Tracer } from "./tracer";
-import * as types from "./types";
+import type { Func, Result } from "./types";
 import * as util from "./util";
 
 export type Status = Completed | Suspended;
@@ -94,13 +94,13 @@ export class Computation {
     this.spans = new Map();
   }
 
-  public process(task: Task, done: (res: types.Result<Status, undefined>) => void) {
+  public process(task: Task, done: (res: Result<Status, undefined>) => void) {
     // If we are already processing there is nothing to do, the
     // caller will be notified via the promise handler
-    if (this.processing) return done(types.ko(undefined));
+    if (this.processing) return done({ kind: "error", error: undefined });
     this.processing = true;
 
-    const doneProcessing = (res: types.Result<Status, undefined>) => {
+    const doneProcessing = (res: Result<Status, undefined>) => {
       this.processing = false;
       done(res);
     };
@@ -122,7 +122,7 @@ export class Computation {
           (res) => {
             if (res.kind === "error") {
               res.error.log(this.verbose);
-              return doneProcessing(types.ko(undefined));
+              return doneProcessing({ kind: "error", error: undefined });
             }
             this.processClaimed(
               { kind: "claimed", task: task.task, rootPromise: res.value.root, leafPromise: res.value.leaf },
@@ -134,10 +134,10 @@ export class Computation {
     }
   }
 
-  private processClaimed({ task, rootPromise }: ClaimedTask, done: (res: types.Result<Status, undefined>) => void) {
+  private processClaimed({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
     util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
 
-    const doneAndDropTaskIfErr = (res: types.Result<Status, undefined>) => {
+    const doneAndDropTaskIfErr = (res: Result<Status, undefined>) => {
       if (res.kind === "error") {
         return this.network.send({ kind: "dropTask", id: task.id, counter: task.counter }, () => {
           // ignore the drop task response, if the request failed the
@@ -150,7 +150,7 @@ export class Computation {
     };
 
     if (!isValidData(rootPromise.param?.data)) {
-      return doneAndDropTaskIfErr(types.ko(undefined));
+      return doneAndDropTaskIfErr({ kind: "error", error: undefined });
     }
 
     const { func, args, retry, version = 1 } = rootPromise.param.data;
@@ -159,7 +159,7 @@ export class Computation {
     // function must be registered
     if (!registered) {
       exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(func, version).log(this.verbose);
-      return doneAndDropTaskIfErr(types.ko(undefined));
+      return doneAndDropTaskIfErr({ kind: "error", error: undefined });
     }
 
     if (version !== 0) util.assert(version === registered.version, "versions must match");
@@ -169,7 +169,7 @@ export class Computation {
     this.heartbeat.start();
 
     return new Nursery<Status>((nursery) => {
-      const done = (res: types.Result<Status, undefined>) => {
+      const done = (res: Result<Status, undefined>) => {
         if (res.kind === "error") {
           return nursery.done(res);
         }
@@ -211,9 +211,9 @@ export class Computation {
         this.processGenerator(nursery, ctx, registered.func, args, task, done);
       } else {
         this.processFunction(this.id, ctx, registered.func, args, (res) => {
-          if (res.kind === "error") return done(types.ko(undefined));
+          if (res.kind === "error") return done({ kind: "error", error: undefined });
 
-          done(types.ok({ kind: "completed", promise: res.value }));
+          done({ kind: "value", value: { kind: "completed", promise: res.value } });
         });
       }
     }, doneAndDropTaskIfErr);
@@ -222,10 +222,10 @@ export class Computation {
   private processGenerator(
     nursery: Nursery<Status>,
     ctx: InnerContext,
-    func: types.Func,
+    func: Func,
     args: any[],
     task: TaskRecord,
-    done: (res: types.Result<Status, undefined>) => void,
+    done: (res: Result<Status, undefined>) => void,
   ) {
     Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.handler, this.spans, (res) => {
       if (res.kind === "error") {
@@ -235,7 +235,7 @@ export class Computation {
 
       switch (status.type) {
         case "completed":
-          done(types.ok({ kind: "completed", promise: status.promise }));
+          done({ kind: "value", value: { kind: "completed", promise: status.promise } });
           break;
 
         case "suspended":
@@ -255,9 +255,9 @@ export class Computation {
   private processFunction(
     id: string,
     ctx: InnerContext,
-    func: types.Func,
+    func: Func,
     args: any[],
-    done: (res: types.Result<DurablePromiseRecord, undefined>) => void,
+    done: (res: Result<DurablePromiseRecord, undefined>) => void,
   ) {
     this.processor.process(
       id,
@@ -278,7 +278,7 @@ export class Computation {
           (res) => {
             if (res.kind === "error") {
               res.error.log(this.verbose);
-              return done(types.ko(undefined));
+              return done({ kind: "error", error: undefined });
             }
             done(res);
           },
@@ -292,7 +292,7 @@ export class Computation {
   private processLocalTodo(
     nursery: Nursery<Status>,
     todo: LocalTodo[],
-    done: (res: types.Result<Status, undefined>) => void,
+    done: (res: Result<Status, undefined>) => void,
   ) {
     for (const { id, ctx, span, func, args } of todo) {
       if (this.seen.has(id)) {
@@ -323,7 +323,7 @@ export class Computation {
     todo: RemoteTodo[],
     spans: Span[],
     timeout: number,
-    done: (res: types.Result<Status, undefined>) => void,
+    done: (res: Result<Status, undefined>) => void,
   ) {
     nursery.all<
       RemoteTodo,
@@ -342,7 +342,7 @@ export class Computation {
           (res) => {
             if (res.kind === "error") {
               res.error.log(this.verbose);
-              return done(types.ko(undefined));
+              return done({ kind: "error", error: undefined });
             }
             done(res);
           },
@@ -375,7 +375,7 @@ export class Computation {
         }
 
         // once all callbacks are created we can call done
-        return done(types.ok({ kind: "suspended", callbacks }));
+        return done({ kind: "value", value: { kind: "suspended", callbacks } });
       },
     );
   }

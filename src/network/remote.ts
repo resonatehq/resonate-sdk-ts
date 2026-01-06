@@ -1,6 +1,6 @@
 import { EventSource } from "eventsource";
 import exceptions, { ResonateError, type ResonateServerError } from "../exceptions";
-import * as types from "../types";
+import type { Result, Value } from "../types";
 import * as util from "../util";
 import type {
   CallbackRecord,
@@ -50,8 +50,8 @@ interface PromiseDto {
   id: string;
   state: string;
   timeout: number;
-  param?: types.Value<string>;
-  value?: types.Value<string>;
+  param?: Value<string>;
+  value?: Value<string>;
   tags?: Record<string, string>;
   idempotencyKeyForCreate?: string;
   idempotencyKeyForComplete?: string;
@@ -83,7 +83,7 @@ interface ScheduleDto {
   tags?: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam?: types.Value<string>;
+  promiseParam?: Value<string>;
   promiseTags?: Record<string, string>;
   idempotencyKey?: string;
   lastRunTime?: number;
@@ -180,7 +180,7 @@ export class HttpNetwork implements Network {
 
   send<T extends Request>(
     req: T,
-    callback: (res: types.Result<ResponseFor<T>, ResonateError>) => void,
+    callback: (res: Result<ResponseFor<T>, ResonateError>) => void,
     headers: Record<string, string> = {},
     retryForever = false,
   ): void {
@@ -189,10 +189,10 @@ export class HttpNetwork implements Network {
     this.handleRequest(req, headers, retryPolicy).then(
       (res) => {
         util.assert(res.kind === req.kind, "res kind must match req kind");
-        callback(types.ok(res as ResponseFor<T>));
+        callback({ kind: "value", value: res as ResponseFor<T> });
       },
       (err) => {
-        callback(types.ko(err as ResonateError));
+        callback({ kind: "error", error: err as ResonateError });
       },
     );
   }

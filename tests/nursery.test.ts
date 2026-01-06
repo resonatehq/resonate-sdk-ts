@@ -1,5 +1,4 @@
 import { Nursery } from "../src/nursery";
-import { ok } from "../src/types";
 import { assert } from "../src/util";
 
 describe("Nursery", () => {
@@ -11,7 +10,7 @@ describe("Nursery", () => {
     new Nursery<number>(
       (nursery) => {
         if (n === 3) {
-          return nursery.done(ok(n));
+          return nursery.done({ kind: "value", value: n });
         }
 
         // bump n
@@ -62,7 +61,7 @@ describe("Nursery", () => {
         // - once on init
         // - once after each hold is released (3 total)
         if (n === 4) {
-          return nursery.done(ok(true));
+          return nursery.done({ kind: "value", value: true });
         }
 
         // continue so more can happen
@@ -101,7 +100,7 @@ describe("Nursery", () => {
       (nursery) =>
         nursery.all<number, any>(
           [1, 2, 3],
-          (n, c) => c(ok(n + 1)),
+          (n, c) => c({ kind: "value", value: n + 1 }),
           (res) => nursery.done(res),
         ),
       (res) => {
@@ -117,7 +116,7 @@ describe("Nursery", () => {
       (nursery) =>
         nursery.all<number, any>(
           [1, 2, 3],
-          (n, c) => c(ok(true)),
+          (n, c) => c({ kind: "value", value: true }),
           (res) => nursery.done(res),
         ),
       (res) => {

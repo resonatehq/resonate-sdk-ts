@@ -20,14 +20,6 @@ export type Return<T> = T extends (...args: any[]) => Generator<infer __, infer 
 
 export type Result<V, E> = { kind: "value"; value: V } | { kind: "error"; error: E };
 
-export function ok<T>(value: T): Result<T, never> {
-  return { kind: "value", value };
-}
-
-export function ko<T>(error: T): Result<never, T> {
-  return { kind: "error", error };
-}
-
 // Value
 
 export interface Value<T> {

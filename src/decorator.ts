@@ -2,7 +2,7 @@ import { DIE, Future, LFC, LFI, RFC, RFI } from "./context";
 import type { ResonateError } from "./exceptions";
 import type { CreatePromiseReq } from "./network/network";
 import type { RetryPolicy } from "./retries";
-import { type Func, ko, ok, type Result, type Yieldable } from "./types";
+import type { Func, Result, Yieldable } from "./types";
 import * as util from "./util";
 
 // Expr
@@ -134,15 +134,15 @@ export class Decorator<TRet> {
   private toExternal<T>(value: Value<T>): Result<Future<T> | T | undefined, any> {
     switch (value.type) {
       case "internal.nothing":
-        return ok(undefined);
+        return { kind: "value", value: undefined };
       case "internal.promise":
         if (value.state === "pending") {
-          return ok(new Future<T>(value.id, "pending", undefined, value.mode));
+          return { kind: "value", value: new Future<T>(value.id, "pending", undefined, value.mode) };
         }
         // promise === "complete"
         // We know for sure this promise relates to the last invoke inserted
         this.invokes.pop();
-        return ok(new Future<T>(value.id, "completed", value.value.value));
+        return { kind: "value", value: new Future<T>(value.id, "completed", value.value.value) };
       case "internal.literal":
         return value.value;
     }
@@ -255,12 +255,12 @@ export class Decorator<TRet> {
       }
       return {
         done: true,
-        value: ok(itResult.value),
+        value: { kind: "value", value: itResult.value },
       };
     } catch (e) {
       return {
         done: true,
-        value: ko(e),
+        value: { kind: "error", error: e },
       };
     }
   }

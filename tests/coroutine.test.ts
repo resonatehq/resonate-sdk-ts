@@ -11,7 +11,7 @@ import { OptionsBuilder } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { NoopSpan } from "../src/tracer";
-import { ok, type Result } from "../src/types";
+import type { Result } from "../src/types";
 import { assert } from "../src/util";
 
 class DummyNetwork implements Network {
@@ -31,12 +31,13 @@ class DummyNetwork implements Network {
           iKeyForCreate: request.iKey,
         };
         this.promises.set(p.id, p);
-        callback(
-          ok({
+        callback({
+          kind: "value",
+          value: {
             kind: "createPromise",
             promise: p,
-          } as ResponseFor<T>),
-        );
+          } as ResponseFor<T>,
+        });
         return;
       }
 
@@ -45,12 +46,13 @@ class DummyNetwork implements Network {
         p.state = "resolved";
         p.value = request.value!;
         this.promises.set(p.id, p);
-        callback(
-          ok({
+        callback({
+          kind: "value",
+          value: {
             kind: "completePromise",
             promise: p,
-          } as ResponseFor<T>),
-        );
+          } as ResponseFor<T>,
+        });
         break;
       }
       default:
@@ -162,8 +164,8 @@ describe("Coroutine", () => {
     const suspended = r as Suspended;
     expect(suspended.todo.local).toHaveLength(2);
 
-    await completePromise(h, "foo.1.0", ok(42));
-    await completePromise(h, "foo.1.1", ok(31416));
+    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
+    await completePromise(h, "foo.1.1", { kind: "value", value: 31416 });
 
     // Second execution - should complete
     r = await exec("foo.1", foo, [], h);
@@ -191,7 +193,7 @@ describe("Coroutine", () => {
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.1", ok(42));
+    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
     expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
   });
@@ -214,14 +216,14 @@ describe("Coroutine", () => {
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(2);
 
-    await completePromise(h, "foo.1.1", ok(42));
+    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.0", ok(42));
+    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
 
     expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 99 } } });
@@ -245,7 +247,7 @@ describe("Coroutine", () => {
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.0", ok(42));
+    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
 
     expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 99 } } });
@@ -270,14 +272,14 @@ describe("Coroutine", () => {
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(2);
 
-    await completePromise(h, "foo.1.0", ok(42));
+    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.1", ok(42));
+    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
 
     expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
@@ -301,7 +303,7 @@ describe("Coroutine", () => {
     const suspended = r as Suspended;
     expect(suspended.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.1", ok(42));
+    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
 
     r = await exec("foo.1", foo, [], h);
     expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 84 } } });

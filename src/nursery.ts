@@ -1,4 +1,4 @@
-import * as types from "./types";
+import type { Result } from "./types";
 import * as util from "./util";
 export class Nursery<T> {
   // event queue, these functions are ensured to execute sequentially
@@ -10,14 +10,14 @@ export class Nursery<T> {
 
   // the callback the nursery is instantiated with, called once when
   // the nursery is done and all holds are released
-  private c: (res: types.Result<T, any>) => void;
-  private res?: types.Result<T, any>;
+  private c: (res: Result<T, any>) => void;
+  private res?: Result<T, any>;
 
   private holds = 0;
   private running = false;
   private completed = false;
 
-  constructor(f: (n: Nursery<T>) => void, c: (res: types.Result<T, any>) => void) {
+  constructor(f: (n: Nursery<T>) => void, c: (res: Result<T, any>) => void) {
     this.f = () => f(this);
     this.c = c;
 
@@ -50,7 +50,7 @@ export class Nursery<T> {
     }
   }
 
-  done(res: types.Result<T, any>) {
+  done(res: Result<T, any>) {
     if (this.completed) return;
     this.res = res;
     this.running = false;
@@ -60,8 +60,8 @@ export class Nursery<T> {
 
   all<T, U>(
     list: T[],
-    func: (item: T, done: (res: types.Result<U, any>) => void) => void,
-    done: (res: types.Result<U[], any>) => void,
+    func: (item: T, done: (res: Result<U, any>) => void) => void,
+    done: (res: Result<U[], any>) => void,
   ) {
     const results: U[] = new Array(list.length);
 
@@ -72,9 +72,9 @@ export class Nursery<T> {
       if (completed) return;
       completed = true;
       if (err) {
-        done(types.ko(err));
+        done({ kind: "error", error: err });
       } else {
-        done(types.ok(results));
+        done({ kind: "value", value: results });
       }
     };
 
