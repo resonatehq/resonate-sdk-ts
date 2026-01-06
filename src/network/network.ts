@@ -1,13 +1,13 @@
 // Records
 import type { ResonateError } from "exceptions";
-import type * as types from "../types";
+import type { Result, Value } from "../types";
 
 export interface DurablePromiseRecord<T = string> {
   id: string;
   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
   timeout: number;
-  param?: types.Value<T>;
-  value?: types.Value<T>;
+  param?: Value<T>;
+  value?: Value<T>;
   tags: Record<string, string>;
   iKeyForCreate?: string;
   iKeyForComplete?: string;
@@ -22,7 +22,7 @@ export interface ScheduleRecord {
   tags: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam?: types.Value<string>;
+  promiseParam?: Value<string>;
   promiseTags: Record<string, string>;
   iKey?: string;
   lastRunTime?: number;
@@ -70,7 +70,7 @@ export type CreatePromiseReq<T = string> = {
   kind: "createPromise";
   id: string;
   timeout: number;
-  param?: types.Value<T>;
+  param?: Value<T>;
   tags?: Record<string, string>;
   iKey?: string;
   strict?: boolean;
@@ -81,7 +81,7 @@ export type CreatePromiseAndTaskReq<T = string> = {
   promise: {
     id: string;
     timeout: number;
-    param?: types.Value<T>;
+    param?: Value<T>;
     tags?: Record<string, string>;
   };
   task: {
@@ -101,7 +101,7 @@ export type CompletePromiseReq<T = string> = {
   kind: "completePromise";
   id: string;
   state: "resolved" | "rejected" | "rejected_canceled";
-  value?: types.Value<T>;
+  value?: Value<T>;
   iKey?: string;
   strict?: boolean;
 };
@@ -130,7 +130,7 @@ export type CreateScheduleReq = {
   tags?: Record<string, string>;
   promiseId?: string;
   promiseTimeout?: number;
-  promiseParam?: types.Value<string>;
+  promiseParam?: Value<string>;
   promiseTags?: Record<string, string>;
   iKey?: string;
 };
@@ -310,7 +310,7 @@ export interface Network {
 
   send<T extends Request>(
     req: T,
-    callback: (res: types.Result<ResponseFor<T>, ResonateError>) => void,
+    callback: (res: Result<ResponseFor<T>, ResonateError>) => void,
     headers?: Record<string, string>,
     retryForever?: boolean,
   ): void;
