@@ -102,7 +102,6 @@ class SimulatedNetwork implements Network {
     });
 
     const callback = (res: Result<Response, any>) => {
-      console.log("buuuu", res)
       if (res.kind === "error") {
         cb({ kind: "error", error: res.error as ResonateError });
       } else {
