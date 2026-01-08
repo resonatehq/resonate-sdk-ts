@@ -1,5 +1,6 @@
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "./clock";
+import { Core } from "./core";
 import { type Encoder, JsonEncoder } from "./encoder";
 import { type Encryptor, NoopEncryptor } from "./encryptor";
 import exceptions from "./exceptions";
@@ -20,7 +21,6 @@ import { HttpNetwork, PollMessageSource } from "./network/remote";
 import { type Options, OptionsBuilder } from "./options";
 import { Promises } from "./promises";
 import { Registry } from "./registry";
-import { ResonateInner } from "./resonate-inner";
 import { Schedules } from "./schedules";
 import { NoopTracer, type Tracer } from "./tracer";
 import type { Func, ParamsWithOptions, Return } from "./types";
@@ -62,7 +62,7 @@ export class Resonate {
   private anycast: string;
   private match: (target: string) => string;
 
-  private inner: ResonateInner;
+  private inner: Core;
   private network: Network;
   private encoder: Encoder;
   private encryptor: Encryptor;
@@ -223,7 +223,7 @@ export class Resonate {
 
     this.optsBuilder = new OptionsBuilder({ match: this.match, idPrefix: this.idPrefix });
 
-    this.inner = new ResonateInner({
+    this.inner = new Core({
       unicast: this.unicast,
       anycast: this.anycast,
       pid: this.pid,
