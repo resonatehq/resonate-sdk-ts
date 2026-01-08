@@ -1,5 +1,5 @@
 export { LocalNetwork } from "../dev/network";
-export { Core as ResonateInner } from "./core";
+export { Core } from "./core";
 // network
 export { Network } from "./network/network";
 export { HttpNetwork } from "./network/remote";
