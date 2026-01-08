@@ -184,7 +184,7 @@ export class WorkerProcess extends Process {
   private clock: StepClock;
   private network: SimulatedNetwork;
   private registry: Registry;
-  private resonate: Core;
+  private core: Core;
 
   constructor(
     prng: Random,
@@ -200,7 +200,7 @@ export class WorkerProcess extends Process {
     this.network = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb: 0 }, unicast(iaddr), unicast("server"));
     this.registry = registry;
     const messageSource = this.network.getMessageSource();
-    this.resonate = new Core({
+    this.core = new Core({
       unicast: messageSource.unicast,
       anycast: messageSource.anycast,
       pid: iaddr,

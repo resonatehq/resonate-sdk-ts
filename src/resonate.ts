@@ -62,7 +62,7 @@ export class Resonate {
   private anycast: string;
   private match: (target: string) => string;
 
-  private inner: Core;
+  private core: Core;
   private network: Network;
   private encoder: Encoder;
   private encryptor: Encryptor;
@@ -223,7 +223,7 @@ export class Resonate {
 
     this.optsBuilder = new OptionsBuilder({ match: this.match, idPrefix: this.idPrefix });
 
-    this.inner = new Core({
+    this.core = new Core({
       unicast: this.unicast,
       anycast: this.anycast,
       pid: this.pid,
@@ -573,7 +573,7 @@ export class Resonate {
       span.setStatus(true);
 
       if (task) {
-        this.inner.process(span, { kind: "claimed", task: task, rootPromise: promise }, () => {
+        this.core.process(span, { kind: "claimed", task: task, rootPromise: promise }, () => {
           span.end(this.clock.now());
         });
       } else {
