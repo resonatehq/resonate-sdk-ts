@@ -172,7 +172,7 @@ export class Future<T> implements Iterable<Future<T>> {
 export interface Context {
   readonly id: string;
   readonly parentId: string;
-  readonly rootId: string;
+  readonly branchId: string;
   readonly info: { readonly attempt: number; readonly timeout: number; readonly version: number };
 
   // core four
@@ -259,7 +259,7 @@ export class InnerContext implements Context {
   readonly func: string;
   readonly retryPolicy: RetryPolicy;
 
-  readonly rootId: string;
+  readonly branchId: string;
   readonly parentId: string;
   readonly clock: Clock;
   readonly span: Span;
@@ -275,7 +275,7 @@ export class InnerContext implements Context {
 
   constructor({
     id,
-    rId = id,
+    bId = id,
     pId = id,
     func,
     clock,
@@ -288,7 +288,7 @@ export class InnerContext implements Context {
     span,
   }: {
     id: string;
-    rId?: string;
+    bId?: string;
     pId?: string;
     func: string;
     clock: Clock;
@@ -301,7 +301,7 @@ export class InnerContext implements Context {
     span: Span;
   }) {
     this.id = id;
-    this.rootId = rId;
+    this.branchId = bId;
     this.parentId = pId;
     this.func = func;
     this.clock = clock;
@@ -335,7 +335,7 @@ export class InnerContext implements Context {
   }) {
     return new InnerContext({
       id,
-      rId: this.rootId,
+      bId: this.branchId,
       pId: this.id,
       func,
       clock: this.clock,
@@ -580,7 +580,7 @@ export class InnerContext implements Context {
   localCreateReq(id: string, data: any, opts: Options): CreatePromiseReq {
     const tags = {
       "resonate:scope": "local",
-      "resonate:root": this.rootId,
+      "resonate:branch": this.branchId,
       "resonate:parent": this.id,
       ...opts.tags,
     };
@@ -601,7 +601,7 @@ export class InnerContext implements Context {
     const tags = {
       "resonate:scope": "global",
       "resonate:invoke": opts.target,
-      "resonate:root": this.rootId,
+      "resonate:branch": this.branchId,
       "resonate:parent": this.id,
       ...opts.tags,
     };
@@ -621,7 +621,7 @@ export class InnerContext implements Context {
   latentCreateOpts(id: string, timeout?: number, data?: any, tags?: Record<string, string>): CreatePromiseReq {
     const cTags = {
       "resonate:scope": "global",
-      "resonate:root": this.rootId,
+      "resonate:branch": this.branchId,
       "resonate:parent": this.id,
       ...tags,
     };
@@ -641,7 +641,7 @@ export class InnerContext implements Context {
   sleepCreateOpts(id: string, time: number): CreatePromiseReq {
     const tags = {
       "resonate:scope": "global",
-      "resonate:root": this.rootId,
+      "resonate:branch": this.branchId,
       "resonate:parent": this.id,
       "resonate:timeout": "true",
     };

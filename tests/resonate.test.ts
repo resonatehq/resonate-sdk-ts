@@ -324,7 +324,7 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("f.0");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "local",
-      "resonate:root": "f",
+      "resonate:branch": "f",
       "resonate:parent": "f",
     });
     resonate.stop();
@@ -558,7 +558,7 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("f.0");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
-      "resonate:root": "f",
+      "resonate:branch": "f",
       "resonate:parent": "f",
       "resonate:invoke": "poll://any@default",
     });
@@ -582,7 +582,7 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("f.0");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
-      "resonate:root": "f",
+      "resonate:branch": "f",
       "resonate:parent": "f",
       "resonate:invoke": "poll://any@remoteTarget",
     });
@@ -606,7 +606,7 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("f.0");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
-      "resonate:root": "f",
+      "resonate:branch": "f",
       "resonate:parent": "f",
       "resonate:invoke": "http://faasurl.com",
     });
@@ -630,7 +630,7 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("fid");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
-      "resonate:root": "fid",
+      "resonate:branch": "fid",
       "resonate:parent": "fid",
       "resonate:invoke": "http://faasurl.com",
     });
@@ -654,7 +654,7 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("fid");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
-      "resonate:root": "fid",
+      "resonate:branch": "fid",
       "resonate:parent": "fid",
       "resonate:invoke": "poll://any@default",
     });
@@ -678,7 +678,7 @@ describe("Resonate usage tests", () => {
     expect(durable.id).toBe("fid");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
-      "resonate:root": "fid",
+      "resonate:branch": "fid",
       "resonate:parent": "fid",
       "resonate:invoke": "poll://any@anotherNode",
     });
