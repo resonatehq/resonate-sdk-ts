@@ -196,6 +196,7 @@ export class Computation {
 
       const ctx = new InnerContext({
         id: this.id,
+        oId: rootPromise.tags["resonate:origin"] ?? this.id,
         func: registered.func.name,
         clock: this.clock,
         registry: this.registry,
