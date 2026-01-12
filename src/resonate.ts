@@ -573,7 +573,7 @@ export class Resonate {
       span.setStatus(true);
 
       if (task) {
-        this.core.process(span, { kind: "claimed", task: task, rootPromise: promise }, () => {
+        this.core.executeUntilBlocked(span, { kind: "claimed", task: task, rootPromise: promise }, () => {
           span.end(this.clock.now());
         });
       } else {

@@ -94,7 +94,7 @@ export class Computation {
     this.spans = new Map();
   }
 
-  public process(task: Task, done: (res: Result<Status, undefined>) => void) {
+  public executeUntilBlocked(task: Task, done: (res: Result<Status, undefined>) => void) {
     // If we are already processing there is nothing to do, the
     // caller will be notified via the promise handler
     if (this.processing) return done({ kind: "error", error: undefined });

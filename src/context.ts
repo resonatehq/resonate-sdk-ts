@@ -171,6 +171,7 @@ export class Future<T> implements Iterable<Future<T>> {
 
 export interface Context {
   readonly id: string;
+  readonly originId: string;
   readonly parentId: string;
   readonly branchId: string;
   readonly info: { readonly attempt: number; readonly timeout: number; readonly version: number };
@@ -259,6 +260,7 @@ export class InnerContext implements Context {
   readonly func: string;
   readonly retryPolicy: RetryPolicy;
 
+  readonly originId: string;
   readonly branchId: string;
   readonly parentId: string;
   readonly clock: Clock;
@@ -275,6 +277,7 @@ export class InnerContext implements Context {
 
   constructor({
     id,
+    oId = id,
     bId = id,
     pId = id,
     func,
@@ -288,6 +291,7 @@ export class InnerContext implements Context {
     span,
   }: {
     id: string;
+    oId?: string;
     bId?: string;
     pId?: string;
     func: string;
@@ -301,6 +305,7 @@ export class InnerContext implements Context {
     span: Span;
   }) {
     this.id = id;
+    this.originId = oId;
     this.branchId = bId;
     this.parentId = pId;
     this.func = func;
@@ -335,6 +340,7 @@ export class InnerContext implements Context {
   }) {
     return new InnerContext({
       id,
+      oId: this.originId,
       bId: this.branchId,
       pId: this.id,
       func,
