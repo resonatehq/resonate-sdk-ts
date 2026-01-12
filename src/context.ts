@@ -372,7 +372,8 @@ export class InnerContext implements Context {
       ) as unknown as LFI<any>;
     }
 
-    const id = opts.id ?? this.seqid();
+    const idSet = opts.id !== undefined;
+    const id = idSet ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.func : (funcOrName as Func);
@@ -384,7 +385,7 @@ export class InnerContext implements Context {
       argu,
       version,
       opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
-      this.localCreateReq(id, { func: func.name, version }, opts),
+      this.localCreateReq({ id, data: { func: func.name, version }, opts, idSet }),
     );
   }
 
@@ -405,7 +406,8 @@ export class InnerContext implements Context {
       ) as unknown as LFC<any>;
     }
 
-    const id = opts.id ?? this.seqid();
+    const idSet = opts.id !== undefined;
+    const id = idSet ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.func : (funcOrName as Func);
@@ -417,7 +419,7 @@ export class InnerContext implements Context {
       argu,
       version,
       opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
-      this.localCreateReq(id, { func: func.name, version }, opts),
+      this.localCreateReq({ id, data: { func: func.name, version }, opts, idSet }),
     );
   }
 
@@ -438,7 +440,8 @@ export class InnerContext implements Context {
       ) as unknown as RFI<any>;
     }
 
-    const id = opts.id ?? this.seqid();
+    const idSet = opts.id !== undefined;
+    const id = idSet ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.name : (funcOrName as string);
@@ -451,7 +454,7 @@ export class InnerContext implements Context {
       version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFI(id, func, version, this.remoteCreateReq(id, data, opts));
+    return new RFI(id, func, version, this.remoteCreateReq({ id, data, opts, idSet }));
   }
 
   rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
@@ -471,7 +474,8 @@ export class InnerContext implements Context {
       ) as unknown as RFC<any>;
     }
 
-    const id = opts.id ?? this.seqid();
+    const idSet = opts.id !== undefined;
+    const id = idSet ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.name : (funcOrName as string);
@@ -484,7 +488,7 @@ export class InnerContext implements Context {
       version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFC(id, func, version, this.remoteCreateReq(id, data, opts));
+    return new RFC(id, func, version, this.remoteCreateReq({ id, data, opts, idSet }));
   }
 
   detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
@@ -504,7 +508,8 @@ export class InnerContext implements Context {
       ) as unknown as RFI<any>;
     }
 
-    const id = opts.id ?? this.seqid();
+    const idSet = opts.id !== undefined;
+    const id = idSet ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.name : (funcOrName as string);
@@ -517,7 +522,13 @@ export class InnerContext implements Context {
       version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFI(id, func, version, this.remoteCreateReq(id, data, opts, Number.MAX_SAFE_INTEGER), "detached");
+    return new RFI(
+      id,
+      func,
+      version,
+      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, idSet }),
+      "detached",
+    );
   }
 
   promise<T>({
@@ -531,10 +542,11 @@ export class InnerContext implements Context {
     data?: any;
     tags?: Record<string, string>;
   } = {}): RFI<T> {
+    const idSet = id !== undefined;
     id = id ?? this.seqid();
     this.seq++;
 
-    return new RFI(id, "unknown", 1, this.latentCreateOpts(id, timeout, data, tags));
+    return new RFI(id, "unknown", 1, this.latentCreateOpts({ id, timeout, data, tags, idSet }));
   }
 
   sleep(msOrOpts: number | { for?: number; until?: Date }): RFC<void> {
@@ -553,7 +565,7 @@ export class InnerContext implements Context {
     const id = this.seqid();
     this.seq++;
 
-    return new RFC(id, "sleep", 1, this.sleepCreateOpts(id, until));
+    return new RFC(id, "sleep", 1, this.sleepCreateOpts({ id, time: until }));
   }
 
   panic(condition: boolean, msg?: string): DIE {
@@ -583,14 +595,35 @@ export class InnerContext implements Context {
     random: () => this.lfc((this.getDependency<Math>("resonate:math") ?? Math).random),
   };
 
-  localCreateReq(id: string, data: any, opts: Options): CreatePromiseReq {
-    const tags = {
-      "resonate:scope": "local",
-      "resonate:branch": this.branchId,
-      "resonate:parent": this.id,
-      "resonate:origin": this.originId,
-      ...opts.tags,
-    };
+  localCreateReq({
+    id,
+    data,
+    opts,
+    idSet,
+  }: {
+    id: string;
+    data: any;
+    opts: Options;
+    idSet: boolean;
+  }): CreatePromiseReq {
+    let tags: Record<string, string>;
+    if (!idSet) {
+      tags = {
+        "resonate:scope": "local",
+        "resonate:branch": this.branchId,
+        "resonate:parent": this.id,
+        "resonate:origin": this.originId,
+        ...opts.tags,
+      };
+    } else {
+      tags = {
+        "resonate:scope": "local",
+        "resonate:branch": this.id,
+        "resonate:parent": this.id,
+        "resonate:origin": this.id,
+        ...opts.tags,
+      };
+    }
 
     // timeout cannot be greater than parent timeout
     const timeout = Math.min(this.clock.now() + opts.timeout, this.info.timeout);
@@ -604,15 +637,39 @@ export class InnerContext implements Context {
     };
   }
 
-  remoteCreateReq(id: string, data: any, opts: Options, maxTimeout = this.info.timeout): CreatePromiseReq {
-    const tags = {
-      "resonate:scope": "global",
-      "resonate:invoke": opts.target,
-      "resonate:branch": this.branchId,
-      "resonate:parent": this.id,
-      "resonate:origin": this.originId,
-      ...opts.tags,
-    };
+  remoteCreateReq({
+    id,
+    data,
+    opts,
+    idSet,
+    maxTimeout = this.info.timeout,
+  }: {
+    id: string;
+    data: any;
+    opts: Options;
+    idSet: boolean;
+    maxTimeout?: number;
+  }): CreatePromiseReq {
+    let tags: Record<string, string>;
+    if (!idSet) {
+      tags = {
+        "resonate:scope": "global",
+        "resonate:invoke": opts.target,
+        "resonate:branch": this.branchId,
+        "resonate:parent": this.id,
+        "resonate:origin": this.originId,
+        ...opts.tags,
+      };
+    } else {
+      tags = {
+        "resonate:scope": "global",
+        "resonate:invoke": opts.target,
+        "resonate:branch": this.id,
+        "resonate:parent": this.id,
+        "resonate:origin": this.id,
+        ...opts.tags,
+      };
+    }
 
     // timeout cannot be greater than parent timeout (unless detached)
     const timeout = Math.min(this.clock.now() + opts.timeout, maxTimeout);
@@ -626,14 +683,37 @@ export class InnerContext implements Context {
     };
   }
 
-  latentCreateOpts(id: string, timeout?: number, data?: any, tags?: Record<string, string>): CreatePromiseReq {
-    const cTags = {
-      "resonate:scope": "global",
-      "resonate:branch": this.branchId,
-      "resonate:parent": this.id,
-      "resonate:origin": this.originId,
-      ...tags,
-    };
+  latentCreateOpts({
+    id,
+    timeout,
+    data,
+    tags,
+    idSet,
+  }: {
+    id: string;
+    timeout?: number;
+    data: any;
+    tags?: Record<string, string>;
+    idSet: boolean;
+  }): CreatePromiseReq {
+    let cTags: Record<string, string>;
+    if (!idSet) {
+      cTags = {
+        "resonate:scope": "global",
+        "resonate:branch": this.branchId,
+        "resonate:parent": this.id,
+        "resonate:origin": this.originId,
+        ...tags,
+      };
+    } else {
+      cTags = {
+        "resonate:scope": "global",
+        "resonate:branch": this.id,
+        "resonate:parent": this.id,
+        "resonate:origin": this.id,
+        ...tags,
+      };
+    }
 
     // timeout cannot be greater than parent timeout
     const cTimeout = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.info.timeout);
@@ -647,7 +727,7 @@ export class InnerContext implements Context {
     };
   }
 
-  sleepCreateOpts(id: string, time: number): CreatePromiseReq {
+  sleepCreateOpts({ id, time }: { id: string; time: number }): CreatePromiseReq {
     const tags = {
       "resonate:scope": "global",
       "resonate:branch": this.branchId,
