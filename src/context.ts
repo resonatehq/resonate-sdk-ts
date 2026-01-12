@@ -372,8 +372,8 @@ export class InnerContext implements Context {
       ) as unknown as LFI<any>;
     }
 
-    const idSet = opts.id !== undefined;
-    const id = idSet ? opts.id : this.seqid();
+    const idChanged = opts.id !== undefined;
+    const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.func : (funcOrName as Func);
@@ -385,7 +385,7 @@ export class InnerContext implements Context {
       argu,
       version,
       opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
-      this.localCreateReq({ id, data: { func: func.name, version }, opts, idSet }),
+      this.localCreateReq({ id, data: { func: func.name, version }, opts, idChanged }),
     );
   }
 
@@ -406,8 +406,8 @@ export class InnerContext implements Context {
       ) as unknown as LFC<any>;
     }
 
-    const idSet = opts.id !== undefined;
-    const id = idSet ? opts.id : this.seqid();
+    const idChanged = opts.id !== undefined;
+    const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.func : (funcOrName as Func);
@@ -419,7 +419,7 @@ export class InnerContext implements Context {
       argu,
       version,
       opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
-      this.localCreateReq({ id, data: { func: func.name, version }, opts, idSet }),
+      this.localCreateReq({ id, data: { func: func.name, version }, opts, idChanged }),
     );
   }
 
@@ -440,8 +440,8 @@ export class InnerContext implements Context {
       ) as unknown as RFI<any>;
     }
 
-    const idSet = opts.id !== undefined;
-    const id = idSet ? opts.id : this.seqid();
+    const idChanged = opts.id !== undefined;
+    const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.name : (funcOrName as string);
@@ -454,7 +454,7 @@ export class InnerContext implements Context {
       version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFI(id, func, version, this.remoteCreateReq({ id, data, opts, idSet }));
+    return new RFI(id, func, version, this.remoteCreateReq({ id, data, opts, idChanged }));
   }
 
   rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
@@ -474,8 +474,8 @@ export class InnerContext implements Context {
       ) as unknown as RFC<any>;
     }
 
-    const idSet = opts.id !== undefined;
-    const id = idSet ? opts.id : this.seqid();
+    const idChanged = opts.id !== undefined;
+    const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.name : (funcOrName as string);
@@ -488,7 +488,7 @@ export class InnerContext implements Context {
       version: registered ? registered.version : opts.version || 1,
     };
 
-    return new RFC(id, func, version, this.remoteCreateReq({ id, data, opts, idSet }));
+    return new RFC(id, func, version, this.remoteCreateReq({ id, data, opts, idChanged }));
   }
 
   detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
@@ -508,8 +508,8 @@ export class InnerContext implements Context {
       ) as unknown as RFI<any>;
     }
 
-    const idSet = opts.id !== undefined;
-    const id = idSet ? opts.id : this.seqid();
+    const idChanged = opts.id !== undefined;
+    const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
     const func = registered ? registered.name : (funcOrName as string);
@@ -526,7 +526,7 @@ export class InnerContext implements Context {
       id,
       func,
       version,
-      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, idSet }),
+      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, idChanged }),
       "detached",
     );
   }
@@ -542,11 +542,11 @@ export class InnerContext implements Context {
     data?: any;
     tags?: Record<string, string>;
   } = {}): RFI<T> {
-    const idSet = id !== undefined;
+    const idChanged = id !== undefined;
     id = id ?? this.seqid();
     this.seq++;
 
-    return new RFI(id, "unknown", 1, this.latentCreateOpts({ id, timeout, data, tags, idSet }));
+    return new RFI(id, "unknown", 1, this.latentCreateOpts({ id, timeout, data, tags, idChanged }));
   }
 
   sleep(msOrOpts: number | { for?: number; until?: Date }): RFC<void> {
@@ -599,15 +599,15 @@ export class InnerContext implements Context {
     id,
     data,
     opts,
-    idSet,
+    idChanged,
   }: {
     id: string;
     data: any;
     opts: Options;
-    idSet: boolean;
+    idChanged: boolean;
   }): CreatePromiseReq {
     let tags: Record<string, string>;
-    if (!idSet) {
+    if (!idChanged) {
       tags = {
         "resonate:scope": "local",
         "resonate:branch": this.branchId,
@@ -641,17 +641,17 @@ export class InnerContext implements Context {
     id,
     data,
     opts,
-    idSet,
+    idChanged,
     maxTimeout = this.info.timeout,
   }: {
     id: string;
     data: any;
     opts: Options;
-    idSet: boolean;
+    idChanged: boolean;
     maxTimeout?: number;
   }): CreatePromiseReq {
     let tags: Record<string, string>;
-    if (!idSet) {
+    if (!idChanged) {
       tags = {
         "resonate:scope": "global",
         "resonate:invoke": opts.target,
@@ -688,16 +688,16 @@ export class InnerContext implements Context {
     timeout,
     data,
     tags,
-    idSet,
+    idChanged,
   }: {
     id: string;
     timeout?: number;
     data: any;
     tags?: Record<string, string>;
-    idSet: boolean;
+    idChanged: boolean;
   }): CreatePromiseReq {
     let cTags: Record<string, string>;
-    if (!idSet) {
+    if (!idChanged) {
       cTags = {
         "resonate:scope": "global",
         "resonate:branch": this.branchId,
