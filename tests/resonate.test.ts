@@ -632,6 +632,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:branch": "fid",
       "resonate:parent": "fid",
+      "resonate:origin": "fid",
       "resonate:invoke": "http://faasurl.com",
     });
     resonate.stop();
@@ -656,6 +657,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:branch": "fid",
       "resonate:parent": "fid",
+      "resonate:origin": "fid",
       "resonate:invoke": "poll://any@default",
     });
     resonate.stop();
@@ -680,6 +682,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:branch": "fid",
       "resonate:parent": "fid",
+      "resonate:origin": "fid",
       "resonate:invoke": "poll://any@anotherNode",
     });
     resonate.stop();
