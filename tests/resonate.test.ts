@@ -326,6 +326,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "local",
       "resonate:branch": "f",
       "resonate:parent": "f",
+      "resonate:origin": "f",
     });
     resonate.stop();
   });
@@ -560,6 +561,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:branch": "f",
       "resonate:parent": "f",
+      "resonate:origin": "f",
       "resonate:invoke": "poll://any@default",
     });
     resonate.stop();
@@ -584,6 +586,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:branch": "f",
       "resonate:parent": "f",
+      "resonate:origin": "f",
       "resonate:invoke": "poll://any@remoteTarget",
     });
     resonate.stop();
@@ -608,6 +611,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:branch": "f",
       "resonate:parent": "f",
+      "resonate:origin": "f",
       "resonate:invoke": "http://faasurl.com",
     });
     resonate.stop();

@@ -588,6 +588,7 @@ export class InnerContext implements Context {
       "resonate:scope": "local",
       "resonate:branch": this.branchId,
       "resonate:parent": this.id,
+      "resonate:origin": this.originId,
       ...opts.tags,
     };
 
@@ -609,6 +610,7 @@ export class InnerContext implements Context {
       "resonate:invoke": opts.target,
       "resonate:branch": this.branchId,
       "resonate:parent": this.id,
+      "resonate:origin": this.originId,
       ...opts.tags,
     };
 
@@ -629,6 +631,7 @@ export class InnerContext implements Context {
       "resonate:scope": "global",
       "resonate:branch": this.branchId,
       "resonate:parent": this.id,
+      "resonate:origin": this.originId,
       ...tags,
     };
 
@@ -649,6 +652,7 @@ export class InnerContext implements Context {
       "resonate:scope": "global",
       "resonate:branch": this.branchId,
       "resonate:parent": this.id,
+      "resonate:origin": this.originId,
       "resonate:timeout": "true",
     };
 
