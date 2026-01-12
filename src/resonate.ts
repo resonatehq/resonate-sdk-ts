@@ -555,6 +555,7 @@ export class Resonate {
             },
             tags: {
               ...opts.tags,
+              "resonate:origin": id,
               "resonate:branch": id,
               "resonate:parent": id,
               "resonate:scope": "global",
@@ -697,6 +698,7 @@ export class Resonate {
           },
           tags: {
             ...opts.tags,
+            "resonate:origin": id,
             "resonate:branch": id,
             "resonate:parent": id,
             "resonate:scope": "global",
