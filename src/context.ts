@@ -606,24 +606,13 @@ export class InnerContext implements Context {
     opts: Options;
     idChanged: boolean;
   }): CreatePromiseReq {
-    let tags: Record<string, string>;
-    if (!idChanged) {
-      tags = {
-        "resonate:scope": "local",
-        "resonate:branch": this.branchId,
-        "resonate:parent": this.id,
-        "resonate:origin": this.originId,
-        ...opts.tags,
-      };
-    } else {
-      tags = {
-        "resonate:scope": "local",
-        "resonate:branch": this.id,
-        "resonate:parent": this.id,
-        "resonate:origin": this.id,
-        ...opts.tags,
-      };
-    }
+    const tags = {
+      "resonate:scope": "local",
+      "resonate:branch": idChanged ? this.id : this.branchId,
+      "resonate:parent": this.id,
+      "resonate:origin": idChanged ? this.id : this.originId,
+      ...opts.tags,
+    };
 
     // timeout cannot be greater than parent timeout
     const timeout = Math.min(this.clock.now() + opts.timeout, this.info.timeout);
@@ -650,26 +639,14 @@ export class InnerContext implements Context {
     idChanged: boolean;
     maxTimeout?: number;
   }): CreatePromiseReq {
-    let tags: Record<string, string>;
-    if (!idChanged) {
-      tags = {
-        "resonate:scope": "global",
-        "resonate:invoke": opts.target,
-        "resonate:branch": this.branchId,
-        "resonate:parent": this.id,
-        "resonate:origin": this.originId,
-        ...opts.tags,
-      };
-    } else {
-      tags = {
-        "resonate:scope": "global",
-        "resonate:invoke": opts.target,
-        "resonate:branch": this.id,
-        "resonate:parent": this.id,
-        "resonate:origin": this.id,
-        ...opts.tags,
-      };
-    }
+    const tags = {
+      "resonate:scope": "global",
+      "resonate:invoke": opts.target,
+      "resonate:branch": idChanged ? this.id : this.branchId,
+      "resonate:parent": this.id,
+      "resonate:origin": idChanged ? this.id : this.originId,
+      ...opts.tags,
+    };
 
     // timeout cannot be greater than parent timeout (unless detached)
     const timeout = Math.min(this.clock.now() + opts.timeout, maxTimeout);
@@ -696,24 +673,13 @@ export class InnerContext implements Context {
     tags?: Record<string, string>;
     idChanged: boolean;
   }): CreatePromiseReq {
-    let cTags: Record<string, string>;
-    if (!idChanged) {
-      cTags = {
-        "resonate:scope": "global",
-        "resonate:branch": this.branchId,
-        "resonate:parent": this.id,
-        "resonate:origin": this.originId,
-        ...tags,
-      };
-    } else {
-      cTags = {
-        "resonate:scope": "global",
-        "resonate:branch": this.id,
-        "resonate:parent": this.id,
-        "resonate:origin": this.id,
-        ...tags,
-      };
-    }
+    const cTags: Record<string, string> = {
+      "resonate:scope": "global",
+      "resonate:branch": idChanged ? this.id : this.branchId,
+      "resonate:parent": this.id,
+      "resonate:origin": idChanged ? this.id : this.originId,
+      ...tags,
+    };
 
     // timeout cannot be greater than parent timeout
     const cTimeout = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.info.timeout);
