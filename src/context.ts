@@ -526,7 +526,7 @@ export class InnerContext implements Context {
       id,
       func,
       version,
-      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, idChanged }),
+      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, idChanged, mode: "detached" }),
       "detached",
     );
   }
@@ -631,20 +631,22 @@ export class InnerContext implements Context {
     data,
     opts,
     idChanged,
+    mode = "attached",
     maxTimeout = this.info.timeout,
   }: {
     id: string;
     data: any;
     opts: Options;
     idChanged: boolean;
+    mode?: "attached" | "detached";
     maxTimeout?: number;
   }): CreatePromiseReq {
     const tags = {
       "resonate:scope": "global",
       "resonate:invoke": opts.target,
-      "resonate:branch": idChanged ? this.id : this.branchId,
+      "resonate:branch": idChanged || mode === "detached" ? this.id : this.branchId,
       "resonate:parent": this.id,
-      "resonate:origin": idChanged ? this.id : this.originId,
+      "resonate:origin": idChanged || mode === "detached" ? this.id : this.originId,
       ...opts.tags,
     };
 
