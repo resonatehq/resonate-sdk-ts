@@ -93,6 +93,49 @@ describe("Resonate usage tests", () => {
       "resonate:invoke": "poll://any@default",
     });
   });
+  test("test lineage rfc set ids", async () => {
+    const resonate = Resonate.local();
+    const f = resonate.register("f", function* foo(ctx: Context): Generator {
+      const v = yield ctx.rpc(bar, ctx.options({ id: "bar" }));
+      return v;
+    });
+
+    function* bar(ctx: Context): Generator {
+      const v = yield ctx.rpc(baz, ctx.options({ id: "baz" }));
+      return v;
+    }
+
+    async function baz(ctx: Context): Promise<string> {
+      return "hello";
+    }
+
+    resonate.register(bar);
+    resonate.register(baz);
+
+    const v = await f.run("foo");
+    expect(await v).toBe("hello");
+    expect((await resonate.promises.get("foo")).tags).toEqual({
+      "resonate:origin": "foo",
+      "resonate:branch": "foo",
+      "resonate:parent": "foo",
+      "resonate:scope": "global",
+      "resonate:invoke": "poll://any@default/default",
+    });
+    expect((await resonate.promises.get("bar")).tags).toEqual({
+      "resonate:origin": "bar",
+      "resonate:branch": "bar",
+      "resonate:parent": "foo",
+      "resonate:scope": "global",
+      "resonate:invoke": "poll://any@default",
+    });
+    expect((await resonate.promises.get("baz")).tags).toEqual({
+      "resonate:origin": "baz",
+      "resonate:branch": "baz",
+      "resonate:parent": "bar",
+      "resonate:scope": "global",
+      "resonate:invoke": "poll://any@default",
+    });
+  });
 
   test("test lineage lfc", async () => {
     const resonate = Resonate.local();
@@ -129,6 +172,44 @@ describe("Resonate usage tests", () => {
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1.0",
+      "resonate:scope": "local",
+    });
+  });
+  test("test lineage lfc set ids", async () => {
+    const resonate = Resonate.local();
+    const f = resonate.register("f", function* foo(ctx: Context): Generator {
+      const v = yield ctx.lfc(bar, ctx.options({ id: "bar" }));
+      return v;
+    });
+
+    function* bar(ctx: Context): Generator {
+      const v = yield ctx.lfc(baz, ctx.options({ id: "baz" }));
+      return v;
+    }
+
+    async function baz(ctx: Context): Promise<string> {
+      return "hello";
+    }
+
+    const v = await f.run("foo");
+    expect(await v).toBe("hello");
+    expect((await resonate.promises.get("foo")).tags).toEqual({
+      "resonate:origin": "foo",
+      "resonate:branch": "foo",
+      "resonate:parent": "foo",
+      "resonate:scope": "global",
+      "resonate:invoke": "poll://any@default/default",
+    });
+    expect((await resonate.promises.get("bar")).tags).toEqual({
+      "resonate:origin": "bar",
+      "resonate:branch": "foo",
+      "resonate:parent": "foo",
+      "resonate:scope": "local",
+    });
+    expect((await resonate.promises.get("baz")).tags).toEqual({
+      "resonate:origin": "baz",
+      "resonate:branch": "foo",
+      "resonate:parent": "bar",
       "resonate:scope": "local",
     });
   });
