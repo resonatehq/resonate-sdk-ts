@@ -521,6 +521,36 @@ describe("Resonate usage tests", () => {
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
+    expect((await resonate.promises.get("myId")).tags).toEqual({
+      "resonate:branch": "myId",
+      "resonate:origin": "myId",
+      "resonate:parent": "f",
+      "resonate:scope": "global",
+    });
+  });
+  test("Basic human in the loop without setting ids", async () => {
+    const encoder = new JsonEncoder();
+    const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
+
+    const f = resonate.register("f", function* foo(ctx: Context) {
+      const fu = yield* ctx.promise();
+      expect(fu.id).toBe(`${ctx.id}.0`);
+      return yield* fu;
+    });
+
+    const p = await f.beginRun("f");
+    await setTimeout(100); // Ensure myId promise is created
+
+    await resonate.promises.resolve("f.0", { data: encoder.encode("myValue").data });
+    const v = await p.result();
+    expect(v).toBe("myValue");
+    resonate.stop();
+    expect((await resonate.promises.get("f.0")).tags).toEqual({
+      "resonate:branch": "f.0",
+      "resonate:origin": "f",
+      "resonate:parent": "f",
+      "resonate:scope": "global",
+    });
   });
 
   test("Correctly sets timeout", async () => {
@@ -541,7 +571,12 @@ describe("Resonate usage tests", () => {
     const durable = await resonate.promises.get("myId");
     expect(durable.timeout).toBeGreaterThanOrEqual(time + 5 * util.HOUR);
     expect(durable.timeout).toBeLessThan(time + 5 * util.HOUR + 1000);
-
+    expect(durable.tags).toEqual({
+      "resonate:branch": "myId",
+      "resonate:origin": "myId",
+      "resonate:parent": "f",
+      "resonate:scope": "global",
+    });
     await resonate.promises.resolve("myId", { data: encoder.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
@@ -561,7 +596,13 @@ describe("Resonate usage tests", () => {
     await setTimeout(100); // Ensure f.0 promise is created
 
     const durable = await resonate.promises.get("f.0");
-    expect(durable.tags).toMatchObject({ "resonate:timeout": "true" });
+    expect(durable.tags).toEqual({
+      "resonate:timeout": "true",
+      "resonate:branch": "f.0",
+      "resonate:origin": "f",
+      "resonate:parent": "f",
+      "resonate:scope": "global",
+    });
     expect(durable.timeout).toBeLessThan(time + 1 * util.SEC + 100);
 
     const v = await p.result();

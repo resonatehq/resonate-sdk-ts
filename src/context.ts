@@ -675,7 +675,7 @@ export class InnerContext implements Context {
   }): CreatePromiseReq {
     const cTags: Record<string, string> = {
       "resonate:scope": "global",
-      "resonate:branch": this.branchId,
+      "resonate:branch": id,
       "resonate:parent": this.id,
       "resonate:origin": breaksLineage ? id : this.originId,
       ...tags,
@@ -696,7 +696,7 @@ export class InnerContext implements Context {
   sleepCreateOpts({ id, time }: { id: string; time: number }): CreatePromiseReq {
     const tags = {
       "resonate:scope": "global",
-      "resonate:branch": this.branchId,
+      "resonate:branch": id,
       "resonate:parent": this.id,
       "resonate:origin": this.originId,
       "resonate:timeout": "true",
