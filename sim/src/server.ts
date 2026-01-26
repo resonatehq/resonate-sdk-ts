@@ -1,7 +1,5 @@
-import { Server } from "../../dev/server";
+import { assert, type Message as NetworkMessage, type Req, type Res, Server } from "@resonatehq/dev";
 import type { StepClock } from "../../src/clock";
-import type { Message as NetworkMessage, Request, Response } from "../../src/network/network";
-import * as util from "../../src/util";
 import { type Address, anycast, Message, Process, unicast } from "./simulator";
 
 export class ServerProcess extends Process {
@@ -16,17 +14,17 @@ export class ServerProcess extends Process {
     this.clock = clock;
   }
 
-  tick(tick: number, messages: Message<Request>[]): Message<{ err?: any; res?: Response } | NetworkMessage>[] {
+  tick(tick: number, messages: Message<Req>[]): Message<{ err?: any; res?: Res } | NetworkMessage>[] {
     this.log(tick, "[recv]", messages);
 
-    const responses: Message<{ err?: any; res?: Response } | NetworkMessage>[] = [];
+    const responses: Message<{ err?: any; res?: Res } | NetworkMessage>[] = [];
 
     for (const message of messages) {
-      util.assert(message.target.iaddr === this.iaddr);
+      assert(message.target.iaddr === this.iaddr);
       if (message.isRequest()) {
-        let res: { err?: any; res?: Response };
+        let res: { err?: any; res?: Res };
         try {
-          res = { res: this.server.process(message.data, this.clock.time) };
+          res = { res: this.server.process({ at: this.clock.time, req: message.data }) };
         } catch (err: any) {
           res = { err: err };
         }
@@ -35,7 +33,7 @@ export class ServerProcess extends Process {
       }
     }
 
-    for (const message of this.server.step(this.clock.time)) {
+    for (const message of this.server.step({ at: this.clock.time })) {
       const url = new URL(message.recv);
       let target: Address;
       if (url.username === "any") {
@@ -46,7 +44,7 @@ export class ServerProcess extends Process {
         throw new Error(`not handled ${url}`);
       }
 
-      const msg = new Message<NetworkMessage>(unicast(this.iaddr), target, message.msg, { requ: true });
+      const msg = new Message<NetworkMessage>(unicast(this.iaddr), target, message.mesg, { requ: true });
       responses.push(msg);
     }
 

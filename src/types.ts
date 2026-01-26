@@ -23,6 +23,35 @@ export type Result<V, E> = { kind: "value"; value: V } | { kind: "error"; error:
 // Value
 
 export interface Value<T> {
-  headers?: Record<string, string>;
-  data?: T;
+  headers: { [key: string]: string };
+  data: T;
 }
+
+// In memory representations
+export type InMemoryPromise = {
+  id: string;
+  state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
+  param: { headers: { [key: string]: string }; data: any };
+  value: { headers: { [key: string]: string }; data: any };
+  tags: { [key: string]: string };
+  timeoutAt: number;
+  createdAt: number;
+  settledAt?: number;
+};
+
+export type InMemoryTask = {
+  id: string;
+  version: number;
+};
+
+export type InMemorySchedule = {
+  id: string;
+  cron: string;
+  promiseId: string;
+  promiseTimeout: number;
+  promiseParam: { headers: { [key: string]: string }; data: any };
+  promiseTags: { [key: string]: string };
+  createdAt: number;
+  nextRunAt: number;
+  lastRunAt?: number;
+};

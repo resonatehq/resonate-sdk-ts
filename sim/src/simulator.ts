@@ -1,5 +1,5 @@
 declare const document: any;
-
+//
 export class Random {
   // Internal state of the random number generator (RNG)
   private state: number;
@@ -43,7 +43,7 @@ export class Message<T> {
     public source: Address,
     public target: Address,
     public data: T,
-    public head: Record<string, any> = {},
+    public head: { [key: string]: any },
   ) {}
   isRequest(): boolean {
     return this.head.requ;

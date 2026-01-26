@@ -22,7 +22,7 @@ async function createPromiseAndTask(
   args: any[],
 ): Promise<{ promise: DurablePromiseRecord; task: TaskRecord }> {
   return new Promise((resolve) => {
-    handler.createPromiseAndTask(
+    handler.taskCreate(
       {
         kind: "createPromiseAndTask",
         promise: {

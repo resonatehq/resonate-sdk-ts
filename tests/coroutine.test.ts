@@ -104,7 +104,7 @@ describe("Coroutine", () => {
 
   const completePromise = (handler: Handler, id: string, result: Result<any, any>) => {
     return new Promise<any>((resolve) => {
-      handler.completePromise(
+      handler.promiseSettle(
         {
           kind: "completePromise",
           id: id,

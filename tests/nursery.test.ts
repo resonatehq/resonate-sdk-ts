@@ -1,5 +1,5 @@
+import { assert } from "@resonatehq/dev";
 import { Nursery } from "../src/nursery";
-import { assert } from "../src/util";
 
 describe("Nursery", () => {
   test("nursery function executed only until done", async () => {

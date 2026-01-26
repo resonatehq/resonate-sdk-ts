@@ -539,7 +539,7 @@ export class Resonate {
     span.setAttribute("version", registered.version);
 
     try {
-      const { promise, task } = await this.createPromiseAndTask(
+      const { promise, task } = await this.taskCreate(
         {
           kind: "createPromiseAndTask",
           promise: {
@@ -781,7 +781,7 @@ export class Resonate {
    */
   public async get<T = any>(id: string): Promise<ResonateHandle<T>> {
     id = `${this.idPrefix}${id}`;
-    const promise = await this.readPromise({
+    const promise = await this.promiseGet({
       kind: "readPromise",
       id: id,
     });
@@ -810,12 +810,12 @@ export class Resonate {
     clearInterval(this.intervalId);
   }
 
-  private createPromiseAndTask(
+  private taskCreate(
     req: CreatePromiseAndTaskReq<any>,
-    headers: Record<string, string>,
+    headers: { [key: string]: string },
   ): Promise<{ promise: DurablePromiseRecord; task?: TaskRecord }> {
     return new Promise((resolve, reject) =>
-      this.handler.createPromiseAndTask(
+      this.handler.taskCreate(
         req,
         (res) => {
           if (res.kind === "error") {
@@ -833,10 +833,10 @@ export class Resonate {
 
   private createPromise(
     req: CreatePromiseReq<any>,
-    headers: Record<string, string>,
+    headers: { [key: string]: string },
   ): Promise<DurablePromiseRecord<any>> {
     return new Promise((resolve, reject) =>
-      this.handler.createPromise(
+      this.handler.promiseCreate(
         req,
         (res) => {
           if (res.kind === "error") {
@@ -854,7 +854,7 @@ export class Resonate {
 
   private createSubscription(req: CreateSubscriptionReq): Promise<DurablePromiseRecord<any>> {
     return new Promise((resolve, reject) =>
-      this.handler.createSubscription(
+      this.handler.promiseSubscribe(
         req,
         (res) => {
           if (res.kind === "error") {
@@ -868,9 +868,9 @@ export class Resonate {
     );
   }
 
-  private readPromise(req: ReadPromiseReq): Promise<DurablePromiseRecord<any>> {
+  private promiseGet(req: ReadPromiseReq): Promise<DurablePromiseRecord<any>> {
     return new Promise((resolve, reject) =>
-      this.handler.readPromise(req, (res) => {
+      this.handler.promiseGet(req, (res) => {
         if (res.kind === "error") {
           reject(res.error);
         } else {

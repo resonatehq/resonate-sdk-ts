@@ -1,6 +1,6 @@
+import { assert, Task } from "@resonatehq/dev";
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
-import type { ClaimedTask, Task } from "./core";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
 import exceptions from "./exceptions";
 import type { Handler } from "./handler";
@@ -105,37 +105,28 @@ export class Computation {
       done(res);
     };
 
-    switch (task.kind) {
-      case "claimed":
-        this.processClaimed(task, doneProcessing);
-        break;
-
-      case "unclaimed":
-        this.handler.claimTask(
-          {
-            kind: "claimTask",
-            id: task.task.id,
-            counter: task.task.counter,
-            processId: this.pid,
-            ttl: this.ttl,
-          },
-          (res) => {
-            if (res.kind === "error") {
-              res.error.log(this.verbose);
-              return doneProcessing({ kind: "error", error: undefined });
-            }
-            this.processClaimed(
-              { kind: "claimed", task: task.task, rootPromise: res.value.root, leafPromise: res.value.leaf },
-              doneProcessing,
-            );
-          },
-        );
-        break;
-    }
+      this.handler.taskAcquire(
+        {
+          id: task.id,
+          version: task.version,
+          pid: this.pid,
+          ttl: this.ttl,
+        },
+        (res) => {
+          if (res.kind === "error") {
+            res.error.log(this.verbose);
+            return doneProcessing({ kind: "error", error: undefined });
+          }
+          this.processClaimed(
+            { kind: "claimed", task: task.task, rootPromise: res.value.root, leafPromise: res.value.leaf },
+            doneProcessing,
+          );
+        },
+      );
   }
 
   private processClaimed({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
-    util.assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
+    assert(task.rootPromiseId === this.id, "task root promise id must match computation id");
 
     const doneAndDropTaskIfErr = (res: Result<Status, undefined>) => {
       if (res.kind === "error") {
@@ -265,7 +256,7 @@ export class Computation {
       ctx,
       async () => await func(ctx, ...args),
       (res) =>
-        this.handler.completePromise(
+        this.handler.promiseSettle(
           {
             kind: "completePromise",
             id: id,
@@ -330,7 +321,7 @@ export class Computation {
     >(
       todo,
       ({ id }, done) =>
-        this.handler.createCallback(
+        this.handler.promiseRegister(
           {
             kind: "createCallback",
             promiseId: id,

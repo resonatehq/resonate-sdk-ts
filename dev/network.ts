@@ -1,8 +1,8 @@
+import { assert, Message, Req, Res, Server } from "@resonatehq/dev";
 import type { ResonateError } from "../src/exceptions";
-import type { Message, MessageSource, Network, Request, ResponseFor } from "../src/network/network";
+import type { MessageSource, Network } from "../src/network/network";
 import type { Result } from "../src/types";
 import * as util from "../src/util";
-import { Server } from "./server";
 
 export class LocalNetwork implements Network {
   private server: Server;
@@ -24,17 +24,13 @@ export class LocalNetwork implements Network {
   start() {}
   stop() {}
 
-  send<T extends Request>(req: Request, callback: (res: Result<ResponseFor<T>, ResonateError>) => void): void {
+  send(req: Req, callback: (res: Res) => void): void {
     setTimeout(() => {
-      try {
-        const res = this.server.process(req, Date.now());
-        util.assert(res.kind === req.kind, "res kind must match req kind");
-
-        callback({ kind: "value", value: res as ResponseFor<T> });
+        const res = this.server.process({at: Date.now(), req});
+        assert((res.kind === req.kind || res.kind === "error") && res.head.corrId === req.head.corrId, "res kind must match req kind");
+        callback(res);
         this.messageSource.enqueueNext();
-      } catch (err) {
-        callback({ kind: "error", error: err as ResonateError });
-      }
+
     });
   }
 }
@@ -70,9 +66,9 @@ export class LocalMessageSource implements MessageSource {
     this.timeoutId = undefined;
   }
 
-  recv(msg: Message): void {
-    for (const callback of this.subscriptions[msg.type]) {
-      callback(msg);
+  recv(mesg: Message): void {
+    for (const callback of this.subscriptions[mesg.kind]) {
+      callback(mesg);
     }
   }
 
@@ -84,12 +80,12 @@ export class LocalMessageSource implements MessageSource {
     clearTimeout(this.timeoutId);
 
     const time = Date.now();
-    const next = this.server.next(time);
+    const next = this.server.next({at:time});
 
     if (next !== undefined && !this.shouldStop) {
       this.timeoutId = setTimeout((): void => {
-        for (const { msg } of this.server.step(time)) {
-          this.recv(msg);
+        for (const { mesg } of this.server.step({at: time})) {
+          this.recv(mesg);
         }
         this.enqueueNext();
       }, next);

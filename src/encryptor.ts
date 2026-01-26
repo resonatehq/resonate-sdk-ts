@@ -2,7 +2,7 @@ import type { Value } from "./types";
 
 export interface Encryptor {
   encrypt(plaintext: Value<string>): Value<string>;
-  decrypt(ciphertext: Value<string> | undefined): Value<string> | undefined;
+  decrypt(ciphertext: Value<string>): Value<string>;
 }
 
 export class NoopEncryptor implements Encryptor {
@@ -10,7 +10,7 @@ export class NoopEncryptor implements Encryptor {
     return plaintext;
   }
 
-  decrypt(ciphertext: Value<string> | undefined): Value<string> | undefined {
+  decrypt(ciphertext: Value<string>): Value<string> {
     return ciphertext;
   }
 }

@@ -1,32 +1,18 @@
+import { assert, type Message, type Task } from "@resonatehq/dev";
 import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
-import type { DurablePromiseRecord, Message, MessageSource, Network, TaskRecord } from "./network/network";
+import type { MessageSource, Network } from "./network/network";
 import type { OptionsBuilder } from "./options";
 import type { Registry } from "./registry";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries";
 import type { Span, Tracer } from "./tracer";
-import type { Result } from "./types";
-import * as util from "./util";
+import type { InMemoryPromise, Result } from "./types";
 
 export type PromiseHandler = {
-  addEventListener: (event: "created" | "completed", callback: (p: DurablePromiseRecord) => void) => void;
+  addEventListener: (event: "created" | "completed", callback: (p: InMemoryPromise) => void) => void;
   subscribe: () => Promise<void>;
-};
-
-export type Task = ClaimedTask | UnclaimedTask;
-
-export type ClaimedTask = {
-  kind: "claimed";
-  task: TaskRecord;
-  rootPromise: DurablePromiseRecord<any>;
-  leafPromise?: DurablePromiseRecord<any>;
-};
-
-export type UnclaimedTask = {
-  kind: "unclaimed";
-  task: TaskRecord;
 };
 
 export class Core {
@@ -105,10 +91,10 @@ export class Core {
   }
 
   public executeUntilBlocked(span: Span, task: Task, done: (res: Result<Status, undefined>) => void) {
-    let computation = this.computations.get(task.task.rootPromiseId);
+    let computation = this.computations.get(task.id);
     if (!computation) {
       computation = new Computation(
-        task.task.rootPromiseId,
+        task.id,
         this.unicast,
         this.anycast,
         this.pid,
@@ -125,17 +111,14 @@ export class Core {
         this.tracer,
         span,
       );
-      this.computations.set(task.task.rootPromiseId, computation);
+      this.computations.set(task.id, computation);
     }
 
     computation.executeUntilBlocked(task, done);
   }
 
   private onMessage(msg: Message): void {
-    util.assert(msg.type === "invoke" || msg.type === "resume");
-
-    if (msg.type === "invoke" || msg.type === "resume") {
-      this.executeUntilBlocked(this.tracer.decode(msg.headers), { kind: "unclaimed", task: msg.task }, () => {});
-    }
+    assert(msg.kind === "invoke" || msg.kind === "resume");
+    this.executeUntilBlocked(this.tracer.decode(msg.head), msg.data.task, () => {});
   }
 }

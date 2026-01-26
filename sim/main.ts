@@ -1,8 +1,8 @@
+import type { Req } from "@resonatehq/dev";
 import { Command } from "commander";
 import { StepClock } from "../src/clock";
 import type { Context } from "../src/context";
 import { JsonEncoder } from "../src/encoder";
-import type { Request } from "../src/network/network";
 import { Registry } from "../src/registry";
 import { ServerProcess } from "./src/server";
 import { Message, Random, Simulator, unicast } from "./src/simulator";
@@ -224,21 +224,27 @@ export function run(options: Options) {
     if (!options.func || i === 0) {
       const id = `${funcName}-${i}`;
       const timeout = rnd.randint(0, options.steps);
-      let msg: Message<Request>;
+      let msg: Message<Req>;
       switch (funcName) {
         case "fibLfi":
         case "fibLfc":
         case "fibRfi":
         case "fibRfc": {
-          msg = new Message<Request>(
+          msg = new Message<Req>(
             unicast("environment"),
             unicast("server"),
             {
-              kind: "createPromise",
-              id,
-              timeout,
-              tags: { "resonate:invoke": "local://any@default" },
-              param: encoder.encode({ func: funcName, args: [rnd.randint(0, 20)], version: 1 }),
+              kind: "promise.create",
+              head: {
+                corrId: String(i),
+                version: "1.0",
+              },
+              data: {
+                id,
+                param: encoder.encode({ func: funcName, args: [rnd.randint(0, 20)], version: 1 }),
+                tags: { "resonate:invoke": "local://any@default" },
+                timeoutAt: timeout,
+              },
             },
             { requ: true, correlationId: i },
           );
@@ -247,15 +253,21 @@ export function run(options: Options) {
         case "foo":
         case "bar":
         case "baz": {
-          msg = new Message<Request>(
+          msg = new Message<Req>(
             unicast("environment"),
             unicast("server"),
             {
-              kind: "createPromise",
-              id,
-              timeout,
-              tags: { "resonate:invoke": "local://any@default" },
-              param: encoder.encode({ func: funcName, args: [], version: 1 }),
+              kind: "promise.create",
+              head: {
+                corrId: String(i),
+                version: "1.0",
+              },
+              data: {
+                id,
+                param: encoder.encode({ func: funcName, args: [], version: 1 }),
+                tags: { "resonate:invoke": "local://any@default" },
+                timeoutAt: timeout,
+              },
             },
             { requ: true, correlationId: i },
           );

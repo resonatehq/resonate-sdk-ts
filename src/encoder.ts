@@ -3,7 +3,7 @@ import * as util from "./util";
 
 export interface Encoder {
   encode(value: any): Value<string>;
-  decode(value: Value<string> | undefined): any | undefined;
+  decode(value: Value<string>): any;
 }
 
 export class JsonEncoder implements Encoder {
@@ -14,7 +14,7 @@ export class JsonEncoder implements Encoder {
     // note about undefined:
     // undefined is not json serializable, so immediately return undefined
     if (value === undefined) {
-      return { data: undefined };
+      return { data: "", headers: {} };
     }
 
     const json = JSON.stringify(value, (_, v) => {
@@ -49,7 +49,7 @@ export class JsonEncoder implements Encoder {
     };
   }
 
-  decode(value: Value<string> | undefined): any | undefined {
+  decode(value: Value<string>): any {
     if (!value?.data) {
       return undefined;
     }

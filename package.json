@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "build": "tsc --build tsconfig.build.json",
+    "build:dev": "git submodule update --init --recursive && cd dev/resonate-dev-ts && bun install && bun run build",
     "check": "npx @biomejs/biome check ./",
     "check:fix": "npx @biomejs/biome check ./ --write",
     "debug": "node --inspect-brk ./node_modules/.bin/jest -i",
@@ -30,6 +31,7 @@
     "type-check": "npx tsc --noEmit"
   },
   "dependencies": {
+    "@resonatehq/dev": "file:./dev/resonate-dev-ts",
     "cron-parser": "^5.3.0",
     "eventsource": "^4.0.0"
   },

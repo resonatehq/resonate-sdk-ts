@@ -1,6 +1,6 @@
+import { assert, assertDefined } from "@resonatehq/dev";
 import type { Clock } from "./clock";
 import exceptions, { type ResonateError } from "./exceptions";
-import type { CreatePromiseReq } from "./network/network";
 import type { Options, OptionsBuilder } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
@@ -8,13 +8,19 @@ import type { Span } from "./tracer";
 import type { Func, ParamsWithOptions, Result, Return } from "./types";
 import * as util from "./util";
 
+type PromiseCreateReq = {
+  id: string;
+  param: { headers: { [key: string]: string }; data: any };
+  tags: { [key: string]: string };
+  timeoutAt: number;
+};
 export class LFI<T> implements Iterable<LFI<T>> {
   public id: string;
   public func: Func;
   public args: any[];
   public version: number;
   public retryPolicy: RetryPolicy;
-  public createReq: CreatePromiseReq<any>;
+  public createReq: PromiseCreateReq;
 
   constructor(
     id: string,
@@ -22,7 +28,7 @@ export class LFI<T> implements Iterable<LFI<T>> {
     args: any[],
     version: number,
     retryPolicy: RetryPolicy,
-    createReq: CreatePromiseReq<any>,
+    createReq: PromiseCreateReq,
   ) {
     this.id = id;
     this.func = func;
@@ -34,7 +40,7 @@ export class LFI<T> implements Iterable<LFI<T>> {
 
   *[Symbol.iterator](): Generator<LFI<T>, Future<T>, any> {
     const v = yield this;
-    util.assert(v instanceof Future, "expected future");
+    assert(v instanceof Future, "expected future");
     return v as Future<T>;
   }
 }
@@ -45,7 +51,7 @@ export class LFC<T> implements Iterable<LFC<T>> {
   public args: any[];
   public version: number;
   public retryPolicy: RetryPolicy;
-  public createReq: CreatePromiseReq;
+  public createReq: PromiseCreateReq;
 
   constructor(
     id: string,
@@ -53,7 +59,7 @@ export class LFC<T> implements Iterable<LFC<T>> {
     args: any[],
     version: number,
     retryPolicy: RetryPolicy,
-    createReq: CreatePromiseReq,
+    createReq: PromiseCreateReq,
   ) {
     this.id = id;
     this.func = func;
@@ -65,7 +71,7 @@ export class LFC<T> implements Iterable<LFC<T>> {
 
   *[Symbol.iterator](): Generator<LFC<T>, T, any> {
     const v = yield this;
-    util.assert(!(v instanceof Future), "expected value");
+    assert(!(v instanceof Future), "expected value");
     return v as T;
   }
 }
@@ -74,14 +80,14 @@ export class RFI<T> implements Iterable<RFI<T>> {
   public id: string;
   public func: string;
   public version: number;
-  public createReq: CreatePromiseReq;
+  public createReq: PromiseCreateReq;
   public mode: "attached" | "detached";
 
   constructor(
     id: string,
     func: string,
     version: number,
-    createReq: CreatePromiseReq,
+    createReq: PromiseCreateReq,
     mode: "attached" | "detached" = "attached",
   ) {
     this.id = id;
@@ -93,7 +99,7 @@ export class RFI<T> implements Iterable<RFI<T>> {
 
   *[Symbol.iterator](): Generator<RFI<T>, Future<T>, any> {
     const v = yield this;
-    util.assert(v instanceof Future, "expected future");
+    assert(v instanceof Future, "expected future");
     return v as Future<T>;
   }
 }
@@ -102,10 +108,10 @@ export class RFC<T> implements Iterable<RFC<T>> {
   public id: string;
   public func: string;
   public version: number;
-  public createReq: CreatePromiseReq;
+  public createReq: PromiseCreateReq;
   public mode = "attached" as const;
 
-  constructor(id: string, func: string, version: number, createReq: CreatePromiseReq) {
+  constructor(id: string, func: string, version: number, createReq: PromiseCreateReq) {
     this.id = id;
     this.func = func;
     this.version = version;
@@ -114,7 +120,7 @@ export class RFC<T> implements Iterable<RFC<T>> {
 
   *[Symbol.iterator](): Generator<RFC<T>, T, any> {
     const v = yield this;
-    util.assert(!(v instanceof Future), "expected value");
+    assert(!(v instanceof Future), "expected value");
     return v as T;
   }
 }
@@ -163,8 +169,8 @@ export class Future<T> implements Iterable<Future<T>> {
 
   *[Symbol.iterator](): Generator<Future<T>, T, undefined> {
     yield this;
-    util.assertDefined(this.value);
-    util.assert(this.value.kind === "value", "The value must be and ok result at this point.");
+    assertDefined(this.value);
+    assert(this.value.kind === "value", "The value must be and ok result at this point.");
     return this.getValue();
   }
 }
@@ -222,7 +228,7 @@ export interface Context {
     id?: string;
     timeout?: number;
     data?: any;
-    tags?: Record<string, string>;
+    tags?: { [key: string]: string };
   }): RFI<T>;
 
   // die
@@ -540,7 +546,7 @@ export class InnerContext implements Context {
     id?: string;
     timeout?: number;
     data?: any;
-    tags?: Record<string, string>;
+    tags?: { [key: string]: string };
   } = {}): RFI<T> {
     const idChanged = id !== undefined;
     id = id ?? this.seqid();
@@ -605,7 +611,7 @@ export class InnerContext implements Context {
     data: any;
     opts: Options;
     breaksLineage: boolean;
-  }): CreatePromiseReq {
+  }): PromiseCreateReq {
     const tags = {
       "resonate:scope": "local",
       "resonate:branch": this.branchId,
@@ -615,13 +621,11 @@ export class InnerContext implements Context {
     };
 
     // timeout cannot be greater than parent timeout
-    const timeout = Math.min(this.clock.now() + opts.timeout, this.info.timeout);
-
+    const timeoutAt = Math.min(this.clock.now() + opts.timeout, this.info.timeout);
     return {
-      kind: "createPromise",
       id,
-      timeout: timeout,
-      param: { data },
+      timeoutAt,
+      param: { data, headers: {} },
       tags,
     };
   }
@@ -638,7 +642,7 @@ export class InnerContext implements Context {
     opts: Options;
     breaksLineage: boolean;
     maxTimeout?: number;
-  }): CreatePromiseReq {
+  }): PromiseCreateReq {
     const tags = {
       "resonate:scope": "global",
       "resonate:invoke": opts.target,
@@ -649,14 +653,13 @@ export class InnerContext implements Context {
     };
 
     // timeout cannot be greater than parent timeout (unless detached)
-    const timeout = Math.min(this.clock.now() + opts.timeout, maxTimeout);
+    const timeoutAt = Math.min(this.clock.now() + opts.timeout, maxTimeout);
 
     return {
-      kind: "createPromise",
       id,
-      timeout,
+      timeoutAt,
       tags,
-      param: { data },
+      param: { data, headers: {} },
     };
   }
 
@@ -670,10 +673,10 @@ export class InnerContext implements Context {
     id: string;
     timeout?: number;
     data: any;
-    tags?: Record<string, string>;
+    tags?: { [key: string]: string };
     breaksLineage: boolean;
-  }): CreatePromiseReq {
-    const cTags: Record<string, string> = {
+  }): PromiseCreateReq {
+    const cTags: { [key: string]: string } = {
       "resonate:scope": "global",
       "resonate:branch": id,
       "resonate:parent": this.id,
@@ -682,18 +685,17 @@ export class InnerContext implements Context {
     };
 
     // timeout cannot be greater than parent timeout
-    const cTimeout = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.info.timeout);
+    const timeoutAt = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.info.timeout);
 
     return {
-      kind: "createPromise",
       id: id,
-      timeout: cTimeout,
-      param: { data },
+      timeoutAt,
+      param: { data, headers: {} },
       tags: cTags,
     };
   }
 
-  sleepCreateOpts({ id, time }: { id: string; time: number }): CreatePromiseReq {
+  sleepCreateOpts({ id, time }: { id: string; time: number }): PromiseCreateReq {
     const tags = {
       "resonate:scope": "global",
       "resonate:branch": id,
@@ -703,13 +705,12 @@ export class InnerContext implements Context {
     };
 
     // timeout cannot be greater than parent timeout
-    const timeout = Math.min(time, this.info.timeout);
+    const timeoutAt = Math.min(time, this.info.timeout);
 
     return {
-      kind: "createPromise",
       id: id,
-      timeout: timeout,
-      param: {},
+      timeoutAt,
+      param: { data: "", headers: {} },
       tags,
     };
   }

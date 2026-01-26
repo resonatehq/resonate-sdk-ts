@@ -1,3 +1,4 @@
+import { assert } from "@resonatehq/dev";
 import type { Network } from "./network/network";
 
 export interface Heartbeat {
@@ -28,18 +29,16 @@ export class AsyncHeartbeat implements Heartbeat {
   private heartbeat(): void {
     this.intervalId = setInterval(() => {
       const counter = this.counter;
-
+      const corrId = crypto.randomUUID();
       this.network.send(
         {
-          kind: "heartbeatTasks",
-          processId: this.pid,
+          kind: "task.heartbeat",
+          head: { corrId, version: "1" },
+          data: { pid: this.pid, tasks: [] },
         },
         (res) => {
           if (res.kind === "error") return;
-
-          if (res.value.tasksAffected === 0) {
-            this.clearIntervalIfMatch(counter);
-          }
+          assert(res.kind === "task.heartbeat" && res.head.corrId === corrId);
         },
       );
     }, this.delay);

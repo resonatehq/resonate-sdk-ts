@@ -1,5 +1,6 @@
+import { assert, type ScheduleCreateRes, type ScheduleGetRes } from "@resonatehq/dev";
 import { LocalNetwork } from "../dev/network";
-import type { Network, ScheduleRecord } from "./network/network";
+import type { Network } from "./network/network";
 
 export class Schedules {
   private network: Network;
@@ -8,21 +9,22 @@ export class Schedules {
     this.network = network;
   }
 
-  get(id: string): Promise<ScheduleRecord> {
+  get(id: string): Promise<ScheduleGetRes["data"]> {
     return new Promise((resolve, reject) => {
+      const corrId = crypto.randomUUID();
       this.network.send(
         {
-          kind: "readSchedule",
-          id: id,
+          kind: "schedule.get",
+          head: { corrId, version: "1" },
+          data: { id },
         },
         (res) => {
           if (res.kind === "error") {
-            // TODO: reject with more information
-            reject(Error("not implemented"));
+            reject(res.data);
             return;
           }
-
-          resolve(res.value.schedule);
+          assert(res.kind === "schedule.get" && res.head.corrId === corrId);
+          resolve(res.data);
         },
       );
     });
@@ -34,41 +36,37 @@ export class Schedules {
     promiseId: string,
     promiseTimeout: number,
     {
-      description = undefined,
-      tags = undefined,
       promiseHeaders = undefined,
       promiseData = undefined,
       promiseTags = undefined,
     }: {
-      description?: string;
-      tags?: Record<string, string>;
-      promiseHeaders?: Record<string, string>;
+      promiseHeaders?: { [key: string]: string };
       promiseData?: string;
-      promiseTags?: Record<string, string>;
+      promiseTags?: { [key: string]: string };
     } = {},
-  ): Promise<ScheduleRecord> {
+  ): Promise<ScheduleCreateRes["data"]> {
     return new Promise((resolve, reject) => {
+      const corrId = crypto.randomUUID();
       this.network.send(
         {
-          kind: "createSchedule",
-          id: id,
-          description: description,
-          cron: cron,
-          tags: tags,
-          promiseId: promiseId,
-          promiseTimeout: promiseTimeout,
-          promiseParam: { headers: promiseHeaders, data: promiseData },
-          promiseTags: promiseTags,
+          kind: "schedule.create",
+          head: { corrId, version: "1" },
+          data: {
+            id,
+            cron,
+            promiseId,
+            promiseTimeout,
+            promiseParam: { headers: promiseHeaders ?? {}, data: promiseData ?? "" },
+            promiseTags: promiseTags ?? {},
+          },
         },
         (res) => {
           if (res.kind === "error") {
-            console.log(res.error);
-            // TODO: reject with more information
-            reject(Error("not implemented"));
+            reject(res.data);
             return;
           }
-
-          resolve(res.value.schedule);
+          assert(res.kind === "schedule.create" && res.head.corrId === corrId);
+          resolve(res.data);
         },
       );
     });
@@ -76,45 +74,22 @@ export class Schedules {
 
   delete(id: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      const corrId = crypto.randomUUID();
       this.network.send(
         {
-          kind: "deleteSchedule",
-          id: id,
+          kind: "schedule.delete",
+          head: { corrId, version: "1" },
+          data: { id },
         },
         (res) => {
           if (res.kind === "error") {
-            // TODO: reject with more information
-            reject(Error("not implemented"));
+            reject(res.data);
             return;
           }
-
+          assert(res.kind === "schedule.delete" && res.head.corrId === corrId);
           resolve();
         },
       );
     });
-  }
-
-  async *search(id: string, { limit = undefined }: { limit?: number } = {}): AsyncGenerator<ScheduleRecord[], void> {
-    let cursor: string | undefined;
-
-    do {
-      const res = await new Promise<{ schedules: ScheduleRecord[]; cursor?: string }>((resolve, reject) => {
-        this.network.send(
-          {
-            kind: "searchSchedules",
-            id,
-            limit,
-            cursor,
-          },
-          (res) => {
-            if (res.kind === "error") return reject(res.error);
-            resolve(res.value);
-          },
-        );
-      });
-
-      cursor = res.cursor;
-      yield res.schedules;
-    } while (cursor !== null && cursor !== undefined);
   }
 }

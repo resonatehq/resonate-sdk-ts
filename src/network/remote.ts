@@ -1,131 +1,39 @@
+import {
+  assert,
+  type ErrorRes,
+  type Message,
+  type PromiseCreateReq,
+  type PromiseCreateRes,
+  type PromiseGetReq,
+  type PromiseGetRes,
+  type PromiseRegisterReq,
+  type PromiseRegisterRes,
+  type PromiseSettleReq,
+  type PromiseSettleRes,
+  type PromiseSubscribeReq,
+  type PromiseSubscribeRes,
+  type Req,
+  type Res,
+  type ScheduleCreateReq,
+  type ScheduleCreateRes,
+  type ScheduleDeleteReq,
+  type ScheduleDeleteRes,
+  type ScheduleGetReq,
+  type TaskAcquireReq,
+  type TaskAcquireRes,
+  type TaskCreateReq,
+  type TaskCreateRes,
+  type TaskHeartbeatReq,
+  type TaskHeartbeatRes,
+  type TaskReleaseReq,
+  type TaskReleaseRes,
+  type TaskSuspendReq,
+  type TaskSuspendRes,
+} from "@resonatehq/dev";
 import { EventSource } from "eventsource";
 import exceptions, { ResonateError, type ResonateServerError } from "../exceptions";
-import type { Result, Value } from "../types";
 import * as util from "../util";
-import type {
-  CallbackRecord,
-  ClaimTaskReq,
-  ClaimTaskRes,
-  CompletePromiseReq,
-  CompletePromiseRes,
-  CompleteTaskReq,
-  CompleteTaskRes,
-  CreateCallbackReq,
-  CreateCallbackRes,
-  CreatePromiseAndTaskReq,
-  CreatePromiseAndTaskRes,
-  CreatePromiseReq,
-  CreatePromiseRes,
-  CreateScheduleReq,
-  CreateScheduleRes,
-  CreateSubscriptionReq,
-  CreateSubscriptionRes,
-  DeleteScheduleReq,
-  DeleteScheduleRes,
-  DropTaskReq,
-  DropTaskRes,
-  DurablePromiseRecord,
-  HeartbeatTasksReq,
-  HeartbeatTasksRes,
-  Message,
-  MessageSource,
-  Network,
-  ReadPromiseReq,
-  ReadPromiseRes,
-  ReadScheduleReq,
-  ReadScheduleRes,
-  Request,
-  Response,
-  ResponseFor,
-  ScheduleRecord,
-  SearchPromisesReq,
-  SearchPromisesRes,
-  SearchSchedulesReq,
-  SearchSchedulesRes,
-  TaskRecord,
-} from "./network";
-
-// API Response Types
-interface PromiseDto {
-  id: string;
-  state: string;
-  timeout: number;
-  param?: Value<string>;
-  value?: Value<string>;
-  tags?: Record<string, string>;
-  createdOn?: number;
-  completedOn?: number;
-}
-
-interface TaskDto {
-  id: string;
-  rootPromiseId: string;
-  counter: number;
-  timeout: number;
-  processId: string;
-  createdOn?: number;
-  completedOn?: number;
-}
-
-interface CallbackDto {
-  id: string;
-  promiseId: string;
-  timeout: number;
-  createdOn?: number;
-}
-
-interface ScheduleDto {
-  id: string;
-  description?: string;
-  cron: string;
-  tags?: Record<string, string>;
-  promiseId: string;
-  promiseTimeout: number;
-  promiseParam?: Value<string>;
-  promiseTags?: Record<string, string>;
-  idempotencyKey?: string;
-  lastRunTime?: number;
-  nextRunTime?: number;
-  createdOn?: number;
-}
-
-interface CreatePromiseAndTaskResponseDto {
-  promise: PromiseDto;
-  task?: TaskDto;
-}
-
-interface CallbackResponseDto {
-  callback?: CallbackDto;
-  promise: PromiseDto;
-}
-
-interface ClaimTaskResponseDto {
-  type: string;
-  promises: {
-    root?: {
-      id: string;
-      href: string;
-      data: PromiseDto;
-    };
-    leaf?: {
-      id: string;
-      href: string;
-      data: PromiseDto;
-    };
-  };
-}
-
-interface HeartbeatResponseDto {
-  tasksAffected: number;
-}
-interface SearchPromisesResponseDto {
-  promises: PromiseDto[];
-  cursor: string;
-}
-interface SearchSchedulesResponseDto {
-  schedules: ScheduleDto[];
-  cursor: string;
-}
+import type { MessageSource, Network } from "./network";
 
 export interface HttpNetworkConfig {
   verbose: boolean;
@@ -133,7 +41,7 @@ export interface HttpNetworkConfig {
   auth?: { username: string; password: string };
   token?: string;
   timeout?: number;
-  headers?: Record<string, string>;
+  headers?: { [key: string]: string };
 }
 
 export type RetryPolicy = {
@@ -146,51 +54,32 @@ export class HttpNetwork implements Network {
 
   private url: string;
   private timeout: number;
-  private headers: Record<string, string>;
   private verbose: boolean;
 
   constructor({
     url = "http://localhost:8001",
     timeout = 30 * util.SEC,
-    headers = {},
-    auth = undefined,
-    token = undefined,
     verbose = false,
   }: {
     url?: string;
     timeout?: number;
-    headers?: Record<string, string>;
-    auth?: { username: string; password: string };
-    token?: string;
     verbose: boolean;
   }) {
     this.url = url;
     this.timeout = timeout;
     this.verbose = verbose;
-
-    this.headers = { "Content-Type": "application/json", ...headers };
-    if (token) {
-      this.headers.Authorization = `Bearer ${token}`;
-    } else if (auth) {
-      this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
-    }
   }
 
-  send<T extends Request>(
-    req: T,
-    callback: (res: Result<ResponseFor<T>, ResonateError>) => void,
-    headers: Record<string, string> = {},
-    retryForever = false,
-  ): void {
+  send(req: Req, callback: (res: Res) => void, retryForever = false): void {
     const retryPolicy = retryForever ? { retries: Number.MAX_SAFE_INTEGER, delay: 1000 } : { retries: 0 };
 
-    this.handleRequest(req, headers, retryPolicy).then(
+    this.handleRequest(req, retryPolicy).then(
       (res) => {
-        util.assert(res.kind === req.kind, "res kind must match req kind");
-        callback({ kind: "value", value: res as ResponseFor<T> });
+        assert(res.kind === req.kind || res.kind === "error", "res kind must match req kind or be error");
+        callback(res);
       },
       (err) => {
-        callback({ kind: "error", error: err as ResonateError });
+        callback(err);
       },
     );
   }
@@ -198,354 +87,238 @@ export class HttpNetwork implements Network {
   public start(): void {}
   public stop(): void {}
 
-  private async handleRequest(
-    req: Request,
-    headers: Record<string, string>,
-    retryPolicy: RetryPolicy = {},
-  ): Promise<Response> {
+  private async handleRequest(req: Req, retryPolicy: RetryPolicy = {}): Promise<Res> {
     switch (req.kind) {
-      case "createPromise":
-        return this.createPromise(req, headers, retryPolicy);
-      case "createPromiseAndTask":
-        return this.createPromiseAndTask(req, headers, retryPolicy);
-      case "readPromise":
-        return this.readPromise(req, retryPolicy);
-      case "completePromise":
-        return this.completePromise(req, retryPolicy);
-      case "createCallback":
-        return this.createCallback(req, headers, retryPolicy);
-      case "createSubscription":
-        return this.createSubscription(req, retryPolicy);
-      case "createSchedule":
-        return this.createSchedule(req, retryPolicy);
-      case "readSchedule":
-        return this.readSchedule(req, retryPolicy);
-      case "deleteSchedule":
-        return this.deleteSchedule(req, retryPolicy);
-      case "claimTask":
-        return this.claimTask(req, retryPolicy);
-      case "completeTask":
-        return this.completeTask(req, retryPolicy);
-      case "dropTask":
-        return this.dropTask(req, retryPolicy);
-      case "heartbeatTasks":
-        return this.heartbeatTasks(req, retryPolicy);
-      case "searchPromises":
-        return this.searchPromises(req, retryPolicy);
-      case "searchSchedules":
-        return this.searchSchedules(req, retryPolicy);
+      case "promise.create":
+        return this.promiseCreate(req, retryPolicy);
+      case "task.create":
+        return this.taskCreate(req, retryPolicy);
+      case "promise.get":
+        return this.promiseGet(req, retryPolicy);
+      case "promise.settle":
+        return this.promiseSettle(req, retryPolicy);
+      case "promise.register":
+        return this.promiseRegister(req, retryPolicy);
+      case "promise.subscribe":
+        return this.promiseSubscribe(req, retryPolicy);
+      case "schedule.create":
+        return this.scheduleCreate(req, retryPolicy);
+      case "schedule.get":
+        return this.scheduleGet(req, retryPolicy);
+      case "schedule.delete":
+        return this.scheduleDelete(req, retryPolicy);
+      case "task.acquire":
+        return this.taskAcquire(req, retryPolicy);
+      case "task.suspend":
+        return this.taskSuspend(req, retryPolicy);
+      case "task.release":
+        return this.taskRelease(req, retryPolicy);
+      case "task.heartbeat":
+        return this.taskHeartbeat(req, retryPolicy);
+      case "task.get": {
+        assert(false, "not implemented");
+        break;
+      }
+      case "task.fence": {
+        assert(false, "not implemented");
+        break;
+      }
+      case "task.fulfill": {
+        assert(false, "not implemented");
+        break;
+      }
     }
   }
 
-  private async createPromise(
-    req: CreatePromiseReq,
-    headers: Record<string, string>,
+  private async promiseCreate(
+    req: PromiseCreateReq,
     retryPolicy: RetryPolicy = {},
-  ): Promise<CreatePromiseRes> {
+  ): Promise<PromiseCreateRes | ErrorRes> {
     const res = await this.fetch(
       "/promises",
       {
         method: "POST",
-        headers,
-        body: JSON.stringify({
-          id: req.id,
-          timeout: req.timeout,
-          param: req.param,
-          tags: req.tags,
-        }),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
-
-    const promise = mapPromiseDtoToRecord((await res.json()) as PromiseDto);
-    return { kind: "createPromise", promise };
+    return (await res.json()) as PromiseCreateRes | ErrorRes;
   }
 
-  private async createPromiseAndTask(
-    req: CreatePromiseAndTaskReq,
-    headers: Record<string, string>,
-    retryPolicy: RetryPolicy = {},
-  ): Promise<CreatePromiseAndTaskRes> {
+  private async taskCreate(req: TaskCreateReq, retryPolicy: RetryPolicy = {}): Promise<TaskCreateRes | ErrorRes> {
     const res = await this.fetch(
       "/promises/task",
       {
         method: "POST",
-        headers,
-        body: JSON.stringify({
-          promise: {
-            id: req.promise.id,
-            timeout: req.promise.timeout,
-            param: req.promise.param,
-            tags: req.promise.tags,
-          },
-          task: {
-            processId: req.task.processId,
-            ttl: req.task.ttl,
-          },
-        }),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
-
-    const data = (await res.json()) as CreatePromiseAndTaskResponseDto;
-    return {
-      kind: "createPromiseAndTask",
-      promise: mapPromiseDtoToRecord(data.promise),
-      task: data.task ? this.mapTaskDtoToRecord(data.task) : undefined,
-    };
+    return (await res.json()) as TaskCreateRes | ErrorRes;
   }
 
-  private async readPromise(req: ReadPromiseReq, retryPolicy: RetryPolicy = {}): Promise<ReadPromiseRes> {
-    const res = await this.fetch(`/promises/${encodeURIComponent(req.id)}`, { method: "GET" }, retryPolicy);
-
-    const promise = mapPromiseDtoToRecord((await res.json()) as PromiseDto);
-    return { kind: "readPromise", promise };
+  private async promiseGet(req: PromiseGetReq, retryPolicy: RetryPolicy = {}): Promise<PromiseGetRes | ErrorRes> {
+    const res = await this.fetch(`/promises/${encodeURIComponent(req.data.id)}`, { method: "GET" }, retryPolicy);
+    return (await res.json()) as PromiseGetRes | ErrorRes;
   }
 
-  private async completePromise(req: CompletePromiseReq, retryPolicy: RetryPolicy = {}): Promise<CompletePromiseRes> {
-    const headers: Record<string, string> = {};
+  private async promiseSettle(
+    req: PromiseSettleReq,
+    retryPolicy: RetryPolicy = {},
+  ): Promise<PromiseSettleRes | ErrorRes> {
     const res = await this.fetch(
-      `/promises/${encodeURIComponent(req.id)}`,
+      `/promises/${encodeURIComponent(req.data.id)}`,
       {
         method: "PATCH",
-        headers,
-        body: JSON.stringify({
-          state: req.state.toUpperCase(),
-          value: req.value,
-        }),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
 
-    const promise = mapPromiseDtoToRecord((await res.json()) as PromiseDto);
-    return { kind: "completePromise", promise };
+    return (await res.json()) as PromiseSettleRes | ErrorRes;
   }
 
-  private async createCallback(
-    req: CreateCallbackReq,
-    headers: Record<string, string>,
+  private async promiseRegister(
+    req: PromiseRegisterReq,
     retryPolicy: RetryPolicy = {},
-  ): Promise<CreateCallbackRes> {
+  ): Promise<PromiseRegisterRes | ErrorRes> {
     const res = await this.fetch(
-      `/promises/callback/${encodeURIComponent(req.promiseId)}`,
+      `/promises/callback/${encodeURIComponent(req.data.awaited)}`,
       {
         method: "POST",
-        headers,
-        body: JSON.stringify({
-          rootPromiseId: req.rootPromiseId,
-          timeout: req.timeout,
-          recv: req.recv,
-        }),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
 
-    const data = (await res.json()) as CallbackResponseDto;
-    return {
-      kind: "createCallback",
-      callback: data.callback ? this.mapCallbackDtoToRecord(data.callback) : undefined,
-      promise: mapPromiseDtoToRecord(data.promise),
-    };
+    return (await res.json()) as PromiseRegisterRes | ErrorRes;
   }
 
-  private async createSubscription(
-    req: CreateSubscriptionReq,
+  private async promiseSubscribe(
+    req: PromiseSubscribeReq,
     retryPolicy: RetryPolicy = {},
-  ): Promise<CreateSubscriptionRes> {
-    const body = {
-      id: req.id,
-      timeout: req.timeout,
-      recv: req.recv,
-    };
-
+  ): Promise<PromiseSubscribeRes | ErrorRes> {
     const res = await this.fetch(
-      `/promises/subscribe/${encodeURIComponent(req.promiseId)}`,
+      `/promises/subscribe/${encodeURIComponent(req.data.awaited)}`,
       {
         method: "POST",
-        body: JSON.stringify(body),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
 
-    const data = (await res.json()) as CallbackResponseDto;
-    return {
-      kind: "createSubscription",
-      callback: data.callback ? this.mapCallbackDtoToRecord(data.callback) : undefined,
-      promise: mapPromiseDtoToRecord(data.promise),
-    };
+    return (await res.json()) as PromiseSubscribeRes | ErrorRes;
   }
 
-  private async createSchedule(req: CreateScheduleReq, retryPolicy: RetryPolicy = {}): Promise<CreateScheduleRes> {
-    const headers: Record<string, string> = {};
-
+  private async scheduleCreate(
+    req: ScheduleCreateReq,
+    retryPolicy: RetryPolicy = {},
+  ): Promise<ScheduleCreateRes | ErrorRes> {
     const res = await this.fetch(
       "/schedules",
       {
         method: "POST",
-        headers,
-        body: JSON.stringify({
-          id: req.id,
-          description: req.description,
-          cron: req.cron,
-          tags: req.tags,
-          promiseId: req.promiseId,
-          promiseTimeout: req.promiseTimeout,
-          promiseParam: req.promiseParam,
-          promiseTags: req.promiseTags,
-        }),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
 
-    return {
-      kind: "createSchedule",
-      schedule: this.mapScheduleDtoToRecord((await res.json()) as ScheduleDto),
-    };
+    return (await res.json()) as ScheduleCreateRes | ErrorRes;
   }
 
-  private async readSchedule(req: ReadScheduleReq, retryPolicy: RetryPolicy = {}): Promise<ReadScheduleRes> {
-    const res = await this.fetch(`/schedules/${encodeURIComponent(req.id)}`, { method: "GET" }, retryPolicy);
+  private async scheduleGet(req: ScheduleGetReq, retryPolicy: RetryPolicy = {}): Promise<ScheduleCreateRes | ErrorRes> {
+    const res = await this.fetch(
+      `/schedules/${encodeURIComponent(req.data.id)}`,
+      { method: "GET", headers: req.head },
+      retryPolicy,
+    );
 
-    return {
-      kind: "readSchedule",
-      schedule: this.mapScheduleDtoToRecord((await res.json()) as ScheduleDto),
-    };
+    return (await res.json()) as ScheduleCreateRes | ErrorRes;
   }
 
-  private async deleteSchedule(req: DeleteScheduleReq, retryPolicy: RetryPolicy = {}): Promise<DeleteScheduleRes> {
-    await this.fetch(`/schedules/${encodeURIComponent(req.id)}`, { method: "DELETE" }, retryPolicy);
+  private async scheduleDelete(
+    req: ScheduleDeleteReq,
+    retryPolicy: RetryPolicy = {},
+  ): Promise<ScheduleDeleteRes | ErrorRes> {
+    const res = await this.fetch(
+      `/schedules/${encodeURIComponent(req.data.id)}`,
+      { method: "DELETE", headers: req.head },
+      retryPolicy,
+    );
 
-    return { kind: "deleteSchedule" };
+    return (await res.json()) as ScheduleDeleteRes | ErrorRes;
   }
 
-  private async claimTask(req: ClaimTaskReq, retryPolicy: RetryPolicy = {}): Promise<ClaimTaskRes> {
+  private async taskAcquire(req: TaskAcquireReq, retryPolicy: RetryPolicy = {}): Promise<TaskAcquireRes | ErrorRes> {
     const res = await this.fetch(
       "/tasks/claim",
       {
         method: "POST",
-        body: JSON.stringify({
-          id: req.id,
-          counter: req.counter,
-          processId: req.processId,
-          ttl: req.ttl,
-        }),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
 
-    const message = (await res.json()) as ClaimTaskResponseDto;
-
-    if (message.type !== "invoke" && message.type !== "resume") {
-      throw new Error(`Unknown message type: ${message.type}`);
-    }
-
-    return {
-      kind: "claimTask",
-      message: {
-        kind: message.type,
-        promises: {
-          root: message.promises.root
-            ? {
-                id: message.promises.root.id,
-                data: mapPromiseDtoToRecord(message.promises.root.data),
-              }
-            : undefined,
-          leaf: message.promises.leaf
-            ? {
-                id: message.promises.leaf.id,
-                data: mapPromiseDtoToRecord(message.promises.leaf.data),
-              }
-            : undefined,
-        },
-      },
-    };
+    return (await res.json()) as TaskAcquireRes | ErrorRes;
   }
 
-  private async completeTask(req: CompleteTaskReq, retryPolicy: RetryPolicy = {}): Promise<CompleteTaskRes> {
+  private async taskSuspend(req: TaskSuspendReq, retryPolicy: RetryPolicy = {}): Promise<TaskSuspendRes | ErrorRes> {
     const res = await this.fetch(
       "/tasks/complete",
       {
         method: "POST",
-        body: JSON.stringify({
-          id: req.id,
-          counter: req.counter,
-        }),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
 
-    return {
-      kind: "completeTask",
-      task: this.mapTaskDtoToRecord((await res.json()) as TaskDto),
-    };
+    return (await res.json()) as TaskSuspendRes | ErrorRes;
   }
 
-  private async dropTask(req: DropTaskReq, retryPolicy: RetryPolicy = {}): Promise<DropTaskRes> {
-    await this.fetch(
+  private async taskRelease(req: TaskReleaseReq, retryPolicy: RetryPolicy = {}): Promise<TaskReleaseRes | ErrorRes> {
+    const res = await this.fetch(
       "/tasks/drop",
       {
         method: "POST",
-        body: JSON.stringify({
-          id: req.id,
-          counter: req.counter,
-        }),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
 
-    return { kind: "dropTask" };
+    return (await res.json()) as TaskReleaseRes | ErrorRes;
   }
 
-  private async heartbeatTasks(req: HeartbeatTasksReq, retryPolicy: RetryPolicy = {}): Promise<HeartbeatTasksRes> {
+  private async taskHeartbeat(
+    req: TaskHeartbeatReq,
+    retryPolicy: RetryPolicy = {},
+  ): Promise<TaskHeartbeatRes | ErrorRes> {
     const res = await this.fetch(
       "/tasks/heartbeat",
       {
         method: "POST",
-        body: JSON.stringify({
-          processId: req.processId,
-        }),
+        headers: req.head,
+        body: JSON.stringify(req),
       },
       retryPolicy,
     );
-
-    const data = (await res.json()) as HeartbeatResponseDto;
-    return {
-      kind: "heartbeatTasks",
-      tasksAffected: data.tasksAffected,
-    };
-  }
-
-  private async searchPromises(req: SearchPromisesReq, retryPolicy: RetryPolicy = {}): Promise<SearchPromisesRes> {
-    const params = new URLSearchParams({ id: req.id });
-    if (req.state) params.append("state", req.state);
-    if (req.limit) params.append("limit", String(req.limit));
-    if (req.cursor) params.append("cursor", req.cursor);
-
-    const res = await this.fetch(`/promises?${params.toString()}`, { method: "GET" }, retryPolicy);
-
-    const data: any = (await res.json()) as SearchPromisesResponseDto;
-
-    return { kind: "searchPromises", promises: data.promises, cursor: data.cursor };
-  }
-
-  private async searchSchedules(req: SearchSchedulesReq, retryPolicy: RetryPolicy = {}): Promise<SearchSchedulesRes> {
-    const params = new URLSearchParams({ id: req.id });
-    if (req.limit) params.append("limit", String(req.limit));
-    if (req.cursor) params.append("cursor", req.cursor);
-    const res = await this.fetch(`/schedules?${params.toString()}`, { method: "GET" }, retryPolicy);
-    const data: any = (await res.json()) as SearchSchedulesResponseDto;
-    return { kind: "searchSchedules", schedules: data.schedules, cursor: data.cursor };
+    return (await res.json()) as TaskHeartbeatRes | ErrorRes;
   }
 
   private async fetch(
     path: string,
     init: RequestInit,
     { retries = 0, delay = 1000 }: RetryPolicy = {},
-  ): Promise<globalThis.Response> {
+  ): Promise<Response> {
     const url = `${this.url}${path}`;
-
-    // add default headers
-    init.headers = { ...this.headers, ...init.headers };
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       const controller = new AbortController();
@@ -553,7 +326,7 @@ export class HttpNetwork implements Network {
 
       try {
         const res = await fetch(url, { ...init, signal: controller.signal });
-        const ver = res.headers.get("Resonate-Version") ?? "0.0.0";
+        const ver = res.headers.get("version") ?? "0.0.0";
 
         if (util.semverLessThan(ver, this.EXCPECTED_RESONATE_VERSION)) {
           console.warn(
@@ -592,43 +365,6 @@ export class HttpNetwork implements Network {
 
     throw new Error("Fetch error");
   }
-
-  private mapScheduleDtoToRecord(schedule: ScheduleDto): ScheduleRecord {
-    return {
-      id: schedule.id,
-      description: schedule.description,
-      cron: schedule.cron,
-      tags: schedule.tags || {},
-      promiseId: schedule.promiseId,
-      promiseTimeout: schedule.promiseTimeout,
-      promiseParam: schedule.promiseParam,
-      promiseTags: schedule.promiseTags || {},
-      lastRunTime: schedule.lastRunTime,
-      nextRunTime: schedule.nextRunTime,
-      createdOn: schedule.createdOn,
-    };
-  }
-
-  private mapCallbackDtoToRecord(apiCallback: CallbackDto): CallbackRecord {
-    return {
-      id: apiCallback.id,
-      promiseId: apiCallback.promiseId,
-      timeout: apiCallback.timeout,
-      createdOn: apiCallback.createdOn,
-    };
-  }
-
-  private mapTaskDtoToRecord(apiTask: TaskDto): TaskRecord {
-    return {
-      id: apiTask.id,
-      rootPromiseId: apiTask.rootPromiseId,
-      counter: apiTask.counter,
-      timeout: apiTask.timeout,
-      processId: apiTask.processId,
-      createdOn: apiTask.createdOn,
-      completedOn: apiTask.completedOn,
-    };
-  }
 }
 
 export class PollMessageSource implements MessageSource {
@@ -638,13 +374,14 @@ export class PollMessageSource implements MessageSource {
   readonly anycast: string;
 
   private url: string;
-  private headers: Record<string, string>;
+  private headers: { [key: string]: string };
   private eventSource: EventSource;
   private subscriptions: {
     invoke: Array<(msg: Message) => void>;
     resume: Array<(msg: Message) => void>;
     notify: Array<(msg: Message) => void>;
   } = { invoke: [], resume: [], notify: [] };
+  private reconnectTimeout: NodeJS.Timeout | null = null;
 
   constructor({
     url = "http://localhost:8001",
@@ -689,24 +426,17 @@ export class PollMessageSource implements MessageSource {
     });
 
     this.eventSource.addEventListener("message", (event) => {
-      let msg: Message;
+      let mesg: Message;
 
       try {
-        const data = JSON.parse(event.data);
-
-        if ((data?.type === "invoke" || data?.type === "resume") && util.isTaskRecord(data?.task)) {
-          msg = { type: data.type, task: data.task, headers: data.head ?? {} };
-        } else if (data?.type === "notify" && util.isDurablePromiseRecord(data?.promise)) {
-          msg = { type: data.type, promise: mapPromiseDtoToRecord(data.promise), headers: data.head ?? {} };
-        } else {
-          throw new Error("invalid message");
-        }
+        const parsed = JSON.parse(event.data);
+        mesg = parsed;
       } catch (e) {
         console.warn("Networking. Received invalid message. Will continue.");
         return;
       }
 
-      this.recv(msg);
+      this.recv(mesg);
     });
 
     this.eventSource.addEventListener("error", () => {
@@ -715,15 +445,21 @@ export class PollMessageSource implements MessageSource {
       // and recreate
       this.eventSource.close();
 
+      // Prevent multiple reconnect attempts
+      if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+
       console.warn(`Networking. Cannot connect to [${this.url}/poll]. Retrying in 5s.`);
-      setTimeout(() => this.connect(), 5000);
+      this.reconnectTimeout = setTimeout(() => {
+        this.reconnectTimeout = null;
+        this.connect();
+      }, 5000);
     });
 
     return this.eventSource;
   }
 
   recv(msg: Message): void {
-    for (const callback of this.subscriptions[msg.type]) {
+    for (const callback of this.subscriptions[msg.kind]) {
       callback(msg);
     }
   }
@@ -732,6 +468,7 @@ export class PollMessageSource implements MessageSource {
 
   public stop(): void {
     this.eventSource.close();
+    if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
   }
 
   public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void {
@@ -740,36 +477,4 @@ export class PollMessageSource implements MessageSource {
   match(target: string): string {
     return `poll://any@${target}`;
   }
-}
-
-function mapApiStateToInternal(
-  state: string,
-): "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout" {
-  switch (state) {
-    case "PENDING":
-      return "pending";
-    case "RESOLVED":
-      return "resolved";
-    case "REJECTED":
-      return "rejected";
-    case "REJECTED_CANCELED":
-      return "rejected_canceled";
-    case "REJECTED_TIMEDOUT":
-      return "rejected_timedout";
-    default:
-      throw new Error(`Unknown API state: ${state}`);
-  }
-}
-
-function mapPromiseDtoToRecord(promise: PromiseDto): DurablePromiseRecord {
-  return {
-    id: promise.id,
-    state: mapApiStateToInternal(promise.state),
-    timeout: promise.timeout,
-    param: promise.param,
-    value: promise.value,
-    tags: promise.tags || {},
-    createdOn: promise.createdOn,
-    completedOn: promise.completedOn,
-  };
 }

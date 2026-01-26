@@ -93,7 +93,7 @@ export class Coroutine<T> {
     spans: Map<string, Span>,
     callback: (res: Result<Suspended | Completed, any>) => void,
   ): void {
-    handler.createPromise(
+    handler.promiseCreate(
       {
         // The createReq for this specific creation is not relevant,
         // this promise is guaranteed to have been created already.
@@ -118,7 +118,7 @@ export class Coroutine<T> {
               break;
 
             case "done":
-              handler.completePromise(
+              handler.promiseSettle(
                 {
                   kind: "completePromise",
                   id: id,
@@ -174,7 +174,7 @@ export class Coroutine<T> {
             span = this.spans.get(action.createReq.id)!;
           }
 
-          this.handler.createPromise(
+          this.handler.promiseCreate(
             action.createReq,
             (res) => {
               if (res.kind === "error") {
@@ -245,7 +245,7 @@ export class Coroutine<T> {
                     };
                     next();
                   } else {
-                    this.handler.completePromise(
+                    this.handler.promiseSettle(
                       {
                         kind: "completePromise",
                         id: action.id,
@@ -343,7 +343,7 @@ export class Coroutine<T> {
             span = this.spans.get(action.createReq.id)!;
           }
 
-          this.handler.createPromise(
+          this.handler.promiseCreate(
             action.createReq,
             (res) => {
               if (res.kind === "error") {

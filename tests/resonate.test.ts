@@ -71,21 +71,21 @@ describe("Resonate usage tests", () => {
 
     const v = await f.run("foo.1");
     expect(await v).toBe("hello");
-    expect((await resonate.promises.get("foo.1")).tags).toEqual({
+    expect((await resonate.promises.read("foo.1")).promise.tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
       "resonate:invoke": "poll://any@default/default",
     });
-    expect((await resonate.promises.get("foo.1.0")).tags).toEqual({
+    expect((await resonate.promises.read("foo.1.0")).promise.tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1.0",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
       "resonate:invoke": "poll://any@default",
     });
-    expect((await resonate.promises.get("foo.1.0.0")).tags).toEqual({
+    expect((await resonate.promises.read("foo.1.0.0")).promise.tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1.0.0",
       "resonate:parent": "foo.1.0",
@@ -114,21 +114,21 @@ describe("Resonate usage tests", () => {
 
     const v = await f.run("foo");
     expect(await v).toBe("hello");
-    expect((await resonate.promises.get("foo")).tags).toEqual({
+    expect((await resonate.promises.read("foo")).promise.tags).toEqual({
       "resonate:origin": "foo",
       "resonate:branch": "foo",
       "resonate:parent": "foo",
       "resonate:scope": "global",
       "resonate:invoke": "poll://any@default/default",
     });
-    expect((await resonate.promises.get("bar")).tags).toEqual({
+    expect((await resonate.promises.read("bar")).promise.tags).toEqual({
       "resonate:origin": "bar",
       "resonate:branch": "bar",
       "resonate:parent": "foo",
       "resonate:scope": "global",
       "resonate:invoke": "poll://any@default",
     });
-    expect((await resonate.promises.get("baz")).tags).toEqual({
+    expect((await resonate.promises.read("baz")).promise.tags).toEqual({
       "resonate:origin": "baz",
       "resonate:branch": "baz",
       "resonate:parent": "bar",
@@ -155,20 +155,20 @@ describe("Resonate usage tests", () => {
 
     const v = await f.run("foo.1");
     expect(await v).toBe("hello");
-    expect((await resonate.promises.get("foo.1")).tags).toEqual({
+    expect((await resonate.promises.read("foo.1")).promise.tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
       "resonate:invoke": "poll://any@default/default",
     });
-    expect((await resonate.promises.get("foo.1.0")).tags).toEqual({
+    expect((await resonate.promises.read("foo.1.0")).promise.tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "local",
     });
-    expect((await resonate.promises.get("foo.1.0.0")).tags).toEqual({
+    expect((await resonate.promises.read("foo.1.0.0")).promise.tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1.0",
@@ -193,20 +193,20 @@ describe("Resonate usage tests", () => {
 
     const v = await f.run("foo");
     expect(await v).toBe("hello");
-    expect((await resonate.promises.get("foo")).tags).toEqual({
+    expect((await resonate.promises.read("foo")).promise.tags).toEqual({
       "resonate:origin": "foo",
       "resonate:branch": "foo",
       "resonate:parent": "foo",
       "resonate:scope": "global",
       "resonate:invoke": "poll://any@default/default",
     });
-    expect((await resonate.promises.get("bar")).tags).toEqual({
+    expect((await resonate.promises.read("bar")).promise.tags).toEqual({
       "resonate:origin": "bar",
       "resonate:branch": "foo",
       "resonate:parent": "foo",
       "resonate:scope": "local",
     });
-    expect((await resonate.promises.get("baz")).tags).toEqual({
+    expect((await resonate.promises.read("baz")).promise.tags).toEqual({
       "resonate:origin": "baz",
       "resonate:branch": "foo",
       "resonate:parent": "bar",
@@ -382,8 +382,8 @@ describe("Resonate usage tests", () => {
     const resonate = Resonate.local();
 
     // Create test promises
-    const foo = await resonate.promises.create("foo", 10_000_000);
-    const bar = await resonate.promises.create("bar", 10_000_000);
+    const foo = (await resonate.promises.create("foo", 10_000_000)).promise;
+    const bar = (await resonate.promises.create("bar", 10_000_000)).promise;
 
     const results: any[] = [];
     for await (const page of resonate.promises.search("*", { limit: 1 })) {
@@ -402,8 +402,10 @@ describe("Resonate usage tests", () => {
     const resonate = Resonate.local();
 
     // Create test promises
-    const foo = await resonate.schedules.create("foo", "0 * * * *", "{{.id}}.{{.timestamp}}", Number.MAX_SAFE_INTEGER);
-    const bar = await resonate.schedules.create("bar", "0 * * * *", "{{.id}}.{{.timestamp}}", Number.MAX_SAFE_INTEGER);
+    const foo = (await resonate.schedules.create("foo", "0 * * * *", "{{.id}}.{{.timestamp}}", Number.MAX_SAFE_INTEGER))
+      .schedule;
+    const bar = (await resonate.schedules.create("bar", "0 * * * *", "{{.id}}.{{.timestamp}}", Number.MAX_SAFE_INTEGER))
+      .schedule;
 
     const results: any[] = [];
     for await (const page of resonate.schedules.search("*", { limit: 1 })) {
@@ -433,7 +435,7 @@ describe("Resonate usage tests", () => {
 
     const v = await f.run("f");
     expect(v.msg).toBe("this is a function");
-    const durable = await resonate.promises.get("altId");
+    const durable = (await resonate.promises.read("altId")).promise;
     expect(durable.id).toBe("altId");
     expect(durable.tags).toMatchObject({ myTag: "value", "resonate:scope": "local" });
     resonate.stop();
@@ -451,8 +453,8 @@ describe("Resonate usage tests", () => {
     // test matched targets
     for (const [i, target] of ["default", "foo", "bar", "baz"].entries()) {
       await resonate.rpc(`f${i}`, "foo", target, resonate.options({ target }));
-      const p1 = await resonate.promises.get(`f${i}`);
-      const p2 = await resonate.promises.get(`f${i}.0`);
+      const p1 = (await resonate.promises.read(`f${i}`)).promise;
+      const p2 = (await resonate.promises.read(`f${i}.0`)).promise;
 
       expect(p1.tags["resonate:invoke"]).toBe(`poll://any@${target}`);
       expect(p2.tags["resonate:invoke"]).toBe(`poll://any@${target}`);
@@ -469,8 +471,8 @@ describe("Resonate usage tests", () => {
       "sqs://region/queue",
     ].entries()) {
       await resonate.rpc(`g${i}`, "foo", target, resonate.options({ target }));
-      const p1 = await resonate.promises.get(`g${i}`);
-      const p2 = await resonate.promises.get(`g${i}.0`);
+      const p1 = (await resonate.promises.read(`g${i}`)).promise;
+      const p2 = (await resonate.promises.read(`g${i}.0`)).promise;
 
       expect(p1.tags["resonate:invoke"]).toBe(target);
       expect(p2.tags["resonate:invoke"]).toBe(target);
@@ -493,7 +495,7 @@ describe("Resonate usage tests", () => {
 
     const v = await f.run("f");
     expect(v.msg).toBe("this is a function");
-    const durable = await resonate.promises.get("f.0");
+    const durable = (await resonate.promises.read("f.0")).promise;
     expect(durable.id).toBe("f.0");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "local",
@@ -517,11 +519,11 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    await resonate.promises.resolve("myId", { data: encoder.encode("myValue").data });
+    await resonate.promises.settle("myId", "resolved", { data: encoder.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
-    expect((await resonate.promises.get("myId")).tags).toEqual({
+    expect((await resonate.promises.read("myId")).promise.tags).toEqual({
       "resonate:branch": "myId",
       "resonate:origin": "myId",
       "resonate:parent": "f",
@@ -541,11 +543,11 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    await resonate.promises.resolve("f.0", { data: encoder.encode("myValue").data });
+    await resonate.promises.settle("f.0", "resolved", { data: encoder.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
-    expect((await resonate.promises.get("f.0")).tags).toEqual({
+    expect((await resonate.promises.read("f.0")).promise.tags).toEqual({
       "resonate:branch": "f.0",
       "resonate:origin": "f",
       "resonate:parent": "f",
@@ -568,16 +570,16 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    const durable = await resonate.promises.get("myId");
-    expect(durable.timeout).toBeGreaterThanOrEqual(time + 5 * util.HOUR);
-    expect(durable.timeout).toBeLessThan(time + 5 * util.HOUR + 1000);
+    const durable = (await resonate.promises.read("myId")).promise;
+    expect(durable.timeoutAt).toBeGreaterThanOrEqual(time + 5 * util.HOUR);
+    expect(durable.timeoutAt).toBeLessThan(time + 5 * util.HOUR + 1000);
     expect(durable.tags).toEqual({
       "resonate:branch": "myId",
       "resonate:origin": "myId",
       "resonate:parent": "f",
       "resonate:scope": "global",
     });
-    await resonate.promises.resolve("myId", { data: encoder.encode("myValue").data });
+    await resonate.promises.settle("myId", "resolved", { data: encoder.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
@@ -595,7 +597,7 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure f.0 promise is created
 
-    const durable = await resonate.promises.get("f.0");
+    const durable = (await resonate.promises.read("f.0")).promise;
     expect(durable.tags).toEqual({
       "resonate:timeout": "true",
       "resonate:branch": "f.0",
@@ -603,7 +605,7 @@ describe("Resonate usage tests", () => {
       "resonate:parent": "f",
       "resonate:scope": "global",
     });
-    expect(durable.timeout).toBeLessThan(time + 1 * util.SEC + 100);
+    expect(durable.timeoutAt).toBeLessThan(time + 1 * util.SEC + 100);
 
     const v = await p.result();
     expect(v).toBe("myValue");
@@ -625,7 +627,7 @@ describe("Resonate usage tests", () => {
     const v = await f.run("f");
     expect(v).toBe("myValue");
 
-    const durable = await resonate.promises.get("f.0");
+    const durable = await resonate.promises.read("f.0");
     expect(durable).toMatchObject({ state: "pending" });
 
     resonate.stop();
@@ -660,7 +662,7 @@ describe("Resonate usage tests", () => {
 
     // get returns the promise value
     await resonate.promises.create("foo", Number.MAX_SAFE_INTEGER);
-    await resonate.promises.resolve("foo", { data: encoder.encode("foo").data });
+    await resonate.promises.settle("foo", "resolved", { data: encoder.encode("foo").data });
 
     const handle = await resonate.get("foo");
     expect(await handle.result()).toBe("foo");
@@ -727,10 +729,10 @@ describe("Resonate usage tests", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic Zm9vOmJhcg==");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic Zm9vOmJhcg==");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic Zm9vOmJhcg==");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic Zm9vOmJhcg==");
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);
@@ -769,7 +771,7 @@ describe("Resonate usage tests", () => {
     });
 
     await f.run("f");
-    const durable = await resonate.promises.get("f.0");
+    const durable = (await resonate.promises.read("f.0")).promise;
     expect(durable.id).toBe("f.0");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
@@ -794,7 +796,7 @@ describe("Resonate usage tests", () => {
     });
 
     await f.run("f");
-    const durable = await resonate.promises.get("f.0");
+    const durable = (await resonate.promises.read("f.0")).promise;
     expect(durable.id).toBe("f.0");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
@@ -819,7 +821,7 @@ describe("Resonate usage tests", () => {
     });
 
     await f.run("f");
-    const durable = await resonate.promises.get("f.0");
+    const durable = (await resonate.promises.read("f.0")).promise;
     expect(durable.id).toBe("f.0");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
@@ -844,7 +846,7 @@ describe("Resonate usage tests", () => {
     });
 
     await f.rpc("fid", resonate.options({ target: "http://faasurl.com" }));
-    const durable = await resonate.promises.get("fid");
+    const durable = (await resonate.promises.read("fid")).promise;
     expect(durable.id).toBe("fid");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
@@ -869,7 +871,7 @@ describe("Resonate usage tests", () => {
     });
 
     await f.rpc("fid");
-    const durable = await resonate.promises.get("fid");
+    const durable = (await resonate.promises.read("fid")).promise;
     expect(durable.id).toBe("fid");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
@@ -894,7 +896,7 @@ describe("Resonate usage tests", () => {
     });
 
     await f.rpc("fid", resonate.options({ target: "anotherNode" }));
-    const durable = await resonate.promises.get("fid");
+    const durable = (await resonate.promises.read("fid")).promise;
     expect(durable.id).toBe("fid");
     expect(durable.tags).toStrictEqual({
       "resonate:scope": "global",
@@ -1048,7 +1050,7 @@ describe("Resonate usage tests", () => {
       expect(ctxRetryPolicy).toBeDefined();
       expect(ctxRetryPolicy).toEqual(retryPolicy);
 
-      const p = await resonate.promises.get(`f${i}`);
+      const p = (await resonate.promises.read(`f${i}`)).promise;
       expect(JSON.parse(util.base64Decode((p.param as Value<string>).data!)).retry).toEqual(retryPolicy.encode());
     }
 
@@ -1256,7 +1258,7 @@ describe("Context usage tests", () => {
       expect(ctxRetryPolicy).toEqual(retryPolicy);
 
       if (f === "rfi" || f === "rfc" || f === "detached") {
-        const p = await resonate.promises.get(`f${i}.0`);
+        const p = (await resonate.promises.read(`f${i}.0`)).promise;
         expect(JSON.parse(util.base64Decode((p.param as Value<string>).data!)).retry).toEqual(retryPolicy.encode());
       }
     }
@@ -1471,10 +1473,10 @@ describe("Resonate environment variable initialization", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);
@@ -1508,10 +1510,10 @@ describe("Resonate environment variable initialization", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);
@@ -1543,10 +1545,10 @@ describe("Resonate environment variable initialization", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjo=");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjo=");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Basic ZW52dXNlcjo=");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjo=");
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);
@@ -1578,10 +1580,10 @@ describe("Resonate environment variable initialization", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
+        expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
+        expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);
@@ -1611,10 +1613,10 @@ describe("Resonate environment variable initialization", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
+        expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBeUndefined();
+        expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);
@@ -1772,10 +1774,10 @@ describe("Bearer token authentication", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Bearer test-token-123");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer test-token-123");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Bearer test-token-123");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer test-token-123");
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);
@@ -1807,10 +1809,10 @@ describe("Bearer token authentication", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Bearer priority-token");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer priority-token");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Bearer priority-token");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer priority-token");
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);
@@ -1845,10 +1847,10 @@ describe("Bearer token authentication", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Bearer env-token-456");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-456");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Bearer env-token-456");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-456");
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);
@@ -1883,10 +1885,10 @@ describe("Bearer token authentication", () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
       if (urlStr === "http://localhost:9999/promises") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Bearer env-token-priority");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-priority");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as Record<string, string>).Authorization).toBe("Bearer env-token-priority");
+        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-priority");
         p2.resolve(null);
       } else {
         throw new Error(`Unexpected URL called: ${urlStr}`);

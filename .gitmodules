@@ -1,0 +1,3 @@
+[submodule "dev/resonate-dev-ts"]
+	path = dev/resonate-dev-ts
+	url = https://github.com/resonatehq/resonate-dev-ts/

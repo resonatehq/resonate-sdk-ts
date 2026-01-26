@@ -22,7 +22,7 @@ export class DummyEncryptor {
     return { headers: plaintext.headers, data: combined.toString("base64") };
   }
 
-  decrypt(ciphertext: Value<string> | undefined): Value<string> | undefined {
+  decrypt(ciphertext: Value<string>): Value<string> {
     if (ciphertext === undefined) return ciphertext;
     if (ciphertext.data === undefined) return ciphertext;
 
@@ -46,19 +46,17 @@ describe("Encryptors", () => {
     // Basic cases
     { headers: { foo: "bar" }, data: "Hello, world!" },
     { headers: { foo: "bar" }, data: "" },
-    { headers: { foo: "bar" } },
-    { data: "No headers here" },
 
     // Unicode and emoji
-    { data: "😊" },
+    { headers: {}, data: "😊" },
     { headers: { lang: "jp" }, data: "こんにちは世界" }, // Japanese
     { headers: { lang: "cn" }, data: "你好，世界" }, // Chinese
     { headers: { lang: "ar" }, data: "مرحبا بالعالم" }, // Arabic
     { headers: { lang: "emoji" }, data: "🔥💯🚀" },
 
     // Whitespace and edge formatting
-    { data: "   " },
-    { data: "\n\t\r" },
+    { headers: {}, data: "   " },
+    { headers: {}, data: "\n\t\r" },
     { headers: {}, data: " leading and trailing " },
 
     // Long and random text
@@ -78,7 +76,7 @@ describe("Encryptors", () => {
     },
 
     // Potential edge/binary-like content
-    { data: "\u0000\u0001\u0002\u0003" },
+    { headers: {}, data: "\u0000\u0001\u0002\u0003" },
     { headers: { encoding: "base64" }, data: Buffer.from("binarydata").toString("base64") },
   ];
 

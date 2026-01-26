@@ -1,5 +1,5 @@
+import { assertDefined } from "@resonatehq/dev";
 import type { Result } from "./types";
-import * as util from "./util";
 export class Nursery<T> {
   // event queue, these functions are ensured to execute sequentially
   private q: Array<() => void> = [];
@@ -110,7 +110,7 @@ export class Nursery<T> {
 
   private complete() {
     if (!this.completed || this.holds > 0) return;
-    util.assertDefined(this.res);
+    assertDefined(this.res);
     this.c(this.res);
   }
 }
