@@ -1,9 +1,8 @@
+import { assert } from "@resonatehq/dev";
 import { DIE, Future, LFC, LFI, RFC, RFI } from "./context";
 import type { ResonateError } from "./exceptions";
-import type { CreatePromiseReq } from "./network/network";
 import type { RetryPolicy } from "./retries";
 import type { Func, Result, Yieldable } from "./types";
-import * as util from "./util";
 
 // Expr
 
@@ -21,7 +20,12 @@ export type InternalAsyncR = {
   mode: "attached" | "detached";
   func: string;
   version: number;
-  createReq: CreatePromiseReq<any>;
+  createReq: {
+    id: string;
+    param: { headers: { [key: string]: string }; data: any };
+    tags: { [key: string]: string };
+    timeoutAt: number;
+  };
 };
 
 export type InternalAsyncL = {
@@ -31,7 +35,12 @@ export type InternalAsyncL = {
   args: any[];
   version: number;
   retryPolicy: RetryPolicy;
-  createReq: CreatePromiseReq<any>;
+  createReq: {
+    id: string;
+    param: { headers: { [key: string]: string }; data: any };
+    tags: { [key: string]: string };
+    timeoutAt: number;
+  };
 };
 export type InternalAwait<T> = {
   type: "internal.await";
@@ -83,10 +92,7 @@ export class Decorator<TRet> {
 
   public next(value: Value<any>): InternalExpr<any> {
     // If nextState was set to over, is becasue we shouldn't have been called
-    util.assert(
-      value.type === this.nextState,
-      `Generator called wit type "${value.type}" expected "${this.nextState}"`,
-    );
+    assert(value.type === this.nextState, `Generator called wit type "${value.type}" expected "${this.nextState}"`);
 
     // Handle rfc/lfc by returning an await if the previous invocation was a call
     // if we await an rpc/rfc promise that is not completed the corotine is done and the decorator shouldn't be called again

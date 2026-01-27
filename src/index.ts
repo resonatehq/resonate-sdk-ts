@@ -1,6 +1,6 @@
 export { WallClock } from "./clock";
 export { Context } from "./context";
-export { Core, type Task } from "./core";
+export { Core } from "./core";
 export { JsonEncoder } from "./encoder";
 export {
   type Encryptor,

@@ -1,3 +1,4 @@
+import { assert, type Message } from "@resonatehq/dev";
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "./clock";
 import { Core } from "./core";
@@ -6,24 +7,14 @@ import { type Encryptor, NoopEncryptor } from "./encryptor";
 import exceptions from "./exceptions";
 import { Handler } from "./handler";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";
-import type {
-  CreatePromiseAndTaskReq,
-  CreatePromiseReq,
-  CreateSubscriptionReq,
-  DurablePromiseRecord,
-  Message,
-  MessageSource,
-  Network,
-  ReadPromiseReq,
-  TaskRecord,
-} from "./network/network";
+import type { MessageSource, Network } from "./network/network";
 import { HttpNetwork, PollMessageSource } from "./network/remote";
 import { type Options, OptionsBuilder } from "./options";
 import { Promises } from "./promises";
 import { Registry } from "./registry";
 import { Schedules } from "./schedules";
 import { NoopTracer, type Tracer } from "./tracer";
-import type { Func, ParamsWithOptions, Return } from "./types";
+import type { Func, InMemoryPromise, InMemoryTask, ParamsWithOptions, Result, Return } from "./types";
 import * as util from "./util";
 
 export interface ResonateHandle<T> {
@@ -45,9 +36,9 @@ export interface ResonateSchedule {
 }
 
 type SubscriptionEntry = {
-  promise: Promise<DurablePromiseRecord<any>>;
-  resolve: (r: DurablePromiseRecord<any>) => void;
-  reject: (e: any) => void;
+  promise: Promise<InMemoryPromise>;
+  resolve: (r: InMemoryPromise) => void;
+  reject: (e: Error) => void;
   timeout: number;
 };
 
@@ -196,10 +187,7 @@ export class Resonate {
         this.network = new HttpNetwork({
           verbose: this.verbose,
           url: resolvedUrl,
-          auth: resolvedAuth,
-          token: resolvedToken,
           timeout: 1 * util.MIN,
-          headers: {},
         });
         this.messageSource = new PollMessageSource({
           url: resolvedUrl,
@@ -250,12 +238,9 @@ export class Resonate {
     this.intervalId = setInterval(async () => {
       for (const [id, sub] of this.subscriptions.entries()) {
         try {
-          const createSubscriptionReq: CreateSubscriptionReq = {
-            kind: "createSubscription",
-            id: this.pid,
-            promiseId: id,
-            timeout: sub.timeout + 1 * util.MIN, // add a buffer
-            recv: this.unicast,
+          const createSubscriptionReq = {
+            awaited: id,
+            address: this.unicast,
           };
 
           const res = await this.createSubscription(createSubscriptionReq);
@@ -531,7 +516,7 @@ export class Resonate {
 
     id = `${this.idPrefix}${id}`;
 
-    util.assert(registered.version > 0, "function version must be greater than zero");
+    assert(registered.version > 0, "function version must be greater than zero");
 
     const span = this.tracer.startSpan(id, this.clock.now());
     span.setAttribute("type", "run");
@@ -541,10 +526,11 @@ export class Resonate {
     try {
       const { promise, task } = await this.taskCreate(
         {
-          kind: "createPromiseAndTask",
-          promise: {
-            id: id,
-            timeout: Date.now() + opts.timeout,
+          pid: this.pid,
+          ttl: this.ttl,
+          action: {
+            id,
+            timeoutAt: Date.now() + opts.timeout,
             param: {
               data: {
                 func: registered.name,
@@ -552,6 +538,7 @@ export class Resonate {
                 retry: opts.retryPolicy?.encode(),
                 version: registered.version,
               },
+              headers: {},
             },
             tags: {
               ...opts.tags,
@@ -562,10 +549,6 @@ export class Resonate {
               "resonate:invoke": this.anycast,
             },
           },
-          task: {
-            processId: this.pid,
-            ttl: this.ttl,
-          },
         },
         span.encode(),
       );
@@ -574,7 +557,7 @@ export class Resonate {
       span.setStatus(true);
 
       if (task) {
-        this.core.executeUntilBlocked(span, { kind: "claimed", task: task, rootPromise: promise }, () => {
+        this.core.executeUntilBlocked(span, task, () => {
           span.end(this.clock.now());
         });
       } else {
@@ -685,9 +668,8 @@ export class Resonate {
     try {
       const promise = await this.createPromise(
         {
-          kind: "createPromise",
           id: id,
-          timeout: Date.now() + opts.timeout,
+          timeoutAt: Date.now() + opts.timeout,
           param: {
             data: {
               func: func,
@@ -695,6 +677,7 @@ export class Resonate {
               retry: opts.retryPolicy?.encode(),
               version: version,
             },
+            headers: {},
           },
           tags: {
             ...opts.tags,
@@ -780,11 +763,7 @@ export class Resonate {
    *   The handle can be awaited or queried to retrieve the final result.
    */
   public async get<T = any>(id: string): Promise<ResonateHandle<T>> {
-    id = `${this.idPrefix}${id}`;
-    const promise = await this.promiseGet({
-      kind: "readPromise",
-      id: id,
-    });
+    const promise = await this.promiseGet(`${this.idPrefix}${id}`);
 
     return this.createHandle(promise);
   }
@@ -811,9 +790,18 @@ export class Resonate {
   }
 
   private taskCreate(
-    req: CreatePromiseAndTaskReq<any>,
+    req: {
+      pid: string;
+      ttl: number;
+      action: {
+        id: string;
+        param: { headers: { [key: string]: string }; data: any };
+        tags: { [key: string]: string };
+        timeoutAt: number;
+      };
+    },
     headers: { [key: string]: string },
-  ): Promise<{ promise: DurablePromiseRecord; task?: TaskRecord }> {
+  ): Promise<{ promise: InMemoryPromise; task?: InMemoryTask }> {
     return new Promise((resolve, reject) =>
       this.handler.taskCreate(
         req,
@@ -825,16 +813,20 @@ export class Resonate {
           }
         },
         undefined,
-        headers,
         true,
       ),
     );
   }
 
   private createPromise(
-    req: CreatePromiseReq<any>,
+    req: {
+      id: string;
+      param: { headers: { [key: string]: string }; data: any };
+      tags: { [key: string]: string };
+      timeoutAt: number;
+    },
     headers: { [key: string]: string },
-  ): Promise<DurablePromiseRecord<any>> {
+  ): Promise<InMemoryPromise> {
     return new Promise((resolve, reject) =>
       this.handler.promiseCreate(
         req,
@@ -846,13 +838,12 @@ export class Resonate {
           }
         },
         undefined,
-        headers,
         true,
       ),
     );
   }
 
-  private createSubscription(req: CreateSubscriptionReq): Promise<DurablePromiseRecord<any>> {
+  private createSubscription(req: { awaited: string; address: string }): Promise<InMemoryPromise> {
     return new Promise((resolve, reject) =>
       this.handler.promiseSubscribe(
         req,
@@ -868,9 +859,9 @@ export class Resonate {
     );
   }
 
-  private promiseGet(req: ReadPromiseReq): Promise<DurablePromiseRecord<any>> {
+  private promiseGet(id: string): Promise<InMemoryPromise> {
     return new Promise((resolve, reject) =>
-      this.handler.promiseGet(req, (res) => {
+      this.handler.promiseGet(id, (res) => {
         if (res.kind === "error") {
           reject(res.error);
         } else {
@@ -880,13 +871,10 @@ export class Resonate {
     );
   }
 
-  private createHandle(promise: DurablePromiseRecord<any>): ResonateHandle<any> {
-    const createSubscriptionReq: CreateSubscriptionReq = {
-      kind: "createSubscription",
-      id: this.pid,
-      promiseId: promise.id,
-      timeout: promise.timeout + 1 * util.MIN, // add a buffer
-      recv: this.unicast,
+  private createHandle(promise: InMemoryPromise): ResonateHandle<any> {
+    const createSubscriptionReq: { awaited: string; address: string } = {
+      awaited: promise.id,
+      address: this.unicast,
     };
 
     return {
@@ -897,48 +885,55 @@ export class Resonate {
   }
 
   private onMessage(msg: Message): void {
-    util.assert(msg.type === "notify");
-    if (msg.type === "notify") {
+    assert(msg.kind === "notify");
+    if (msg.kind === "notify") {
       let paramData: any;
       let valueData: any;
 
       try {
-        paramData = this.encoder.decode(this.encryptor.decrypt(msg.promise.param));
+        paramData = this.encoder.decode(this.encryptor.decrypt(msg.data.promise.param));
       } catch (e) {
         // TODO: improve this message
-        this.notify(msg.promise.id, new Error("Failed to decode promise param"));
+        this.notify(msg.data.promise.id, { kind: "error", error: new Error("Failed to decode promise param") });
         return;
       }
 
       try {
-        valueData = this.encoder.decode(this.encryptor.decrypt(msg.promise.value));
+        valueData = this.encoder.decode(this.encryptor.decrypt(msg.data.promise.value));
       } catch (e) {
         // TODO: improve this message
-        this.notify(msg.promise.id, new Error("Failed to decode promise value"));
+        this.notify(msg.data.promise.id, { kind: "error", error: new Error("Failed to decode promise value") });
         return;
       }
-
-      this.notify(msg.promise.id, undefined, {
-        ...msg.promise,
-        param: { headers: msg.promise.param?.headers, data: paramData },
-        value: { headers: msg.promise.value?.headers, data: valueData },
+      // {
+      //   ...msg.data.promise,
+      //   param: { headers: msg.promise.param?.headers, data: paramData },
+      //   value: { headers: msg.promise.value?.headers, data: valueData },
+      // }
+      this.notify(msg.data.promise.id, {
+        kind: "value",
+        value: {
+          ...msg.data.promise,
+          param: paramData,
+          value: valueData,
+        },
       });
     }
   }
 
-  private async subscribe(id: string, res: DurablePromiseRecord) {
-    const { promise, resolve, reject } =
-      this.subscriptions.get(id) ?? Promise.withResolvers<DurablePromiseRecord<any>>();
+  private async subscribe(id: string, res: InMemoryPromise) {
+    const { promise, resolve, reject } = this.subscriptions.get(id) ?? Promise.withResolvers<InMemoryPromise>();
 
     if (res.state === "pending") {
-      this.subscriptions.set(id, { promise, resolve, reject, timeout: res.timeout });
+      this.subscriptions.set(id, { promise, resolve, reject, timeout: res.timeoutAt });
     } else {
       resolve(res);
       this.subscriptions.delete(id);
     }
 
     const p = await promise;
-    util.assert(p.state !== "pending", "promise must be completed");
+
+    assert(p.state !== "pending", "promise must be completed");
 
     if (p.state === "resolved") {
       return p.value?.data;
@@ -954,15 +949,19 @@ export class Resonate {
     }
   }
 
-  private notify(id: string, err: any, res?: DurablePromiseRecord<any>) {
+  private notify(id: string, res: Result<InMemoryPromise, Error>) {
     const subscription = this.subscriptions.get(id);
 
     // notify subscribers
-    if (res) {
-      util.assert(res.state !== "pending", "promise must be completed");
-      subscription?.resolve(res);
-    } else {
-      subscription?.reject(err);
+    switch (res.kind) {
+      case "error": {
+        subscription?.reject(res.error);
+        break;
+      }
+      case "value": {
+        assert(res.value.state !== "pending", "promise must be completed");
+        subscription?.resolve(res.value);
+      }
     }
 
     // remove subscription

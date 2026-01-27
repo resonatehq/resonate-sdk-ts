@@ -1,56 +1,52 @@
+import { assert, type Message, Promise, type Req, type Res } from "@resonatehq/dev";
 import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
 import { type Completed, Coroutine, type Suspended } from "../src/coroutine";
 import { JsonEncoder } from "../src/encoder";
 import { NoopEncryptor } from "../src/encryptor";
-import type { ResonateError } from "../src/exceptions";
 import { Handler } from "../src/handler";
-import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
+import type { Network } from "../src/network/network";
 import { PollMessageSource } from "../src/network/remote";
 import { OptionsBuilder } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
 import { NoopSpan } from "../src/tracer";
 import type { Result } from "../src/types";
-import { assert } from "../src/util";
 
 class DummyNetwork implements Network {
-  private promises = new Map<string, DurablePromiseRecord>();
+  private promises: { [key: string]: Promise } = {};
 
   start(): void {}
-  send<T extends Request>(request: T, callback: (res: Result<ResponseFor<T>, ResonateError>) => void): void {
-    switch (request.kind) {
-      case "createPromise": {
-        const p: DurablePromiseRecord = {
-          id: request.id,
+  send(req: Req, callback: (res: Res) => void): void {
+    switch (req.kind) {
+      case "promise.create": {
+        const p: Promise = {
+          id: req.data.id,
           state: "pending",
-          timeout: request.timeout,
-          param: request.param,
-          value: undefined,
-          tags: request.tags || {},
+          timeoutAt: req.data.timeoutAt,
+          param: req.data.param,
+          value: { headers: {}, data: "" },
+          tags: req.data.tags,
+          createdAt: Date.now(),
         };
-        this.promises.set(p.id, p);
+        this.promises[p.id] = p;
         callback({
-          kind: "value",
-          value: {
-            kind: "createPromise",
-            promise: p,
-          } as ResponseFor<T>,
+          kind: req.kind,
+          head: { version: req.head.version, status: 200, corrId: req.head.corrId },
+          data: { promise: p },
         });
         return;
       }
 
-      case "completePromise": {
-        const p = this.promises.get(request.id)!;
-        p.state = "resolved";
-        p.value = request.value!;
-        this.promises.set(p.id, p);
+      case "promise.settle": {
+        const p = this.promises[req.data.id];
+        p.state = req.data.state;
+        p.value = req.data.value;
+        this.promises[p.id] = p;
         callback({
-          kind: "value",
-          value: {
-            kind: "completePromise",
-            promise: p,
-          } as ResponseFor<T>,
+          kind: req.kind,
+          head: { version: req.head.version, status: 200, corrId: req.head.corrId },
+          data: { promise: p },
         });
         break;
       }
@@ -106,10 +102,10 @@ describe("Coroutine", () => {
     return new Promise<any>((resolve) => {
       handler.promiseSettle(
         {
-          kind: "completePromise",
           id: id,
           state: result.kind === "value" ? "resolved" : "rejected",
           value: {
+            headers: {},
             data: result.kind === "value" ? result.value : result.error,
           },
         },

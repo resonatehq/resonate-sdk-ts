@@ -1,11 +1,11 @@
-import { assert, Task } from "@resonatehq/dev";
+import { assert, type Task } from "@resonatehq/dev";
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
 import exceptions from "./exceptions";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
-import type { CallbackRecord, DurablePromiseRecord, Network, TaskRecord } from "./network/network";
+import type { Network } from "./network/network";
 import { Nursery } from "./nursery";
 import type { OptionsBuilder } from "./options";
 import { AsyncProcessor, type Processor } from "./processor/processor";
@@ -105,24 +105,24 @@ export class Computation {
       done(res);
     };
 
-      this.handler.taskAcquire(
-        {
-          id: task.id,
-          version: task.version,
-          pid: this.pid,
-          ttl: this.ttl,
-        },
-        (res) => {
-          if (res.kind === "error") {
-            res.error.log(this.verbose);
-            return doneProcessing({ kind: "error", error: undefined });
-          }
-          this.processClaimed(
-            { kind: "claimed", task: task.task, rootPromise: res.value.root, leafPromise: res.value.leaf },
-            doneProcessing,
-          );
-        },
-      );
+    this.handler.taskAcquire(
+      {
+        id: task.id,
+        version: task.version,
+        pid: this.pid,
+        ttl: this.ttl,
+      },
+      (res) => {
+        if (res.kind === "error") {
+          res.error.log(this.verbose);
+          return doneProcessing({ kind: "error", error: undefined });
+        }
+        this.processClaimed(
+          { kind: "claimed", task: task.task, rootPromise: res.value.root, leafPromise: res.value.leaf },
+          doneProcessing,
+        );
+      },
+    );
   }
 
   private processClaimed({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
@@ -153,8 +153,8 @@ export class Computation {
       return doneAndDropTaskIfErr({ kind: "error", error: undefined });
     }
 
-    if (version !== 0) util.assert(version === registered.version, "versions must match");
-    util.assert(func === registered.name, "names must match");
+    if (version !== 0) assert(version === registered.version, "versions must match");
+    assert(func === registered.name, "names must match");
 
     // start heartbeat
     this.heartbeat.start();
@@ -231,7 +231,7 @@ export class Computation {
           break;
 
         case "suspended":
-          util.assert(status.todo.local.length > 0 || status.todo.remote.length > 0, "must be at least one todo");
+          assert(status.todo.local.length > 0 || status.todo.remote.length > 0, "must be at least one todo");
 
           if (status.todo.local.length > 0) {
             this.processLocalTodo(nursery, status.todo.local, done);
