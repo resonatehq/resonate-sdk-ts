@@ -4,7 +4,7 @@ import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
 import { Never } from "./retries";
 import type { Span } from "./tracer";
-import type { InMemoryPromise, InMemoryTask, Result, Yieldable } from "./types";
+import type { PromiseRecord, Result, TaskRecord, Yieldable } from "./types";
 import * as util from "./util";
 
 export type Suspended = {
@@ -15,7 +15,7 @@ export type Suspended = {
 
 export type Completed = {
   type: "completed";
-  promise: InMemoryPromise;
+  promise: PromiseRecord;
 };
 
 export interface LocalTodo {
@@ -47,7 +47,7 @@ const logged: Map<string, boolean> = new Map();
 
 export class Coroutine<T> {
   private ctx: InnerContext;
-  private task: InMemoryTask;
+  private task: TaskRecord;
   private verbose: boolean;
   private decorator: Decorator<T>;
   private handler: Handler;
@@ -57,7 +57,7 @@ export class Coroutine<T> {
 
   constructor(
     ctx: InnerContext,
-    task: InMemoryTask,
+    task: TaskRecord,
     verbose: boolean,
     decorator: Decorator<T>,
     handler: Handler,
@@ -88,7 +88,7 @@ export class Coroutine<T> {
     ctx: InnerContext,
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
-    task: InMemoryTask,
+    task: TaskRecord,
     handler: Handler,
     spans: Map<string, Span>,
     callback: (res: Result<Suspended | Completed, any>) => void,

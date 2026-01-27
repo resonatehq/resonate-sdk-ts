@@ -3,17 +3,17 @@ import type { Encoder } from "./encoder";
 import type { Encryptor } from "./encryptor";
 import exceptions, { type ResonateError } from "./exceptions";
 import type { Network } from "./network/network";
-import type { InMemoryPromise, InMemoryTask, Result, Value } from "./types";
+import type { PromiseRecord, Result, TaskRecord, Value } from "./types";
 
 export class Cache {
-  private promises: { [key: string]: InMemoryPromise } = {};
-  private tasks: { [key: string]: InMemoryTask } = {};
+  private promises: { [key: string]: PromiseRecord } = {};
+  private tasks: { [key: string]: TaskRecord } = {};
 
-  public getPromise(id: string): InMemoryPromise | undefined {
+  public getPromise(id: string): PromiseRecord | undefined {
     return this.promises[id];
   }
 
-  public setPromise(promise: InMemoryPromise): void {
+  public setPromise(promise: PromiseRecord): void {
     // do not set when promise is already completed
     if (this.promises[promise.id] !== undefined && this.promises[promise.id]?.state !== "pending") {
       return;
@@ -21,11 +21,11 @@ export class Cache {
     this.promises[promise.id] = promise;
   }
 
-  public getTask(id: string): InMemoryTask | undefined {
+  public getTask(id: string): TaskRecord | undefined {
     return this.tasks[id];
   }
 
-  public setTask(task: InMemoryTask): void {
+  public setTask(task: TaskRecord): void {
     // do not set when counter is greater
     if ((this.tasks[task.id]?.version || 0) >= task.version) {
       return;
@@ -46,7 +46,7 @@ export class Handler {
     this.encryptor = encryptor;
   }
 
-  public promiseGet(id: string, done: (res: Result<InMemoryPromise, ResonateError>) => void): void {
+  public promiseGet(id: string, done: (res: Result<PromiseRecord, ResonateError>) => void): void {
     const promise = this.cache.getPromise(id);
     if (promise) {
       done({ kind: "value", value: promise });
@@ -60,7 +60,7 @@ export class Handler {
           error: exceptions.SERVER_ERROR(res.data, res.head.status >= 500 && res.head.status < 600),
         });
       assert(res.kind === "promise.get");
-      let promise: InMemoryPromise;
+      let promise: PromiseRecord;
       try {
         promise = this.decodePromise(res.data.promise);
       } catch (e) {
@@ -79,7 +79,7 @@ export class Handler {
       tags: { [key: string]: string };
       timeoutAt: number;
     },
-    done: (res: Result<InMemoryPromise, ResonateError>) => void,
+    done: (res: Result<PromiseRecord, ResonateError>) => void,
     func = "unknown",
     retryForever = false,
   ): void {
@@ -112,7 +112,7 @@ export class Handler {
           });
         assert(res.kind === "promise.create");
 
-        let promise: InMemoryPromise;
+        let promise: PromiseRecord;
         try {
           promise = this.decodePromise(res.data.promise, req.param.data?.func ?? func);
         } catch (e) {
@@ -137,7 +137,7 @@ export class Handler {
         timeoutAt: number;
       };
     },
-    done: (res: Result<{ promise: InMemoryPromise; task?: InMemoryTask }, ResonateError>) => void,
+    done: (res: Result<{ promise: PromiseRecord; task?: TaskRecord }, ResonateError>) => void,
     func = "unknown",
     retryForever = false,
   ) {
@@ -177,7 +177,7 @@ export class Handler {
             error: exceptions.SERVER_ERROR(res.data, res.head.status >= 500 && res.head.status < 600),
           });
         assert(res.kind === "task.create" && res.head.corrId === corrId);
-        let promise: InMemoryPromise;
+        let promise: PromiseRecord;
         try {
           promise = this.decodePromise(res.data.promise, req.action.param.data?.func ?? func);
         } catch (e) {
@@ -203,7 +203,7 @@ export class Handler {
       state: "resolved" | "rejected" | "rejected_canceled";
       value: { headers: { [key: string]: string }; data: any };
     },
-    done: (res: Result<InMemoryPromise, ResonateError>) => void,
+    done: (res: Result<PromiseRecord, ResonateError>) => void,
     func = "unknown",
   ): void {
     const promise = this.cache.getPromise(req.id);
@@ -233,7 +233,7 @@ export class Handler {
           });
         assert(res.kind === "promise.settle" && res.head.corrId === corrId);
 
-        let promise: InMemoryPromise;
+        let promise: PromiseRecord;
         try {
           promise = this.decodePromise(res.data.promise, func);
         } catch (e) {
@@ -248,15 +248,16 @@ export class Handler {
 
   public taskAcquire(
     req: { id: string; version: number; pid: string; ttl: number },
-    done: (res: Result<{ promise: InMemoryPromise; preload: InMemoryPromise[] }, ResonateError>) => void,
+    done: (res: Result<{ promise: PromiseRecord; preload: PromiseRecord[] }, ResonateError>) => void,
   ): void {
     const task = this.cache.getTask(req.id);
     if (task && task.version >= req.version) {
+      console.log("returning an error", task, req);
       done({
         kind: "error",
-        error: exceptions.ENCODING_RETV_UNDECODEABLE("The task counter is invalid", {
+        error: exceptions.SERVER_ERROR("The task version is invalid", false, {
           code: 40307,
-          message: "The task counter is invalid",
+          message: "The task version is invalid",
         }),
       });
       return;
@@ -271,7 +272,7 @@ export class Handler {
         });
       assert(res.kind === "task.acquire" && res.head.corrId === corrId);
 
-      let promise: InMemoryPromise;
+      let promise: PromiseRecord;
       try {
         promise = this.decodePromise(res.data.data.promise);
       } catch (e) {
@@ -287,7 +288,7 @@ export class Handler {
 
   public promiseRegister(
     req: { awaiter: string; awaited: string },
-    done: (res: Result<{ promise: InMemoryPromise }, ResonateError>) => void,
+    done: (res: Result<{ promise: PromiseRecord }, ResonateError>) => void,
   ): void {
     const id = `__resume:${req.awaiter}:${req.awaited}`;
     const promise = this.cache.getPromise(req.awaited);
@@ -314,7 +315,7 @@ export class Handler {
         assert(res.kind === "promise.register" && res.head.corrId === corrId);
 
         if (res.data.promise) {
-          let promise: InMemoryPromise;
+          let promise: PromiseRecord;
           try {
             promise = this.decodePromise(res.data.promise);
           } catch (e) {
@@ -334,7 +335,7 @@ export class Handler {
 
   public promiseSubscribe(
     req: { awaited: string; address: string },
-    done: (res: Result<InMemoryPromise, ResonateError>) => void,
+    done: (res: Result<PromiseRecord, ResonateError>) => void,
     retryForever = false,
   ) {
     const id = `__notify:${req.awaited}:${req.address}`;
@@ -361,7 +362,7 @@ export class Handler {
           });
         assert(res.kind === "promise.subscribe" && res.head.corrId === corrId);
 
-        let promise: InMemoryPromise;
+        let promise: PromiseRecord;
         try {
           promise = this.decodePromise(res.data.promise);
         } catch (e) {
@@ -376,7 +377,7 @@ export class Handler {
     );
   }
 
-  private decodePromise(promise: Promise, func = "unknown"): InMemoryPromise {
+  private decodePromise(promise: Promise, func = "unknown"): PromiseRecord {
     let paramData: any;
     let valueData: any;
 

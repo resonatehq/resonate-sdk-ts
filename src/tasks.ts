@@ -3,7 +3,6 @@ import {
   type PromiseCreateReq,
   type PromiseRegisterReq,
   type PromiseSettleReq,
-  type Task,
   type TaskAcquireRes,
   type TaskCreateRes,
   type TaskFenceRes,
@@ -168,14 +167,14 @@ export class Tasks {
     });
   }
 
-  heartbeat(pid: string, tasks: Task[]): Promise<void> {
+  heartbeat(pid: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const corrId = crypto.randomUUID();
       this.network.send(
         {
           kind: "task.heartbeat",
           head: { corrId, version: "1" },
-          data: { pid, tasks },
+          data: { pid, tasks: [] },
         },
         (res) => {
           if (res.kind === "error") {

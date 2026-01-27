@@ -13,7 +13,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
   },
-  "include": ["sim/**/*", "src/**/*", "tests/**/*"]
+  "include": ["sim/**/*", "src/**/*", "tests/**/*"],
 }

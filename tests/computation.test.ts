@@ -11,7 +11,7 @@ import { OptionsBuilder } from "../src/options";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
 import { NoopSpan, NoopTracer } from "../src/tracer";
-import type { InMemoryPromise, InMemoryTask, Result } from "../src/types";
+import type { PromiseRecord, Result, TaskRecord } from "../src/types";
 import * as util from "../src/util";
 
 async function createPromiseAndTask(
@@ -19,7 +19,7 @@ async function createPromiseAndTask(
   id: string,
   funcName: string,
   args: any[],
-): Promise<{ promise: InMemoryPromise; task: InMemoryTask }> {
+): Promise<{ promise: PromiseRecord; task: TaskRecord }> {
   return new Promise((resolve) => {
     handler.taskCreate(
       {
@@ -142,7 +142,7 @@ describe("Computation Event Queue Concurrency", () => {
     const { promise, task } = await createPromiseAndTask(handler, "root-promise-1", "testCoro", []);
 
     const computationPromise: Promise<Status> = new Promise((resolve) => {
-      computation.executeUntilBlocked(task, (res) => {
+      computation.executeUntilBlocked({kind: "acquired", task: task, promise}, (res) => {
         if (res.kind === "error") {
           throw new Error("Computation processing failed");
         }

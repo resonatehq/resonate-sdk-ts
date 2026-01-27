@@ -86,7 +86,7 @@ describe("Coroutine", () => {
         }),
         func,
         args,
-        { id: `__invoke:${uuid}`, version: 1},
+        { id: `__invoke:${uuid}`, version: 1 },
         handler,
         new Map(),
         (res) => {
@@ -330,7 +330,7 @@ describe("Coroutine", () => {
         }),
         foo,
         [],
-        { id: "__invoke:foo.1", version: 1},
+        { id: "__invoke:foo.1", version: 1 },
         h,
         new Map(),
         (res) => {

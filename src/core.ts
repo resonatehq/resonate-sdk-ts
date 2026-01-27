@@ -1,4 +1,4 @@
-import { assert, type Message, type Task } from "@resonatehq/dev";
+import { assert, type Message } from "@resonatehq/dev";
 import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
@@ -8,10 +8,10 @@ import type { OptionsBuilder } from "./options";
 import type { Registry } from "./registry";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries";
 import type { Span, Tracer } from "./tracer";
-import type { InMemoryPromise, Result } from "./types";
+import type { AcquiredTask, PromiseRecord, Result, UnacquiredTask } from "./types";
 
 export type PromiseHandler = {
-  addEventListener: (event: "created" | "completed", callback: (p: InMemoryPromise) => void) => void;
+  addEventListener: (event: "created" | "completed", callback: (p: PromiseRecord) => void) => void;
   subscribe: () => Promise<void>;
 };
 
@@ -90,11 +90,11 @@ export class Core {
     messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
-  public executeUntilBlocked(span: Span, task: Task, done: (res: Result<Status, undefined>) => void) {
-    let computation = this.computations.get(task.id);
+  public executeUntilBlocked(span: Span, task: AcquiredTask | UnacquiredTask, done: (res: Result<Status, undefined>) => void) {
+    let computation = this.computations.get(task.task.id);
     if (!computation) {
       computation = new Computation(
-        task.id,
+        task.task.id,
         this.unicast,
         this.anycast,
         this.pid,
@@ -111,7 +111,7 @@ export class Core {
         this.tracer,
         span,
       );
-      this.computations.set(task.id, computation);
+      this.computations.set(task.task.id, computation);
     }
 
     computation.executeUntilBlocked(task, done);
@@ -119,6 +119,6 @@ export class Core {
 
   private onMessage(msg: Message): void {
     assert(msg.kind === "invoke" || msg.kind === "resume");
-    this.executeUntilBlocked(this.tracer.decode(msg.head), msg.data.task, () => {});
+    this.executeUntilBlocked(this.tracer.decode(msg.head), {kind:"unacquired", task: msg.data.task}, () => {});
   }
 }

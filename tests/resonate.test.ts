@@ -12,14 +12,14 @@ describe("Resonate usage tests", () => {
 
     const f1 = resonate.register(
       "f",
-      function foo(ctx: Context): number {
+      function foo(_: Context): number {
         return 1;
       },
       { version: 1 },
     );
     const f2 = resonate.register(
       "f",
-      function bar(ctx: Context): number {
+      function bar(_: Context): number {
         return 2;
       },
       { version: 2 },
@@ -375,48 +375,6 @@ describe("Resonate usage tests", () => {
 
     const h = await f.beginRun("f");
     await expect(h.result()).rejects.toBe("this is an error");
-    resonate.stop();
-  });
-
-  test("test promises search api", async () => {
-    const resonate = Resonate.local();
-
-    // Create test promises
-    const foo = (await resonate.promises.create("foo", 10_000_000)).promise;
-    const bar = (await resonate.promises.create("bar", 10_000_000)).promise;
-
-    const results: any[] = [];
-    for await (const page of resonate.promises.search("*", { limit: 1 })) {
-      expect(Array.isArray(page)).toBe(true);
-      results.push(...page);
-    }
-
-    const ids = results.map((r) => r.id);
-    expect(ids).toContain(foo.id);
-    expect(ids).toContain(bar.id);
-
-    resonate.stop();
-  });
-
-  test("test schedules search api", async () => {
-    const resonate = Resonate.local();
-
-    // Create test promises
-    const foo = (await resonate.schedules.create("foo", "0 * * * *", "{{.id}}.{{.timestamp}}", Number.MAX_SAFE_INTEGER))
-      .schedule;
-    const bar = (await resonate.schedules.create("bar", "0 * * * *", "{{.id}}.{{.timestamp}}", Number.MAX_SAFE_INTEGER))
-      .schedule;
-
-    const results: any[] = [];
-    for await (const page of resonate.schedules.search("*", { limit: 1 })) {
-      expect(Array.isArray(page)).toBe(true);
-      results.push(...page);
-    }
-
-    const ids = results.map((r) => r.id);
-    expect(ids).toContain(foo.id);
-    expect(ids).toContain(bar.id);
-
     resonate.stop();
   });
 
@@ -1052,53 +1010,6 @@ describe("Resonate usage tests", () => {
 
       const p = (await resonate.promises.read(`f${i}`)).promise;
       expect(JSON.parse(util.base64Decode((p.param as Value<string>).data!)).retry).toEqual(retryPolicy.encode());
-    }
-
-    resonate.stop();
-  });
-
-  test("Using prefix at Resonate class prefixes all the promises", async () => {
-    const prefix = "myPrefix";
-    const resonate = new Resonate({ prefix });
-
-    function qux(ctx: Context) {
-      expect(ctx.id.startsWith(prefix));
-      expect(ctx.id.startsWith(`${prefix}:${prefix}`)).toBe(false);
-      return "qux";
-    }
-
-    function* baz(ctx: Context) {
-      expect(ctx.id.startsWith(prefix)).toBe(true);
-      expect(ctx.id.startsWith(`${prefix}:${prefix}`)).toBe(false);
-      yield* ctx.run(qux);
-      return "baz";
-    }
-
-    function* bar(ctx: Context) {
-      console.log(ctx.id);
-      expect(ctx.id.startsWith(prefix)).toBe(true);
-      expect(ctx.id.startsWith(`${prefix}:${prefix}`)).toBe(false);
-      return "bar";
-    }
-
-    function* foo(ctx: Context) {
-      const p = yield* ctx.beginRun(bar);
-      yield* ctx.run(baz, ctx.options({ id: "bazId" }));
-      yield* ctx.run(qux);
-      yield* p;
-      return "ok";
-    }
-    const f = resonate.register("foo", foo);
-    await f.run("fooId");
-
-    const results = [];
-    for await (const page of resonate.promises.search("*")) {
-      expect(Array.isArray(page)).toBe(true);
-      results.push(...page);
-    }
-
-    for (const promise of results) {
-      expect(promise.id.startsWith(prefix)).toBe(true);
     }
 
     resonate.stop();

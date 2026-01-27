@@ -27,8 +27,7 @@ export interface Value<T> {
   data: T;
 }
 
-// In memory representations
-export type InMemoryPromise = {
+export type PromiseRecord = {
   id: string;
   state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
   param: { headers: { [key: string]: string }; data: any };
@@ -39,12 +38,12 @@ export type InMemoryPromise = {
   settledAt?: number;
 };
 
-export type InMemoryTask = {
+export type TaskRecord = {
   id: string;
   version: number;
 };
 
-export type InMemorySchedule = {
+export type ScheduleRecord = {
   id: string;
   cron: string;
   promiseId: string;
@@ -54,4 +53,15 @@ export type InMemorySchedule = {
   createdAt: number;
   nextRunAt: number;
   lastRunAt?: number;
+};
+
+export type AcquiredTask = {
+  kind: "acquired";
+  task: TaskRecord;
+  promise: PromiseRecord;
+};
+
+export type UnacquiredTask = {
+  kind: "unacquired";
+  task: TaskRecord;
 };
