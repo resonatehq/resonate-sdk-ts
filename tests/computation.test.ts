@@ -1,18 +1,17 @@
+import { assert } from "@resonatehq/dev";
 import { LocalNetwork } from "../dev/network";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
 import type { Context, InnerContext } from "../src/context";
-import type { ClaimedTask } from "../src/core";
 import { JsonEncoder } from "../src/encoder";
 import { NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
 import { NoopHeartbeat } from "../src/heartbeat";
-import type { DurablePromiseRecord, TaskRecord } from "../src/network/network";
 import { OptionsBuilder } from "../src/options";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
 import { NoopSpan, NoopTracer } from "../src/tracer";
-import type { Result } from "../src/types";
+import type { InMemoryPromise, InMemoryTask, Result } from "../src/types";
 import * as util from "../src/util";
 
 async function createPromiseAndTask(
@@ -20,31 +19,23 @@ async function createPromiseAndTask(
   id: string,
   funcName: string,
   args: any[],
-): Promise<{ promise: DurablePromiseRecord; task: TaskRecord }> {
+): Promise<{ promise: InMemoryPromise; task: InMemoryTask }> {
   return new Promise((resolve) => {
     handler.taskCreate(
       {
-        kind: "createPromiseAndTask",
-        promise: {
-          id: id,
-          timeout: 24 * util.HOUR + Date.now(),
-          param: {
-            data: {
-              func: funcName,
-              args: args,
-              version: 1,
-            },
-          },
+        pid: "default",
+        ttl: 5 * util.MIN,
+        action: {
+          id,
+          timeoutAt: 24 * util.HOUR + Date.now(),
+          param: { data: { func: funcName, args, version: 1 }, headers: {} },
           tags: { "resonate:invoke": "poll://any@default/default" },
-        },
-        task: {
-          processId: "default",
-          ttl: 5 * util.MIN,
         },
       },
       (res) => {
-        util.assert(res.kind === "value");
-        resolve({ promise: res.value.promise, task: res.value.task! });
+        assert(res.kind === "value");
+        assert(res.value.task !== undefined);
+        resolve({ promise: res.value.promise, task: res.value.task });
       },
     );
   });
@@ -150,14 +141,8 @@ describe("Computation Event Queue Concurrency", () => {
     registry.add(testCoroutine, "testCoro");
     const { promise, task } = await createPromiseAndTask(handler, "root-promise-1", "testCoro", []);
 
-    const testTask: ClaimedTask = {
-      kind: "claimed",
-      task: task,
-      rootPromise: promise,
-    };
-
     const computationPromise: Promise<Status> = new Promise((resolve) => {
-      computation.executeUntilBlocked(testTask, (res) => {
+      computation.executeUntilBlocked(task, (res) => {
         if (res.kind === "error") {
           throw new Error("Computation processing failed");
         }
