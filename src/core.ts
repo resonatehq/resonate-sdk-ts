@@ -107,7 +107,7 @@ export class Core {
     let computation = this.computations.get(task.task.id);
     if (!computation) {
       computation = new Computation(
-        task.task.id,
+        parseHelper(task.task.id),
         this.unicast,
         this.anycast,
         this.pid,
@@ -137,4 +137,21 @@ export class Core {
       this.executeUntilBlocked(this.tracer.decode(msg.head), { kind: "unclaimed", task: msg.data.task }, () => {});
     }
   }
+}
+
+// this is temporary and can be removed when we complete
+// the single task model
+function parseHelper(input: string): string {
+  const parts = input.split(":");
+
+  if (parts[0] === "__invoke" && parts.length === 2) {
+    return parts[1];
+  }
+
+  if (parts[0] === "__resume" && parts.length === 3) {
+    return parts[1];
+  }
+
+  // otherwise return the whole string
+  return input;
 }

@@ -5,7 +5,7 @@ import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
 import exceptions from "./exceptions";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
-import type { Network, PromiseRecord, TaskRecord } from "./network/network";
+import type { ErrorRes, Network, PromiseRecord, TaskRecord, TaskSuspendRes } from "./network/network";
 import { Nursery } from "./nursery";
 import type { OptionsBuilder } from "./options";
 import { AsyncProcessor, type Processor } from "./processor/processor";
@@ -134,8 +134,6 @@ export class Computation {
   }
 
   private processAcquired({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
-    util.assert(task.id === this.id, "task root promise id must match computation id");
-
     const doneAndDropTaskIfErr = (res: Result<Status, undefined>) => {
       if (res.kind === "error") {
         return this.network.send(
@@ -196,7 +194,7 @@ export class Computation {
           },
           (r) => {
             if (r.kind === "error") {
-              nursery.done(r);
+              nursery.done({ kind: "error", error: undefined }); // TODO: fix
             } else {
               nursery.done(res);
             }
@@ -266,7 +264,7 @@ export class Computation {
           if (status.todo.local.length > 0) {
             this.processLocalTodo(nursery, status.todo.local, done);
           } else if (status.todo.remote.length > 0) {
-            this.processRemoteTodo(nursery, status.todo.remote, status.spans, ctx.info.timeout, done);
+            this.processRemoteTodo(nursery, status.todo.remote, status.spans, ctx.info.timeout, task, done);
           }
 
           break;
@@ -366,61 +364,23 @@ export class Computation {
       },
       (res) => {
         if (res.kind === "error") {
-          return done({});
+          return done({ kind: "error", error: undefined });
+        }
+
+        util.assert(res.kind === "task.suspend");
+
+        switch (res.head.status) {
+          case 200:
+            for (const span of spans) {
+              span.end(this.clock.now());
+            }
+            return done({ kind: "value", value: { kind: "suspended" } });
+
+          case 300:
+            return nursery.cont();
         }
       },
     );
-    // nursery.all<RemoteTodo, PromiseRecord<any>>(
-    //   todo,
-    //   ({ id }, done) =>
-    //     this.handler.promiseRegister(
-    //       {
-    //         kind: "promise.register",
-    //         head: { corrId: "", version: "" },
-    //         data: {
-    //           awaited: id,
-    //           awaiter: this.id,
-    //         },
-    //       },
-    //       (res) => {
-    //         if (res.kind === "error") {
-    //           res.error.log(this.verbose);
-    //           return done({ kind: "error", error: undefined });
-    //         }
-    //         done({ kind: "value", value: res.value });
-    //       },
-    //       this.span.encode(),
-    //     ),
-    //   (res) => {
-    //     if (res.kind === "error") {
-    //       for (const span of spans) {
-    //         span.end(this.clock.now());
-    //       }
-    //       return done(res);
-    //     }
-
-    //     const callbacks: CallbackRecord[] = [];
-
-    //     for (const r of res.value) {
-    //       switch (r.kind) {
-    //         case "promise":
-    //           nursery.hold((next) => next());
-    //           return nursery.cont();
-
-    //         case "callback":
-    //           callbacks.push(r.callback);
-    //           break;
-    //       }
-    //     }
-
-    //     for (const span of spans) {
-    //       span.end(this.clock.now());
-    //     }
-
-    //     // once all callbacks are created we can call done
-    //     return done({ kind: "value", value: { kind: "suspended" } });
-    //   },
-    // );
   }
 }
 

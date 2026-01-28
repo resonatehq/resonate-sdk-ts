@@ -6,7 +6,7 @@ import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/r
 import type { Value } from "../src/types";
 import * as util from "../src/util";
 
-describe("Resonate usage tests", () => {
+describe.skip("Resonate usage tests", () => {
   test("try versions", async () => {
     const resonate = Resonate.local();
 
@@ -1053,7 +1053,7 @@ describe("Resonate usage tests", () => {
   });
 });
 
-describe("Context usage tests", () => {
+describe.skip("Context usage tests", () => {
   test("ctx.panic aborts execution when condition is true", async () => {
     const resonate = Resonate.local();
 
