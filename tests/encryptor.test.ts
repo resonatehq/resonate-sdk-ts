@@ -22,7 +22,7 @@ export class DummyEncryptor {
     return { headers: plaintext.headers, data: combined.toString("base64") };
   }
 
-  decrypt(ciphertext: Value<string> | undefined): Value<string> | undefined {
+  decrypt(ciphertext: Value<string>): Value<string> {
     if (ciphertext === undefined) return ciphertext;
     if (ciphertext.data === undefined) return ciphertext;
 

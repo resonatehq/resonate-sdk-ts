@@ -5,7 +5,7 @@ import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
 import exceptions from "./exceptions";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
-import type { ErrorRes, Network, PromiseRecord, TaskRecord, TaskSuspendRes } from "./network/network";
+import type { Network, PromiseRecord, TaskRecord } from "./network/network";
 import { Nursery } from "./nursery";
 import type { OptionsBuilder } from "./options";
 import { AsyncProcessor, type Processor } from "./processor/processor";

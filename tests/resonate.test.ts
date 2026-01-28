@@ -1053,7 +1053,7 @@ describe.skip("Resonate usage tests", () => {
   });
 });
 
-describe.skip("Context usage tests", () => {
+describe("Context usage tests", () => {
   test("ctx.panic aborts execution when condition is true", async () => {
     const resonate = Resonate.local();
 
