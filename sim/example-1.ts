@@ -1,7 +1,7 @@
 import { StepClock } from "../src/clock";
 import type * as context from "../src/context";
 import { JsonEncoder } from "../src/encoder";
-import type { Request } from "../src/network/network";
+import type { Req } from "../src/network/network";
 import { Registry } from "../src/registry";
 import * as util from "../src/util";
 import { ServerProcess } from "./src/server";
@@ -74,15 +74,18 @@ const id = `fibonacci-${n}`;
 
 sim.delay(0, () => {
   sim.send(
-    new Message<Request>(
+    new Message<Req<string>>(
       unicast("environment"),
       unicast("server"),
       {
-        kind: "createPromise",
-        id,
-        timeout: 10000000,
-        tags: { "resonate:invoke": "sim://any@default" },
-        param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
+        kind: "promise.create",
+        head: { corrId: "", version: "" },
+        data: {
+          id,
+          timeoutAt: 10000000,
+          tags: { "resonate:invoke": "sim://any@default" },
+          param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
+        },
       },
       { requ: true, correlationId: 1 },
     ),
@@ -102,4 +105,4 @@ function f(n: number, memo: Record<number, number> = {}): number {
   return memo[n];
 }
 
-util.assert(encoder.decode(server.server.promises.get(id)?.value) === f(n));
+util.assert(encoder.decode(server.server.getState().promises[id]?.value) === f(n));

@@ -23,6 +23,6 @@ export type Result<V, E> = { kind: "value"; value: V } | { kind: "error"; error:
 // Value
 
 export interface Value<T> {
-  headers?: Record<string, string>;
-  data?: T;
+  headers: { [key: string]: string };
+  data: T;
 }

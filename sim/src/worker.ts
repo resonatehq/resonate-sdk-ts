@@ -2,18 +2,9 @@ import type { StepClock } from "../../src/clock";
 import { Core } from "../../src/core";
 import type { Encoder } from "../../src/encoder";
 import { NoopEncryptor } from "../../src/encryptor";
-import type { ResonateError } from "../../src/exceptions";
-import exceptions from "../../src/exceptions";
 import { Handler } from "../../src/handler";
 import { NoopHeartbeat } from "../../src/heartbeat";
-import type {
-  MessageSource,
-  Network,
-  Message as NetworkMessage,
-  Request,
-  Response,
-  ResponseFor,
-} from "../../src/network/network";
+import type { MessageSource, Network, Message as NetworkMessage, Req, Res } from "../../src/network/network";
 import { OptionsBuilder } from "../../src/options";
 import type { Registry } from "../../src/registry";
 import { NoopTracer } from "../../src/tracer";
@@ -51,7 +42,7 @@ class SimulatedMessageSource implements MessageSource {
   start(): void {}
 
   recv(msg: NetworkMessage): void {
-    for (const callback of this.subscriptions[msg.type]) {
+    for (const callback of this.subscriptions[msg.kind]) {
       callback(this.maybeCorruptData(msg));
     }
   }
@@ -73,8 +64,8 @@ class SimulatedNetwork implements Network {
 
   private prng: Random;
   private deliveryOptions: Required<DeliveryOptions>;
-  private buffer: Message<Request>[] = [];
-  private callbacks: Record<number, { callback: (res: Result<Response, any>) => void; timeout: number }> = {};
+  private buffer: Message<Req<string>>[] = [];
+  private callbacks: Record<number, { req: Req<string>; callback: (res: Res) => void; timeout: number }> = {};
   private messageSource: SimulatedMessageSource;
 
   constructor(
@@ -95,22 +86,22 @@ class SimulatedNetwork implements Network {
     return this.messageSource;
   }
 
-  send<T extends Request>(req: T, cb: (res: Result<ResponseFor<T>, ResonateError>) => void): void {
-    const message = new Message<Request>(this.source, this.target, req, {
+  send(req: Req<string>, cb: (res: Res) => void): void {
+    const message = new Message<Req<string>>(this.source, this.target, req, {
       requ: true,
       correlationId: this.correlationId++,
     });
 
-    const callback = (res: Result<Response, any>) => {
+    const callback = (res: Res) => {
       if (res.kind === "error") {
-        cb({ kind: "error", error: res.error as ResonateError });
+        cb(res);
       } else {
-        util.assert(res.value.kind === req.kind, "res kind must match req kind");
-        cb({ kind: "value", value: res.value as ResponseFor<T> });
+        util.assert(res.kind === req.kind, "res kind must match req kind");
+        cb(res);
       }
     };
 
-    this.callbacks[message.head!.correlationId] = { callback, timeout: this.currentTime + 50000 };
+    this.callbacks[message.head!.correlationId] = { req, callback, timeout: this.currentTime + 50000 };
     this.buffer.push(message);
   }
 
@@ -124,21 +115,25 @@ class SimulatedNetwork implements Network {
       const cb = this.callbacks[key];
       const hasTimedOut = cb.timeout < this.currentTime;
       if (hasTimedOut) {
-        cb.callback({ kind: "error", error: exceptions.SERVER_ERROR("Request timed out", true) });
+        cb.callback({
+          kind: "error",
+          head: { corrId: cb.req.head.corrId, version: cb.req.head.version, status: 500 },
+          data: "req timed out",
+        });
         delete this.callbacks[key];
       }
     }
   }
 
-  process(message: Message<{ err?: any; res?: Response } | NetworkMessage>): void {
+  process(message: Message<{ err?: any; res?: Res } | NetworkMessage>): void {
     if (message.isResponse()) {
       util.assert(message.source === this.target);
       util.assert(message.target === this.source);
       const correlationId = message.head?.correlationId;
-      const entry: { callback: (res: Result<Response, any>) => void; timeout: number } =
+      const entry: { callback: (res: Result<Res, any>) => void; timeout: number } =
         correlationId && this.callbacks[correlationId];
       if (entry) {
-        const msg = message as Message<{ err?: any; res?: Response }>;
+        const msg = message as Message<{ err?: any; res?: Res }>;
         if (msg.data.err) {
           util.assert(msg.data.res === undefined);
           entry.callback({ kind: "error", error: msg.data.err });
@@ -161,7 +156,7 @@ class SimulatedNetwork implements Network {
     return flushed;
   }
 
-  private maybeCorruptData(data: Response | NetworkMessage): any {
+  private maybeCorruptData(data: Res | NetworkMessage): any {
     // Serialize the data to a string
     let jsonStr = JSON.stringify(data);
 
@@ -218,7 +213,7 @@ export class WorkerProcess extends Process {
     });
   }
 
-  tick(tick: number, messages: Message<{ err?: any; res?: Response } | NetworkMessage>[]): Message<Request>[] {
+  tick(tick: number, messages: Message<{ err?: any; res?: Res } | NetworkMessage>[]): Message<Req<string>>[] {
     this.log(tick, "[recv]", messages);
 
     this.network.time(this.clock.time);

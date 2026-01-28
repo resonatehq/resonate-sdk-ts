@@ -3,9 +3,8 @@ import { type Context, InnerContext } from "../src/context";
 import { type Completed, Coroutine, type Suspended } from "../src/coroutine";
 import { JsonEncoder } from "../src/encoder";
 import { NoopEncryptor } from "../src/encryptor";
-import type { ResonateError } from "../src/exceptions";
 import { Handler } from "../src/handler";
-import type { DurablePromiseRecord, Message, Network, Request, ResponseFor } from "../src/network/network";
+import type { Message, Network, PromiseRecord, Req, Res } from "../src/network/network";
 import { PollMessageSource } from "../src/network/remote";
 import { OptionsBuilder } from "../src/options";
 import { Registry } from "../src/registry";
@@ -15,42 +14,39 @@ import type { Result } from "../src/types";
 import { assert } from "../src/util";
 
 class DummyNetwork implements Network {
-  private promises = new Map<string, DurablePromiseRecord>();
+  private promises = new Map<string, PromiseRecord<string>>();
 
   start(): void {}
-  send<T extends Request>(request: T, callback: (res: Result<ResponseFor<T>, ResonateError>) => void): void {
-    switch (request.kind) {
-      case "createPromise": {
-        const p: DurablePromiseRecord = {
-          id: request.id,
+  send(req: Req<string>, callback: (res: Res) => void): void {
+    switch (req.kind) {
+      case "promise.create": {
+        const p: PromiseRecord<string> = {
+          id: req.data.id,
           state: "pending",
-          timeout: request.timeout,
-          param: request.param,
-          value: undefined,
-          tags: request.tags || {},
+          timeoutAt: req.data.timeoutAt,
+          param: req.data.param,
+          value: { headers: {}, data: "" },
+          tags: req.data.tags,
+          createdAt: Date.now(),
         };
         this.promises.set(p.id, p);
         callback({
-          kind: "value",
-          value: {
-            kind: "createPromise",
-            promise: p,
-          } as ResponseFor<T>,
+          kind: req.kind,
+          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+          data: { promise: p },
         });
         return;
       }
 
-      case "completePromise": {
-        const p = this.promises.get(request.id)!;
+      case "promise.settle": {
+        const p = this.promises.get(req.data.id)!;
         p.state = "resolved";
-        p.value = request.value!;
+        p.value = req.data.value;
         this.promises.set(p.id, p);
         callback({
-          kind: "value",
-          value: {
-            kind: "completePromise",
-            promise: p,
-          } as ResponseFor<T>,
+          kind: req.kind,
+          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+          data: { promise: p },
         });
         break;
       }
@@ -90,7 +86,7 @@ describe("Coroutine", () => {
         }),
         func,
         args,
-        { id: `__invoke:${uuid}`, counter: 1, timeout: 0, rootPromiseId: uuid },
+        { id: `__invoke:${uuid}`, version: 1 },
         handler,
         new Map(),
         (res) => {
@@ -104,13 +100,17 @@ describe("Coroutine", () => {
 
   const completePromise = (handler: Handler, id: string, result: Result<any, any>) => {
     return new Promise<any>((resolve) => {
-      handler.completePromise(
+      handler.promiseSettle(
         {
-          kind: "completePromise",
-          id: id,
-          state: result.kind === "value" ? "resolved" : "rejected",
-          value: {
-            data: result.kind === "value" ? result.value : result.error,
+          kind: "promise.settle",
+          head: { corrId: "", version: "" },
+          data: {
+            id: id,
+            state: result.kind === "value" ? "resolved" : "rejected",
+            value: {
+              headers: {},
+              data: result.kind === "value" ? result.value : result.error,
+            },
           },
         },
         (res) => {
@@ -334,7 +334,7 @@ describe("Coroutine", () => {
         }),
         foo,
         [],
-        { id: "__invoke:foo.1", counter: 1, timeout: 0, rootPromiseId: "foo" },
+        { id: "__invoke:foo.1", version: 1 },
         h,
         new Map(),
         (res) => {

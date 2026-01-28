@@ -1,307 +1,245 @@
 // Records
-import type { ResonateError } from "exceptions";
-import type { Result, Value } from "../types";
+export type PromiseState = "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
 
-export interface DurablePromiseRecord<T = string> {
+export type PromiseRecord<T> = {
   id: string;
-  state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
-  timeout: number;
-  param?: Value<T>;
-  value?: Value<T>;
-  tags: Record<string, string>;
-  createdOn?: number;
-  completedOn?: number;
-}
+  state: PromiseState;
+  param: { headers: { [key: string]: string }; data: T };
+  value: { headers: { [key: string]: string }; data: T };
+  tags: { [key: string]: string };
+  timeoutAt: number;
+  createdAt: number;
+  settledAt?: number;
+};
 
-export interface ScheduleRecord {
+export type TaskRecord = {
   id: string;
-  description?: string;
+  version: number;
+};
+
+export type InvokeMessage = {
+  kind: "invoke";
+  head: { [key: string]: string };
+  data: {
+    task: TaskRecord;
+  };
+};
+
+export type ResumeMessage = {
+  kind: "resume";
+  head: { [key: string]: string };
+  data: {
+    task: TaskRecord;
+  };
+};
+
+export type NotifyMessage = {
+  kind: "notify";
+  head: { [key: string]: string };
+  data: {
+    promise: PromiseRecord<string>;
+  };
+};
+
+export type Message = InvokeMessage | ResumeMessage | NotifyMessage;
+
+export type ScheduleRecord<T> = {
+  id: string;
   cron: string;
-  tags: Record<string, string>;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam?: Value<string>;
-  promiseTags: Record<string, string>;
-  lastRunTime?: number;
-  nextRunTime?: number;
-  createdOn?: number;
-}
-
-export interface TaskRecord {
-  id: string;
-  rootPromiseId: string;
-  counter: number;
-  timeout: number;
-  processId?: string;
-  createdOn?: number;
-  completedOn?: number;
-}
-
-export interface CallbackRecord {
-  id: string;
-  promiseId: string;
-  timeout: number;
-  createdOn?: number;
-}
-
-// Request
-
-export type Request =
-  | CreatePromiseReq
-  | CreatePromiseAndTaskReq
-  | ReadPromiseReq
-  | CompletePromiseReq
-  | CreateCallbackReq
-  | CreateSubscriptionReq
-  | CreateScheduleReq
-  | ReadScheduleReq
-  | DeleteScheduleReq
-  | ClaimTaskReq
-  | CompleteTaskReq
-  | DropTaskReq
-  | HeartbeatTasksReq
-  | SearchPromisesReq
-  | SearchSchedulesReq;
-
-export type CreatePromiseReq<T = string> = {
-  kind: "createPromise";
-  id: string;
-  timeout: number;
-  param?: Value<T>;
-  tags?: Record<string, string>;
+  promiseParam: { headers: { [key: string]: string }; data: T };
+  promiseTags: { [key: string]: string };
+  createdAt: number;
+  nextRunAt: number;
+  lastRunAt?: number;
 };
 
-export type CreatePromiseAndTaskReq<T = string> = {
-  kind: "createPromiseAndTask";
-  promise: {
+type ReqResKind =
+  | "promise.get"
+  | "promise.create"
+  | "promise.settle"
+  | "promise.register"
+  | "promise.subscribe"
+  | "task.get"
+  | "task.create"
+  | "task.acquire"
+  | "task.suspend"
+  | "task.fulfill"
+  | "task.release"
+  | "task.fence"
+  | "task.heartbeat"
+  | "schedule.get"
+  | "schedule.create"
+  | "schedule.delete"
+  | "error";
+
+type ReqSchema<K extends ReqResKind, T> = {
+  kind: K;
+  head: {
+    auth?: string;
+    corrId: string;
+    version: string;
+  };
+  data: T;
+};
+
+type ResSchema<K extends ReqResKind, S extends number, T> = {
+  kind: K;
+  head: {
+    corrId: string;
+    status: S;
+    version: string;
+  };
+  data: T;
+};
+
+export type ErrorCode = 400 | 404 | 409 | 429 | 500;
+export type ErrorRes = ResSchema<"error", ErrorCode, string>;
+
+export type PromiseGetReq = ReqSchema<"promise.get", { id: string }>;
+export type PromiseGetRes = ResSchema<"promise.get", 200, { promise: PromiseRecord<string> }>;
+
+export type PromiseCreateReq<T> = ReqSchema<
+  "promise.create",
+  {
     id: string;
-    timeout: number;
-    param?: Value<T>;
-    tags?: Record<string, string>;
-  };
-  task: {
-    processId: string;
-    ttl: number;
-  };
-};
+    param: { headers: { [key: string]: string }; data: T };
+    tags: { [key: string]: string };
+    timeoutAt: number;
+  }
+>;
+export type PromiseCreateRes = ResSchema<"promise.create", 200, { promise: PromiseRecord<string> }>;
 
-export type ReadPromiseReq = {
-  kind: "readPromise";
-  id: string;
-};
+export type PromiseSettleReq<T> = ReqSchema<
+  "promise.settle",
+  {
+    id: string;
+    state: "resolved" | "rejected" | "rejected_canceled";
+    value: { headers: { [key: string]: string }; data: T };
+  }
+>;
+export type PromiseSettleRes = ResSchema<"promise.settle", 200, { promise: PromiseRecord<string> }>;
 
-export type CompletePromiseReq<T = string> = {
-  kind: "completePromise";
-  id: string;
-  state: "resolved" | "rejected" | "rejected_canceled";
-  value?: Value<T>;
-};
+export type PromiseRegisterReq = ReqSchema<"promise.register", { awaiter: string; awaited: string }>;
+export type PromiseRegisterRes = ResSchema<"promise.register", 200, { promise: PromiseRecord<string> }>;
 
-export type CreateCallbackReq = {
-  kind: "createCallback";
-  promiseId: string;
-  rootPromiseId: string;
-  timeout: number;
-  recv: string;
-};
+export type PromiseSubscribeReq = ReqSchema<"promise.subscribe", { awaited: string; address: string }>;
+export type PromiseSubscribeRes = ResSchema<"promise.subscribe", 200, { promise: PromiseRecord<string> }>;
 
-export type CreateSubscriptionReq = {
-  kind: "createSubscription";
-  id: string;
-  promiseId: string;
-  timeout: number;
-  recv: string;
-};
+export type TaskGetReq = ReqSchema<"task.get", { id: string }>;
+export type TaskGetRes = ResSchema<"task.get", 200, { task: TaskRecord }>;
 
-export type CreateScheduleReq = {
-  kind: "createSchedule";
-  id?: string;
-  description?: string;
-  cron?: string;
-  tags?: Record<string, string>;
-  promiseId?: string;
-  promiseTimeout?: number;
-  promiseParam?: Value<string>;
-  promiseTags?: Record<string, string>;
-};
+export type TaskCreateReq<T> = ReqSchema<"task.create", { pid: string; ttl: number; action: PromiseCreateReq<T> }>;
+export type TaskCreateRes = ResSchema<"task.create", 200, { task?: TaskRecord; promise: PromiseRecord<string> }>;
 
-export type ReadScheduleReq = {
-  kind: "readSchedule";
-  id: string;
-};
+export type TaskAcquireReq = ReqSchema<"task.acquire", { id: string; version: number; pid: string; ttl: number }>;
+export type TaskAcquireRes = ResSchema<
+  "task.acquire",
+  200,
+  { kind: "invoke" | "resume"; data: { promise: PromiseRecord<string>; preload: PromiseRecord<string>[] } }
+>;
 
-export type DeleteScheduleReq = {
-  kind: "deleteSchedule";
-  id: string;
-};
+export type TaskSuspendReq = ReqSchema<
+  "task.suspend",
+  {
+    id: string;
+    version: number;
+    actions: PromiseRegisterReq[];
+  }
+>;
+export type TaskSuspendRes = ResSchema<"task.suspend", 200 | 300, undefined>;
 
-export type ClaimTaskReq = {
-  kind: "claimTask";
-  id: string;
-  counter: number;
-  processId: string;
-  ttl: number;
-};
+export type TaskFulfillReq<T> = ReqSchema<
+  "task.fulfill",
+  {
+    id: string;
+    version: number;
+    action: PromiseSettleReq<T>;
+  }
+>;
+export type TaskFulfillRes = ResSchema<"task.fulfill", 200, { promise: PromiseRecord<string> }>;
 
-export type CompleteTaskReq = {
-  kind: "completeTask";
-  id: string;
-  counter: number;
-};
+export type TaskReleaseReq = ReqSchema<"task.release", { id: string; version: number }>;
+export type TaskReleaseRes = ResSchema<"task.release", 200, undefined>;
 
-export type DropTaskReq = {
-  kind: "dropTask";
-  id: string;
-  counter: number;
-};
+export type TaskFenceReq<T> = ReqSchema<
+  "task.fence",
+  {
+    id: string;
+    version: number;
+    action: PromiseCreateReq<T> | PromiseSettleReq<T>;
+  }
+>;
+export type TaskFenceRes = ResSchema<"task.fence", 200, { action: PromiseCreateRes | PromiseSettleRes }>;
 
-export type HeartbeatTasksReq = {
-  kind: "heartbeatTasks";
-  processId: string;
-};
+export type TaskHeartbeatReq = ReqSchema<"task.heartbeat", { pid: string; tasks: TaskRecord[] }>;
+export type TaskHeartbeatRes = ResSchema<"task.heartbeat", 200, undefined>;
 
-export type SearchPromisesReq = {
-  kind: "searchPromises";
-  id: string;
-  state?: "pending" | "resolved" | "rejected";
-  limit?: number;
-  cursor?: string;
-};
+export type ScheduleGetReq = ReqSchema<"schedule.get", { id: string }>;
+export type ScheduleGetRes = ResSchema<"schedule.get", 200, { schedule: ScheduleRecord<string> }>;
 
-export type SearchSchedulesReq = {
-  kind: "searchSchedules";
-  id: string;
-  limit?: number;
-  cursor?: string;
-};
+export type ScheduleCreateReq<T> = ReqSchema<
+  "schedule.create",
+  {
+    id: string;
+    cron: string;
+    promiseId: string;
+    promiseTimeout: number;
+    promiseParam: { headers: { [key: string]: string }; data: T };
+    promiseTags: { [key: string]: string };
+  }
+>;
+export type ScheduleCreateRes = ResSchema<"schedule.create", 200, { schedule: ScheduleRecord<string> }>;
 
-// Response
+export type ScheduleDeleteReq = ReqSchema<"schedule.delete", { id: string }>;
+export type ScheduleDeleteRes = ResSchema<"schedule.delete", 200, undefined>;
 
-export type Response =
-  | CreatePromiseRes
-  | CreatePromiseAndTaskRes
-  | ReadPromiseRes
-  | CompletePromiseRes
-  | CreateCallbackRes
-  | CreateSubscriptionRes
-  | CreateScheduleRes
-  | ReadScheduleRes
-  | DeleteScheduleRes
-  | ClaimTaskRes
-  | CompleteTaskRes
-  | DropTaskRes
-  | HeartbeatTasksRes
-  | SearchPromisesRes
-  | SearchSchedulesRes;
+export type Req<T> =
+  | PromiseGetReq
+  | PromiseCreateReq<T>
+  | PromiseSettleReq<T>
+  | PromiseRegisterReq
+  | PromiseSubscribeReq
+  | TaskGetReq
+  | TaskCreateReq<T>
+  | TaskAcquireReq
+  | TaskSuspendReq
+  | TaskFulfillReq<T>
+  | TaskReleaseReq
+  | TaskFenceReq<T>
+  | TaskHeartbeatReq
+  | ScheduleGetReq
+  | ScheduleCreateReq<T>
+  | ScheduleDeleteReq;
 
-export type CreatePromiseRes = {
-  kind: "createPromise";
-  promise: DurablePromiseRecord;
-};
-
-export type CreatePromiseAndTaskRes = {
-  kind: "createPromiseAndTask";
-  promise: DurablePromiseRecord;
-  task?: TaskRecord;
-};
-
-export type ReadPromiseRes = {
-  kind: "readPromise";
-  promise: DurablePromiseRecord;
-};
-
-export type CompletePromiseRes = {
-  kind: "completePromise";
-  promise: DurablePromiseRecord;
-};
-
-export type CreateCallbackRes = {
-  kind: "createCallback";
-  callback?: CallbackRecord;
-  promise: DurablePromiseRecord;
-};
-
-export type CreateSubscriptionRes = {
-  kind: "createSubscription";
-  callback?: CallbackRecord;
-  promise: DurablePromiseRecord;
-};
-
-export type CreateScheduleRes = {
-  kind: "createSchedule";
-  schedule: ScheduleRecord;
-};
-
-export type ReadScheduleRes = {
-  kind: "readSchedule";
-  schedule: ScheduleRecord;
-};
-
-export type DeleteScheduleRes = {
-  kind: "deleteSchedule";
-};
-
-export type ClaimTaskRes = {
-  kind: "claimTask";
-  message: {
-    kind: "invoke" | "resume";
-    promises: {
-      root?: {
-        id: string;
-        data: DurablePromiseRecord;
-      };
-      leaf?: {
-        id: string;
-        data: DurablePromiseRecord;
-      };
-    };
-  };
-};
-
-export type CompleteTaskRes = {
-  kind: "completeTask";
-  task: TaskRecord;
-};
-
-export type DropTaskRes = {
-  kind: "dropTask";
-};
-
-export type HeartbeatTasksRes = {
-  kind: "heartbeatTasks";
-  tasksAffected: number;
-};
-
-export type SearchPromisesRes = {
-  kind: "searchPromises";
-  promises: DurablePromiseRecord[];
-  cursor?: string;
-};
-
-export type SearchSchedulesRes = {
-  kind: "searchSchedules";
-  schedules: ScheduleRecord[];
-  cursor?: string;
-};
-
-// Message
-
-export type Message =
-  | { type: "invoke" | "resume"; task: TaskRecord; headers: Record<string, string> }
-  | { type: "notify"; promise: DurablePromiseRecord; headers: Record<string, string> };
-
-// Network
-
-export type ResponseFor<T extends Request> = Extract<Response, { kind: T["kind"] }>;
+export type Res =
+  | PromiseGetRes
+  | PromiseCreateRes
+  | PromiseSettleRes
+  | PromiseRegisterRes
+  | PromiseSubscribeRes
+  | TaskGetRes
+  | TaskCreateRes
+  | TaskAcquireRes
+  | TaskSuspendRes
+  | TaskFulfillRes
+  | TaskReleaseRes
+  | TaskFenceRes
+  | TaskHeartbeatRes
+  | ScheduleGetRes
+  | ScheduleCreateRes
+  | ScheduleDeleteRes
+  | ErrorRes;
 
 export interface Network {
   start(): void;
   stop(): void;
 
-  send<T extends Request>(
-    req: T,
-    callback: (res: Result<ResponseFor<T>, ResonateError>) => void,
-    headers?: Record<string, string>,
+  send(
+    req: Req<string>,
+    callback: (res: Res) => void,
+    headers?: { [key: string]: string },
     retryForever?: boolean,
   ): void;
   getMessageSource?: () => MessageSource;

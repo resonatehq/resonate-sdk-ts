@@ -46,19 +46,19 @@ describe("Encryptors", () => {
     // Basic cases
     { headers: { foo: "bar" }, data: "Hello, world!" },
     { headers: { foo: "bar" }, data: "" },
-    { headers: { foo: "bar" } },
-    { data: "No headers here" },
+    { headers: { foo: "bar" }, data: "" },
+    { data: "No headers here", headers: {} },
 
     // Unicode and emoji
-    { data: "😊" },
+    { data: "😊", headers: {} },
     { headers: { lang: "jp" }, data: "こんにちは世界" }, // Japanese
     { headers: { lang: "cn" }, data: "你好，世界" }, // Chinese
     { headers: { lang: "ar" }, data: "مرحبا بالعالم" }, // Arabic
     { headers: { lang: "emoji" }, data: "🔥💯🚀" },
 
     // Whitespace and edge formatting
-    { data: "   " },
-    { data: "\n\t\r" },
+    { data: "   ", headers: {} },
+    { data: "\n\t\r", headers: {} },
     { headers: {}, data: " leading and trailing " },
 
     // Long and random text
@@ -78,7 +78,7 @@ describe("Encryptors", () => {
     },
 
     // Potential edge/binary-like content
-    { data: "\u0000\u0001\u0002\u0003" },
+    { data: "\u0000\u0001\u0002\u0003", headers: {} },
     { headers: { encoding: "base64" }, data: Buffer.from("binarydata").toString("base64") },
   ];
 

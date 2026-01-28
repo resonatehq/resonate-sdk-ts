@@ -31,15 +31,15 @@ export class AsyncHeartbeat implements Heartbeat {
 
       this.network.send(
         {
-          kind: "heartbeatTasks",
-          processId: this.pid,
+          kind: "task.heartbeat",
+          head: { corrId: "", version: "" },
+          data: {
+            pid: this.pid,
+            tasks: [],
+          },
         },
         (res) => {
-          if (res.kind === "error") return;
-
-          if (res.value.tasksAffected === 0) {
-            this.clearIntervalIfMatch(counter);
-          }
+          return;
         },
       );
     }, this.delay);

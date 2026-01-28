@@ -7,7 +7,7 @@ import { JsonEncoder } from "../src/encoder";
 import { NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
 import { NoopHeartbeat } from "../src/heartbeat";
-import type { DurablePromiseRecord, TaskRecord } from "../src/network/network";
+import type { PromiseRecord, TaskRecord } from "../src/network/network";
 import { OptionsBuilder } from "../src/options";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";
@@ -20,26 +20,32 @@ async function createPromiseAndTask(
   id: string,
   funcName: string,
   args: any[],
-): Promise<{ promise: DurablePromiseRecord; task: TaskRecord }> {
+): Promise<{ promise: PromiseRecord<any>; task: TaskRecord }> {
   return new Promise((resolve) => {
-    handler.createPromiseAndTask(
+    handler.taskCreate(
       {
-        kind: "createPromiseAndTask",
-        promise: {
-          id: id,
-          timeout: 24 * util.HOUR + Date.now(),
-          param: {
+        kind: "task.create",
+        head: { corrId: "", version: "" },
+        data: {
+          pid: "default",
+          ttl: 5 * util.MIN,
+          action: {
+            kind: "promise.create",
+            head: { corrId: "", version: "" },
             data: {
-              func: funcName,
-              args: args,
-              version: 1,
+              id: id,
+              timeoutAt: 24 * util.HOUR + Date.now(),
+              param: {
+                headers: {},
+                data: {
+                  func: funcName,
+                  args: args,
+                  version: 1,
+                },
+              },
+              tags: { "resonate:invoke": "poll://any@default/default" },
             },
           },
-          tags: { "resonate:invoke": "poll://any@default/default" },
-        },
-        task: {
-          processId: "default",
-          ttl: 5 * util.MIN,
         },
       },
       (res) => {

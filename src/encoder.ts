@@ -14,7 +14,7 @@ export class JsonEncoder implements Encoder {
     // note about undefined:
     // undefined is not json serializable, so immediately return undefined
     if (value === undefined) {
-      return { data: undefined };
+      return { data: "undefined", headers: {} };
     }
 
     const json = JSON.stringify(value, (_, v) => {

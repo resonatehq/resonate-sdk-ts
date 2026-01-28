@@ -1,7 +1,7 @@
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
-import type { DurablePromiseRecord, TaskRecord } from "./network/network";
+import type { PromiseRecord, TaskRecord } from "./network/network";
 import { Never } from "./retries";
 import type { Span } from "./tracer";
 import type { Result, Yieldable } from "./types";
@@ -15,7 +15,7 @@ export type Suspended = {
 
 export type Completed = {
   type: "completed";
-  promise: DurablePromiseRecord;
+  promise: PromiseRecord<any>;
 };
 
 export interface LocalTodo {
@@ -93,13 +93,18 @@ export class Coroutine<T> {
     spans: Map<string, Span>,
     callback: (res: Result<Suspended | Completed, any>) => void,
   ): void {
-    handler.createPromise(
+    handler.promiseCreate(
       {
         // The createReq for this specific creation is not relevant,
         // this promise is guaranteed to have been created already.
-        kind: "createPromise",
-        id,
-        timeout: 0,
+        kind: "promise.create",
+        head: { corrId: "", version: "" },
+        data: {
+          id,
+          timeoutAt: 0,
+          tags: {},
+          param: { headers: {}, data: "" },
+        },
       },
       (res) => {
         if (res.kind === "error") return callback({ kind: "error", error: undefined });
@@ -118,13 +123,17 @@ export class Coroutine<T> {
               break;
 
             case "done":
-              handler.completePromise(
+              handler.promiseSettle(
                 {
-                  kind: "completePromise",
-                  id: id,
-                  state: status.result.kind === "value" ? "resolved" : "rejected",
-                  value: {
-                    data: status.result.kind === "value" ? status.result.value : status.result.error,
+                  kind: "promise.settle",
+                  head: { corrId: "", version: "" },
+                  data: {
+                    id,
+                    state: status.result.kind === "value" ? "resolved" : "rejected",
+                    value: {
+                      data: status.result.kind === "value" ? status.result.value : status.result.error,
+                      headers: {},
+                    },
                   },
                 },
                 (res) => {
@@ -162,19 +171,19 @@ export class Coroutine<T> {
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
           let span: Span;
-          if (!this.spans.has(action.createReq.id)) {
-            span = this.ctx.span.startSpan(action.createReq.id, this.ctx.clock.now());
+          if (!this.spans.has(action.createReq.data.id)) {
+            span = this.ctx.span.startSpan(action.createReq.data.id, this.ctx.clock.now());
             span.setAttribute("type", "run");
             span.setAttribute("func", action.func.name);
             span.setAttribute("version", action.version);
             span.setAttribute("task.id", this.task.id);
-            span.setAttribute("task.counter", this.task.counter);
-            this.spans.set(action.createReq.id, span);
+            span.setAttribute("task.version", this.task.version);
+            this.spans.set(action.createReq.data.id, span);
           } else {
-            span = this.spans.get(action.createReq.id)!;
+            span = this.spans.get(action.createReq.data.id)!;
           }
 
-          this.handler.createPromise(
+          this.handler.promiseCreate(
             action.createReq,
             (res) => {
               if (res.kind === "error") {
@@ -191,7 +200,7 @@ export class Coroutine<T> {
               const ctx = this.ctx.child({
                 id: res.value.id,
                 func: action.func.name,
-                timeout: res.value.timeout,
+                timeout: res.value.timeoutAt,
                 version: action.version,
                 retryPolicy: action.retryPolicy,
                 span: span,
@@ -245,13 +254,17 @@ export class Coroutine<T> {
                     };
                     next();
                   } else {
-                    this.handler.completePromise(
+                    this.handler.promiseSettle(
                       {
-                        kind: "completePromise",
-                        id: action.id,
-                        state: status.result.kind === "value" ? "resolved" : "rejected",
-                        value: {
-                          data: status.result.kind === "value" ? status.result.value : status.result.error,
+                        kind: "promise.settle",
+                        head: { corrId: "", version: "" },
+                        data: {
+                          id: action.id,
+                          state: status.result.kind === "value" ? "resolved" : "rejected",
+                          value: {
+                            headers: {},
+                            data: status.result.kind === "value" ? status.result.value : status.result.error,
+                          },
                         },
                       },
                       (res) => {
@@ -330,20 +343,20 @@ export class Coroutine<T> {
         // Handle internal.async.r
         if (action.type === "internal.async.r") {
           let span: Span;
-          if (!this.spans.has(action.createReq.id)) {
-            span = this.ctx.span.startSpan(action.createReq.id, this.ctx.clock.now());
+          if (!this.spans.has(action.createReq.data.id)) {
+            span = this.ctx.span.startSpan(action.createReq.data.id, this.ctx.clock.now());
             span.setAttribute("type", "rpc");
             span.setAttribute("mode", action.mode);
             span.setAttribute("func", action.func);
             span.setAttribute("version", action.version);
             span.setAttribute("task.id", this.task.id);
-            span.setAttribute("task.counter", this.task.counter);
-            this.spans.set(action.createReq.id, span);
+            span.setAttribute("task.version", this.task.version);
+            this.spans.set(action.createReq.data.id, span);
           } else {
-            span = this.spans.get(action.createReq.id)!;
+            span = this.spans.get(action.createReq.data.id)!;
           }
 
-          this.handler.createPromise(
+          this.handler.promiseCreate(
             action.createReq,
             (res) => {
               if (res.kind === "error") {

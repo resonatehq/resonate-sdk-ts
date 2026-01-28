@@ -1,5 +1,6 @@
 import { LocalNetwork } from "../dev/network";
-import type { ClaimTaskRes, Network, TaskRecord } from "./network/network";
+import type { Network, PromiseRecord, TaskAcquireRes } from "./network/network";
+import * as util from "./util";
 
 export class Tasks {
   private network: Network;
@@ -8,15 +9,18 @@ export class Tasks {
     this.network = network;
   }
 
-  claim(id: string, counter: number, pid: string, ttl: number): Promise<ClaimTaskRes["message"]> {
+  acquire(id: string, version: number, pid: string, ttl: number): Promise<TaskAcquireRes["data"]> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
-          kind: "claimTask",
-          id: id,
-          counter: counter,
-          processId: pid,
-          ttl: ttl,
+          kind: "task.acquire",
+          head: { corrId: "", version: "" },
+          data: {
+            id,
+            version,
+            pid,
+            ttl,
+          },
         },
         (res) => {
           if (res.kind === "error") {
@@ -24,20 +28,28 @@ export class Tasks {
             reject(Error("not implemented"));
             return;
           }
-
-          resolve(res.value.message);
+          util.assert(res.kind === "task.acquire");
+          resolve(res.data);
         },
       );
     });
   }
 
-  complete(id: string, counter: number): Promise<TaskRecord> {
+  fulfill(id: string, version: number): Promise<PromiseRecord<string>> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
-          kind: "completeTask",
-          id: id,
-          counter: counter,
+          kind: "task.fulfill",
+          head: { corrId: "", version: "" },
+          data: {
+            id,
+            version,
+            action: {
+              kind: "promise.settle",
+              head: { corrId: "", version: "" },
+              data: { id, state: "rejected", value: { headers: {}, data: "" } },
+            },
+          },
         },
         (res) => {
           if (res.kind === "error") {
@@ -45,19 +57,23 @@ export class Tasks {
             reject(Error("not implemented"));
             return;
           }
-
-          resolve(res.value.task);
+          util.assert(res.kind === "task.fulfill");
+          resolve(res.data.promise);
         },
       );
     });
   }
 
-  heartbeat(pid: string): Promise<number> {
+  heartbeat(pid: string): Promise<undefined> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
-          kind: "heartbeatTasks",
-          processId: pid,
+          kind: "task.heartbeat",
+          head: { corrId: "", version: "" },
+          data: {
+            pid,
+            tasks: [],
+          },
         },
         (res) => {
           if (res.kind === "error") {
@@ -65,8 +81,8 @@ export class Tasks {
             reject(Error("not implemented"));
             return;
           }
-
-          resolve(res.value.tasksAffected);
+          util.assert(res.kind === "task.heartbeat");
+          resolve(res.data);
         },
       );
     });

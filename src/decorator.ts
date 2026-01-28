@@ -1,6 +1,6 @@
 import { DIE, Future, LFC, LFI, RFC, RFI } from "./context";
 import type { ResonateError } from "./exceptions";
-import type { CreatePromiseReq } from "./network/network";
+import type { PromiseCreateReq } from "./network/network";
 import type { RetryPolicy } from "./retries";
 import type { Func, Result, Yieldable } from "./types";
 import * as util from "./util";
@@ -21,7 +21,7 @@ export type InternalAsyncR = {
   mode: "attached" | "detached";
   func: string;
   version: number;
-  createReq: CreatePromiseReq<any>;
+  createReq: PromiseCreateReq<any>;
 };
 
 export type InternalAsyncL = {
@@ -31,7 +31,7 @@ export type InternalAsyncL = {
   args: any[];
   version: number;
   retryPolicy: RetryPolicy;
-  createReq: CreatePromiseReq<any>;
+  createReq: PromiseCreateReq<any>;
 };
 export type InternalAwait<T> = {
   type: "internal.await";

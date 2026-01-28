@@ -1,6 +1,6 @@
 import type { Clock } from "./clock";
 import exceptions, { type ResonateError } from "./exceptions";
-import type { CreatePromiseReq } from "./network/network";
+import type { PromiseCreateReq } from "./network/network";
 import type { Options, OptionsBuilder } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
@@ -14,7 +14,7 @@ export class LFI<T> implements Iterable<LFI<T>> {
   public args: any[];
   public version: number;
   public retryPolicy: RetryPolicy;
-  public createReq: CreatePromiseReq<any>;
+  public createReq: PromiseCreateReq<any>;
 
   constructor(
     id: string,
@@ -22,7 +22,7 @@ export class LFI<T> implements Iterable<LFI<T>> {
     args: any[],
     version: number,
     retryPolicy: RetryPolicy,
-    createReq: CreatePromiseReq<any>,
+    createReq: PromiseCreateReq<any>,
   ) {
     this.id = id;
     this.func = func;
@@ -45,7 +45,7 @@ export class LFC<T> implements Iterable<LFC<T>> {
   public args: any[];
   public version: number;
   public retryPolicy: RetryPolicy;
-  public createReq: CreatePromiseReq;
+  public createReq: PromiseCreateReq<any>;
 
   constructor(
     id: string,
@@ -53,7 +53,7 @@ export class LFC<T> implements Iterable<LFC<T>> {
     args: any[],
     version: number,
     retryPolicy: RetryPolicy,
-    createReq: CreatePromiseReq,
+    createReq: PromiseCreateReq<any>,
   ) {
     this.id = id;
     this.func = func;
@@ -74,14 +74,14 @@ export class RFI<T> implements Iterable<RFI<T>> {
   public id: string;
   public func: string;
   public version: number;
-  public createReq: CreatePromiseReq;
+  public createReq: PromiseCreateReq<any>;
   public mode: "attached" | "detached";
 
   constructor(
     id: string,
     func: string,
     version: number,
-    createReq: CreatePromiseReq,
+    createReq: PromiseCreateReq<any>,
     mode: "attached" | "detached" = "attached",
   ) {
     this.id = id;
@@ -102,10 +102,10 @@ export class RFC<T> implements Iterable<RFC<T>> {
   public id: string;
   public func: string;
   public version: number;
-  public createReq: CreatePromiseReq;
+  public createReq: PromiseCreateReq<any>;
   public mode = "attached" as const;
 
-  constructor(id: string, func: string, version: number, createReq: CreatePromiseReq) {
+  constructor(id: string, func: string, version: number, createReq: PromiseCreateReq<any>) {
     this.id = id;
     this.func = func;
     this.version = version;
@@ -222,7 +222,7 @@ export interface Context {
     id?: string;
     timeout?: number;
     data?: any;
-    tags?: Record<string, string>;
+    tags?: { [key: string]: string };
   }): RFI<T>;
 
   // die
@@ -540,7 +540,7 @@ export class InnerContext implements Context {
     id?: string;
     timeout?: number;
     data?: any;
-    tags?: Record<string, string>;
+    tags?: { [key: string]: string };
   } = {}): RFI<T> {
     const idChanged = id !== undefined;
     id = id ?? this.seqid();
@@ -605,24 +605,25 @@ export class InnerContext implements Context {
     data: any;
     opts: Options;
     breaksLineage: boolean;
-  }): CreatePromiseReq {
-    const tags = {
-      "resonate:scope": "local",
-      "resonate:branch": this.branchId,
-      "resonate:parent": this.id,
-      "resonate:origin": breaksLineage ? id : this.originId,
-      ...opts.tags,
-    };
-
+  }): PromiseCreateReq<any> {
     // timeout cannot be greater than parent timeout
-    const timeout = Math.min(this.clock.now() + opts.timeout, this.info.timeout);
+    const timeoutAt = Math.min(this.clock.now() + opts.timeout, this.info.timeout);
 
     return {
-      kind: "createPromise",
-      id,
-      timeout: timeout,
-      param: { data },
-      tags,
+      kind: "promise.create",
+      head: { corrId: "", version: "" },
+      data: {
+        id,
+        timeoutAt,
+        param: { headers: {}, data },
+        tags: {
+          "resonate:scope": "local",
+          "resonate:branch": this.branchId,
+          "resonate:parent": this.id,
+          "resonate:origin": breaksLineage ? id : this.originId,
+          ...opts.tags,
+        },
+      },
     };
   }
 
@@ -638,25 +639,26 @@ export class InnerContext implements Context {
     opts: Options;
     breaksLineage: boolean;
     maxTimeout?: number;
-  }): CreatePromiseReq {
-    const tags = {
-      "resonate:scope": "global",
-      "resonate:invoke": opts.target,
-      "resonate:branch": id,
-      "resonate:parent": this.id,
-      "resonate:origin": breaksLineage ? id : this.originId,
-      ...opts.tags,
-    };
-
+  }): PromiseCreateReq<any> {
     // timeout cannot be greater than parent timeout (unless detached)
-    const timeout = Math.min(this.clock.now() + opts.timeout, maxTimeout);
+    const timeoutAt = Math.min(this.clock.now() + opts.timeout, maxTimeout);
 
     return {
-      kind: "createPromise",
-      id,
-      timeout,
-      tags,
-      param: { data },
+      kind: "promise.create",
+      head: { corrId: "", version: "" },
+      data: {
+        id,
+        timeoutAt,
+        tags: {
+          "resonate:scope": "global",
+          "resonate:invoke": opts.target,
+          "resonate:branch": id,
+          "resonate:parent": this.id,
+          "resonate:origin": breaksLineage ? id : this.originId,
+          ...opts.tags,
+        },
+        param: { headers: {}, data },
+      },
     };
   }
 
@@ -670,30 +672,31 @@ export class InnerContext implements Context {
     id: string;
     timeout?: number;
     data: any;
-    tags?: Record<string, string>;
+    tags?: { [key: string]: string };
     breaksLineage: boolean;
-  }): CreatePromiseReq {
-    const cTags: Record<string, string> = {
-      "resonate:scope": "global",
-      "resonate:branch": id,
-      "resonate:parent": this.id,
-      "resonate:origin": breaksLineage ? id : this.originId,
-      ...tags,
-    };
-
+  }): PromiseCreateReq<any> {
     // timeout cannot be greater than parent timeout
-    const cTimeout = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.info.timeout);
+    const timeoutAt = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.info.timeout);
 
     return {
-      kind: "createPromise",
-      id: id,
-      timeout: cTimeout,
-      param: { data },
-      tags: cTags,
+      kind: "promise.create",
+      head: { corrId: "", version: "" },
+      data: {
+        id,
+        timeoutAt,
+        param: { data, headers: {} },
+        tags: {
+          "resonate:scope": "global",
+          "resonate:branch": id,
+          "resonate:parent": this.id,
+          "resonate:origin": breaksLineage ? id : this.originId,
+          ...tags,
+        },
+      },
     };
   }
 
-  sleepCreateOpts({ id, time }: { id: string; time: number }): CreatePromiseReq {
+  sleepCreateOpts({ id, time }: { id: string; time: number }): PromiseCreateReq<any> {
     const tags = {
       "resonate:scope": "global",
       "resonate:branch": id,
@@ -703,14 +706,17 @@ export class InnerContext implements Context {
     };
 
     // timeout cannot be greater than parent timeout
-    const timeout = Math.min(time, this.info.timeout);
+    const timeoutAt = Math.min(time, this.info.timeout);
 
     return {
-      kind: "createPromise",
-      id: id,
-      timeout: timeout,
-      param: {},
-      tags,
+      kind: "promise.create",
+      head: { corrId: "", version: "" },
+      data: {
+        id,
+        timeoutAt,
+        param: { headers: {}, data: "" },
+        tags,
+      },
     };
   }
 
