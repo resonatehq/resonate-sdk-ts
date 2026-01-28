@@ -49,8 +49,8 @@ export class JsonEncoder implements Encoder {
     };
   }
 
-  decode(value: Value<string>): any | undefined {
-    if (value.data === "" && Object.keys(value.headers).length === 0) {
+  decode(value: Value<string> | undefined): any | undefined {
+    if (!value?.data) {
       return undefined;
     }
 
