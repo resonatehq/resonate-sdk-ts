@@ -91,7 +91,7 @@ sim.delay(0, () => {
       data: {
         id,
         timeoutAt: 10000000000,
-        tags: { "resonate:invoke": "local://any@default" },
+        tags: { "resonate:target": "local://any@default" },
         param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
       },
     },
@@ -113,4 +113,4 @@ function f(n: number, memo: Record<number, number> = {}): number {
   return memo[n];
 }
 
-util.assert(encoder.decode(server.server.getState().promises[id]?.value) === f(n));
+util.assert(encoder.decode(server.server.promises.get(id)?.value) === f(n));

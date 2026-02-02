@@ -1,4 +1,4 @@
-import { LocalNetwork } from "../dev/network";
+import { LocalNetwork } from "../src/network/local";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
 import type { Context, InnerContext } from "../src/context";
@@ -43,7 +43,7 @@ async function createPromiseAndTask(
                   version: 1,
                 },
               },
-              tags: { "resonate:invoke": "poll://any@default/default" },
+              tags: { "resonate:target": "poll://any@default/default" },
             },
           },
         },

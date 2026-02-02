@@ -83,7 +83,7 @@ sim.delay(0, () => {
         data: {
           id,
           timeoutAt: 10000000,
-          tags: { "resonate:invoke": "sim://any@default" },
+          tags: { "resonate:target": "sim://any@default" },
           param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
         },
       },

@@ -1,4 +1,4 @@
-export { LocalNetwork } from "../dev/network";
+export { LocalNetwork } from "./network/local";
 export { Core } from "./core";
 // network
 export { Network } from "./network/network";

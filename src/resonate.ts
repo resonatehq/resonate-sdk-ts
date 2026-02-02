@@ -1,4 +1,4 @@
-import { LocalNetwork } from "../dev/network";
+import { LocalNetwork } from "./network/local";
 import { WallClock } from "./clock";
 import { Core } from "./core";
 import { type Encoder, JsonEncoder } from "./encoder";
@@ -568,7 +568,7 @@ export class Resonate {
                   "resonate:branch": id,
                   "resonate:parent": id,
                   "resonate:scope": "global",
-                  "resonate:invoke": this.anycast,
+                  "resonate:target": this.anycast,
                 },
               },
             },
@@ -712,7 +712,7 @@ export class Resonate {
               "resonate:branch": id,
               "resonate:parent": id,
               "resonate:scope": "global",
-              "resonate:invoke": opts.target,
+              "resonate:target": opts.target,
             },
           },
         },
@@ -764,7 +764,7 @@ export class Resonate {
     await this.schedules.create(name, cron, `${this.idPrefix}{{.id}}.{{.timestamp}}`, opts.timeout, {
       promiseHeaders: headers,
       promiseData: data,
-      promiseTags: { ...opts.tags, "resonate:invoke": opts.target },
+      promiseTags: { ...opts.tags, "resonate:target": opts.target },
     });
 
     return {

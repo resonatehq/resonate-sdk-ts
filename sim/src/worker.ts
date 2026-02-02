@@ -8,7 +8,6 @@ import type { MessageSource, Network, Message as NetworkMessage, Req, Res } from
 import { OptionsBuilder } from "../../src/options";
 import type { Registry } from "../../src/registry";
 import { NoopTracer } from "../../src/tracer";
-import type { Result } from "../../src/types";
 import * as util from "../../src/util";
 import { type Address, Message, Process, type Random, unicast } from "./simulator";
 
@@ -130,16 +129,19 @@ class SimulatedNetwork implements Network {
       util.assert(message.source === this.target);
       util.assert(message.target === this.source);
       const correlationId = message.head?.correlationId;
-      const entry: { callback: (res: Result<Res, any>) => void; timeout: number } =
-        correlationId && this.callbacks[correlationId];
+      const entry = correlationId && this.callbacks[correlationId];
       if (entry) {
         const msg = message as Message<{ err?: any; res?: Res }>;
         if (msg.data.err) {
           util.assert(msg.data.res === undefined);
-          entry.callback({ kind: "error", error: msg.data.err });
+          entry.callback({
+            kind: "error",
+            head: { corrId: entry.req.head.corrId, version: entry.req.head.version, status: 500 },
+            data: typeof msg.data.err === "string" ? msg.data.err : msg.data.err?.message || "unknown error",
+          } as Res);
         } else {
           util.assertDefined(msg.data.res);
-          entry.callback({ kind: "value", value: this.maybeCorruptData(msg.data.res) });
+          entry.callback(this.maybeCorruptData(msg.data.res));
         }
         delete this.callbacks[correlationId];
       }

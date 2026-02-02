@@ -76,21 +76,21 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
-      "resonate:invoke": "poll://any@default/default",
+      "resonate:target": "poll://any@default/default",
     });
     expect((await resonate.promises.get("foo.1.0")).tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1.0",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
-      "resonate:invoke": "poll://any@default",
+      "resonate:target": "poll://any@default",
     });
     expect((await resonate.promises.get("foo.1.0.0")).tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1.0.0",
       "resonate:parent": "foo.1.0",
       "resonate:scope": "global",
-      "resonate:invoke": "poll://any@default",
+      "resonate:target": "poll://any@default",
     });
   });
   test("test lineage rfc set ids", async () => {
@@ -119,21 +119,21 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "foo",
       "resonate:parent": "foo",
       "resonate:scope": "global",
-      "resonate:invoke": "poll://any@default/default",
+      "resonate:target": "poll://any@default/default",
     });
     expect((await resonate.promises.get("bar")).tags).toEqual({
       "resonate:origin": "bar",
       "resonate:branch": "bar",
       "resonate:parent": "foo",
       "resonate:scope": "global",
-      "resonate:invoke": "poll://any@default",
+      "resonate:target": "poll://any@default",
     });
     expect((await resonate.promises.get("baz")).tags).toEqual({
       "resonate:origin": "baz",
       "resonate:branch": "baz",
       "resonate:parent": "bar",
       "resonate:scope": "global",
-      "resonate:invoke": "poll://any@default",
+      "resonate:target": "poll://any@default",
     });
   });
 
@@ -160,7 +160,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
-      "resonate:invoke": "poll://any@default/default",
+      "resonate:target": "poll://any@default/default",
     });
     expect((await resonate.promises.get("foo.1.0")).tags).toEqual({
       "resonate:origin": "foo.1",
@@ -198,7 +198,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "foo",
       "resonate:parent": "foo",
       "resonate:scope": "global",
-      "resonate:invoke": "poll://any@default/default",
+      "resonate:target": "poll://any@default/default",
     });
     expect((await resonate.promises.get("bar")).tags).toEqual({
       "resonate:origin": "bar",
@@ -414,8 +414,8 @@ describe.skip("Resonate usage tests", () => {
       const p1 = await resonate.promises.get(`f${i}`);
       const p2 = await resonate.promises.get(`f${i}.0`);
 
-      expect(p1.tags["resonate:invoke"]).toBe(`poll://any@${target}`);
-      expect(p2.tags["resonate:invoke"]).toBe(`poll://any@${target}`);
+      expect(p1.tags["resonate:target"]).toBe(`poll://any@${target}`);
+      expect(p2.tags["resonate:target"]).toBe(`poll://any@${target}`);
     }
 
     // test unmatched targets (urls)
@@ -432,8 +432,8 @@ describe.skip("Resonate usage tests", () => {
       const p1 = await resonate.promises.get(`g${i}`);
       const p2 = await resonate.promises.get(`g${i}.0`);
 
-      expect(p1.tags["resonate:invoke"]).toBe(target);
-      expect(p2.tags["resonate:invoke"]).toBe(target);
+      expect(p1.tags["resonate:target"]).toBe(target);
+      expect(p2.tags["resonate:target"]).toBe(target);
     }
     resonate.stop();
   });
@@ -736,7 +736,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "f.0",
       "resonate:parent": "f",
       "resonate:origin": "f",
-      "resonate:invoke": "poll://any@default",
+      "resonate:target": "poll://any@default",
     });
     resonate.stop();
   });
@@ -761,7 +761,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "f.0",
       "resonate:parent": "f",
       "resonate:origin": "f",
-      "resonate:invoke": "poll://any@remoteTarget",
+      "resonate:target": "poll://any@remoteTarget",
     });
     resonate.stop();
   });
@@ -786,7 +786,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "f.0",
       "resonate:parent": "f",
       "resonate:origin": "f",
-      "resonate:invoke": "http://faasurl.com",
+      "resonate:target": "http://faasurl.com",
     });
     resonate.stop();
   });
@@ -811,7 +811,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "fid",
       "resonate:parent": "fid",
       "resonate:origin": "fid",
-      "resonate:invoke": "http://faasurl.com",
+      "resonate:target": "http://faasurl.com",
     });
     resonate.stop();
   });
@@ -836,7 +836,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "fid",
       "resonate:parent": "fid",
       "resonate:origin": "fid",
-      "resonate:invoke": "poll://any@default",
+      "resonate:target": "poll://any@default",
     });
     resonate.stop();
   });
@@ -861,7 +861,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:branch": "fid",
       "resonate:parent": "fid",
       "resonate:origin": "fid",
-      "resonate:invoke": "poll://any@anotherNode",
+      "resonate:target": "poll://any@anotherNode",
     });
     resonate.stop();
   });

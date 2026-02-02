@@ -1,4 +1,4 @@
-import { LocalNetwork } from "../dev/network";
+import { LocalNetwork } from "./network/local";
 import type { Network, PromiseRecord, TaskAcquireRes } from "./network/network";
 import * as util from "./util";
 

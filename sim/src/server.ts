@@ -1,6 +1,6 @@
-import { Server } from "@resonatehq/dev";
 import type { StepClock } from "../../src/clock";
 import type { Message as NetworkMessage, Req, Res } from "../../src/network/network";
+import { Server } from "../../src/network/local";
 import * as util from "../../src/util";
 import { type Address, anycast, Message, Process, unicast } from "./simulator";
 
@@ -20,13 +20,16 @@ export class ServerProcess extends Process {
     this.log(tick, "[recv]", messages);
 
     const responses: Message<{ err?: any; res?: Res } | NetworkMessage>[] = [];
+    const outgoing: Array<{ id: string; version: number; address: string }> = [];
 
     for (const message of messages) {
       util.assert(message.target.iaddr === this.iaddr);
       if (message.isRequest()) {
         let res: { err?: any; res?: Res };
         try {
-          res = { res: this.server.process({ at: this.clock.time, req: message.data }) };
+          const result = this.server.apply(this.clock.time, message.data);
+          outgoing.push(...result.messages);
+          res = { res: { ...result.response, head: { ...result.response.head, corrId: message.data.head.corrId, version: message.data.head.version } } as Res };
         } catch (err: any) {
           res = { err: err };
         }
@@ -35,8 +38,12 @@ export class ServerProcess extends Process {
       }
     }
 
-    for (const message of this.server.step({ at: this.clock.time })) {
-      const url = new URL(message.recv);
+    // Tick to process any remaining timeouts
+    const tickResult = this.server.apply(this.clock.time);
+    outgoing.push(...tickResult.messages);
+
+    for (const msg of outgoing) {
+      const url = new URL(msg.address);
       let target: Address;
       if (url.username === "any") {
         target = url.pathname === "" ? anycast(url.hostname) : anycast(url.hostname, url.pathname.slice(1));
@@ -46,8 +53,12 @@ export class ServerProcess extends Process {
         throw new Error(`not handled ${url}`);
       }
 
-      const msg = new Message<NetworkMessage>(unicast(this.iaddr), target, message.mesg, { requ: true });
-      responses.push(msg);
+      const networkMsg: NetworkMessage = {
+        kind: "invoke",
+        head: {},
+        data: { task: { id: msg.id, version: msg.version } },
+      };
+      responses.push(new Message<NetworkMessage>(unicast(this.iaddr), target, networkMsg, { requ: true }));
     }
 
     this.log(tick, "[send]", responses);
