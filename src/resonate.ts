@@ -1,4 +1,3 @@
-import { LocalNetwork } from "./network/local";
 import { WallClock } from "./clock";
 import { Core } from "./core";
 import { type Encoder, JsonEncoder } from "./encoder";
@@ -6,6 +5,7 @@ import { type Encryptor, NoopEncryptor } from "./encryptor";
 import exceptions from "./exceptions";
 import { Handler } from "./handler";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";
+import { LocalNetwork } from "./network/local";
 import type {
   Message,
   MessageSource,

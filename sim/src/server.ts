@@ -1,6 +1,6 @@
 import type { StepClock } from "../../src/clock";
-import type { Message as NetworkMessage, Req, Res } from "../../src/network/network";
 import { Server } from "../../src/network/local";
+import type { Message as NetworkMessage, Req, Res } from "../../src/network/network";
 import * as util from "../../src/util";
 import { type Address, anycast, Message, Process, unicast } from "./simulator";
 
@@ -29,7 +29,12 @@ export class ServerProcess extends Process {
         try {
           const result = this.server.apply(this.clock.time, message.data);
           outgoing.push(...result.messages);
-          res = { res: { ...result.response, head: { ...result.response.head, corrId: message.data.head.corrId, version: message.data.head.version } } as Res };
+          res = {
+            res: {
+              ...result.response,
+              head: { ...result.response.head, corrId: message.data.head.corrId, version: message.data.head.version },
+            } as Res,
+          };
         } catch (err: any) {
           res = { err: err };
         }

@@ -2,7 +2,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { EventSource } from "eventsource";
 import exceptions, { ResonateError } from "../exceptions";
 import * as util from "../util";
-import type { ErrorRes, Message, MessageSource, Network, Req, Res } from "./network";
+import type { MessageSource, Network } from "./network";
+import type { Msg, Req, Res } from "./types";
 
 export interface HttpNetworkConfig {
   url?: string;
@@ -25,7 +26,7 @@ export class HttpNetwork implements Network {
   private verbose: boolean;
 
   constructor({
-    url = "http://localhost:8001",
+    url = "http://localhost:8001/api",
     timeout = 30 * util.SEC,
     headers = {},
     auth = undefined,
@@ -47,9 +48,9 @@ export class HttpNetwork implements Network {
   start(): void {}
   stop(): void {}
 
-  send(
-    req: Req<string>,
-    callback: (res: Res) => void,
+  send<K extends Req["kind"]>(
+    req: Extract<Req, { kind: K }>,
+    callback: (res: Extract<Res, { kind: K }>) => void,
     headers: { [key: string]: string } = {},
     retryForever = false,
   ): void {
@@ -66,11 +67,11 @@ export class HttpNetwork implements Network {
     );
   }
 
-  private async doSend(
-    req: Req<string>,
+  private async doSend<K extends Req["kind"]>(
+    req: Extract<Req, { kind: K }>,
     headers: { [key: string]: string },
     { retries = 0, delay = 1000 }: RetryPolicy = {},
-  ): Promise<Res> {
+  ): Promise<Extract<Res, { kind: K }>> {
     for (let attempt = 0; attempt <= retries; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -92,7 +93,11 @@ export class HttpNetwork implements Network {
             .json()
             .then((r: any) => r.error)
             .catch(() => undefined);
-          throw exceptions.SERVER_ERROR(err ? err.message : response.statusText, response.status >= 500 && response.status < 600, err);
+          throw exceptions.SERVER_ERROR(
+            err ? err.message : response.statusText,
+            response.status >= 500 && response.status < 600,
+            err,
+          );
         }
 
         const res: Res = (await response.json()) as Res;
@@ -101,12 +106,8 @@ export class HttpNetwork implements Network {
           console.log(`[HttpNetwork] Response:`, JSON.stringify(res, null, 2));
         }
 
-        if (res.kind === "error") {
-          const errorRes = res as ErrorRes;
-          throw exceptions.SERVER_ERROR(errorRes.data, errorRes.head.status >= 500);
-        }
-
-        return res;
+        // TODO: write type guards
+        return res as Extract<Res, { kind: K }>;
       } catch (err) {
         if (err instanceof ResonateError && !err.retriable) {
           throw err;
@@ -143,9 +144,9 @@ export class PollMessageSource implements MessageSource {
   private headers: { [key: string]: string };
   private eventSource: EventSource;
   private subscriptions: {
-    invoke: Array<(msg: Message) => void>;
-    resume: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
+    invoke: Array<(msg: Msg) => void>;
+    resume: Array<(msg: Msg) => void>;
+    notify: Array<(msg: Msg) => void>;
   } = { invoke: [], resume: [], notify: [] };
 
   constructor({
@@ -191,7 +192,7 @@ export class PollMessageSource implements MessageSource {
     });
 
     this.eventSource.addEventListener("message", (event) => {
-      let msg: Message;
+      let msg: Msg;
 
       try {
         msg = JSON.parse(event.data);
@@ -213,7 +214,7 @@ export class PollMessageSource implements MessageSource {
     return this.eventSource;
   }
 
-  recv(msg: Message): void {
+  recv(msg: Msg): void {
     for (const callback of this.subscriptions[msg.kind]) {
       callback(msg);
     }
@@ -225,7 +226,7 @@ export class PollMessageSource implements MessageSource {
     this.eventSource.close();
   }
 
-  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void {
+  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Msg) => void): void {
     this.subscriptions[type].push(callback);
   }
 
@@ -244,9 +245,9 @@ export class PushMessageSource implements MessageSource {
   private port: number;
   private server: Server;
   private subscriptions: {
-    invoke: Array<(msg: Message) => void>;
-    resume: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
+    invoke: Array<(msg: Msg) => void>;
+    resume: Array<(msg: Msg) => void>;
+    notify: Array<(msg: Msg) => void>;
   } = { invoke: [], resume: [], notify: [] };
 
   constructor({
@@ -312,7 +313,7 @@ export class PushMessageSource implements MessageSource {
     });
 
     req.on("end", () => {
-      let msg: Message;
+      let msg: Msg;
       try {
         msg = JSON.parse(body);
       } catch {
@@ -334,13 +335,13 @@ export class PushMessageSource implements MessageSource {
     });
   }
 
-  recv(msg: Message): void {
+  recv(msg: Msg): void {
     for (const callback of this.subscriptions[msg.kind]) {
       callback(msg);
     }
   }
 
-  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void {
+  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Msg) => void): void {
     this.subscriptions[type].push(callback);
   }
 

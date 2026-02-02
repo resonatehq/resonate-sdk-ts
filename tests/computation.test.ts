@@ -1,4 +1,3 @@
-import { LocalNetwork } from "../src/network/local";
 import { WallClock } from "../src/clock";
 import { Computation, type Status } from "../src/computation";
 import type { Context, InnerContext } from "../src/context";
@@ -7,6 +6,7 @@ import { JsonEncoder } from "../src/encoder";
 import { NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
 import { NoopHeartbeat } from "../src/heartbeat";
+import { LocalNetwork } from "../src/network/local";
 import type { PromiseRecord, TaskRecord } from "../src/network/network";
 import { OptionsBuilder } from "../src/options";
 import type { Processor } from "../src/processor/processor";

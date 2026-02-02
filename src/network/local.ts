@@ -1,13 +1,5 @@
-import type {
-  Message,
-  MessageSource,
-  Network,
-  PromiseRecord,
-  PromiseState,
-  Req,
-  Res,
-  TaskRecord,
-} from "./network";
+import type { MessageSource, Network } from "./network";
+import type { Msg, PromiseRecord, PromiseState, Req, Res, TaskRecord } from "./types";
 
 // =============================================================================
 // SERVER INTERNAL TYPES
@@ -97,7 +89,7 @@ export class Server {
   private changes: Change[] = [];
   private branches: string[] = [];
 
-  apply(now: number, req?: Req<string>): ServerResult {
+  apply(now: number, req?: Req): ServerResult {
     this.messages = [];
     this.changes = [];
     this.branches = [];
@@ -144,7 +136,9 @@ export class Server {
   // TIMEOUT PROCESSING
   // ---------------------------------------------------------------------------
 
-  private collectTimeoutActions(now: number): Array<
+  private collectTimeoutActions(
+    now: number,
+  ): Array<
     | { kind: "promise.settle"; data: { id: string; state: "rejected_timedout" } }
     | { kind: "task.release"; data: { id: string; version: number } }
     | { kind: "task.retry"; data: { id: string; version: number } }
@@ -213,7 +207,7 @@ export class Server {
   // DISPATCH
   // ---------------------------------------------------------------------------
 
-  private dispatch(req: Req<string>, now: number): ServerResponse {
+  private dispatch(req: Req, now: number): ServerResponse {
     switch (req.kind) {
       case "promise.get":
         return this.getPromise(now, req.data);
@@ -262,7 +256,13 @@ export class Server {
   ): ServerResponse {
     const existing = this.promises.get(data.id);
     if (existing) {
-      return this.pvalue("promise.create", 200, { promise: this.toPromiseRecord(existing) }, [], ["promise.create.exists"]);
+      return this.pvalue(
+        "promise.create",
+        200,
+        { promise: this.toPromiseRecord(existing) },
+        [],
+        ["promise.create.exists"],
+      );
     }
 
     const promise: ServerPromise = {
@@ -288,14 +288,20 @@ export class Server {
       this.messages.push(msg);
       this.outgoing.set(data.id, msg);
       return this.pvalue(
-        "promise.create", 200, { promise: this.toPromiseRecord(promise) },
-        [{ kind: "DidCreate", id: data.id }], ["promise.create.created_with_task"],
+        "promise.create",
+        200,
+        { promise: this.toPromiseRecord(promise) },
+        [{ kind: "DidCreate", id: data.id }],
+        ["promise.create.created_with_task"],
       );
     }
 
     return this.pvalue(
-      "promise.create", 200, { promise: this.toPromiseRecord(promise) },
-      [{ kind: "DidCreate", id: data.id }], ["promise.create.created"],
+      "promise.create",
+      200,
+      { promise: this.toPromiseRecord(promise) },
+      [{ kind: "DidCreate", id: data.id }],
+      ["promise.create.created"],
     );
   }
 
@@ -308,7 +314,13 @@ export class Server {
       return this.perror(404, "Promise not found", ["promise.settle.not_found"]);
     }
     if (promise.state !== "pending") {
-      return this.pvalue("promise.settle", 200, { promise: this.toPromiseRecord(promise) }, [], ["promise.settle.already_settled"]);
+      return this.pvalue(
+        "promise.settle",
+        200,
+        { promise: this.toPromiseRecord(promise) },
+        [],
+        ["promise.settle.already_settled"],
+      );
     }
 
     promise.state = data.state;
@@ -326,15 +338,15 @@ export class Server {
     const branch = data.state === "rejected_timedout" ? "timeout.promise" : "promise.settle.settled";
 
     return this.pvalue(
-      "promise.settle", 200, { promise: this.toPromiseRecord(promise) },
-      [{ kind: "DidSettle", id: data.id }], [branch],
+      "promise.settle",
+      200,
+      { promise: this.toPromiseRecord(promise) },
+      [{ kind: "DidSettle", id: data.id }],
+      [branch],
     );
   }
 
-  private registerCallback(
-    _now: number,
-    data: { awaited: string; awaiter: string },
-  ): ServerResponse {
+  private registerCallback(_now: number, data: { awaited: string; awaiter: string }): ServerResponse {
     const awaitedPromise = this.promises.get(data.awaited);
     if (!awaitedPromise) {
       return this.perror(404, "Awaited promise not found", ["promise.register.not_found"]);
@@ -347,7 +359,11 @@ export class Server {
 
     if (awaitedPromise.state !== "pending") {
       return this.pvalue(
-        "promise.register", 300, { promise: this.toPromiseRecord(awaitedPromise) }, [], ["promise.register.awaited_settled"],
+        "promise.register",
+        300,
+        { promise: this.toPromiseRecord(awaitedPromise) },
+        [],
+        ["promise.register.awaited_settled"],
       );
     }
 
@@ -380,10 +396,7 @@ export class Server {
     return this.pvalue("task.get", 200, { task: this.toTaskRecord(task) }, [], ["task.get.found"]);
   }
 
-  private acquireTask(
-    now: number,
-    data: { id: string; version: number; pid: string; ttl: number },
-  ): ServerResponse {
+  private acquireTask(now: number, data: { id: string; version: number; pid: string; ttl: number }): ServerResponse {
     const task = this.tasks.get(data.id);
     if (!task) {
       return this.perror(404, "Task not found", ["task.acquire.not_found"]);
@@ -405,17 +418,15 @@ export class Server {
     tt.timeout = now + data.ttl;
 
     return this.pvalue(
-      "task.acquire", 200,
+      "task.acquire",
+      200,
       { kind: "invoke", data: { promise: this.toPromiseRecord(promise), preload: [] } },
-      [], ["task.acquire.invoke"],
+      [],
+      ["task.acquire.invoke"],
     );
   }
 
-  private releaseTask(
-    now: number,
-    data: { id: string; version: number },
-    isTimeout: boolean = false,
-  ): ServerResponse {
+  private releaseTask(now: number, data: { id: string; version: number }, isTimeout: boolean = false): ServerResponse {
     const task = this.tasks.get(data.id);
     if (!task) {
       return this.perror(404, "Task not found", ["task.release.not_found"]);
@@ -447,10 +458,7 @@ export class Server {
     return this.pvalue("task.release", 200, {}, [], [branch]);
   }
 
-  private fulfillTask(
-    now: number,
-    data: { id: string; version: number; action: any },
-  ): ServerResponse {
+  private fulfillTask(now: number, data: { id: string; version: number; action: any }): ServerResponse {
     const task = this.tasks.get(data.id);
     if (!task) {
       return this.perror(404, "Task not found", ["task.fulfill.not_found"]);
@@ -474,7 +482,13 @@ export class Server {
 
     if (promise.state !== "pending") {
       this.enqueueSettle(data.id);
-      return this.pvalue("task.fulfill", 200, { promise: this.toPromiseRecord(promise) }, [], ["task.fulfill.already_settled"]);
+      return this.pvalue(
+        "task.fulfill",
+        200,
+        { promise: this.toPromiseRecord(promise) },
+        [],
+        ["task.fulfill.already_settled"],
+      );
     }
 
     promise.state = settle.state;
@@ -490,8 +504,11 @@ export class Server {
     this.resumeAwaiters(settle.id, now);
 
     return this.pvalue(
-      "task.fulfill", 200, { promise: this.toPromiseRecord(promise) },
-      [{ kind: "DidSettle", id: settle.id }], ["task.fulfill.settled"],
+      "task.fulfill",
+      200,
+      { promise: this.toPromiseRecord(promise) },
+      [{ kind: "DidSettle", id: settle.id }],
+      ["task.fulfill.settled"],
     );
   }
 
@@ -551,10 +568,7 @@ export class Server {
     return this.pvalue("task.suspend", 200, {}, [], []);
   }
 
-  private fenceTask(
-    now: number,
-    data: { id: string; version: number; action: any },
-  ): ServerResponse {
+  private fenceTask(now: number, data: { id: string; version: number; action: any }): ServerResponse {
     const task = this.tasks.get(data.id);
     if (!task) {
       return this.perror(404, "Task not found", ["task.fence.not_found"]);
@@ -584,7 +598,19 @@ export class Server {
   ): ServerResponse {
     const existing = this.promises.get(data.id);
     if (existing) {
-      return this.pvalue("task.fence", 200, { action: { kind: "promise.create", head: { corrId: "", status: 200, version: "" }, data: { promise: this.toPromiseRecord(existing) } } }, [], ["task.fence.create.exists"]);
+      return this.pvalue(
+        "task.fence",
+        200,
+        {
+          action: {
+            kind: "promise.create",
+            head: { corrId: "", status: 200, version: "" },
+            data: { promise: this.toPromiseRecord(existing) },
+          },
+        },
+        [],
+        ["task.fence.create.exists"],
+      );
     }
 
     const promise: ServerPromise = {
@@ -610,27 +636,54 @@ export class Server {
       this.messages.push(msg);
       this.outgoing.set(data.id, msg);
       return this.pvalue(
-        "task.fence", 200, { action: { kind: "promise.create", head: { corrId: "", status: 200, version: "" }, data: { promise: this.toPromiseRecord(promise) } } },
-        [{ kind: "DidCreate", id: data.id }], ["task.fence.create.created_with_task"],
+        "task.fence",
+        200,
+        {
+          action: {
+            kind: "promise.create",
+            head: { corrId: "", status: 200, version: "" },
+            data: { promise: this.toPromiseRecord(promise) },
+          },
+        },
+        [{ kind: "DidCreate", id: data.id }],
+        ["task.fence.create.created_with_task"],
       );
     }
 
     return this.pvalue(
-      "task.fence", 200, { action: { kind: "promise.create", head: { corrId: "", status: 200, version: "" }, data: { promise: this.toPromiseRecord(promise) } } },
-      [{ kind: "DidCreate", id: data.id }], ["task.fence.create.created"],
+      "task.fence",
+      200,
+      {
+        action: {
+          kind: "promise.create",
+          head: { corrId: "", status: 200, version: "" },
+          data: { promise: this.toPromiseRecord(promise) },
+        },
+      },
+      [{ kind: "DidCreate", id: data.id }],
+      ["task.fence.create.created"],
     );
   }
 
-  private fenceSettle(
-    now: number,
-    data: { id: string; state: SettleState; value?: any },
-  ): ServerResponse {
+  private fenceSettle(now: number, data: { id: string; state: SettleState; value?: any }): ServerResponse {
     const promise = this.promises.get(data.id);
     if (!promise) {
       return this.perror(404, "Promise not found", ["task.fence.settle.not_found"]);
     }
     if (promise.state !== "pending") {
-      return this.pvalue("task.fence", 200, { action: { kind: "promise.settle", head: { corrId: "", status: 200, version: "" }, data: { promise: this.toPromiseRecord(promise) } } }, [], ["task.fence.settle.already_settled"]);
+      return this.pvalue(
+        "task.fence",
+        200,
+        {
+          action: {
+            kind: "promise.settle",
+            head: { corrId: "", status: 200, version: "" },
+            data: { promise: this.toPromiseRecord(promise) },
+          },
+        },
+        [],
+        ["task.fence.settle.already_settled"],
+      );
     }
 
     promise.state = data.state;
@@ -646,8 +699,17 @@ export class Server {
     this.resumeAwaiters(data.id, now);
 
     return this.pvalue(
-      "task.fence", 200, { action: { kind: "promise.settle", head: { corrId: "", status: 200, version: "" }, data: { promise: this.toPromiseRecord(promise) } } },
-      [{ kind: "DidSettle", id: data.id }], ["task.fence.settle.settled"],
+      "task.fence",
+      200,
+      {
+        action: {
+          kind: "promise.settle",
+          head: { corrId: "", status: 200, version: "" },
+          data: { promise: this.toPromiseRecord(promise) },
+        },
+      },
+      [{ kind: "DidSettle", id: data.id }],
+      ["task.fence.settle.settled"],
     );
   }
 
@@ -712,7 +774,7 @@ export class Server {
   // CONVERTERS
   // ---------------------------------------------------------------------------
 
-  private toPromiseRecord(sp: ServerPromise): PromiseRecord<string> {
+  private toPromiseRecord(sp: ServerPromise): PromiseRecord {
     return {
       id: sp.id,
       state: sp.state,
@@ -808,13 +870,7 @@ export class Server {
     return { kind: "error", head: { status }, data: message };
   }
 
-  private pvalue(
-    kind: string,
-    status: number,
-    data: unknown,
-    changes: Change[],
-    branches: string[],
-  ): ServerResponse {
+  private pvalue(kind: string, status: number, data: unknown, changes: Change[], branches: string[]): ServerResponse {
     this.changes.push(...changes);
     this.branches.push(...branches);
     return { kind, head: { status }, data } as ServerResponse;
@@ -833,9 +889,9 @@ export class LocalNetwork implements Network, MessageSource {
 
   private server: Server;
   private subscriptions: {
-    invoke: Array<(msg: Message) => void>;
-    resume: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
+    invoke: Array<(msg: Msg) => void>;
+    resume: Array<(msg: Msg) => void>;
+    notify: Array<(msg: Msg) => void>;
   } = { invoke: [], resume: [], notify: [] };
   private tickInterval?: ReturnType<typeof setInterval>;
 
@@ -868,9 +924,9 @@ export class LocalNetwork implements Network, MessageSource {
     }
   }
 
-  send(
-    req: Req<string>,
-    callback: (res: Res) => void,
+  send<K extends Req["kind"]>(
+    req: Extract<Req, { kind: K }>,
+    callback: (res: Extract<Res, { kind: K }>) => void,
     _headers?: { [key: string]: string },
     _retryForever?: boolean,
   ): void {
@@ -882,7 +938,7 @@ export class LocalNetwork implements Network, MessageSource {
       callback({
         ...intercepted,
         head: { ...intercepted.head, corrId, version },
-      } as Res);
+      } as Extract<Res, { kind: K }>);
       return;
     }
 
@@ -894,7 +950,7 @@ export class LocalNetwork implements Network, MessageSource {
       kind: response.kind,
       head: { corrId, status: response.head.status, version },
       data: response.data,
-    } as Res;
+    } as Extract<Res, { kind: K }>;
 
     this.dispatchMessages(result);
 
@@ -907,13 +963,13 @@ export class LocalNetwork implements Network, MessageSource {
 
   // -- MessageSource ---------------------------------------------------------
 
-  recv(msg: Message): void {
+  recv(msg: Msg): void {
     for (const cb of this.subscriptions[msg.kind]) {
       cb(msg);
     }
   }
 
-  subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Message) => void): void {
+  subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Msg) => void): void {
     this.subscriptions[type].push(callback);
   }
 
@@ -928,7 +984,7 @@ export class LocalNetwork implements Network, MessageSource {
    * Handle SDK request kinds the Server does not implement.
    * Returns a partial Res if handled, or undefined to fall through.
    */
-  private intercept(req: Req<string>): Res | undefined {
+  private intercept(req: Req): Res | undefined {
     const head = { corrId: "" as const, status: 200 as const, version: "" as const };
 
     switch (req.kind) {
@@ -936,7 +992,11 @@ export class LocalNetwork implements Network, MessageSource {
       case "promise.subscribe": {
         const sp = this.server.promises.get(req.data.awaited);
         if (!sp) {
-          return { kind: "error", head: { corrId: "", status: 404 as const, version: "" }, data: "Promise not found" };
+          return {
+            kind: "promise.subscribe",
+            head: { corrId: "", status: 404 as const, version: "" },
+            data: "Promise not found",
+          };
         }
         return { kind: "promise.subscribe", head, data: { promise: this.toPromiseRecord(sp) } };
       }
@@ -982,7 +1042,7 @@ export class LocalNetwork implements Network, MessageSource {
 
   // -- internal: type conversion ---------------------------------------------
 
-  private toPromiseRecord(sp: ServerPromise): PromiseRecord<string> {
+  private toPromiseRecord(sp: ServerPromise): PromiseRecord {
     return {
       id: sp.id,
       state: sp.state,

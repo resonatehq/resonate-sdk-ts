@@ -1,5 +1,5 @@
-export { LocalNetwork } from "./network/local";
 export { Core } from "./core";
+export { LocalNetwork } from "./network/local";
 // network
 export { Network } from "./network/network";
 export { HttpNetwork } from "./network/remote";
