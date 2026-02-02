@@ -702,7 +702,7 @@ export class InnerContext implements Context {
       "resonate:branch": id,
       "resonate:parent": this.id,
       "resonate:origin": this.originId,
-      "resonate:timeout": "true",
+      "resonate:timer": "true",
     };
 
     // timeout cannot be greater than parent timeout
