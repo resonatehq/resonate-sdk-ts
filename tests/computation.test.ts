@@ -156,6 +156,18 @@ describe("Computation Event Queue Concurrency", () => {
     registry.add(testCoroutine, "testCoro");
     const { promise, task } = await createPromiseAndTask(handler, "root-promise-1", "testCoro", []);
 
+    // Acquire the task on the server so task.fulfill can succeed
+    await new Promise<void>((resolve) => {
+      network.send(
+        {
+          kind: "task.acquire",
+          head: { corrId: "", version: "" },
+          data: { id: task.id, version: task.version, pid: "test-pid", ttl: 3600 },
+        },
+        () => resolve(),
+      );
+    });
+
     const testTask: ClaimedTask = {
       kind: "claimed",
       task: task,

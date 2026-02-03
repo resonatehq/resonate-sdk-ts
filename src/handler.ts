@@ -342,6 +342,14 @@ export class Handler {
     );
   }
 
+  public encodeValue(data: any, func: string): Result<Value<string>, ResonateError> {
+    try {
+      return { kind: "value", value: this.encryptor.encrypt(this.encoder.encode(data)) };
+    } catch (e) {
+      return { kind: "error", error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e) };
+    }
+  }
+
   private decode(promise: PromiseRecord<string>, func = "unknown"): PromiseRecord<any> {
     let paramData: any;
     let valueData: any;

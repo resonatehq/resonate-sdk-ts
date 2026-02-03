@@ -15,11 +15,18 @@ import type { Span, Tracer } from "./tracer";
 import type { Func, Result } from "./types";
 import * as util from "./util";
 
-export type Status = Completed | Suspended;
+export type Status = Completed | Done | Suspended;
 
 export type Completed = {
   kind: "completed";
   promise: PromiseRecord<any>;
+};
+
+export type Done = {
+  kind: "done";
+  id: string;
+  state: "resolved" | "rejected";
+  value: any;
 };
 
 export type Suspended = {
@@ -174,6 +181,44 @@ export class Computation {
           return nursery.done(res);
         }
 
+        if (res.value.kind === "completed") {
+          // Replay: boundary promise already settled, task still needs fulfilling
+          this.network.send(
+            {
+              kind: "task.fulfill",
+              head: { corrId: "", version: "" },
+              data: {
+                id: task.id,
+                version: task.version,
+                action: {
+                  kind: "promise.settle",
+                  head: { corrId: "", version: "" },
+                  data: {
+                    id: res.value.promise.id,
+                    state: res.value.promise.state === "resolved" ? "resolved" : "rejected",
+                    value: res.value.promise.value,
+                  },
+                },
+              },
+            },
+            (r) => {
+              if (r.kind === "error") {
+                nursery.done({ kind: "error", error: undefined });
+              } else {
+                nursery.done(res);
+              }
+            },
+          );
+          return;
+        }
+
+        // res.value.kind === "done": encode raw value and send task.fulfill
+        const doneValue = res.value;
+        const encoded = this.handler.encodeValue(doneValue.value, registered.func.name);
+        if (encoded.kind === "error") {
+          return nursery.done({ kind: "error", error: undefined });
+        }
+
         this.network.send(
           {
             kind: "task.fulfill",
@@ -185,18 +230,32 @@ export class Computation {
                 kind: "promise.settle",
                 head: { corrId: "", version: "" },
                 data: {
-                  id: res.value.promise.id,
-                  state: res.value.promise.state === "resolved" ? "resolved" : "rejected",
-                  value: res.value.promise.value,
+                  id: doneValue.id,
+                  state: doneValue.state,
+                  value: encoded.value,
                 },
               },
             },
           },
           (r) => {
             if (r.kind === "error") {
-              nursery.done({ kind: "error", error: undefined }); // TODO: fix
+              nursery.done({ kind: "error", error: undefined });
             } else {
-              nursery.done(res);
+              nursery.done({
+                kind: "value",
+                value: {
+                  kind: "completed",
+                  promise: {
+                    id: doneValue.id,
+                    state: doneValue.state,
+                    param: rootPromise.param,
+                    value: { headers: {}, data: doneValue.value },
+                    tags: rootPromise.tags,
+                    timeoutAt: rootPromise.timeoutAt,
+                    createdAt: rootPromise.createdAt,
+                  },
+                },
+              });
             }
           },
         );
@@ -228,13 +287,21 @@ export class Computation {
       });
 
       if (util.isGeneratorFunction(registered.func)) {
-        this.processGenerator(nursery, ctx, registered.func, args, task, done);
+        this.processGenerator(nursery, ctx, registered.func, args, task, rootPromise, done);
       } else {
         this.processFunction(this.id, ctx, registered.func, args, (res) => {
           if (res.kind === "error") return done({ kind: "error", error: undefined });
 
-          done({ kind: "value", value: { kind: "completed", promise: res.value } });
-        });
+          done({
+            kind: "value",
+            value: {
+              kind: "done",
+              id: this.id,
+              state: res.value.state === "resolved" ? "resolved" : "rejected",
+              value: res.value.value?.data,
+            },
+          });
+        }, false);
       }
     }, doneAndDropTaskIfErr);
   }
@@ -245,9 +312,10 @@ export class Computation {
     func: Func,
     args: any[],
     task: TaskRecord,
+    rootPromise: PromiseRecord<any>,
     done: (res: Result<Status, undefined>) => void,
   ) {
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.handler, this.spans, (res) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, rootPromise, this.handler, this.spans, (res) => {
       if (res.kind === "error") {
         return done(res);
       }
@@ -256,6 +324,18 @@ export class Computation {
       switch (status.type) {
         case "completed":
           done({ kind: "value", value: { kind: "completed", promise: status.promise } });
+          break;
+
+        case "done":
+          done({
+            kind: "value",
+            value: {
+              kind: "done",
+              id: this.id,
+              state: status.result.kind === "value" ? "resolved" : "rejected",
+              value: status.result.kind === "value" ? status.result.value : status.result.error,
+            },
+          });
           break;
 
         case "suspended":
@@ -278,12 +358,28 @@ export class Computation {
     func: Func,
     args: any[],
     done: (res: Result<PromiseRecord<any>, undefined>) => void,
+    settle = true,
   ) {
     this.processor.process(
       id,
       ctx,
       async () => await func(ctx, ...args),
-      (res) =>
+      (res) => {
+        if (!settle) {
+          // Boundary path: skip promise.settle, return raw result as synthetic record
+          return done({
+            kind: "value",
+            value: {
+              id,
+              state: res.kind === "value" ? ("resolved" as const) : ("rejected" as const),
+              param: { headers: {}, data: undefined },
+              value: { data: res.kind === "value" ? res.value : res.error, headers: {} },
+              tags: {},
+              timeoutAt: 0,
+              createdAt: 0,
+            },
+          });
+        }
         this.handler.promiseSettle(
           {
             kind: "promise.settle",
@@ -305,7 +401,8 @@ export class Computation {
             done(res);
           },
           func.name,
-        ),
+        );
+      },
       this.verbose,
       ctx.span,
     );

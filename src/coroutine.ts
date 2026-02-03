@@ -36,7 +36,7 @@ type More = {
   spans: Span[];
 };
 
-type Done = {
+export type Done = {
   type: "done";
   result: Result<any, any>;
 };
@@ -89,69 +89,31 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     task: TaskRecord,
+    boundaryPromise: PromiseRecord<any>,
     handler: Handler,
     spans: Map<string, Span>,
-    callback: (res: Result<Suspended | Completed, any>) => void,
+    callback: (res: Result<Suspended | Completed | Done, any>) => void,
   ): void {
-    handler.promiseCreate(
-      {
-        // The createReq for this specific creation is not relevant,
-        // this promise is guaranteed to have been created already.
-        kind: "promise.create",
-        head: { corrId: "", version: "" },
-        data: {
-          id,
-          timeoutAt: 0,
-          tags: {},
-          param: { headers: {}, data: "" },
-        },
-      },
-      (res) => {
-        if (res.kind === "error") return callback({ kind: "error", error: undefined });
+    // Replay check: if boundary promise is already settled, short-circuit.
+    if (boundaryPromise.state !== "pending") {
+      return callback({ kind: "value", value: { type: "completed", promise: boundaryPromise } });
+    }
 
-        if (res.value.state !== "pending") {
-          return callback({ kind: "value", value: { type: "completed", promise: res.value } });
-        }
+    const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), handler, spans);
+    coroutine.exec((res) => {
+      if (res.kind === "error") return callback(res);
+      const status = res.value;
+      switch (status.type) {
+        case "more":
+          callback({ kind: "value", value: { type: "suspended", todo: status.todo, spans: status.spans } });
+          break;
 
-        const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), handler, spans);
-        coroutine.exec((res) => {
-          if (res.kind === "error") return callback(res);
-          const status = res.value;
-          switch (status.type) {
-            case "more":
-              callback({ kind: "value", value: { type: "suspended", todo: status.todo, spans: status.spans } });
-              break;
-
-            case "done":
-              handler.promiseSettle(
-                {
-                  kind: "promise.settle",
-                  head: { corrId: "", version: "" },
-                  data: {
-                    id,
-                    state: status.result.kind === "value" ? "resolved" : "rejected",
-                    value: {
-                      data: status.result.kind === "value" ? status.result.value : status.result.error,
-                      headers: {},
-                    },
-                  },
-                },
-                (res) => {
-                  if (res.kind === "error") {
-                    res.error.log(verbose);
-                    return callback({ kind: "error", error: undefined });
-                  }
-
-                  callback({ kind: "value", value: { type: "completed", promise: res.value } });
-                },
-                func.name,
-              );
-              break;
-          }
-        });
-      },
-      func.name,
-    );
+        case "done":
+          // Propagate raw result — no promise.settle. task.fulfill handles it.
+          callback({ kind: "value", value: status });
+          break;
+      }
+    });
   }
 
   private exec(callback: (res: Result<More | Done, any>) => void) {

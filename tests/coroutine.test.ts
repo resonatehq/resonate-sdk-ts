@@ -1,6 +1,6 @@
 import { WallClock } from "../src/clock";
 import { type Context, InnerContext } from "../src/context";
-import { type Completed, Coroutine, type Suspended } from "../src/coroutine";
+import { type Completed, Coroutine, type Done, type Suspended } from "../src/coroutine";
 import { JsonEncoder } from "../src/encoder";
 import { NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
@@ -68,6 +68,16 @@ describe("Coroutine", () => {
   const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], handler: Handler) => {
     const m = new PollMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
 
+    const boundaryPromise: PromiseRecord<any> = {
+      id: uuid,
+      state: "pending",
+      param: { headers: {}, data: undefined },
+      value: { headers: {}, data: undefined },
+      tags: {},
+      timeoutAt: 0,
+      createdAt: Date.now(),
+    };
+
     return new Promise<any>((resolve) => {
       Coroutine.exec(
         uuid,
@@ -87,6 +97,7 @@ describe("Coroutine", () => {
         func,
         args,
         { id: `__invoke:${uuid}`, version: 1 },
+        boundaryPromise,
         handler,
         new Map(),
         (res) => {
@@ -122,7 +133,7 @@ describe("Coroutine", () => {
     });
   };
 
-  test("basic coroutine completes with completed", async () => {
+  test("basic coroutine completes with done", async () => {
     function* bar() {
       return 42;
     }
@@ -135,7 +146,7 @@ describe("Coroutine", () => {
 
     const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
     const r = await exec("foo.1", foo, [], h);
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 
   test("basic coroutine with function suspends after first await", async () => {
@@ -166,7 +177,7 @@ describe("Coroutine", () => {
 
     // Second execution - should complete
     r = await exec("foo.1", foo, [], h);
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 31458 } } });
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 31458 } });
   });
 
   test("coroutine with a suspension point suspends if can not make more progress", async () => {
@@ -192,7 +203,7 @@ describe("Coroutine", () => {
 
     await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 
   test("Structured concurrency", async () => {
@@ -223,7 +234,7 @@ describe("Coroutine", () => {
     await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
 
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 99 } } });
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
   });
 
   test("Detached concurrency", async () => {
@@ -247,7 +258,7 @@ describe("Coroutine", () => {
     await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
 
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 99 } } });
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
   });
 
   test("Return the detached todo if explicitly awaited", async () => {
@@ -279,7 +290,7 @@ describe("Coroutine", () => {
     await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], h);
 
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 
   test("lfc/rfc", async () => {
@@ -303,7 +314,7 @@ describe("Coroutine", () => {
     await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
 
     r = await exec("foo.1", foo, [], h);
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 84 } } });
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 84 } });
   });
 
   test("DIE with condition true aborts execution", async () => {
@@ -315,8 +326,17 @@ describe("Coroutine", () => {
     const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
 
     const m = new PollMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
+    const boundaryPromise: PromiseRecord<any> = {
+      id: "foo.1",
+      state: "pending",
+      param: { headers: {}, data: undefined },
+      value: { headers: {}, data: undefined },
+      tags: {},
+      timeoutAt: 0,
+      createdAt: Date.now(),
+    };
     // DIE with condition=true causes callback to be called with err=true
-    const result = await new Promise<Result<Suspended | Completed, any>>((resolve) => {
+    const result = await new Promise<Result<Suspended | Completed | Done, any>>((resolve) => {
       Coroutine.exec(
         "foo.1",
         false,
@@ -335,6 +355,7 @@ describe("Coroutine", () => {
         foo,
         [],
         { id: "__invoke:foo.1", version: 1 },
+        boundaryPromise,
         h,
         new Map(),
         (res) => {
@@ -354,6 +375,6 @@ describe("Coroutine", () => {
 
     const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
     const r = await exec("foo.1", foo, [], h);
-    expect(r).toMatchObject({ type: "completed", promise: { id: "foo.1", value: { data: 42 } } });
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 });
