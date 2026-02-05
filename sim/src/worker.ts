@@ -4,7 +4,8 @@ import type { Encoder } from "../../src/encoder";
 import { NoopEncryptor } from "../../src/encryptor";
 import { Handler } from "../../src/handler";
 import { NoopHeartbeat } from "../../src/heartbeat";
-import type { MessageSource, Network, Message as NetworkMessage, Req, Res } from "../../src/network/network";
+import type { MessageSource, Network } from "../../src/network/network";
+import type { Msg as NetworkMessage, Req, Res } from "../../src/network/types";
 import { OptionsBuilder } from "../../src/options";
 import type { Registry } from "../../src/registry";
 import { NoopTracer } from "../../src/tracer";
@@ -63,8 +64,8 @@ class SimulatedNetwork implements Network {
 
   private prng: Random;
   private deliveryOptions: Required<DeliveryOptions>;
-  private buffer: Message<Req<string>>[] = [];
-  private callbacks: Record<number, { req: Req<string>; callback: (res: Res) => void; timeout: number }> = {};
+  private buffer: Message<Req>[] = [];
+  private callbacks: Record<number, { req: Req; callback: (res: any) => void; timeout: number }> = {};
   private messageSource: SimulatedMessageSource;
 
   constructor(
@@ -85,22 +86,27 @@ class SimulatedNetwork implements Network {
     return this.messageSource;
   }
 
-  send(req: Req<string>, cb: (res: Res) => void): void {
-    const message = new Message<Req<string>>(this.source, this.target, req, {
+  send<K extends Req["kind"]>(
+    req: Extract<Req, { kind: K }>,
+    callback: (res: Extract<Res, { kind: K }>) => void,
+    headers?: { [key: string]: string },
+    retryForever?: boolean,
+  ): void {
+    const message = new Message<Req>(this.source, this.target, req, {
       requ: true,
       correlationId: this.correlationId++,
     });
 
-    const callback = (res: Res) => {
-      if (res.kind === "error") {
-        cb(res);
+    const cb = (res: Extract<Res, { kind: K }>) => {
+      if (res.head.status >= 400) {
+        callback(res);
       } else {
         util.assert(res.kind === req.kind, "res kind must match req kind");
-        cb(res);
+        callback(res);
       }
     };
 
-    this.callbacks[message.head!.correlationId] = { req, callback, timeout: this.currentTime + 50000 };
+    this.callbacks[message.head!.correlationId] = { req, callback: cb, timeout: this.currentTime + 50000 };
     this.buffer.push(message);
   }
 
@@ -115,10 +121,10 @@ class SimulatedNetwork implements Network {
       const hasTimedOut = cb.timeout < this.currentTime;
       if (hasTimedOut) {
         cb.callback({
-          kind: "error",
+          kind: cb.req.kind,
           head: { corrId: cb.req.head.corrId, version: cb.req.head.version, status: 500 },
           data: "req timed out",
-        });
+        } as any);
         delete this.callbacks[key];
       }
     }
@@ -135,7 +141,7 @@ class SimulatedNetwork implements Network {
         if (msg.data.err) {
           util.assert(msg.data.res === undefined);
           entry.callback({
-            kind: "error",
+            kind: entry.req.kind,
             head: { corrId: entry.req.head.corrId, version: entry.req.head.version, status: 500 },
             data: typeof msg.data.err === "string" ? msg.data.err : msg.data.err?.message || "unknown error",
           } as Res);

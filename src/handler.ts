@@ -1,46 +1,46 @@
 import type { Encoder } from "./encoder";
 import type { Encryptor } from "./encryptor";
 import exceptions, { type ResonateError } from "./exceptions";
-import type {
-  Network,
-  PromiseCreateReq,
-  PromiseGetReq,
-  PromiseRecord,
-  PromiseRegisterReq,
-  PromiseSettleReq,
-  PromiseSubscribeReq,
-  TaskAcquireReq,
-  TaskCreateReq,
-  TaskRecord,
-} from "./network/network";
+import type { Network } from "./network/network";
+import {
+  isRedirect,
+  isSuccess,
+  type PromiseCreateReq,
+  type PromiseGetReq,
+  type PromiseRecord,
+  type PromiseRegisterReq,
+  type PromiseSettleReq,
+  type PromiseSubscribeReq,
+  type TaskAcquireReq,
+  type TaskCreateReq,
+  type TaskRecord,
+  type TaskSuspendReq,
+} from "./network/types";
 import type { Result, Value } from "./types";
 import * as util from "./util";
 
 export class Cache {
-  private promises: Map<string, PromiseRecord<any>> = new Map();
+  private promises: Map<string, PromiseRecord> = new Map();
   private tasks: Map<string, TaskRecord> = new Map();
 
-  public getPromise(id: string): PromiseRecord<any> | undefined {
+  public getPromise(id: string): PromiseRecord | undefined {
     return this.promises.get(id);
   }
 
-  public setPromise(promise: PromiseRecord<any>): void {
+  public setPromise(promise: PromiseRecord): void {
     // do not set when promise is already completed
     if (this.promises.get(promise.id) !== undefined && this.promises.get(promise.id)?.state !== "pending") {
       return;
     }
     this.promises.set(promise.id, promise);
   }
-  public getTask(id: string): TaskRecord | undefined {
-    return this.tasks.get(id);
-  }
 
-  public setTask(task: TaskRecord): void {
-    // do not set when counter is greater
-    if ((this.tasks.get(task.id)?.version || 0) >= task.version) {
-      return;
-    }
-    this.tasks.set(task.id, task);
+  public evictPromises(ids: string[]): void {
+    ids.forEach((id) => {
+      if (this.getPromise(id)?.state === "pending") {
+        this.promises.delete(id);
+      }
+    });
   }
 }
 
@@ -56,7 +56,7 @@ export class Handler {
     this.encryptor = encryptor;
   }
 
-  public promiseGet(req: PromiseGetReq, done: (res: Result<PromiseRecord<any>, ResonateError>) => void): void {
+  public promiseGet(req: PromiseGetReq, done: (res: Result<PromiseRecord, ResonateError>) => void): void {
     const promise = this.cache.getPromise(req.data.id);
     if (promise) {
       done({ kind: "value", value: promise });
@@ -64,27 +64,30 @@ export class Handler {
     }
 
     this.network.send(req, (res) => {
-      if (res.kind === "error")
+      if (!isSuccess(res)) {
         return done({
           kind: "error",
-          error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+          error: exceptions.SERVER_ERROR(res.data, true, {
+            code: res.head.status,
+            message: res.data,
+          }),
         });
+      }
+
       util.assert(res.kind === "promise.get");
-      let promise: PromiseRecord<any>;
       try {
-        promise = this.decode(res.data.promise);
+        const promise = this.decode(res.data.promise);
+        this.cache.setPromise(promise);
+        done({ kind: "value", value: promise });
       } catch (e) {
         return done({ kind: "error", error: e as ResonateError });
       }
-
-      this.cache.setPromise(promise);
-      done({ kind: "value", value: promise });
     });
   }
 
   public promiseCreate(
-    req: PromiseCreateReq<any>,
-    done: (res: Result<PromiseRecord<any>, ResonateError>) => void,
+    req: PromiseCreateReq,
+    done: (res: Result<PromiseRecord, ResonateError>) => void,
     func = "unknown",
     headers: { [key: string]: string } = {},
     retryForever = false,
@@ -106,21 +109,23 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (res.kind === "error")
+        if (!isSuccess(res)) {
           return done({
             kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+            error: exceptions.SERVER_ERROR(res.data, true, {
+              code: res.head.status,
+              message: res.data,
+            }),
           });
+        }
         util.assert(res.kind === "promise.create");
-        let promise: PromiseRecord<any>;
         try {
-          promise = this.decode(res.data.promise, req.data.param.data?.func ?? func);
+          const promise = this.decode(res.data.promise, req.data.param.data?.func ?? func);
+          this.cache.setPromise(promise);
+          done({ kind: "value", value: promise });
         } catch (e) {
           return done({ kind: "error", error: e as ResonateError });
         }
-
-        this.cache.setPromise(promise);
-        done({ kind: "value", value: promise });
       },
       headers,
       retryForever,
@@ -128,18 +133,12 @@ export class Handler {
   }
 
   public taskCreate(
-    req: TaskCreateReq<any>,
-    done: (res: Result<{ promise: PromiseRecord<any>; task?: TaskRecord }, ResonateError>) => void,
+    req: TaskCreateReq,
+    done: (res: Result<{ promise: PromiseRecord; task?: TaskRecord }, ResonateError>) => void,
     func = "unknown",
     headers: { [key: string]: string } = {},
     retryForever = false,
   ) {
-    const promise = this.cache.getPromise(req.data.action.data.id);
-    if (promise) {
-      done({ kind: "value", value: { promise } });
-      return;
-    }
-
     let param: Value<string>;
     try {
       param = this.encryptor.encrypt(this.encoder.encode(req.data.action.data.param.data));
@@ -155,13 +154,18 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (res.kind === "error")
+        if (!isSuccess(res)) {
           return done({
             kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+            error: exceptions.SERVER_ERROR(res.data, true, {
+              code: res.head.status,
+              message: res.data,
+            }),
           });
+        }
+
         util.assert(res.kind === "task.create");
-        let promise: PromiseRecord<any>;
+        let promise: PromiseRecord;
         try {
           promise = this.decode(res.data.promise, req.data.action.data.param.data?.func ?? func);
         } catch (e) {
@@ -169,10 +173,6 @@ export class Handler {
         }
 
         this.cache.setPromise(promise);
-
-        if (res.data.task) {
-          this.cache.setTask(res.data.task);
-        }
 
         done({ kind: "value", value: { promise, task: res.data.task } });
       },
@@ -182,8 +182,8 @@ export class Handler {
   }
 
   public promiseSettle(
-    req: PromiseSettleReq<any>,
-    done: (res: Result<PromiseRecord<any>, ResonateError>) => void,
+    req: PromiseSettleReq,
+    done: (res: Result<PromiseRecord, ResonateError>) => void,
     func = "unknown",
   ): void {
     const promise = this.cache.getPromise(req.data.id);
@@ -204,14 +204,18 @@ export class Handler {
     }
 
     this.network.send(req, (res) => {
-      if (res.kind === "error") {
+      if (!isSuccess(res)) {
         return done({
           kind: "error",
-          error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+          error: exceptions.SERVER_ERROR(res.data, true, {
+            code: res.head.status,
+            message: res.data,
+          }),
         });
       }
+
       util.assert(res.kind === req.kind);
-      let promise: PromiseRecord<any>;
+      let promise: PromiseRecord;
       try {
         promise = this.decode(res.data.promise, func);
       } catch (e) {
@@ -223,31 +227,21 @@ export class Handler {
     });
   }
 
-  public taskAcquire(
-    req: TaskAcquireReq,
-    done: (res: Result<{ root: PromiseRecord<any> }, ResonateError>) => void,
-  ): void {
-    const task = this.cache.getTask(req.data.id);
-    if (task && task.version >= req.data.version) {
-      done({
-        kind: "error",
-        error: exceptions.ENCODING_RETV_UNDECODEABLE("The task counter is invalid", {
-          code: 40307,
-          message: "The task counter is invalid",
-        }),
-      });
-      return;
-    }
-
+  public taskAcquire(req: TaskAcquireReq, done: (res: Result<{ root: PromiseRecord }, ResonateError>) => void): void {
     this.network.send(req, (res) => {
-      if (res.kind === "error")
+      if (!isSuccess(res)) {
         return done({
           kind: "error",
-          error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+          error: exceptions.SERVER_ERROR(res.data, true, {
+            code: res.head.status,
+            message: res.data,
+          }),
         });
+      }
+
       util.assert(res.kind === req.kind);
 
-      let promise: PromiseRecord<any>;
+      let promise: PromiseRecord;
 
       try {
         promise = this.decode(res.data.data.promise);
@@ -256,15 +250,38 @@ export class Handler {
       }
 
       this.cache.setPromise(promise);
-      this.cache.setTask({ id: req.data.id, version: req.data.version });
 
       done({ kind: "value", value: { root: promise } });
+    });
+  }
+  public taskSuspend(req: TaskSuspendReq, done: (res: Result<{ continue: boolean }, ResonateError>) => void): void {
+    this.cache.evictPromises(req.data.actions.map((a) => a.data.awaited));
+    this.network.send(req, (res) => {
+      if (isSuccess(res)) {
+        return done({
+          kind: "value",
+          value: { continue: false },
+        });
+      } else if (isRedirect(res)) {
+        return done({
+          kind: "value",
+          value: { continue: true },
+        });
+      } else {
+        done({
+          kind: "error",
+          error: exceptions.SERVER_ERROR(res.data, true, {
+            code: res.head.status,
+            message: res.data,
+          }),
+        });
+      }
     });
   }
 
   public promiseRegister(
     req: PromiseRegisterReq,
-    done: (res: Result<PromiseRecord<any>, ResonateError>) => void,
+    done: (res: Result<PromiseRecord, ResonateError>) => void,
     headers: { [key: string]: string } = {},
   ): void {
     const id = `__resume:${req.data.awaiter}:${req.data.awaited}`;
@@ -279,15 +296,19 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (res.kind === "error") {
+        if (!isSuccess(res)) {
           return done({
             kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+            error: exceptions.SERVER_ERROR(res.data, true, {
+              code: res.head.status,
+              message: res.data,
+            }),
           });
         }
+
         util.assert(req.kind === res.kind);
         if (res.data.promise) {
-          let promise: PromiseRecord<any>;
+          let promise: PromiseRecord;
           try {
             promise = this.decode(res.data.promise);
           } catch (e) {
@@ -304,7 +325,7 @@ export class Handler {
 
   public promiseSubscribe(
     req: PromiseSubscribeReq,
-    done: (res: Result<PromiseRecord<any>, ResonateError>) => void,
+    done: (res: Result<PromiseRecord, ResonateError>) => void,
     retryForever = false,
   ) {
     const id = `__notify:${req.data.awaited}:${req.data.address}`;
@@ -319,14 +340,18 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (res.kind === "error") {
+        if (!isSuccess(res)) {
           return done({
             kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+            error: exceptions.SERVER_ERROR(res.data, true, {
+              code: res.head.status,
+              message: res.data,
+            }),
           });
         }
+
         util.assert(req.kind === res.kind);
-        let promise: PromiseRecord<any>;
+        let promise: PromiseRecord;
         try {
           promise = this.decode(res.data.promise);
         } catch (e) {
@@ -350,7 +375,7 @@ export class Handler {
     }
   }
 
-  private decode(promise: PromiseRecord<string>, func = "unknown"): PromiseRecord<any> {
+  private decode(promise: PromiseRecord, func = "unknown"): PromiseRecord {
     let paramData: any;
     let valueData: any;
 

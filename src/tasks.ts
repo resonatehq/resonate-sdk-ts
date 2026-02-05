@@ -1,5 +1,6 @@
 import { LocalNetwork } from "./network/local";
-import type { Network, PromiseRecord, TaskAcquireRes } from "./network/network";
+import type { Network } from "./network/network";
+import { PromiseRecord, TaskAcquireRes, isSuccess } from "./network/types";
 import * as util from "./util";
 
 export class Tasks {
@@ -23,7 +24,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (res.head.status !== 200) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -35,7 +36,7 @@ export class Tasks {
     });
   }
 
-  fulfill(id: string, version: number): Promise<PromiseRecord<string>> {
+  fulfill(id: string, version: number): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -52,7 +53,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -76,7 +77,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;

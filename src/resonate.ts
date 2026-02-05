@@ -5,19 +5,18 @@ import { type Encryptor, NoopEncryptor } from "./encryptor";
 import exceptions from "./exceptions";
 import { Handler } from "./handler";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";
+import { HttpNetwork, PollMessageSource } from "./network/http";
 import { LocalNetwork } from "./network/local";
+import type { MessageSource, Network } from "./network/network";
 import type {
-  Message,
-  MessageSource,
-  Network,
+  Msg,
   PromiseCreateReq,
   PromiseGetReq,
   PromiseRecord,
   PromiseSubscribeReq,
   TaskCreateReq,
   TaskRecord,
-} from "./network/network";
-import { HttpNetwork, PollMessageSource } from "./network/remote";
+} from "./network/types";
 import { type Options, OptionsBuilder } from "./options";
 import { Promises } from "./promises";
 import { Registry } from "./registry";
@@ -45,8 +44,8 @@ export interface ResonateSchedule {
 }
 
 type SubscriptionEntry = {
-  promise: Promise<PromiseRecord<any>>;
-  resolve: (r: PromiseRecord<any>) => void;
+  promise: Promise<PromiseRecord>;
+  resolve: (r: PromiseRecord) => void;
   reject: (e: any) => void;
   timeout: number;
 };
@@ -568,7 +567,7 @@ export class Resonate {
                   "resonate:branch": id,
                   "resonate:parent": id,
                   "resonate:scope": "global",
-                  "resonate:target": this.anycast,
+                  "resonate:invoke": this.anycast,
                 },
               },
             },
@@ -712,7 +711,7 @@ export class Resonate {
               "resonate:branch": id,
               "resonate:parent": id,
               "resonate:scope": "global",
-              "resonate:target": opts.target,
+              "resonate:invoke": opts.target,
             },
           },
         },
@@ -764,7 +763,7 @@ export class Resonate {
     await this.schedules.create(name, cron, `${this.idPrefix}{{.id}}.{{.timestamp}}`, opts.timeout, {
       promiseHeaders: headers,
       promiseData: data,
-      promiseTags: { ...opts.tags, "resonate:target": opts.target },
+      promiseTags: { ...opts.tags, "resonate:invoke": opts.target },
     });
 
     return {
@@ -825,9 +824,9 @@ export class Resonate {
   }
 
   private taskCreate(
-    req: TaskCreateReq<any>,
+    req: TaskCreateReq,
     headers: { [key: string]: string },
-  ): Promise<{ promise: PromiseRecord<any>; task?: TaskRecord }> {
+  ): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
     return new Promise((resolve, reject) =>
       this.handler.taskCreate(
         req,
@@ -845,7 +844,7 @@ export class Resonate {
     );
   }
 
-  private promiseCreate(req: PromiseCreateReq<any>, headers: { [key: string]: string }): Promise<PromiseRecord<any>> {
+  private promiseCreate(req: PromiseCreateReq, headers: { [key: string]: string }): Promise<PromiseRecord> {
     return new Promise((resolve, reject) =>
       this.handler.promiseCreate(
         req,
@@ -863,7 +862,7 @@ export class Resonate {
     );
   }
 
-  private promiseSubscribe(req: PromiseSubscribeReq): Promise<PromiseRecord<any>> {
+  private promiseSubscribe(req: PromiseSubscribeReq): Promise<PromiseRecord> {
     return new Promise((resolve, reject) =>
       this.handler.promiseSubscribe(
         req,
@@ -879,7 +878,7 @@ export class Resonate {
     );
   }
 
-  private promiseGet(req: PromiseGetReq): Promise<PromiseRecord<any>> {
+  private promiseGet(req: PromiseGetReq): Promise<PromiseRecord> {
     return new Promise((resolve, reject) =>
       this.handler.promiseGet(req, (res) => {
         if (res.kind === "error") {
@@ -891,7 +890,7 @@ export class Resonate {
     );
   }
 
-  private createHandle(promise: PromiseRecord<any>): ResonateHandle<any> {
+  private createHandle(promise: PromiseRecord): ResonateHandle<any> {
     const createSubscriptionReq: PromiseSubscribeReq = {
       kind: "promise.subscribe",
       head: { corrId: "", version: "" },
@@ -908,7 +907,7 @@ export class Resonate {
     };
   }
 
-  private onMessage(msg: Message): void {
+  private onMessage(msg: Msg): void {
     util.assert(msg.kind === "notify");
 
     let paramData: any;
@@ -937,8 +936,8 @@ export class Resonate {
     });
   }
 
-  private async subscribe(id: string, res: PromiseRecord<any>) {
-    const { promise, resolve, reject } = this.subscriptions.get(id) ?? Promise.withResolvers<PromiseRecord<any>>();
+  private async subscribe(id: string, res: PromiseRecord) {
+    const { promise, resolve, reject } = this.subscriptions.get(id) ?? Promise.withResolvers<PromiseRecord>();
 
     if (res.state === "pending") {
       this.subscriptions.set(id, { promise, resolve, reject, timeout: res.timeoutAt });
@@ -964,7 +963,7 @@ export class Resonate {
     }
   }
 
-  private notify(id: string, err: any, res?: PromiseRecord<any>) {
+  private notify(id: string, err: any, res?: PromiseRecord) {
     const subscription = this.subscriptions.get(id);
 
     // notify subscribers

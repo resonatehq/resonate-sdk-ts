@@ -4,8 +4,9 @@ import { type Completed, Coroutine, type Done, type Suspended } from "../src/cor
 import { JsonEncoder } from "../src/encoder";
 import { NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
-import type { Message, Network, PromiseRecord, Req, Res } from "../src/network/network";
+import type { Network } from "../src/network/network";
 import { PollMessageSource } from "../src/network/remote";
+import type { Msg, PromiseRecord, Req, Res } from "../src/network/types";
 import { OptionsBuilder } from "../src/options";
 import { Registry } from "../src/registry";
 import { Never } from "../src/retries";
@@ -14,13 +15,18 @@ import type { Result } from "../src/types";
 import { assert } from "../src/util";
 
 class DummyNetwork implements Network {
-  private promises = new Map<string, PromiseRecord<string>>();
+  private promises = new Map<string, PromiseRecord>();
 
   start(): void {}
-  send(req: Req<string>, callback: (res: Res) => void): void {
+  send<K extends Req["kind"]>(
+    req: Extract<Req, { kind: K }>,
+    callback: (res: Extract<Res, { kind: K }>) => void,
+    headers?: { [key: string]: string },
+    retryForever?: boolean,
+  ): void {
     switch (req.kind) {
       case "promise.create": {
-        const p: PromiseRecord<string> = {
+        const p: PromiseRecord = {
           id: req.data.id,
           state: "pending",
           timeoutAt: req.data.timeoutAt,
@@ -55,12 +61,12 @@ class DummyNetwork implements Network {
     }
   }
 
-  recv(_msg: Message): void {
+  recv(_msg: Msg): void {
     throw new Error("Method not implemented.");
   }
 
   stop() {}
-  subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Message) => void) {}
+  subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Msg) => void) {}
 }
 
 describe("Coroutine", () => {
@@ -68,7 +74,7 @@ describe("Coroutine", () => {
   const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], handler: Handler) => {
     const m = new PollMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
 
-    const boundaryPromise: PromiseRecord<any> = {
+    const boundaryPromise: PromiseRecord = {
       id: uuid,
       state: "pending",
       param: { headers: {}, data: undefined },
@@ -326,7 +332,7 @@ describe("Coroutine", () => {
     const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
 
     const m = new PollMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
-    const boundaryPromise: PromiseRecord<any> = {
+    const boundaryPromise: PromiseRecord = {
       id: "foo.1",
       state: "pending",
       param: { headers: {}, data: undefined },

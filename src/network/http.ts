@@ -26,12 +26,12 @@ export class HttpNetwork implements Network {
   private verbose: boolean;
 
   constructor({
-    url = "http://localhost:8001/api",
-    timeout = 30 * util.SEC,
+    url = "http://localhost:8001",
+    timeout = 10000 * util.SEC,
     headers = {},
     auth = undefined,
     token = undefined,
-    verbose = false,
+    verbose = true,
   }: HttpNetworkConfig) {
     this.url = url;
     this.timeout = timeout;
@@ -54,14 +54,15 @@ export class HttpNetwork implements Network {
     headers: { [key: string]: string } = {},
     retryForever = false,
   ): void {
-    const retryPolicy = retryForever ? { retries: Number.MAX_SAFE_INTEGER, delay: 1000 } : { retries: 0 };
+    const retryPolicy = retryForever ? { retries: Number.MAX_SAFE_INTEGER, delay: 10000 } : { retries: 0 };
 
     this.doSend(req, headers, retryPolicy).then(
       (res) => {
         util.assert(res.kind === req.kind, "res kind must match req kind");
         callback(res);
       },
-      () => {
+      (err) => {
+        console.error(err);
         util.assert(false, "something went wrong");
       },
     );
@@ -81,12 +82,23 @@ export class HttpNetwork implements Network {
           console.log(`[HttpNetwork] Sending ${req.kind}:`, JSON.stringify(req, null, 2));
         }
 
-        const response = await fetch(this.url, {
+        const response = await fetch(`${this.url}/api`, {
           method: "POST",
           headers: { ...this.headers, ...headers },
           body: JSON.stringify(req),
           signal: controller.signal,
         });
+
+        const body = await response.json();
+        if (this.verbose) {
+          console.log(
+            `[HttpNetwork] Received ${response.status}:`,
+            `for request:`,
+            req,
+            `response.ok:${response.ok}`,
+            body,
+          );
+        }
 
         if (!response.ok) {
           const err = await response
@@ -100,15 +112,11 @@ export class HttpNetwork implements Network {
           );
         }
 
-        const res: Res = (await response.json()) as Res;
+        const res: Res = body as Res;
 
-        if (this.verbose) {
-          console.log(`[HttpNetwork] Response:`, JSON.stringify(res, null, 2));
-        }
-
-        // TODO: write type guards
         return res as Extract<Res, { kind: K }>;
       } catch (err) {
+        console.log(err);
         if (err instanceof ResonateError && !err.retriable) {
           throw err;
         }
@@ -120,6 +128,7 @@ export class HttpNetwork implements Network {
         }
 
         console.warn(`Networking. Cannot connect to [${this.url}]. Retrying in ${delay / 1000}s.`);
+        console.log(err);
         if (this.verbose) {
           console.warn(err);
         }
@@ -180,6 +189,7 @@ export class PollMessageSource implements MessageSource {
 
   private connect() {
     const url = new URL(`/poll/${encodeURIComponent(this.group)}/${encodeURIComponent(this.pid)}`, `${this.url}`);
+    console.log("poll url", url);
     this.eventSource = new EventSource(url, {
       fetch: (url, init) =>
         fetch(url, {

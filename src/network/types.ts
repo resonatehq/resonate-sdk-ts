@@ -3,8 +3,8 @@
 export type PromiseRecord = {
   id: string;
   state: PromiseState;
-  param: { headers: { [key: string]: string }; data: string };
-  value: { headers: { [key: string]: string }; data: string };
+  param: { headers: { [key: string]: string }; data: any };
+  value: { headers: { [key: string]: string }; data: any };
   tags: { [key: string]: string };
   timeoutAt: number;
   createdAt: number;
@@ -23,7 +23,7 @@ export type ScheduleRecord = {
   cron: string;
   promiseId: string;
   promiseTimeout: number;
-  promiseParam: { headers: { [key: string]: string }; data: string };
+  promiseParam: { headers: { [key: string]: string }; data: any };
   promiseTags: { [key: string]: string };
   createdAt: number;
   nextRunAt: number;
@@ -61,7 +61,7 @@ export type PromiseCreateReq = {
   head: { auth?: string; corrId: string; version: string };
   data: {
     id: string;
-    param: { headers: { [key: string]: string }; data: string };
+    param: { headers: { [key: string]: string }; data: any };
     tags: { [key: string]: string };
     timeoutAt: number;
   };
@@ -73,7 +73,7 @@ export type PromiseSettleReq = {
   data: {
     id: string;
     state: "resolved" | "rejected" | "rejected_canceled";
-    value: { headers: { [key: string]: string }; data: string };
+    value: { headers: { [key: string]: string }; data: any };
   };
 };
 
@@ -163,7 +163,7 @@ export type ScheduleCreateReq = {
     cron: string;
     promiseId: string;
     promiseTimeout: number;
-    promiseParam: { headers: { [key: string]: string }; data: string };
+    promiseParam: { headers: { [key: string]: string }; data: any };
     promiseTags: { [key: string]: string };
   };
 };
@@ -511,3 +511,25 @@ export type NotifyMsg = {
     promise: PromiseRecord;
   };
 };
+
+// Type Guards
+
+export function isSuccess<T extends Res>(res: T): res is Extract<T, { head: { status: 200 } }> {
+  return res.head.status === 200;
+}
+
+export function isNotFound<T extends Res>(res: T): res is Extract<T, { head: { status: 404 } }> {
+  return res.head.status === 404;
+}
+
+export function isConflict<T extends Res>(res: T): res is Extract<T, { head: { status: 409 } }> {
+  return res.head.status === 409;
+}
+
+export function isRedirect<T extends Res>(res: T): res is Extract<T, { head: { status: 300 } }> {
+  return res.head.status === 300;
+}
+
+export function isError<T extends Res>(res: T): res is Extract<T, { head: { status: 500 } }> {
+  return res.head.status === 500;
+}

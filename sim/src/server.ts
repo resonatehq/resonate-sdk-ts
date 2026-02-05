@@ -1,6 +1,6 @@
 import type { StepClock } from "../../src/clock";
 import { Server } from "../../src/network/local";
-import type { Message as NetworkMessage, Req, Res } from "../../src/network/network";
+import type { Msg as NetworkMessage, Req, Res } from "../../src/network/types";
 import * as util from "../../src/util";
 import { type Address, anycast, Message, Process, unicast } from "./simulator";
 
@@ -16,7 +16,7 @@ export class ServerProcess extends Process {
     this.clock = clock;
   }
 
-  tick(tick: number, messages: Message<Req<string>>[]): Message<{ err?: any; res?: Res } | NetworkMessage>[] {
+  tick(tick: number, messages: Message<Req>[]): Message<{ err?: any; res?: Res } | NetworkMessage>[] {
     this.log(tick, "[recv]", messages);
 
     const responses: Message<{ err?: any; res?: Res } | NetworkMessage>[] = [];

@@ -91,3 +91,13 @@ export function getCallerInfo(): string {
 
   return callerLine.trim();
 }
+
+export function once<T extends () => any>(fn: T): T {
+  let called = false;
+
+  return (() => {
+    assert(!called, "Function can only be called once");
+    called = true;
+    return fn();
+  }) as T;
+}

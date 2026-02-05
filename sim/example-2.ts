@@ -1,7 +1,7 @@
 import { StepClock } from "../src/clock";
 import type * as context from "../src/context";
 import { JsonEncoder } from "../src/encoder";
-import type { Req } from "../src/network/network";
+import type { Req } from "../src/network/types";
 import { Registry } from "../src/registry";
 import * as util from "../src/util";
 import { ServerProcess } from "./src/server";
@@ -82,7 +82,7 @@ const n = 10;
 const id = `fibonacci-${n}`;
 
 sim.delay(0, () => {
-  const msg = new Message<Req<string>>(
+  const msg = new Message<Req>(
     unicast("environment"),
     unicast("server"),
     {
@@ -113,4 +113,7 @@ function f(n: number, memo: Record<number, number> = {}): number {
   return memo[n];
 }
 
-util.assert(encoder.decode(server.server.getState().promises[id]?.value) === f(n));
+const promise = server.server.promises.get(id);
+const value = promise?.value;
+const valueWithHeaders = value ? { headers: value.headers || {}, data: value.data || "" } : undefined;
+util.assert(!!valueWithHeaders && encoder.decode(valueWithHeaders) === f(n));

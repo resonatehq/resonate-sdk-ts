@@ -1,6 +1,6 @@
 import type { Clock } from "./clock";
 import exceptions, { type ResonateError } from "./exceptions";
-import type { PromiseCreateReq } from "./network/network";
+import type { PromiseCreateReq } from "./network/types";
 import type { Options, OptionsBuilder } from "./options";
 import type { Registry } from "./registry";
 import { Exponential, Never, type RetryPolicy } from "./retries";
@@ -14,7 +14,7 @@ export class LFI<T> implements Iterable<LFI<T>> {
   public args: any[];
   public version: number;
   public retryPolicy: RetryPolicy;
-  public createReq: PromiseCreateReq<any>;
+  public createReq: PromiseCreateReq;
 
   constructor(
     id: string,
@@ -22,7 +22,7 @@ export class LFI<T> implements Iterable<LFI<T>> {
     args: any[],
     version: number,
     retryPolicy: RetryPolicy,
-    createReq: PromiseCreateReq<any>,
+    createReq: PromiseCreateReq,
   ) {
     this.id = id;
     this.func = func;
@@ -45,7 +45,7 @@ export class LFC<T> implements Iterable<LFC<T>> {
   public args: any[];
   public version: number;
   public retryPolicy: RetryPolicy;
-  public createReq: PromiseCreateReq<any>;
+  public createReq: PromiseCreateReq;
 
   constructor(
     id: string,
@@ -53,7 +53,7 @@ export class LFC<T> implements Iterable<LFC<T>> {
     args: any[],
     version: number,
     retryPolicy: RetryPolicy,
-    createReq: PromiseCreateReq<any>,
+    createReq: PromiseCreateReq,
   ) {
     this.id = id;
     this.func = func;
@@ -74,14 +74,14 @@ export class RFI<T> implements Iterable<RFI<T>> {
   public id: string;
   public func: string;
   public version: number;
-  public createReq: PromiseCreateReq<any>;
+  public createReq: PromiseCreateReq;
   public mode: "attached" | "detached";
 
   constructor(
     id: string,
     func: string,
     version: number,
-    createReq: PromiseCreateReq<any>,
+    createReq: PromiseCreateReq,
     mode: "attached" | "detached" = "attached",
   ) {
     this.id = id;
@@ -102,10 +102,10 @@ export class RFC<T> implements Iterable<RFC<T>> {
   public id: string;
   public func: string;
   public version: number;
-  public createReq: PromiseCreateReq<any>;
+  public createReq: PromiseCreateReq;
   public mode = "attached" as const;
 
-  constructor(id: string, func: string, version: number, createReq: PromiseCreateReq<any>) {
+  constructor(id: string, func: string, version: number, createReq: PromiseCreateReq) {
     this.id = id;
     this.func = func;
     this.version = version;
@@ -605,7 +605,7 @@ export class InnerContext implements Context {
     data: any;
     opts: Options;
     breaksLineage: boolean;
-  }): PromiseCreateReq<any> {
+  }): PromiseCreateReq {
     // timeout cannot be greater than parent timeout
     const timeoutAt = Math.min(this.clock.now() + opts.timeout, this.info.timeout);
 
@@ -639,7 +639,7 @@ export class InnerContext implements Context {
     opts: Options;
     breaksLineage: boolean;
     maxTimeout?: number;
-  }): PromiseCreateReq<any> {
+  }): PromiseCreateReq {
     // timeout cannot be greater than parent timeout (unless detached)
     const timeoutAt = Math.min(this.clock.now() + opts.timeout, maxTimeout);
 
@@ -651,7 +651,7 @@ export class InnerContext implements Context {
         timeoutAt,
         tags: {
           "resonate:scope": "global",
-          "resonate:target": opts.target,
+          "resonate:invoke": opts.target,
           "resonate:branch": id,
           "resonate:parent": this.id,
           "resonate:origin": breaksLineage ? id : this.originId,
@@ -674,7 +674,7 @@ export class InnerContext implements Context {
     data: any;
     tags?: { [key: string]: string };
     breaksLineage: boolean;
-  }): PromiseCreateReq<any> {
+  }): PromiseCreateReq {
     // timeout cannot be greater than parent timeout
     const timeoutAt = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.info.timeout);
 
@@ -696,7 +696,7 @@ export class InnerContext implements Context {
     };
   }
 
-  sleepCreateOpts({ id, time }: { id: string; time: number }): PromiseCreateReq<any> {
+  sleepCreateOpts({ id, time }: { id: string; time: number }): PromiseCreateReq {
     const tags = {
       "resonate:scope": "global",
       "resonate:branch": id,

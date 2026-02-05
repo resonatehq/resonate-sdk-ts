@@ -1,7 +1,7 @@
 import type { Context, InnerContext } from "./context";
 import { Decorator, type Value } from "./decorator";
 import type { Handler } from "./handler";
-import type { PromiseRecord, TaskRecord } from "./network/network";
+import type { PromiseRecord, TaskRecord } from "./network/types";
 import { Never } from "./retries";
 import type { Span } from "./tracer";
 import type { Result, Yieldable } from "./types";
@@ -11,11 +11,6 @@ export type Suspended = {
   type: "suspended";
   todo: { local: LocalTodo[]; remote: RemoteTodo[] };
   spans: Span[];
-};
-
-export type Completed = {
-  type: "completed";
-  promise: PromiseRecord<any>;
 };
 
 export interface LocalTodo {
@@ -89,15 +84,18 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     task: TaskRecord,
-    boundaryPromise: PromiseRecord<any>,
+    boundaryPromise: PromiseRecord,
     handler: Handler,
     spans: Map<string, Span>,
-    callback: (res: Result<Suspended | Completed | Done, any>) => void,
+    callback: (res: Result<Suspended | Done, any>) => void,
   ): void {
-    // Replay check: if boundary promise is already settled, short-circuit.
     if (boundaryPromise.state !== "pending") {
-      return callback({ kind: "value", value: { type: "completed", promise: boundaryPromise } });
+      console.log({ ...boundaryPromise });
     }
+    util.assert(
+      boundaryPromise.state.toLowerCase() === "pending",
+      `Promise must be pending to execute it ${boundaryPromise.id}`,
+    );
 
     const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), handler, spans);
     coroutine.exec((res) => {
@@ -216,6 +214,7 @@ export class Coroutine<T> {
                     };
                     next();
                   } else {
+                    console.log("promise.settle for", { action });
                     this.handler.promiseSettle(
                       {
                         kind: "promise.settle",
