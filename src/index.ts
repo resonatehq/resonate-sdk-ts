@@ -9,7 +9,7 @@ export {
 export * as essential from "./essential";
 export { Handler } from "./handler";
 export { AsyncHeartbeat, NoopHeartbeat } from "./heartbeat";
-export { HttpNetwork } from "./network/remote";
+export { HttpNetwork } from "./network/http";
 export { OptionsBuilder } from "./options";
 export { Registry } from "./registry";
 export { Resonate, ResonateFunc, ResonateHandle } from "./resonate";

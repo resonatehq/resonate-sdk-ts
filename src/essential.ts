@@ -1,8 +1,8 @@
 export { Core } from "./core";
+export { HttpNetwork } from "./network/http";
 export { LocalNetwork } from "./network/local";
 // network
 export { Network } from "./network/network";
-export { HttpNetwork } from "./network/remote";
 // options
 export { Options } from "./options";
 // processor

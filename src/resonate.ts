@@ -567,7 +567,7 @@ export class Resonate {
                   "resonate:branch": id,
                   "resonate:parent": id,
                   "resonate:scope": "global",
-                  "resonate:invoke": this.anycast,
+                  "resonate:target": this.anycast,
                 },
               },
             },
@@ -711,7 +711,7 @@ export class Resonate {
               "resonate:branch": id,
               "resonate:parent": id,
               "resonate:scope": "global",
-              "resonate:invoke": opts.target,
+              "resonate:target": opts.target,
             },
           },
         },
@@ -763,7 +763,7 @@ export class Resonate {
     await this.schedules.create(name, cron, `${this.idPrefix}{{.id}}.{{.timestamp}}`, opts.timeout, {
       promiseHeaders: headers,
       promiseData: data,
-      promiseTags: { ...opts.tags, "resonate:invoke": opts.target },
+      promiseTags: { ...opts.tags, "resonate:target": opts.target },
     });
 
     return {

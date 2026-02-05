@@ -1,6 +1,6 @@
 import { LocalNetwork } from "./network/local";
 import type { Network } from "./network/network";
-import type { ScheduleRecord } from "./network/types";
+import { isSuccess, type ScheduleRecord } from "./network/types";
 import * as util from "./util";
 export class Schedules {
   private network: Network;
@@ -9,7 +9,7 @@ export class Schedules {
     this.network = network;
   }
 
-  get(id: string): Promise<ScheduleRecord<string>> {
+  get(id: string): Promise<ScheduleRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -20,7 +20,7 @@ export class Schedules {
           },
         },
         (res) => {
-          if (res.head.status !== 200) {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -49,7 +49,7 @@ export class Schedules {
       promiseData?: string;
       promiseTags?: { [key: string]: string };
     } = {},
-  ): Promise<ScheduleRecord<string>> {
+  ): Promise<ScheduleRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -65,7 +65,7 @@ export class Schedules {
           },
         },
         (res) => {
-          if (res.head.status !== 200) {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -88,7 +88,7 @@ export class Schedules {
           },
         },
         (res) => {
-          if (res.head.status !== 200) {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;

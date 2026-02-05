@@ -3,7 +3,7 @@ import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
 import type { MessageSource, Network } from "./network/network";
-import type { Msg, PromiseRecord, PromiseRegisterReq, TaskRecord } from "./network/types";
+import type { Msg, PromiseRecord, TaskRecord } from "./network/types";
 import type { OptionsBuilder } from "./options";
 import type { Registry } from "./registry";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries";
@@ -100,8 +100,12 @@ export class Core {
     ]);
 
     // subscribe to invoke and resume
-    messageSource?.subscribe("invoke", this.onMessage.bind(this));
-    messageSource?.subscribe("resume", this.onMessage.bind(this));
+    messageSource?.subscribe("invoke", (msg) => {
+      this.onMessage.bind(this)(msg, () => {});
+    });
+    messageSource?.subscribe("resume", (msg) => {
+      this.onMessage.bind(this)(msg, () => {});
+    });
   }
 
   public executeUntilBlocked(span: Span, claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
@@ -167,12 +171,6 @@ export class Core {
     cb: (res: Result<{ continue: boolean }, undefined>) => void,
   ): void {
     const task = claimed.task;
-    const actions: PromiseRegisterReq[] = status.awaited.map((awaited) => ({
-      kind: "promise.register",
-      head: { version: "", corrId: "" },
-      data: { awaiter: claimed.rootPromise.id, awaited },
-    }));
-
     this.handler.taskSuspend(
       {
         kind: "task.suspend",
@@ -232,7 +230,7 @@ export class Core {
     );
   }
 
-  private onMessage(msg: Msg): void {
+  public onMessage(msg: Msg, cb: () => void): void {
     util.assert(msg.kind === "invoke" || msg.kind === "resume");
 
     if (msg.kind === "invoke" || msg.kind === "resume") {
@@ -251,7 +249,9 @@ export class Core {
             this.executeUntilBlocked(
               this.tracer.decode(msg.head),
               { kind: "claimed", task: task, rootPromise: res.value.root },
-              (_res) => {},
+              (_res) => {
+                cb();
+              },
             );
           }
         },

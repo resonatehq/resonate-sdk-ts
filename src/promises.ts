@@ -1,6 +1,6 @@
 import { LocalNetwork } from "./network/local";
 import type { Network } from "./network/network";
-import type { PromiseRecord, TaskRecord } from "./network/types";
+import { isSuccess, type PromiseRecord, type TaskRecord } from "./network/types";
 
 import * as util from "./util";
 export class Promises {
@@ -9,10 +9,10 @@ export class Promises {
     this.network = network;
   }
 
-  get(id: string): Promise<PromiseRecord<string>> {
+  get(id: string): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } }, (res) => {
-        if (res.head.status !== 200) {
+        if (!isSuccess(res)) {
           reject(res.data);
           return;
         }
@@ -34,7 +34,7 @@ export class Promises {
       data?: string;
       tags?: { [key: string]: string };
     } = {},
-  ): Promise<PromiseRecord<string>> {
+  ): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -48,7 +48,7 @@ export class Promises {
           },
         },
         (res) => {
-          if (res.head.status !== 200) {
+          if (!isSuccess(res)) {
             reject(res.data);
             return;
           }
@@ -73,7 +73,7 @@ export class Promises {
       data?: string;
       tags?: { [key: string]: string };
     } = {},
-  ): Promise<{ promise: PromiseRecord<string>; task?: TaskRecord }> {
+  ): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -90,7 +90,7 @@ export class Promises {
           },
         },
         (res) => {
-          if (res.head.status !== 200) {
+          if (!isSuccess(res)) {
             reject(res.data);
             return;
           }
@@ -111,7 +111,7 @@ export class Promises {
       headers?: { [key: string]: string };
       data?: string;
     } = {},
-  ): Promise<PromiseRecord<string>> {
+  ): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -124,7 +124,7 @@ export class Promises {
           },
         },
         (res) => {
-          if (res.head.status !== 200) {
+          if (!isSuccess(res)) {
             reject(res.data);
             return;
           }
@@ -138,7 +138,7 @@ export class Promises {
     awaited: string,
     awaiter: string,
   ): Promise<{
-    promise: PromiseRecord<string>;
+    promise: PromiseRecord;
   }> {
     return new Promise((resolve, reject) => {
       this.network.send(
@@ -148,7 +148,7 @@ export class Promises {
           data: { awaited, awaiter },
         },
         (res) => {
-          if (res.head.status !== 200) {
+          if (!isSuccess(res)) {
             reject(res.data);
             return;
           }
@@ -163,13 +163,13 @@ export class Promises {
     awaited: string,
     address: string,
   ): Promise<{
-    promise: PromiseRecord<string>;
+    promise: PromiseRecord;
   }> {
     return new Promise((resolve, reject) => {
       this.network.send(
         { kind: "promise.subscribe", head: { corrId: "", version: "" }, data: { awaited, address } },
         (res) => {
-          if (res.head.status !== 200) {
+          if (!isSuccess(res)) {
             reject(res.data);
             return;
           }

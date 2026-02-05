@@ -1,6 +1,6 @@
 import { LocalNetwork } from "./network/local";
 import type { Network } from "./network/network";
-import { PromiseRecord, TaskAcquireRes, isSuccess } from "./network/types";
+import { isSuccess, type PromiseRecord, type TaskAcquireRes } from "./network/types";
 import * as util from "./util";
 
 export class Tasks {

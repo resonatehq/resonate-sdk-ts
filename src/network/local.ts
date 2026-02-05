@@ -732,17 +732,17 @@ export class Server {
   ): ServerResponse {
     const existingPromise = this.promises.get(data.action.data.id);
     const existingTask = this.tasks.get(data.action.data.id);
-    
+
     // If promise exists without a task, fail
     if (existingPromise && !existingTask) {
       return this.perror(409, "Promise exists without associated task", ["task.create.promise_without_task"]);
     }
-    
+
     // If task exists and is acquired by another process, fail
     if (existingTask && existingTask.state === "acquired" && existingTask.pid !== data.pid) {
       return this.perror(409, "Task is already acquired by another process", ["task.create.task_already_acquired"]);
     }
-    
+
     // If both promise and task exist
     if (existingPromise && existingTask) {
       // Return both regardless of state (pending, completed, etc.)
@@ -754,7 +754,7 @@ export class Server {
         ["task.create.exists"],
       );
     }
-    
+
     // Create new promise with task
     const promise: ServerPromise = {
       id: data.action.data.id,
@@ -771,15 +771,15 @@ export class Server {
     this.pTimeouts.push({ id: data.action.data.id, timeout: data.action.data.timeoutAt });
 
     // Create task in acquired state (this is the key difference from promise.create)
-    const task: ServerTask = { 
-      id: data.action.data.id, 
-      state: "acquired", 
+    const task: ServerTask = {
+      id: data.action.data.id,
+      state: "acquired",
       version: 0,
       pid: data.pid,
-      ttl: data.ttl
+      ttl: data.ttl,
     };
     this.tasks.set(data.action.data.id, task);
-    
+
     // Add lease timeout for acquired task
     this.tTimeouts.push({ id: data.action.data.id, type: 1, timeout: now + data.ttl });
 

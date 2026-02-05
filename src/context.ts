@@ -651,7 +651,7 @@ export class InnerContext implements Context {
         timeoutAt,
         tags: {
           "resonate:scope": "global",
-          "resonate:invoke": opts.target,
+          "resonate:target": opts.target,
           "resonate:branch": id,
           "resonate:parent": this.id,
           "resonate:origin": breaksLineage ? id : this.originId,
