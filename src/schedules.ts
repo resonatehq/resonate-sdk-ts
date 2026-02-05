@@ -1,5 +1,6 @@
 import { LocalNetwork } from "./network/local";
-import type { Network, ScheduleRecord } from "./network/network";
+import type { Network } from "./network/network";
+import type { ScheduleRecord } from "./network/types";
 import * as util from "./util";
 export class Schedules {
   private network: Network;
@@ -19,7 +20,7 @@ export class Schedules {
           },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (res.head.status !== 200) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -64,7 +65,7 @@ export class Schedules {
           },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (res.head.status !== 200) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -87,7 +88,7 @@ export class Schedules {
           },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (res.head.status !== 200) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;

@@ -1,5 +1,6 @@
 import { LocalNetwork } from "./network/local";
-import type { Network, PromiseRecord, TaskRecord } from "./network/network";
+import type { Network } from "./network/network";
+import type { PromiseRecord, TaskRecord } from "./network/types";
 
 import * as util from "./util";
 export class Promises {
@@ -11,7 +12,7 @@ export class Promises {
   get(id: string): Promise<PromiseRecord<string>> {
     return new Promise((resolve, reject) => {
       this.network.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } }, (res) => {
-        if (res.kind === "error") {
+        if (res.head.status !== 200) {
           reject(res.data);
           return;
         }
@@ -47,7 +48,7 @@ export class Promises {
           },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (res.head.status !== 200) {
             reject(res.data);
             return;
           }
@@ -89,7 +90,7 @@ export class Promises {
           },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (res.head.status !== 200) {
             reject(res.data);
             return;
           }
@@ -123,7 +124,7 @@ export class Promises {
           },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (res.head.status !== 200) {
             reject(res.data);
             return;
           }
@@ -147,7 +148,7 @@ export class Promises {
           data: { awaited, awaiter },
         },
         (res) => {
-          if (res.kind === "error") {
+          if (res.head.status !== 200) {
             reject(res.data);
             return;
           }
@@ -168,7 +169,7 @@ export class Promises {
       this.network.send(
         { kind: "promise.subscribe", head: { corrId: "", version: "" }, data: { awaited, address } },
         (res) => {
-          if (res.kind === "error") {
+          if (res.head.status !== 200) {
             reject(res.data);
             return;
           }

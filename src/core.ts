@@ -2,7 +2,8 @@ import type { Clock } from "./clock";
 import { Computation, type Status } from "./computation";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
-import type { Message, MessageSource, Network, PromiseRecord, TaskRecord } from "./network/network";
+import type { MessageSource, Network } from "./network/network";
+import type { Msg, PromiseRecord, PromiseRegisterReq, TaskRecord } from "./network/types";
 import type { OptionsBuilder } from "./options";
 import type { Registry } from "./registry";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries";
@@ -11,7 +12,7 @@ import type { Result } from "./types";
 import * as util from "./util";
 
 export type PromiseHandler = {
-  addEventListener: (event: "created" | "completed", callback: (p: PromiseRecord<any>) => void) => void;
+  addEventListener: (event: "created" | "completed", callback: (p: PromiseRecord) => void) => void;
   subscribe: () => Promise<void>;
 };
 
@@ -20,7 +21,7 @@ export type Task = ClaimedTask | UnclaimedTask;
 export type ClaimedTask = {
   kind: "claimed";
   task: TaskRecord;
-  rootPromise: PromiseRecord<any>;
+  rootPromise: PromiseRecord;
 };
 
 export type UnclaimedTask = {
@@ -103,15 +104,12 @@ export class Core {
     messageSource?.subscribe("resume", this.onMessage.bind(this));
   }
 
-  public executeUntilBlocked(span: Span, task: Task, done: (res: Result<Status, undefined>) => void) {
-    let computation = this.computations.get(task.task.id);
+  public executeUntilBlocked(span: Span, claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
+    console.log("running", claimed);
+    let computation = this.computations.get(claimed.rootPromise.id);
     if (!computation) {
       computation = new Computation(
-        parseHelper(task.task.id),
-        this.unicast,
-        this.anycast,
-        this.pid,
-        this.ttl,
+        claimed.rootPromise.id,
         this.clock,
         this.network,
         this.handler,
@@ -124,34 +122,140 @@ export class Core {
         this.tracer,
         span,
       );
-      this.computations.set(task.task.id, computation);
+      this.computations.set(claimed.rootPromise.id, computation);
     }
 
-    computation.executeUntilBlocked(task, done);
+    computation.executeUntilBlocked(claimed, (compRes) => {
+      console.log("compRes", compRes);
+      if (compRes.kind === "error") {
+        return this.releaseTask(claimed.task, () => done(compRes));
+      }
+      if (compRes.kind === "value") {
+        const status = compRes.value;
+        if (status.kind === "suspended") {
+          return this.suspendTask(claimed, status, (res: Result<{ continue: boolean }, undefined>) => {
+            if (res.kind === "value") {
+              if (res.value.continue) {
+                return this.executeUntilBlocked(span, claimed, done);
+              }
+              return done(compRes);
+            }
+          });
+        }
+        if (status.kind === "done") {
+          console.log("value for task.fulfil", status.value);
+          return this.fulfillTask(claimed.task, status, () => done(compRes));
+        }
+      }
+    });
   }
 
-  private onMessage(msg: Message): void {
+  private releaseTask(task: TaskRecord, callback: () => void): void {
+    this.network.send(
+      {
+        kind: "task.release",
+        head: { corrId: "", version: "" },
+        data: { id: task.id, version: task.version },
+      },
+      callback,
+    );
+  }
+
+  private suspendTask(
+    claimed: ClaimedTask,
+    status: { kind: "suspended"; awaited: string[] },
+    cb: (res: Result<{ continue: boolean }, undefined>) => void,
+  ): void {
+    const task = claimed.task;
+    const actions: PromiseRegisterReq[] = status.awaited.map((awaited) => ({
+      kind: "promise.register",
+      head: { version: "", corrId: "" },
+      data: { awaiter: claimed.rootPromise.id, awaited },
+    }));
+
+    this.handler.taskSuspend(
+      {
+        kind: "task.suspend",
+        head: { corrId: "", version: "" },
+        data: {
+          id: task.id,
+          version: task.version,
+          actions: status.awaited.map((a) => ({
+            kind: "promise.register",
+            head: { corrId: "", version: "" },
+            data: { awaiter: claimed.rootPromise.id, awaited: a },
+          })),
+        },
+      },
+      (res) => {
+        if (res.kind === "error") {
+          res.error.log(this.verbose);
+          return cb({ kind: "error", error: undefined });
+        } else if (res.kind === "value") {
+          return cb(res);
+        }
+      },
+    );
+  }
+
+  private fulfillTask(
+    task: TaskRecord,
+    doneValue: { id: string; state: "resolved" | "rejected"; value: any },
+    callback: () => void,
+  ): void {
+    const encoded = this.handler.encodeValue(doneValue.value, "TODO, get function name");
+    if (encoded.kind === "error") {
+      encoded.error.log(this.verbose);
+      callback();
+      return;
+    }
+
+    this.network.send(
+      {
+        kind: "task.fulfill",
+        head: { corrId: "", version: "" },
+        data: {
+          id: task.id,
+          version: task.version,
+          action: {
+            kind: "promise.settle",
+            head: { corrId: "", version: "" },
+            data: {
+              id: doneValue.id,
+              state: doneValue.state,
+              value: encoded.value,
+            },
+          },
+        },
+      },
+      callback,
+    );
+  }
+
+  private onMessage(msg: Msg): void {
     util.assert(msg.kind === "invoke" || msg.kind === "resume");
 
     if (msg.kind === "invoke" || msg.kind === "resume") {
-      this.executeUntilBlocked(this.tracer.decode(msg.head), { kind: "unclaimed", task: msg.data.task }, () => {});
+      // acquire the task and then execute until blocked
+      const task = msg.data.task;
+      this.handler.taskAcquire(
+        {
+          kind: "task.acquire",
+          head: { corrId: "", version: "" },
+          data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
+        },
+        (res) => {
+          if (res.kind === "error") {
+            res.error.log(this.verbose);
+          } else {
+            this.executeUntilBlocked(
+              this.tracer.decode(msg.head),
+              { kind: "claimed", task: task, rootPromise: res.value.root },
+              (_res) => {},
+            );
+          }
+        },
+      );
     }
   }
-}
-
-// this is temporary and can be removed when we complete
-// the single task model
-function parseHelper(input: string): string {
-  const parts = input.split(":");
-
-  if (parts[0] === "__invoke" && parts.length === 2) {
-    return parts[1];
-  }
-
-  if (parts[0] === "__resume" && parts.length === 3) {
-    return parts[1];
-  }
-
-  // otherwise return the whole string
-  return input;
 }

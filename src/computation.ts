@@ -1,12 +1,12 @@
 import type { Clock } from "./clock";
 import { InnerContext } from "./context";
 import type { ClaimedTask, Task } from "./core";
-import { Coroutine, type LocalTodo, type RemoteTodo } from "./coroutine";
+import { Coroutine, type LocalTodo } from "./coroutine";
 import exceptions from "./exceptions";
 import type { Handler } from "./handler";
 import type { Heartbeat } from "./heartbeat";
-import type { Network, PromiseRecord, TaskRecord } from "./network/network";
-import { Nursery } from "./nursery";
+import type { Network } from "./network/network";
+import type { PromiseRecord, TaskRecord } from "./network/types";
 import type { OptionsBuilder } from "./options";
 import { AsyncProcessor, type Processor } from "./processor/processor";
 import type { Registry } from "./registry";
@@ -15,12 +15,7 @@ import type { Span, Tracer } from "./tracer";
 import type { Func, Result } from "./types";
 import * as util from "./util";
 
-export type Status = Completed | Done | Suspended;
-
-export type Completed = {
-  kind: "completed";
-  promise: PromiseRecord<any>;
-};
+export type Status = Done | Suspended;
 
 export type Done = {
   kind: "done";
@@ -31,6 +26,7 @@ export type Done = {
 
 export type Suspended = {
   kind: "suspended";
+  awaited: string[];
 };
 
 interface Data {
@@ -42,12 +38,7 @@ interface Data {
 
 export class Computation {
   private id: string;
-  private pid: string;
-  private ttl: number;
   private clock: Clock;
-  private unicast: string;
-  private anycast: string;
-  private network: Network;
   private handler: Handler;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
@@ -64,10 +55,6 @@ export class Computation {
 
   constructor(
     id: string,
-    unicast: string,
-    anycast: string,
-    pid: string,
-    ttl: number,
     clock: Clock,
     network: Network,
     handler: Handler,
@@ -82,12 +69,7 @@ export class Computation {
     processor?: Processor,
   ) {
     this.id = id;
-    this.unicast = unicast;
-    this.anycast = anycast;
-    this.pid = pid;
-    this.ttl = ttl;
     this.clock = clock;
-    this.network = network;
     this.handler = handler;
     this.retries = retries;
     this.registry = registry;
@@ -117,47 +99,14 @@ export class Computation {
         break;
 
       case "unclaimed":
-        this.handler.taskAcquire(
-          {
-            kind: "task.acquire",
-            head: { corrId: "", version: "" },
-            data: {
-              id: task.task.id,
-              version: task.task.version,
-              pid: this.pid,
-              ttl: this.ttl,
-            },
-          },
-          (res) => {
-            if (res.kind === "error") {
-              res.error.log(this.verbose);
-              return doneProcessing({ kind: "error", error: undefined });
-            }
-            this.processAcquired({ kind: "claimed", task: task.task, rootPromise: res.value.root }, doneProcessing);
-          },
-        );
+        util.assert(false, "All tasks must be claimed at this point");
         break;
     }
   }
 
   private processAcquired({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
-    const doneAndDropTaskIfErr = (res: Result<Status, undefined>) => {
-      if (res.kind === "error") {
-        return this.network.send(
-          { kind: "task.release", head: { corrId: "", version: "" }, data: { id: task.id, version: task.version } },
-          () => {
-            // ignore the drop task response, if the request failed the
-            // task will eventually expire anyways
-            done(res);
-          },
-        );
-      }
-
-      done(res);
-    };
-
     if (!isValidData(rootPromise.param?.data)) {
-      return doneAndDropTaskIfErr({ kind: "error", error: undefined });
+      return done({ kind: "error", error: undefined });
     }
 
     const { func, args, retry, version = 1 } = rootPromise.param.data;
@@ -166,7 +115,7 @@ export class Computation {
     // function must be registered
     if (!registered) {
       exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(func, version).log(this.verbose);
-      return doneAndDropTaskIfErr({ kind: "error", error: undefined });
+      return done({ kind: "error", error: undefined });
     }
 
     if (version !== 0) util.assert(version === registered.version, "versions must match");
@@ -175,146 +124,80 @@ export class Computation {
     // start heartbeat
     this.heartbeat.start();
 
-    return new Nursery<Status>((nursery) => {
-      const done = (res: Result<Status, undefined>) => {
-        if (res.kind === "error" || res.value.kind === "suspended") {
-          return nursery.done(res);
-        }
+    const retryCtor = retry ? this.retries.get(retry.type) : undefined;
+    const retryPolicy = retryCtor
+      ? new retryCtor(retry?.data)
+      : util.isGeneratorFunction(registered.func)
+        ? new Never()
+        : new Exponential();
 
-        if (res.value.kind === "completed") {
-          // Replay: boundary promise already settled, task still needs fulfilling
-          this.network.send(
-            {
-              kind: "task.fulfill",
-              head: { corrId: "", version: "" },
-              data: {
-                id: task.id,
-                version: task.version,
-                action: {
-                  kind: "promise.settle",
-                  head: { corrId: "", version: "" },
-                  data: {
-                    id: res.value.promise.id,
-                    state: res.value.promise.state === "resolved" ? "resolved" : "rejected",
-                    value: res.value.promise.value,
-                  },
-                },
-              },
-            },
-            (r) => {
-              if (r.kind === "error") {
-                nursery.done({ kind: "error", error: undefined });
-              } else {
-                nursery.done(res);
-              }
-            },
-          );
-          return;
-        }
+    if (retry && !retryCtor) {
+      console.warn(`Options. Retry policy '${retry.type}' not found. Will ignore.`);
+    }
 
-        // res.value.kind === "done": encode raw value and send task.fulfill
-        const doneValue = res.value;
-        const encoded = this.handler.encodeValue(doneValue.value, registered.func.name);
-        if (encoded.kind === "error") {
-          return nursery.done({ kind: "error", error: undefined });
-        }
+    const ctx = new InnerContext({
+      id: this.id,
+      oId: rootPromise.tags["resonate:origin"] ?? this.id,
+      func: registered.func.name,
+      clock: this.clock,
+      registry: this.registry,
+      dependencies: this.dependencies,
+      optsBuilder: this.optsBuilder,
+      timeout: rootPromise.timeoutAt,
+      version: registered.version,
+      retryPolicy: retryPolicy,
+      span: this.span,
+    });
 
-        this.network.send(
-          {
-            kind: "task.fulfill",
-            head: { corrId: "", version: "" },
-            data: {
-              id: task.id,
-              version: task.version,
-              action: {
-                kind: "promise.settle",
-                head: { corrId: "", version: "" },
-                data: {
-                  id: doneValue.id,
-                  state: doneValue.state,
-                  value: encoded.value,
-                },
-              },
-            },
-          },
-          (r) => {
-            if (r.kind === "error") {
-              nursery.done({ kind: "error", error: undefined });
-            } else {
-              nursery.done({
-                kind: "value",
-                value: {
-                  kind: "completed",
-                  promise: {
-                    id: doneValue.id,
-                    state: doneValue.state,
-                    param: rootPromise.param,
-                    value: { headers: {}, data: doneValue.value },
-                    tags: rootPromise.tags,
-                    timeoutAt: rootPromise.timeoutAt,
-                    createdAt: rootPromise.createdAt,
-                  },
-                },
-              });
-            }
-          },
-        );
-      };
-
-      const retryCtor = retry ? this.retries.get(retry.type) : undefined;
-      const retryPolicy = retryCtor
-        ? new retryCtor(retry?.data)
-        : util.isGeneratorFunction(registered.func)
-          ? new Never()
-          : new Exponential();
-
-      if (retry && !retryCtor) {
-        console.warn(`Options. Retry policy '${retry.type}' not found. Will ignore.`);
-      }
-
-      const ctx = new InnerContext({
-        id: this.id,
-        oId: rootPromise.tags["resonate:origin"] ?? this.id,
-        func: registered.func.name,
-        clock: this.clock,
-        registry: this.registry,
-        dependencies: this.dependencies,
-        optsBuilder: this.optsBuilder,
-        timeout: rootPromise.timeoutAt,
-        version: registered.version,
-        retryPolicy: retryPolicy,
-        span: this.span,
-      });
-
-      if (util.isGeneratorFunction(registered.func)) {
-        this.processGenerator(nursery, ctx, registered.func, args, task, rootPromise, done);
-      } else {
-        this.processFunction(this.id, ctx, registered.func, args, (res) => {
+    if (util.isGeneratorFunction(registered.func)) {
+      this.processGenerator(ctx, registered.func, args, task, rootPromise, done);
+    } else {
+      this.processFunction(
+        this.id,
+        ctx,
+        registered.func,
+        args,
+        (res) => {
           if (res.kind === "error") return done({ kind: "error", error: undefined });
 
+          const result = res.value;
+          util.assert(result.kind === "done", "Status must be done after finishing function execution");
           done({
             kind: "value",
             value: {
               kind: "done",
               id: this.id,
-              state: res.value.state === "resolved" ? "resolved" : "rejected",
-              value: res.value.value?.data,
+              state: result.state === "resolved" ? "resolved" : "rejected",
+              value: result.value?.data,
             },
           });
-        }, false);
-      }
-    }, doneAndDropTaskIfErr);
+        },
+        false,
+      );
+    }
   }
 
   private processGenerator(
-    nursery: Nursery<Status>,
     ctx: InnerContext,
     func: Func,
     args: any[],
     task: TaskRecord,
-    rootPromise: PromiseRecord<any>,
+    rootPromise: PromiseRecord,
     done: (res: Result<Status, undefined>) => void,
   ) {
+    // If boundary promise is done, short-circuit
+    if (rootPromise.state !== "pending") {
+      done({
+        kind: "value",
+        value: {
+          kind: "done",
+          id: rootPromise.id,
+          state: rootPromise.state === "resolved" ? "resolved" : "rejected",
+          value: rootPromise.value,
+        },
+      });
+    }
+
     Coroutine.exec(this.id, this.verbose, ctx, func, args, task, rootPromise, this.handler, this.spans, (res) => {
       if (res.kind === "error") {
         return done(res);
@@ -322,10 +205,6 @@ export class Computation {
       const status = res.value;
 
       switch (status.type) {
-        case "completed":
-          done({ kind: "value", value: { kind: "completed", promise: status.promise } });
-          break;
-
         case "done":
           done({
             kind: "value",
@@ -340,13 +219,15 @@ export class Computation {
 
         case "suspended":
           util.assert(status.todo.local.length > 0 || status.todo.remote.length > 0, "must be at least one todo");
-
           if (status.todo.local.length > 0) {
-            this.processLocalTodo(nursery, status.todo.local, done);
+            return this.processLocalTodo(
+              status.todo.local,
+              () => util.once(() => this.processGenerator(ctx, func, args, task, rootPromise, done)),
+              (err) => done({ kind: "error", error: undefined }),
+            );
           } else if (status.todo.remote.length > 0) {
-            this.processRemoteTodo(nursery, status.todo.remote, status.spans, ctx.info.timeout, task, done);
+            done({ kind: "value", value: { kind: "suspended", awaited: status.todo.remote.map((t) => t.id) } });
           }
-
           break;
       }
     });
@@ -357,35 +238,60 @@ export class Computation {
     ctx: InnerContext,
     func: Func,
     args: any[],
-    done: (res: Result<PromiseRecord<any>, undefined>) => void,
+    done: (res: Result<Status, undefined>) => void,
     settle = true,
   ) {
-    this.processor.process(
-      id,
-      ctx,
-      async () => await func(ctx, ...args),
-      (res) => {
-        if (!settle) {
-          // Boundary path: skip promise.settle, return raw result as synthetic record
-          return done({
-            kind: "value",
-            value: {
-              id,
-              state: res.kind === "value" ? ("resolved" as const) : ("rejected" as const),
-              param: { headers: {}, data: undefined },
-              value: { data: res.kind === "value" ? res.value : res.error, headers: {} },
-              tags: {},
-              timeoutAt: 0,
-              createdAt: 0,
-            },
-          });
-        }
+    this.processor.process([
+      {
+        id,
+        ctx,
+        func: async () => await func(ctx, ...args),
+        span: ctx.span,
+        verbose: this.verbose,
+      },
+    ]);
+
+    this.processor.getReady([id], (results) => {
+      util.assert(results.length === 1, "getReady must return one result");
+      const result = results[0];
+      const { id, result: res } = result;
+
+      done({
+        kind: "value",
+        value: {
+          kind: "done",
+          id: this.id,
+          state: res.kind === "value" ? "resolved" : "rejected",
+          value: res.kind === "value" ? res.value : res.error,
+        },
+      });
+    });
+  }
+
+  private processLocalTodo(todo: LocalTodo[], cb: () => void, onErr: (err: any) => void) {
+    const work = todo.map((t) => ({
+      id: t.id,
+      ctx: t.ctx,
+      func: async () => await t.func(t.ctx, ...t.args),
+      span: t.ctx.span,
+      verbose: this.verbose,
+    }));
+
+    this.processor.process(work);
+
+    // Get at least the first result that is ready and settle promises
+    const ids = todo.map((t) => t.id);
+    this.processor.getReady(ids, (results) => {
+      util.assert(results.length > 0, "getReady must return results");
+      let settledCount = 0;
+      for (const result of results) {
+        const { id, result: res } = result;
         this.handler.promiseSettle(
           {
             kind: "promise.settle",
             head: { corrId: "", version: "" },
             data: {
-              id,
+              id: id,
               state: res.kind === "value" ? "resolved" : "rejected",
               value: {
                 data: res.kind === "value" ? res.value : res.error,
@@ -393,91 +299,21 @@ export class Computation {
               },
             },
           },
-          (res) => {
-            if (res.kind === "error") {
-              res.error.log(this.verbose);
-              return done({ kind: "error", error: undefined });
+          (settleRes) => {
+            if (settleRes.kind === "error") {
+              settleRes.error.log(this.verbose);
+              onErr(settleRes.error);
             }
-            done(res);
+
+            settledCount++;
+            if (settledCount === results.length) {
+              cb();
+            }
           },
-          func.name,
+          id,
         );
-      },
-      this.verbose,
-      ctx.span,
-    );
-  }
-
-  private processLocalTodo(
-    nursery: Nursery<Status>,
-    todo: LocalTodo[],
-    done: (res: Result<Status, undefined>) => void,
-  ) {
-    for (const { id, ctx, span, func, args } of todo) {
-      if (this.seen.has(id)) {
-        continue;
       }
-
-      this.seen.add(id);
-
-      nursery.hold((next) => {
-        this.processFunction(id, ctx, func, args, (res) => {
-          span.end(this.clock.now());
-          next();
-
-          if (res.kind === "error") {
-            this.seen.delete(id);
-            done(res);
-          }
-        });
-      });
-    }
-
-    // once all local todos are submitted we can call continue
-    return nursery.cont();
-  }
-
-  private processRemoteTodo(
-    nursery: Nursery<Status>,
-    todo: RemoteTodo[],
-    spans: Span[],
-    timeout: number,
-    task: TaskRecord,
-    done: (res: Result<Status, undefined>) => void,
-  ) {
-    this.network.send(
-      {
-        kind: "task.suspend",
-        head: { corrId: "", version: "" },
-        data: {
-          id: task.id,
-          version: task.version,
-          actions: todo.map((t) => ({
-            kind: "promise.register",
-            head: { corrId: "", version: "" },
-            data: { awaiter: this.id, awaited: t.id },
-          })),
-        },
-      },
-      (res) => {
-        if (res.kind === "error") {
-          return done({ kind: "error", error: undefined });
-        }
-
-        util.assert(res.kind === "task.suspend");
-
-        switch (res.head.status) {
-          case 200:
-            for (const span of spans) {
-              span.end(this.clock.now());
-            }
-            return done({ kind: "value", value: { kind: "suspended" } });
-
-          case 300:
-            return nursery.cont();
-        }
-      },
-    );
+    });
   }
 }
 

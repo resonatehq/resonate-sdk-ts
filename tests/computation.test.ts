@@ -7,7 +7,7 @@ import { NoopEncryptor } from "../src/encryptor";
 import { Handler } from "../src/handler";
 import { NoopHeartbeat } from "../src/heartbeat";
 import { LocalNetwork } from "../src/network/local";
-import type { PromiseRecord, TaskRecord } from "../src/network/network";
+import type { PromiseRecord, TaskRecord } from "../src/network/types";
 import { OptionsBuilder } from "../src/options";
 import type { Processor } from "../src/processor/processor";
 import { Registry } from "../src/registry";

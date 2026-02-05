@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { StepClock } from "../src/clock";
 import type { Context } from "../src/context";
 import { JsonEncoder } from "../src/encoder";
-import type { Req } from "../src/network/network";
+import type { Req } from "../src/network/types";
 import { Registry } from "../src/registry";
 import { ServerProcess } from "./src/server";
 import { Message, Random, Simulator, unicast } from "./src/simulator";
@@ -224,13 +224,13 @@ export function run(options: Options) {
     if (!options.func || i === 0) {
       const id = `${funcName}-${i}`;
       const timeoutAt = rnd.randint(0, options.steps);
-      let msg: Message<Req<string>>;
+      let msg: Message<Req>;
       switch (funcName) {
         case "fibLfi":
         case "fibLfc":
         case "fibRfi":
         case "fibRfc": {
-          msg = new Message<Req<string>>(
+          msg = new Message<Req>(
             unicast("environment"),
             unicast("server"),
             {
@@ -250,7 +250,7 @@ export function run(options: Options) {
         case "foo":
         case "bar":
         case "baz": {
-          msg = new Message<Req<string>>(
+          msg = new Message<Req>(
             unicast("environment"),
             unicast("server"),
             {
