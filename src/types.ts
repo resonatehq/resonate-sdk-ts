@@ -1,5 +1,5 @@
-import type { Context, DIE, Future, LFC, LFI, RFC, RFI } from "./context";
-import type { Options } from "./options";
+import type { Context, DIE, Future, LFC, LFI, RFC, RFI } from "./context.js";
+import type { Options } from "./options.js";
 
 // Resonate functions
 

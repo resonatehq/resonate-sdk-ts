@@ -1,18 +1,18 @@
-import { WallClock } from "../src/clock";
-import { type Context, InnerContext } from "../src/context";
-import { type Completed, Coroutine, type Done, type Suspended } from "../src/coroutine";
-import { JsonEncoder } from "../src/encoder";
-import { NoopEncryptor } from "../src/encryptor";
-import { Handler } from "../src/handler";
-import type { Network } from "../src/network/network";
-import { PollMessageSource } from "../src/network/remote";
-import type { Msg, PromiseRecord, Req, Res } from "../src/network/types";
-import { OptionsBuilder } from "../src/options";
-import { Registry } from "../src/registry";
-import { Never } from "../src/retries";
-import { NoopSpan } from "../src/tracer";
-import type { Result } from "../src/types";
-import { assert } from "../src/util";
+import { WallClock } from "../src/clock.js";
+import { type Context, InnerContext } from "../src/context.js";
+import { Coroutine, type Done, type Suspended } from "../src/coroutine.js";
+import { JsonEncoder } from "../src/encoder.js";
+import { NoopEncryptor } from "../src/encryptor.js";
+import { Handler } from "../src/handler.js";
+import { PollMessageSource } from "../src/network/http.js";
+import type { Network } from "../src/network/network.js";
+import type { Msg, PromiseRecord, Req, Res } from "../src/network/types.js";
+import { OptionsBuilder } from "../src/options.js";
+import { Registry } from "../src/registry.js";
+import { Never } from "../src/retries.js";
+import { NoopSpan } from "../src/tracer.js";
+import type { Result } from "../src/types.js";
+import { assert } from "../src/util.js";
 
 class DummyNetwork implements Network {
   private promises = new Map<string, PromiseRecord>();
@@ -26,13 +26,14 @@ class DummyNetwork implements Network {
   ): void {
     switch (req.kind) {
       case "promise.create": {
+        const createReq = req as Extract<Req, { kind: "promise.create" }>;
         const p: PromiseRecord = {
-          id: req.data.id,
+          id: createReq.data.id,
           state: "pending",
-          timeoutAt: req.data.timeoutAt,
-          param: req.data.param,
+          timeoutAt: createReq.data.timeoutAt,
+          param: createReq.data.param,
           value: { headers: {}, data: "" },
-          tags: req.data.tags,
+          tags: createReq.data.tags,
           createdAt: Date.now(),
         };
         this.promises.set(p.id, p);
@@ -40,20 +41,21 @@ class DummyNetwork implements Network {
           kind: req.kind,
           head: { corrId: req.head.corrId, status: 200, version: req.head.version },
           data: { promise: p },
-        });
+        } as Extract<Res, { kind: K }>);
         return;
       }
 
       case "promise.settle": {
-        const p = this.promises.get(req.data.id)!;
+        const settleReq = req as Extract<Req, { kind: "promise.settle" }>;
+        const p = this.promises.get(settleReq.data.id)!;
         p.state = "resolved";
-        p.value = req.data.value;
+        p.value = settleReq.data.value;
         this.promises.set(p.id, p);
         callback({
           kind: req.kind,
           head: { corrId: req.head.corrId, status: 200, version: req.head.version },
           data: { promise: p },
-        });
+        } as Extract<Res, { kind: K }>);
         break;
       }
       default:
@@ -342,7 +344,7 @@ describe("Coroutine", () => {
       createdAt: Date.now(),
     };
     // DIE with condition=true causes callback to be called with err=true
-    const result = await new Promise<Result<Suspended | Completed | Done, any>>((resolve) => {
+    const result = await new Promise<Result<Suspended | Done, any>>((resolve) => {
       Coroutine.exec(
         "foo.1",
         false,

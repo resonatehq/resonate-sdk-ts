@@ -1,5 +1,5 @@
-import type { Result } from "./types";
-import * as util from "./util";
+import type { Result } from "./types.js";
+import * as util from "./util.js";
 export class Nursery<T> {
   // event queue, these functions are ensured to execute sequentially
   private q: Array<() => void> = [];

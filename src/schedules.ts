@@ -1,7 +1,7 @@
-import { LocalNetwork } from "./network/local";
-import type { Network } from "./network/network";
-import { isSuccess, type ScheduleRecord } from "./network/types";
-import * as util from "./util";
+import { LocalNetwork } from "./network/local.js";
+import type { Network } from "./network/network.js";
+import { isSuccess, type ScheduleRecord } from "./network/types.js";
+import * as util from "./util.js";
 export class Schedules {
   private network: Network;
 

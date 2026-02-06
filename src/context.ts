@@ -1,12 +1,12 @@
-import type { Clock } from "./clock";
-import exceptions, { type ResonateError } from "./exceptions";
-import type { PromiseCreateReq } from "./network/types";
-import type { Options, OptionsBuilder } from "./options";
-import type { Registry } from "./registry";
-import { Exponential, Never, type RetryPolicy } from "./retries";
-import type { Span } from "./tracer";
-import type { Func, ParamsWithOptions, Result, Return } from "./types";
-import * as util from "./util";
+import type { Clock } from "./clock.js";
+import exceptions, { type ResonateError } from "./exceptions.js";
+import type { PromiseCreateReq } from "./network/types.js";
+import type { Options, OptionsBuilder } from "./options.js";
+import type { Registry } from "./registry.js";
+import { Exponential, Never, type RetryPolicy } from "./retries.js";
+import type { Span } from "./tracer.js";
+import type { Func, ParamsWithOptions, Result, Return } from "./types.js";
+import * as util from "./util.js";
 
 export class LFI<T> implements Iterable<LFI<T>> {
   public id: string;

@@ -1,12 +1,12 @@
-import { WallClock } from "../src/clock";
-import { type Context, Future, InnerContext, type LFI } from "../src/context";
-import { Decorator } from "../src/decorator";
-import { PollMessageSource } from "../src/network/remote";
-import { OptionsBuilder } from "../src/options";
-import { Registry } from "../src/registry";
-import { Never } from "../src/retries";
-import { NoopSpan } from "../src/tracer";
-import type { Yieldable } from "../src/types";
+import { WallClock } from "../src/clock.js";
+import { type Context, Future, InnerContext, type LFI } from "../src/context.js";
+import { Decorator } from "../src/decorator.js";
+import { PollMessageSource } from "../src/network/http.js";
+import { OptionsBuilder } from "../src/options.js";
+import { Registry } from "../src/registry.js";
+import { Never } from "../src/retries.js";
+import { NoopSpan } from "../src/tracer.js";
+import type { Yieldable } from "../src/types.js";
 
 describe("Decorator", () => {
   it("returns internal.return when generator is done", () => {

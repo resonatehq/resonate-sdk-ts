@@ -1,15 +1,15 @@
-import type { Clock } from "./clock";
-import { Computation, type Status } from "./computation";
-import type { Handler } from "./handler";
-import type { Heartbeat } from "./heartbeat";
-import type { MessageSource, Network } from "./network/network";
-import type { Msg, PromiseRecord, TaskRecord } from "./network/types";
-import type { OptionsBuilder } from "./options";
-import type { Registry } from "./registry";
-import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries";
-import type { Span, Tracer } from "./tracer";
-import type { Result } from "./types";
-import * as util from "./util";
+import type { Clock } from "./clock.js";
+import { Computation, type Status } from "./computation.js";
+import type { Handler } from "./handler.js";
+import type { Heartbeat } from "./heartbeat.js";
+import type { MessageSource, Network } from "./network/network.js";
+import type { Msg, PromiseRecord, TaskRecord } from "./network/types.js";
+import type { OptionsBuilder } from "./options.js";
+import type { Registry } from "./registry.js";
+import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
+import type { Span, Tracer } from "./tracer.js";
+import type { Result } from "./types.js";
+import * as util from "./util.js";
 
 export type PromiseHandler = {
   addEventListener: (event: "created" | "completed", callback: (p: PromiseRecord) => void) => void;

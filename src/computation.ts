@@ -1,19 +1,19 @@
-import type { Clock } from "./clock";
-import { InnerContext } from "./context";
-import type { ClaimedTask, Task } from "./core";
-import { Coroutine, type LocalTodo } from "./coroutine";
-import exceptions from "./exceptions";
-import type { Handler } from "./handler";
-import type { Heartbeat } from "./heartbeat";
-import type { Network } from "./network/network";
-import type { PromiseRecord, TaskRecord } from "./network/types";
-import type { OptionsBuilder } from "./options";
-import { AsyncProcessor, type Processor } from "./processor/processor";
-import type { Registry } from "./registry";
-import { Exponential, Never, type RetryPolicyConstructor } from "./retries";
-import type { Span, Tracer } from "./tracer";
-import type { Func, Result } from "./types";
-import * as util from "./util";
+import type { Clock } from "./clock.js";
+import { InnerContext } from "./context.js";
+import type { ClaimedTask, Task } from "./core.js";
+import { Coroutine, type LocalTodo } from "./coroutine.js";
+import exceptions from "./exceptions.js";
+import type { Handler } from "./handler.js";
+import type { Heartbeat } from "./heartbeat.js";
+import type { Network } from "./network/network.js";
+import type { PromiseRecord, TaskRecord } from "./network/types.js";
+import type { OptionsBuilder } from "./options.js";
+import { AsyncProcessor, type Processor } from "./processor/processor.js";
+import type { Registry } from "./registry.js";
+import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
+import type { Span, Tracer } from "./tracer.js";
+import type { Func, Result } from "./types.js";
+import * as util from "./util.js";
 
 export type Status = Done | Suspended;
 

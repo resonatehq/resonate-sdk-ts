@@ -1,4 +1,4 @@
-import { run } from "../sim/main";
+import { run } from "../sim/main.js";
 
 describe("run dst", () => {
   test.skip("should execute simulation and not ", () => {

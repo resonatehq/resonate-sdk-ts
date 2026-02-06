@@ -1,5 +1,5 @@
-import type { RetryPolicy } from "./retries";
-import * as util from "./util";
+import type { RetryPolicy } from "./retries.js";
+import * as util from "./util.js";
 
 export const RESONATE_OPTIONS: unique symbol = Symbol("ResonateOptions");
 

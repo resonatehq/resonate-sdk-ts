@@ -1,4 +1,4 @@
-import type { Network } from "./network/network";
+import type { Network } from "./network/network.js";
 
 export interface Heartbeat {
   start(): void;

@@ -1,11 +1,11 @@
-import type { Context, InnerContext } from "./context";
-import { Decorator, type Value } from "./decorator";
-import type { Handler } from "./handler";
-import type { PromiseRecord, TaskRecord } from "./network/types";
-import { Never } from "./retries";
-import type { Span } from "./tracer";
-import type { Result, Yieldable } from "./types";
-import * as util from "./util";
+import type { Context, InnerContext } from "./context.js";
+import { Decorator, type Value } from "./decorator.js";
+import type { Handler } from "./handler.js";
+import type { PromiseRecord, TaskRecord } from "./network/types.js";
+import { Never } from "./retries.js";
+import type { Span } from "./tracer.js";
+import type { Result, Yieldable } from "./types.js";
+import * as util from "./util.js";
 
 export type Suspended = {
   type: "suspended";

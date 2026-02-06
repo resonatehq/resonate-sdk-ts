@@ -1,26 +1,26 @@
-import { WallClock } from "../src/clock";
-import { Computation, type Status } from "../src/computation";
-import type { Context, InnerContext } from "../src/context";
-import type { ClaimedTask } from "../src/core";
-import { JsonEncoder } from "../src/encoder";
-import { NoopEncryptor } from "../src/encryptor";
-import { Handler } from "../src/handler";
-import { NoopHeartbeat } from "../src/heartbeat";
-import { LocalNetwork } from "../src/network/local";
-import type { PromiseRecord, TaskRecord } from "../src/network/types";
-import { OptionsBuilder } from "../src/options";
-import type { Processor } from "../src/processor/processor";
-import { Registry } from "../src/registry";
-import { NoopSpan, NoopTracer } from "../src/tracer";
-import type { Result } from "../src/types";
-import * as util from "../src/util";
+import { WallClock } from "../src/clock.js";
+import { Computation, type Status } from "../src/computation.js";
+import type { Context, InnerContext } from "../src/context.js";
+import type { ClaimedTask } from "../src/core.js";
+import { JsonEncoder } from "../src/encoder.js";
+import { NoopEncryptor } from "../src/encryptor.js";
+import { Handler } from "../src/handler.js";
+import { NoopHeartbeat } from "../src/heartbeat.js";
+import { LocalNetwork } from "../src/network/local.js";
+import type { PromiseRecord, TaskRecord } from "../src/network/types.js";
+import { OptionsBuilder } from "../src/options.js";
+import type { Processor } from "../src/processor/processor.js";
+import { Registry } from "../src/registry.js";
+import { NoopSpan, NoopTracer } from "../src/tracer.js";
+import type { Result } from "../src/types.js";
+import * as util from "../src/util.js";
 
 async function createPromiseAndTask(
   handler: Handler,
   id: string,
   funcName: string,
   args: any[],
-): Promise<{ promise: PromiseRecord<any>; task: TaskRecord }> {
+): Promise<{ promise: PromiseRecord; task: TaskRecord }> {
   return new Promise((resolve) => {
     handler.taskCreate(
       {
@@ -67,25 +67,60 @@ interface PendingTodo {
 class MockProcessor implements Processor {
   public pendingTodos: Map<string, PendingTodo> = new Map();
   private todoNotifier?: { expectedCount: number; resolve: () => void };
+  private results: Map<string, Result<any, any>> = new Map();
+  private waiter: { ids: Set<string>; cb: (results: { id: string; result: Result<any, any> }[]) => void } | null = null;
 
-  process(id: string, ctx: InnerContext, func: () => Promise<any>, callback: (res: Result<any, any>) => void): void {
-    // Instead of running the work, we just store it.
-    this.pendingTodos.set(id, { id, func, callback });
+  process(work: { id: string; ctx: InnerContext; func: () => Promise<any>; span: any; verbose: boolean }[]): void {
+    for (const item of work) {
+      if (this.pendingTodos.has(item.id)) continue;
+      this.pendingTodos.set(item.id, {
+        id: item.id,
+        func: item.func,
+        callback: (res) => {
+          this.results.set(item.id, res);
+          this.notifyWaiter(item.id);
+        },
+      });
 
-    // After adding a task, check if we've met the count the test is waiting for.
-    if (this.todoNotifier && this.pendingTodos.size >= this.todoNotifier.expectedCount) {
-      this.todoNotifier.resolve();
-      this.todoNotifier = undefined;
+      if (this.todoNotifier && this.pendingTodos.size >= this.todoNotifier.expectedCount) {
+        this.todoNotifier.resolve();
+        this.todoNotifier = undefined;
+      }
     }
+  }
+
+  getReady(ids: string[], cb: (results: { id: string; result: Result<any, any> }[]) => void): void {
+    const ready: { id: string; result: Result<any, any> }[] = [];
+    const idsSet = new Set(ids);
+    for (const id of ids) {
+      if (this.results.has(id)) {
+        ready.push({ id, result: this.results.get(id)! });
+        idsSet.delete(id);
+      }
+    }
+    if (ready.length > 0) {
+      cb(ready);
+      return;
+    }
+    this.waiter = { ids: idsSet, cb };
+  }
+
+  private notifyWaiter(completedId: string): void {
+    if (!this.waiter || !this.waiter.ids.has(completedId)) return;
+    const ready: { id: string; result: Result<any, any> }[] = [];
+    for (const id of this.waiter.ids) {
+      if (this.results.has(id)) {
+        ready.push({ id, result: this.results.get(id)! });
+      }
+    }
+    const cb = this.waiter.cb;
+    this.waiter = null;
+    if (ready.length > 0) cb(ready);
   }
 
   async waitForTasks(count: number): Promise<void> {
     return new Promise((resolve) => {
-      // If we already have enough tasks, resolve immediately.
-      if (this.pendingTodos.size >= count) {
-        return resolve();
-      }
-      // Otherwise, store the resolver to be called later in `process`.
+      if (this.pendingTodos.size >= count) return resolve();
       this.todoNotifier = { expectedCount: count, resolve };
     });
   }
@@ -93,10 +128,7 @@ class MockProcessor implements Processor {
   async completeAll() {
     const todosToComplete = [...this.pendingTodos.values()];
     this.pendingTodos.clear();
-
-    // Fire all callbacks in the same event loop tick to simulate concurrency
     for (const todo of todosToComplete) {
-      // We resolve with a simple value for the test
       todo.callback({ kind: "value", value: `completed-${todo.id}` });
     }
   }
@@ -121,10 +153,6 @@ describe("Computation Event Queue Concurrency", () => {
 
     computation = new Computation(
       "root-promise-1",
-      messsageSource.unicast,
-      messsageSource.anycast,
-      messsageSource.match("default"),
-      3600,
       new WallClock(),
       network,
       handler,

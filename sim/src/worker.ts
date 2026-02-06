@@ -1,16 +1,16 @@
-import type { StepClock } from "../../src/clock";
-import { Core } from "../../src/core";
-import type { Encoder } from "../../src/encoder";
-import { NoopEncryptor } from "../../src/encryptor";
-import { Handler } from "../../src/handler";
-import { NoopHeartbeat } from "../../src/heartbeat";
-import type { MessageSource, Network } from "../../src/network/network";
-import type { Msg as NetworkMessage, Req, Res } from "../../src/network/types";
-import { OptionsBuilder } from "../../src/options";
-import type { Registry } from "../../src/registry";
-import { NoopTracer } from "../../src/tracer";
-import * as util from "../../src/util";
-import { type Address, Message, Process, type Random, unicast } from "./simulator";
+import type { StepClock } from "../../src/clock.js";
+import { Core } from "../../src/core.js";
+import type { Encoder } from "../../src/encoder.js";
+import { NoopEncryptor } from "../../src/encryptor.js";
+import { Handler } from "../../src/handler.js";
+import { NoopHeartbeat } from "../../src/heartbeat.js";
+import type { MessageSource, Network } from "../../src/network/network.js";
+import type { Msg as NetworkMessage, Req, Res } from "../../src/network/types.js";
+import { OptionsBuilder } from "../../src/options.js";
+import type { Registry } from "../../src/registry.js";
+import { NoopTracer } from "../../src/tracer.js";
+import * as util from "../../src/util.js";
+import { type Address, Message, Process, type Random, unicast } from "./simulator.js";
 
 interface DeliveryOptions {
   charFlipProb?: number;
@@ -221,7 +221,7 @@ export class WorkerProcess extends Process {
     });
   }
 
-  tick(tick: number, messages: Message<{ err?: any; res?: Res } | NetworkMessage>[]): Message<Req<string>>[] {
+  tick(tick: number, messages: Message<{ err?: any; res?: Res } | NetworkMessage>[]): Message<Req>[] {
     this.log(tick, "[recv]", messages);
 
     this.network.time(this.clock.time);

@@ -1,7 +1,7 @@
-import type { Encoder } from "./encoder";
-import type { Encryptor } from "./encryptor";
-import exceptions, { type ResonateError } from "./exceptions";
-import type { Network } from "./network/network";
+import type { Encoder } from "./encoder.js";
+import type { Encryptor } from "./encryptor.js";
+import exceptions, { type ResonateError } from "./exceptions.js";
+import type { Network } from "./network/network.js";
 import {
   isRedirect,
   isSuccess,
@@ -15,9 +15,9 @@ import {
   type TaskCreateReq,
   type TaskRecord,
   type TaskSuspendReq,
-} from "./network/types";
-import type { Result, Value } from "./types";
-import * as util from "./util";
+} from "./network/types.js";
+import type { Result, Value } from "./types.js";
+import * as util from "./util.js";
 
 export class Cache {
   private promises: Map<string, PromiseRecord> = new Map();

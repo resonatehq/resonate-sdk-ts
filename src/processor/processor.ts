@@ -1,7 +1,7 @@
-import type * as context from "../context";
-import type { Span } from "../tracer";
-import type { Result } from "../types";
-import * as util from "../util";
+import type * as context from "../context.js";
+import type { Span } from "../tracer.js";
+import type { Result } from "../types.js";
+import * as util from "../util.js";
 
 type F = () => Promise<unknown>;
 

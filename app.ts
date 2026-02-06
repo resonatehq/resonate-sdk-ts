@@ -1,5 +1,5 @@
-import type { Context } from "./src/context";
-import { Resonate } from "./src/resonate";
+import type { Context } from "./src/context.js";
+import { Resonate } from "./src/resonate.js";
 
 const resonate = Resonate.local();
 

@@ -1,5 +1,5 @@
-import type { MessageSource, Network } from "./network";
-import type { Msg, PromiseRecord, PromiseState, Req, Res, TaskRecord } from "./types";
+import type { MessageSource, Network } from "./network.js";
+import type { Msg, PromiseRecord, PromiseState, Req, Res, TaskRecord } from "./types.js";
 
 // =============================================================================
 // SERVER INTERNAL TYPES

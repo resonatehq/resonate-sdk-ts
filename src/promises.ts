@@ -1,8 +1,8 @@
-import { LocalNetwork } from "./network/local";
-import type { Network } from "./network/network";
-import { isSuccess, type PromiseRecord, type TaskRecord } from "./network/types";
+import { LocalNetwork } from "./network/local.js";
+import type { Network } from "./network/network.js";
+import { isSuccess, type PromiseRecord, type TaskRecord } from "./network/types.js";
 
-import * as util from "./util";
+import * as util from "./util.js";
 export class Promises {
   private network: Network;
   constructor(network: Network = new LocalNetwork()) {

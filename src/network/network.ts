@@ -1,4 +1,4 @@
-import type { Msg, Req, Res } from "./types";
+import type { Msg, Req, Res } from "./types.js";
 
 export interface Network {
   start(): void;

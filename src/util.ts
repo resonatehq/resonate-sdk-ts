@@ -1,5 +1,5 @@
-import type { MessageSource } from "./network/network";
-import { type Options, RESONATE_OPTIONS } from "./options";
+import type { MessageSource } from "./network/network.js";
+import { type Options, RESONATE_OPTIONS } from "./options.js";
 
 // time
 

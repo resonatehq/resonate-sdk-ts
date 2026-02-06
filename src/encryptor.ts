@@ -1,4 +1,4 @@
-import type { Value } from "./types";
+import type { Value } from "./types.js";
 
 export interface Encryptor {
   encrypt(plaintext: Value<string>): Value<string>;

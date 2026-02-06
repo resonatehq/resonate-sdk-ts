@@ -1,8 +1,8 @@
-import type { StepClock } from "../../src/clock";
-import { Server } from "../../src/network/local";
-import type { Msg as NetworkMessage, Req, Res } from "../../src/network/types";
-import * as util from "../../src/util";
-import { type Address, anycast, Message, Process, unicast } from "./simulator";
+import type { StepClock } from "../../src/clock.js";
+import { Server } from "../../src/network/local.js";
+import type { Msg as NetworkMessage, Req, Res } from "../../src/network/types.js";
+import * as util from "../../src/util.js";
+import { type Address, anycast, Message, Process, unicast } from "./simulator.js";
 
 export class ServerProcess extends Process {
   private clock: StepClock;

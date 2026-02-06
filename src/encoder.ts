@@ -1,5 +1,5 @@
-import type { Value } from "./types";
-import * as util from "./util";
+import type { Value } from "./types.js";
+import * as util from "./util.js";
 
 export interface Encoder {
   encode(value: any): Value<string>;

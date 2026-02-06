@@ -1,5 +1,5 @@
-import { Nursery } from "../src/nursery";
-import { assert } from "../src/util";
+import { Nursery } from "../src/nursery.js";
+import { assert } from "../src/util.js";
 
 describe("Nursery", () => {
   test("nursery function executed only until done", async () => {

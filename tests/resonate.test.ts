@@ -1,10 +1,10 @@
 import { setTimeout } from "node:timers/promises";
-import type { Context, InnerContext } from "../src/context";
-import { JsonEncoder } from "../src/encoder";
-import { Resonate } from "../src/resonate";
-import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/retries";
-import type { Value } from "../src/types";
-import * as util from "../src/util";
+import type { Context, InnerContext } from "../src/context.js";
+import { JsonEncoder } from "../src/encoder.js";
+import { Resonate } from "../src/resonate.js";
+import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/retries.js";
+import type { Value } from "../src/types.js";
+import * as util from "../src/util.js";
 
 describe.skip("Resonate usage tests", () => {
   test("try versions", async () => {

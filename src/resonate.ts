@@ -1,13 +1,13 @@
-import { WallClock } from "./clock";
-import { Core } from "./core";
-import { type Encoder, JsonEncoder } from "./encoder";
-import { type Encryptor, NoopEncryptor } from "./encryptor";
-import exceptions from "./exceptions";
-import { Handler } from "./handler";
-import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat";
-import { HttpNetwork, PollMessageSource } from "./network/http";
-import { LocalNetwork } from "./network/local";
-import type { MessageSource, Network } from "./network/network";
+import { WallClock } from "./clock.js";
+import { Core } from "./core.js";
+import { type Encoder, JsonEncoder } from "./encoder.js";
+import { type Encryptor, NoopEncryptor } from "./encryptor.js";
+import exceptions from "./exceptions.js";
+import { Handler } from "./handler.js";
+import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
+import { HttpNetwork, PollMessageSource } from "./network/http.js";
+import { LocalNetwork } from "./network/local.js";
+import type { MessageSource, Network } from "./network/network.js";
 import type {
   Msg,
   PromiseCreateReq,
@@ -16,14 +16,14 @@ import type {
   PromiseSubscribeReq,
   TaskCreateReq,
   TaskRecord,
-} from "./network/types";
-import { type Options, OptionsBuilder } from "./options";
-import { Promises } from "./promises";
-import { Registry } from "./registry";
-import { Schedules } from "./schedules";
-import { NoopTracer, type Tracer } from "./tracer";
-import type { Func, ParamsWithOptions, Return } from "./types";
-import * as util from "./util";
+} from "./network/types.js";
+import { type Options, OptionsBuilder } from "./options.js";
+import { Promises } from "./promises.js";
+import { Registry } from "./registry.js";
+import { Schedules } from "./schedules.js";
+import { NoopTracer, type Tracer } from "./tracer.js";
+import type { Func, ParamsWithOptions, Return } from "./types.js";
+import * as util from "./util.js";
 
 export interface ResonateHandle<T> {
   id: string;

@@ -1,6 +1,6 @@
-import type { Context } from "./src/context";
-import { Resonate } from "./src/resonate";
-import * as util from "./src/util";
+import type { Context } from "./src/context.js";
+import { Resonate } from "./src/resonate.js";
+import * as util from "./src/util.js";
 
 const prefix = "myPrefix";
 const resonate = new Resonate({ prefix });

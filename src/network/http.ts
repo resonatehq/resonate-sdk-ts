@@ -1,9 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { EventSource } from "eventsource";
-import exceptions, { ResonateError } from "../exceptions";
-import * as util from "../util";
-import type { MessageSource, Network } from "./network";
-import type { Msg, Req, Res } from "./types";
+import exceptions, { ResonateError } from "../exceptions.js";
+import * as util from "../util.js";
+import type { MessageSource, Network } from "./network.js";
+import type { Msg, Req, Res } from "./types.js";
 
 export interface HttpNetworkConfig {
   url?: string;
