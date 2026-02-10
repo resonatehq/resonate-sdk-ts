@@ -39,23 +39,18 @@ class MockComputation {
   }
 }
 
-let activeMock: MockComputation;
-
-jest.mock("../src/computation.js", () => ({
-  Computation: jest.fn().mockImplementation(() => activeMock),
-}));
-
 function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { mock: MockComputation } }): {
   core: Core;
   network: LocalNetwork;
   handler: Handler;
+  ctorSpy: jest.Spied<any>;
 } {
   const network = new LocalNetwork();
   const encoder = new JsonEncoder();
   const encryptor = new NoopEncryptor();
   const handler = new Handler(network, encoder, encryptor);
 
-  activeMock = new MockComputation(opts.responses);
+  const activeMock = new MockComputation(opts.responses);
   if (opts.mockRef) {
     opts.mockRef.mock = activeMock;
   }
@@ -74,7 +69,9 @@ function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { m
     verbose: false,
   });
 
-  return { core, network, handler };
+  const ctorSpy = jest.spyOn(core as any, "createComputation").mockReturnValue(activeMock);
+
+  return { core, network, handler, ctorSpy };
 }
 
 function wrapCb<T>(): { promise: Promise<T>; cb: (val: T) => void } {
@@ -306,10 +303,7 @@ describe("Core", () => {
     });
 
     test("computation reused for same root promise ID", async () => {
-      const { Computation: MockedCtor } = await import("../src/computation.js");
-      (MockedCtor as jest.Mock).mockClear();
-
-      const { core, network, handler } = buildCore({
+      const { core, network, handler, ctorSpy } = buildCore({
         responses: [{ kind: "value", value: { kind: "done", id: "reuse-id", state: "resolved", value: 1 } }],
       });
 
@@ -324,7 +318,7 @@ describe("Core", () => {
       core.executeUntilBlocked(new NoopSpan(), claimed, cb2);
       await p2;
 
-      expect(MockedCtor).toHaveBeenCalledTimes(1);
+      expect(ctorSpy).toHaveBeenCalledTimes(1);
     });
   });
 

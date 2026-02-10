@@ -93,27 +93,14 @@ export class Core {
 
     // subscribe to execute
     messageSource?.subscribe("execute", (msg) => {
-      this.onMessage(msg, () => {});
+      this.onMessage(msg, () => undefined);
     });
   }
 
   public executeUntilBlocked(span: Span, claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
     let computation = this.computations.get(claimed.rootPromise.id);
     if (!computation) {
-      computation = new Computation(
-        claimed.rootPromise.id,
-        this.clock,
-        this.network,
-        this.handler,
-        this.retries,
-        this.registry,
-        this.heartbeat,
-        this.dependencies,
-        this.optsBuilder,
-        this.verbose,
-        this.tracer,
-        span,
-      );
+      computation = this.createComputation(claimed.rootPromise.id, span);
       this.computations.set(claimed.rootPromise.id, computation);
     }
 
@@ -139,6 +126,24 @@ export class Core {
         }
       }
     });
+  }
+
+  // Extracted to allow tests to spy on computation creation.
+  private createComputation(id: string, span: Span): Computation {
+    return new Computation(
+      id,
+      this.clock,
+      this.network,
+      this.handler,
+      this.retries,
+      this.registry,
+      this.heartbeat,
+      this.dependencies,
+      this.optsBuilder,
+      this.verbose,
+      this.tracer,
+      span,
+    );
   }
 
   private releaseTask(task: TaskRecord, callback: () => void): void {
@@ -213,7 +218,7 @@ export class Core {
     );
   }
 
-  public onMessage(msg: Msg, cb: () => void): void {
+  public onMessage(msg: Msg, cb: (res: Result<Status, undefined>) => void): void {
     util.assert(msg.kind === "execute");
 
     const task = (msg as Extract<Msg, { kind: "execute" }>).data.task;
@@ -226,13 +231,13 @@ export class Core {
       (res) => {
         if (res.kind === "error") {
           res.error.log(this.verbose);
-          cb();
+          cb({ kind: "error", error: undefined });
         } else {
           this.executeUntilBlocked(
             this.tracer.decode(msg.head),
             { kind: "claimed", task: task, rootPromise: res.value.root },
-            (_res) => {
-              cb();
+            (execRes) => {
+              cb(execRes);
             },
           );
         }
