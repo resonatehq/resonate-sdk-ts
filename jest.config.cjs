@@ -6,7 +6,18 @@ module.exports = {
   testPathIgnorePatterns: ["dist/"],
   forceExit: true,
   extensionsToTreatAsEsm: [".ts"],
+  moduleNameMapper: {
+    "^(\\.{1,2}/.*)\\.js$": "$1",
+  },
   transform: {
-    "^.+\\.ts$": ["ts-jest", { useESM: true }],
+    "^.+\\.ts$": ["ts-jest", { 
+      useESM: true,
+      tsconfig: {
+        module: "ESNext",
+        moduleResolution: "Bundler",
+        allowImportingTsExtensions: false,
+        esModuleInterop: true
+      }
+    }],
   },
 };
