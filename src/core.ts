@@ -219,6 +219,7 @@ export class Core {
   }
 
   public onMessage(msg: Msg, cb: (res: Result<Status, undefined>) => void): void {
+    console.log("MESSAGE: ", msg);
     util.assert(msg.kind === "execute");
 
     const task = (msg as Extract<Msg, { kind: "execute" }>).data.task;
@@ -230,7 +231,7 @@ export class Core {
       },
       (res) => {
         if (res.kind === "error") {
-          res.error.log(this.verbose);
+          res.error?.log(this.verbose);
           cb({ kind: "error", error: undefined });
         } else {
           this.executeUntilBlocked(

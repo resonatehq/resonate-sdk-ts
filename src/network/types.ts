@@ -307,10 +307,7 @@ export type TaskAcquireRes =
   | {
       kind: "task.acquire";
       head: { corrId: string; status: 200; version: string };
-      data: {
-        kind: "invoke" | "resume";
-        data: { promise: PromiseRecord; preload: PromiseRecord[] };
-      };
+      data: { promise: PromiseRecord; preload: PromiseRecord[] };
     }
   | {
       kind: "task.acquire";

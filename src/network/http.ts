@@ -59,6 +59,7 @@ export class HttpNetwork implements Network {
     this.doSend(req, headers, retryPolicy).then(
       (res) => {
         util.assert(res.kind === req.kind, "res kind must match req kind");
+        console.log("SEND:", res);
         callback(res);
       },
       (err) => {

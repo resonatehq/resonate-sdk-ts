@@ -229,6 +229,7 @@ export class Handler {
 
   public taskAcquire(req: TaskAcquireReq, done: (res: Result<{ root: PromiseRecord }, ResonateError>) => void): void {
     this.network.send(req, (res) => {
+      console.log("ACQUIRE RES", res);
       if (!isSuccess(res)) {
         return done({
           kind: "error",
@@ -241,10 +242,12 @@ export class Handler {
 
       util.assert(res.kind === req.kind);
 
+      console.log("ACQUIRE RES2");
       let promise: PromiseRecord;
 
       try {
-        promise = this.decode(res.data.data.promise);
+        console.log("ACQUIRE RES2 TRYING DECODE");
+        promise = this.decode(res.data.promise);
       } catch (e) {
         return done({ kind: "error", error: e as ResonateError });
       }
@@ -376,17 +379,22 @@ export class Handler {
   }
 
   private decode(promise: PromiseRecord, func = "unknown"): PromiseRecord {
+    console.log("IN DECODE!");
     let paramData: any;
     let valueData: any;
 
     try {
-      paramData = this.encoder.decode(this.encryptor.decrypt(promise.param));
+      const decp = this.encryptor.decrypt(promise.param);
+      console.log("AFTER PARAM DECRYPT");
+      paramData = this.encoder.decode(decp);
+      console.log("AFTER PARAM DECODE");
     } catch (e) {
-      throw exceptions.ENCODING_ARGS_UNDECODEABLE(func, e);
+      console.log(e);
     }
 
     try {
       valueData = this.encoder.decode(this.encryptor.decrypt(promise.value));
+      console.log("AFTER VALUE DECODE");
     } catch (e) {
       throw exceptions.ENCODING_RETV_UNDECODEABLE(paramData?.func ?? func, e);
     }
