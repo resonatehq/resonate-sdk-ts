@@ -173,7 +173,7 @@ function interceptNetwork(network: LocalNetwork): { sent: Req[] } {
 
 describe("Core", () => {
   describe("executeUntilBlocked", () => {
-    test("computation resolves — sends task.fulfill with resolved value", async () => {
+    test("computation resolves - sends task.fulfill with resolved value", async () => {
       const { core, network, handler } = buildCore({
         responses: [{ kind: "value", value: { kind: "done", id: "p1", state: "resolved", value: 42 } }],
       });
@@ -198,7 +198,7 @@ describe("Core", () => {
       }
     });
 
-    test("computation rejects — sends task.fulfill with rejected value", async () => {
+    test("computation rejects - sends task.fulfill with rejected value", async () => {
       const { core, network, handler } = buildCore({
         responses: [{ kind: "value", value: { kind: "done", id: "p2", state: "rejected", value: "err" } }],
       });
@@ -219,7 +219,7 @@ describe("Core", () => {
       }
     });
 
-    test("computation errors — sends task.release", async () => {
+    test("computation errors - sends task.release", async () => {
       const { core, network, handler } = buildCore({
         responses: [{ kind: "error", error: undefined }],
       });
@@ -237,7 +237,7 @@ describe("Core", () => {
       expect(release).toBeDefined();
     });
 
-    test("computation suspends — sends task.suspend with awaited IDs", async () => {
+    test("computation suspends - sends task.suspend with awaited IDs", async () => {
       const { core, network, handler } = buildCore({
         responses: [{ kind: "value", value: { kind: "suspended", awaited: ["dep-a", "dep-b"] } }],
       });
@@ -267,7 +267,7 @@ describe("Core", () => {
       }
     });
 
-    test("computation suspends with redirect (continue) — re-executes", async () => {
+    test("computation suspends with redirect (continue) - re-executes", async () => {
       const mockRef = { mock: null as unknown as MockComputation };
       const { core, network, handler } = buildCore({
         responses: [
