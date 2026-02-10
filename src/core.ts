@@ -1,5 +1,5 @@
 import type { Clock } from "./clock.js";
-import { Computation, type Status } from "./computation.js";
+import { Computation, type Done, type Status } from "./computation.js";
 import type { Handler } from "./handler.js";
 import type { Heartbeat } from "./heartbeat.js";
 import type { MessageSource, Network } from "./network/network.js";
@@ -30,8 +30,6 @@ export type UnclaimedTask = {
 };
 
 export class Core {
-  private unicast: string;
-  private anycast: string;
   private pid: string;
   private ttl: number;
   private clock: Clock;
@@ -47,8 +45,6 @@ export class Core {
   private computations: Map<string, Computation> = new Map();
 
   constructor({
-    unicast,
-    anycast,
     pid,
     ttl,
     clock,
@@ -62,8 +58,6 @@ export class Core {
     verbose,
     messageSource = undefined,
   }: {
-    unicast: string;
-    anycast: string;
     pid: string;
     ttl: number;
     clock: Clock;
@@ -77,8 +71,6 @@ export class Core {
     verbose: boolean;
     messageSource?: MessageSource;
   }) {
-    this.unicast = unicast;
-    this.anycast = anycast;
     this.pid = pid;
     this.ttl = ttl;
     this.clock = clock;
@@ -101,12 +93,11 @@ export class Core {
 
     // subscribe to execute
     messageSource?.subscribe("execute", (msg) => {
-      this.onMessage.bind(this)(msg, () => {});
+      this.onMessage(msg, () => {});
     });
   }
 
   public executeUntilBlocked(span: Span, claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
-    console.log("running", claimed);
     let computation = this.computations.get(claimed.rootPromise.id);
     if (!computation) {
       computation = new Computation(
@@ -127,7 +118,6 @@ export class Core {
     }
 
     computation.executeUntilBlocked(claimed, (compRes) => {
-      console.log("compRes", compRes);
       if (compRes.kind === "error") {
         return this.releaseTask(claimed.task, () => done(compRes));
       }
@@ -135,16 +125,16 @@ export class Core {
         const status = compRes.value;
         if (status.kind === "suspended") {
           return this.suspendTask(claimed, status, (res: Result<{ continue: boolean }, undefined>) => {
-            if (res.kind === "value") {
-              if (res.value.continue) {
-                return this.executeUntilBlocked(span, claimed, done);
-              }
-              return done(compRes);
+            if (res.kind === "error") {
+              return done(res);
             }
+            if (res.value.continue) {
+              return this.executeUntilBlocked(span, claimed, done);
+            }
+            return done(compRes);
           });
         }
         if (status.kind === "done") {
-          console.log("value for task.fulfil", status.value);
           return this.fulfillTask(claimed.task, status, () => done(compRes));
         }
       }
@@ -193,12 +183,8 @@ export class Core {
     );
   }
 
-  private fulfillTask(
-    task: TaskRecord,
-    doneValue: { id: string; state: "resolved" | "rejected"; value: any },
-    callback: () => void,
-  ): void {
-    const encoded = this.handler.encodeValue(doneValue.value, "TODO, get function name");
+  private fulfillTask(task: TaskRecord, doneValue: Done, callback: () => void): void {
+    const encoded = this.handler.encodeValue(doneValue.value, doneValue.id);
     if (encoded.kind === "error") {
       encoded.error.log(this.verbose);
       callback();
@@ -230,29 +216,27 @@ export class Core {
   public onMessage(msg: Msg, cb: () => void): void {
     util.assert(msg.kind === "execute");
 
-    if (msg.kind === "execute") {
-      // acquire the task and then execute until blocked
-      const task = msg.data.task;
-      this.handler.taskAcquire(
-        {
-          kind: "task.acquire",
-          head: { corrId: "", version: "" },
-          data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
-        },
-        (res) => {
-          if (res.kind === "error") {
-            res.error.log(this.verbose);
-          } else {
-            this.executeUntilBlocked(
-              this.tracer.decode(msg.head),
-              { kind: "claimed", task: task, rootPromise: res.value.root },
-              (_res) => {
-                cb();
-              },
-            );
-          }
-        },
-      );
-    }
+    const task = (msg as Extract<Msg, { kind: "execute" }>).data.task;
+    this.handler.taskAcquire(
+      {
+        kind: "task.acquire",
+        head: { corrId: "", version: "" },
+        data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
+      },
+      (res) => {
+        if (res.kind === "error") {
+          res.error.log(this.verbose);
+          cb();
+        } else {
+          this.executeUntilBlocked(
+            this.tracer.decode(msg.head),
+            { kind: "claimed", task: task, rootPromise: res.value.root },
+            (_res) => {
+              cb();
+            },
+          );
+        }
+      },
+    );
   }
 }

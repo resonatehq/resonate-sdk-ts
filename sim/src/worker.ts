@@ -203,8 +203,6 @@ export class WorkerProcess extends Process {
     this.registry = registry;
     const messageSource = this.network.getMessageSource();
     this.core = new Core({
-      unicast: messageSource.unicast,
-      anycast: messageSource.anycast,
       pid: iaddr,
       ttl: 5000,
       clock: this.clock,

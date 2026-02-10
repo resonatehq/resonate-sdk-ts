@@ -223,8 +223,6 @@ export class Resonate {
     this.optsBuilder = new OptionsBuilder({ match: this.match, idPrefix: this.idPrefix });
 
     this.core = new Core({
-      unicast: this.unicast,
-      anycast: this.anycast,
       pid: this.pid,
       ttl: this.ttl,
       clock: this.clock,
