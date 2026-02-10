@@ -1,4 +1,4 @@
-import { setTimeout } from "timers/promises";
+import { setTimeout } from "node:timers/promises";
 import type { Context, InnerContext } from "../src/context.js";
 import { JsonEncoder } from "../src/encoder.js";
 import { Resonate } from "../src/resonate.js";
