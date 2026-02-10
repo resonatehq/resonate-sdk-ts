@@ -931,10 +931,9 @@ export class LocalNetwork implements Network, MessageSource {
 
   private server: Server;
   private subscriptions: {
-    invoke: Array<(msg: Msg) => void>;
-    resume: Array<(msg: Msg) => void>;
+    execute: Array<(msg: Msg) => void>;
     notify: Array<(msg: Msg) => void>;
-  } = { invoke: [], resume: [], notify: [] };
+  } = { execute: [], notify: [] };
   private tickInterval?: ReturnType<typeof setInterval>;
 
   constructor({
@@ -1011,7 +1010,7 @@ export class LocalNetwork implements Network, MessageSource {
     }
   }
 
-  subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Msg) => void): void {
+  subscribe(type: "execute" | "notify", callback: (msg: Msg) => void): void {
     this.subscriptions[type].push(callback);
   }
 
@@ -1061,9 +1060,9 @@ export class LocalNetwork implements Network, MessageSource {
       const taskRecord: TaskRecord = { id: msg.id, version: msg.version };
 
       if (resumeIds.has(msg.id)) {
-        this.recv({ kind: "resume", head: {}, data: { task: taskRecord } });
+        this.recv({ kind: "execute", head: {}, data: { task: taskRecord } });
       } else {
-        this.recv({ kind: "invoke", head: {}, data: { task: taskRecord } });
+        this.recv({ kind: "execute", head: {}, data: { task: taskRecord } });
       }
     }
 

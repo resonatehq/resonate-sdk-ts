@@ -10,6 +10,7 @@ export * as essential from "./essential.js";
 export { Handler } from "./handler.js";
 export { AsyncHeartbeat, NoopHeartbeat } from "./heartbeat.js";
 export { HttpNetwork } from "./network/http.js";
+export { Msg } from "./network/types.js";
 export { OptionsBuilder } from "./options.js";
 export { Registry } from "./registry.js";
 export { Resonate, ResonateFunc, ResonateHandle } from "./resonate.js";

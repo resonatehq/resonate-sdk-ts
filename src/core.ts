@@ -99,11 +99,8 @@ export class Core {
       [Never.type, Never],
     ]);
 
-    // subscribe to invoke and resume
-    messageSource?.subscribe("invoke", (msg) => {
-      this.onMessage.bind(this)(msg, () => {});
-    });
-    messageSource?.subscribe("resume", (msg) => {
+    // subscribe to execute
+    messageSource?.subscribe("execute", (msg) => {
       this.onMessage.bind(this)(msg, () => {});
     });
   }
@@ -231,9 +228,9 @@ export class Core {
   }
 
   public onMessage(msg: Msg, cb: () => void): void {
-    util.assert(msg.kind === "invoke" || msg.kind === "resume");
+    util.assert(msg.kind === "execute");
 
-    if (msg.kind === "invoke" || msg.kind === "resume") {
+    if (msg.kind === "execute") {
       // acquire the task and then execute until blocked
       const task = msg.data.task;
       this.handler.taskAcquire(

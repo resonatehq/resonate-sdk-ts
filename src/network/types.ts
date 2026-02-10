@@ -486,19 +486,13 @@ export type ScheduleDeleteRes =
 
 // Messages
 
-export type Msg = InvokeMsg | ResumeMsg | NotifyMsg;
+export type Msg = ExecuteMsg | NotifyMsg;
 
-export type InvokeMsg = {
-  kind: "invoke";
-  head: {};
-  data: {
-    task: TaskRecord;
+export type ExecuteMsg = {
+  kind: "execute";
+  head: {
+    serverUrl?: string;
   };
-};
-
-export type ResumeMsg = {
-  kind: "resume";
-  head: {};
   data: {
     task: TaskRecord;
   };

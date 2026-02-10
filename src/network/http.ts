@@ -153,10 +153,9 @@ export class PollMessageSource implements MessageSource {
   private headers: { [key: string]: string };
   private eventSource: EventSource;
   private subscriptions: {
-    invoke: Array<(msg: Msg) => void>;
-    resume: Array<(msg: Msg) => void>;
+    execute: Array<(msg: Msg) => void>;
     notify: Array<(msg: Msg) => void>;
-  } = { invoke: [], resume: [], notify: [] };
+  } = { execute: [], notify: [] };
 
   constructor({
     url = "http://localhost:8001",
@@ -236,7 +235,7 @@ export class PollMessageSource implements MessageSource {
     this.eventSource.close();
   }
 
-  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Msg) => void): void {
+  public subscribe(type: "execute" | "notify", callback: (msg: Msg) => void): void {
     this.subscriptions[type].push(callback);
   }
 
@@ -255,10 +254,9 @@ export class PushMessageSource implements MessageSource {
   private port: number;
   private server: Server;
   private subscriptions: {
-    invoke: Array<(msg: Msg) => void>;
-    resume: Array<(msg: Msg) => void>;
+    execute: Array<(msg: Msg) => void>;
     notify: Array<(msg: Msg) => void>;
-  } = { invoke: [], resume: [], notify: [] };
+  } = { execute: [], notify: [] };
 
   constructor({
     host = "0.0.0.0",
@@ -351,7 +349,7 @@ export class PushMessageSource implements MessageSource {
     }
   }
 
-  public subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Msg) => void): void {
+  public subscribe(type: "execute" | "notify", callback: (msg: Msg) => void): void {
     this.subscriptions[type].push(callback);
   }
 

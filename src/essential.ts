@@ -3,6 +3,7 @@ export { HttpNetwork } from "./network/http.js";
 export { LocalNetwork } from "./network/local.js";
 // network
 export { Network } from "./network/network.js";
+export * from "./network/types.js";
 // options
 export { Options } from "./options.js";
 // processor

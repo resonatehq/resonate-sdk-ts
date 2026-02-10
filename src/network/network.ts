@@ -23,6 +23,6 @@ export interface MessageSource {
   stop(): void;
 
   recv(msg: Msg): void;
-  subscribe(type: "invoke" | "resume" | "notify", callback: (msg: Msg) => void): void;
+  subscribe(type: "execute" | "notify", callback: (msg: Msg) => void): void;
   match(target: string): string;
 }
