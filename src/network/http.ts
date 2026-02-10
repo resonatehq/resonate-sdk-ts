@@ -59,7 +59,6 @@ export class HttpNetwork implements Network {
     this.doSend(req, headers, retryPolicy).then(
       (res) => {
         util.assert(res.kind === req.kind, "res kind must match req kind");
-        console.log("SEND:", res);
         callback(res);
       },
       (err) => {
@@ -129,7 +128,6 @@ export class HttpNetwork implements Network {
         }
 
         console.warn(`Networking. Cannot connect to [${this.url}]. Retrying in ${delay / 1000}s.`);
-        console.log(err);
         if (this.verbose) {
           console.warn(err);
         }
@@ -189,7 +187,6 @@ export class PollMessageSource implements MessageSource {
 
   private connect() {
     const url = new URL(`/poll/${encodeURIComponent(this.group)}/${encodeURIComponent(this.pid)}`, `${this.url}`);
-    console.log("poll url", url);
     this.eventSource = new EventSource(url, {
       fetch: (url, init) =>
         fetch(url, {

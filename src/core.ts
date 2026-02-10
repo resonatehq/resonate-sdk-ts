@@ -196,6 +196,7 @@ export class Core {
       return;
     }
 
+    // TODO: put this in the handler to cache the settled promise
     this.network.send(
       {
         kind: "task.fulfill",
@@ -219,7 +220,6 @@ export class Core {
   }
 
   public onMessage(msg: Msg, cb: (res: Result<Status, undefined>) => void): void {
-    console.log("MESSAGE: ", msg);
     util.assert(msg.kind === "execute");
 
     const task = (msg as Extract<Msg, { kind: "execute" }>).data.task;
@@ -232,7 +232,7 @@ export class Core {
       (res) => {
         if (res.kind === "error") {
           res.error?.log(this.verbose);
-          cb({ kind: "error", error: undefined });
+          return cb({ kind: "error", error: undefined });
         } else {
           this.executeUntilBlocked(
             this.tracer.decode(msg.head),

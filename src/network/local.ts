@@ -420,7 +420,7 @@ export class Server {
     return this.pvalue(
       "task.acquire",
       200,
-      { kind: "invoke", data: { promise: this.toPromiseRecord(promise), preload: [] } },
+      { promise: this.toPromiseRecord(promise), preload: [] },
       [],
       ["task.acquire.invoke"],
     );

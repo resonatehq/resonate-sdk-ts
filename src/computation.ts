@@ -152,28 +152,21 @@ export class Computation {
     if (util.isGeneratorFunction(registered.func)) {
       this.processGenerator(ctxConfig, registered.func, args, task, rootPromise, done);
     } else {
-      this.processFunction(
-        this.id,
-        new InnerContext(ctxConfig),
-        registered.func,
-        args,
-        (res) => {
-          if (res.kind === "error") return done({ kind: "error", error: undefined });
+      this.processFunction(this.id, new InnerContext(ctxConfig), registered.func, args, (res) => {
+        if (res.kind === "error") return done({ kind: "error", error: undefined });
 
-          const result = res.value;
-          util.assert(result.kind === "done", "Status must be done after finishing function execution");
-          done({
-            kind: "value",
-            value: {
-              kind: "done",
-              id: this.id,
-              state: result.state === "resolved" ? "resolved" : "rejected",
-              value: result.value?.data,
-            },
-          });
-        },
-        false,
-      );
+        const result = res.value;
+        util.assert(result.kind === "done", "Status must be done after finishing function execution");
+        done({
+          kind: "value",
+          value: {
+            kind: "done",
+            id: this.id,
+            state: result.state === "resolved" ? "resolved" : "rejected",
+            value: result.value?.data,
+          },
+        });
+      });
     }
   }
 
@@ -200,7 +193,7 @@ export class Computation {
 
     const ctx = new InnerContext(ctxConfig);
 
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, rootPromise, this.handler, this.spans, (res) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.handler, this.spans, (res) => {
       if (res.kind === "error") {
         return done(res);
       }
@@ -241,7 +234,6 @@ export class Computation {
     func: Func,
     args: any[],
     done: (res: Result<Status, undefined>) => void,
-    settle = true,
   ) {
     this.processor.process([
       {
@@ -256,7 +248,7 @@ export class Computation {
     this.processor.getReady([id], (results) => {
       util.assert(results.length === 1, "getReady must return one result");
       const result = results[0];
-      const { id, result: res } = result;
+      const { result: res } = result;
 
       done({
         kind: "value",

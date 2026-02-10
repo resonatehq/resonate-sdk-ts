@@ -106,7 +106,6 @@ describe("Coroutine", () => {
         func,
         args,
         { id: `__invoke:${uuid}`, version: 1 },
-        boundaryPromise,
         handler,
         new Map(),
         (res) => {
@@ -364,7 +363,6 @@ describe("Coroutine", () => {
         foo,
         [],
         { id: "__invoke:foo.1", version: 1 },
-        boundaryPromise,
         h,
         new Map(),
         (res) => {

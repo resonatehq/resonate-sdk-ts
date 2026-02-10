@@ -1,7 +1,7 @@
 import type { Context, InnerContext } from "./context.js";
 import { Decorator, type Value } from "./decorator.js";
 import type { Handler } from "./handler.js";
-import type { PromiseRecord, TaskRecord } from "./network/types.js";
+import type { TaskRecord } from "./network/types.js";
 import { Never } from "./retries.js";
 import type { Span } from "./tracer.js";
 import type { Result, Yieldable } from "./types.js";
@@ -84,19 +84,10 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     task: TaskRecord,
-    boundaryPromise: PromiseRecord,
     handler: Handler,
     spans: Map<string, Span>,
     callback: (res: Result<Suspended | Done, any>) => void,
   ): void {
-    if (boundaryPromise.state !== "pending") {
-      console.log({ ...boundaryPromise });
-    }
-    util.assert(
-      boundaryPromise.state.toLowerCase() === "pending",
-      `Promise must be pending to execute it ${boundaryPromise.id}`,
-    );
-
     const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), handler, spans);
     coroutine.exec((res) => {
       if (res.kind === "error") return callback(res);
@@ -214,7 +205,6 @@ export class Coroutine<T> {
                     };
                     next();
                   } else {
-                    console.log("promise.settle for", { action });
                     this.handler.promiseSettle(
                       {
                         kind: "promise.settle",
