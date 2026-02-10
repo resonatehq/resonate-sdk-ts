@@ -1,4 +1,4 @@
-import { setTimeout } from "node:timers/promises";
+import { setTimeout } from "timers/promises";
 import type { Context, InnerContext } from "../src/context.js";
 import { JsonEncoder } from "../src/encoder.js";
 import { Resonate } from "../src/resonate.js";
@@ -686,7 +686,7 @@ describe.skip("Resonate usage tests", () => {
     // mock fetch
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic Zm9vOmJhcg==");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
@@ -1244,7 +1244,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://arg-url:3000/promises") {
+      if (urlStr === "http://arg-url:3000/api") {
         p1.resolve(null);
       } else if (urlStr === "http://arg-url:3000/poll/default/0") {
         p2.resolve(null);
@@ -1272,7 +1272,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:8001/promises") {
+      if (urlStr === "http://localhost:8001/api") {
         p1.resolve(null);
       } else if (urlStr === "http://localhost:8001/poll/default/0") {
         p2.resolve(null);
@@ -1299,7 +1299,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://resonate-server:9000/promises") {
+      if (urlStr === "http://resonate-server:9000/api") {
         p1.resolve(null);
       } else if (urlStr === "http://resonate-server:9000/poll/default/0") {
         p2.resolve(null);
@@ -1346,7 +1346,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://priority-url:9000/promises") {
+      if (urlStr === "http://priority-url:9000/api") {
         p1.resolve(null);
       } else if (urlStr === "http://priority-url:9000/poll/default/0") {
         p2.resolve(null);
@@ -1375,7 +1375,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://fallback:8080/promises") {
+      if (urlStr === "http://fallback:8080/api") {
         p1.resolve(null);
       } else if (urlStr === "http://fallback:8080/poll/default/0") {
         p2.resolve(null);
@@ -1420,7 +1420,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
@@ -1457,7 +1457,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
@@ -1492,7 +1492,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjo=");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
@@ -1527,7 +1527,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
@@ -1560,7 +1560,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
@@ -1596,7 +1596,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:8001/promises") {
+      if (urlStr === "http://localhost:8001/api") {
         p1.resolve(null);
       } else if (urlStr === "http://localhost:8001/poll/default/0") {
         p2.resolve(null);
@@ -1625,7 +1625,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "https://secure-host:8443/promises") {
+      if (urlStr === "https://secure-host:8443/api") {
         p1.resolve(null);
       } else if (urlStr === "https://secure-host:8443/poll/default/0") {
         p2.resolve(null);
@@ -1652,7 +1652,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://default-port-host:8001/promises") {
+      if (urlStr === "http://default-port-host:8001/api") {
         p1.resolve(null);
       } else if (urlStr === "http://default-port-host:8001/poll/default/0") {
         p2.resolve(null);
@@ -1679,7 +1679,7 @@ describe("Resonate environment variable initialization", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://defaults-host:8001/promises") {
+      if (urlStr === "http://defaults-host:8001/api") {
         p1.resolve(null);
       } else if (urlStr === "http://defaults-host:8001/poll/default/0") {
         p2.resolve(null);
@@ -1721,7 +1721,7 @@ describe("Bearer token authentication", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer test-token-123");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
@@ -1756,7 +1756,7 @@ describe("Bearer token authentication", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer priority-token");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
@@ -1794,7 +1794,7 @@ describe("Bearer token authentication", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-456");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {
@@ -1832,7 +1832,7 @@ describe("Bearer token authentication", () => {
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/promises") {
+      if (urlStr === "http://localhost:9999/api") {
         expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-priority");
         p1.resolve(null);
       } else if (urlStr === "http://localhost:9999/poll/default/0") {

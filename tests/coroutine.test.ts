@@ -92,6 +92,7 @@ describe("Coroutine", () => {
         false,
         new InnerContext({
           id: uuid,
+          oId: uuid,
           func: func.name,
           clock: new WallClock(),
           registry: new Registry(),

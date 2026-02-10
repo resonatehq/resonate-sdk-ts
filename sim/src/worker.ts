@@ -23,10 +23,9 @@ class SimulatedMessageSource implements MessageSource {
   readonly anycast: string;
 
   private subscriptions: {
-    invoke: Array<(msg: NetworkMessage) => void>;
-    resume: Array<(msg: NetworkMessage) => void>;
+    execute: Array<(msg: NetworkMessage) => void>;
     notify: Array<(msg: NetworkMessage) => void>;
-  } = { invoke: [], resume: [], notify: [] };
+  } = { execute: [], notify: [] };
 
   constructor(
     iaddr: string,
@@ -47,7 +46,7 @@ class SimulatedMessageSource implements MessageSource {
     }
   }
 
-  subscribe(type: "invoke" | "resume" | "notify", callback: (msg: NetworkMessage) => void): void {
+  subscribe(type: "execute" | "notify", callback: (msg: NetworkMessage) => void): void {
     this.subscriptions[type].push(callback);
   }
 

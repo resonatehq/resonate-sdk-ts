@@ -135,7 +135,7 @@ export class Computation {
       console.warn(`Options. Retry policy '${retry.type}' not found. Will ignore.`);
     }
 
-    const ctx = new InnerContext({
+    const ctxConfig = {
       id: this.id,
       oId: rootPromise.tags["resonate:origin"] ?? this.id,
       func: registered.func.name,
@@ -147,14 +147,14 @@ export class Computation {
       version: registered.version,
       retryPolicy: retryPolicy,
       span: this.span,
-    });
+    };
 
     if (util.isGeneratorFunction(registered.func)) {
-      this.processGenerator(ctx, registered.func, args, task, rootPromise, done);
+      this.processGenerator(ctxConfig, registered.func, args, task, rootPromise, done);
     } else {
       this.processFunction(
         this.id,
-        ctx,
+        new InnerContext(ctxConfig),
         registered.func,
         args,
         (res) => {
@@ -178,7 +178,7 @@ export class Computation {
   }
 
   private processGenerator(
-    ctx: InnerContext,
+    ctxConfig: ConstructorParameters<typeof InnerContext>[0],
     func: Func,
     args: any[],
     task: TaskRecord,
@@ -197,6 +197,8 @@ export class Computation {
         },
       });
     }
+
+    const ctx = new InnerContext(ctxConfig);
 
     Coroutine.exec(this.id, this.verbose, ctx, func, args, task, rootPromise, this.handler, this.spans, (res) => {
       if (res.kind === "error") {
@@ -222,7 +224,7 @@ export class Computation {
           if (status.todo.local.length > 0) {
             return this.processLocalTodo(
               status.todo.local,
-              () => util.once(() => this.processGenerator(ctx, func, args, task, rootPromise, done)),
+              util.once(() => this.processGenerator(ctxConfig, func, args, task, rootPromise, done)),
               (err) => done({ kind: "error", error: undefined }),
             );
           } else if (status.todo.remote.length > 0) {

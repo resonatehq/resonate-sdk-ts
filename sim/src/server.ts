@@ -59,7 +59,7 @@ export class ServerProcess extends Process {
       }
 
       const networkMsg: NetworkMessage = {
-        kind: "invoke",
+        kind: "execute",
         head: {},
         data: { task: { id: msg.id, version: msg.version } },
       };
