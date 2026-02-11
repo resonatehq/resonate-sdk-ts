@@ -19,10 +19,3 @@ export type Return<T> = T extends (...args: any[]) => Generator<infer __, infer 
 // Result
 
 export type Result<V, E> = { kind: "value"; value: V } | { kind: "error"; error: E };
-
-// Value
-
-export interface Value<T> {
-  headers: { [key: string]: string };
-  data: T;
-}

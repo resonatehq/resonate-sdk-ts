@@ -2,6 +2,7 @@ import type { Encoder } from "./encoder.js";
 import type { Encryptor } from "./encryptor.js";
 import exceptions, { type ResonateError } from "./exceptions.js";
 import type { Network } from "./network/network.js";
+import type { Value } from "./network/types.js";
 import {
   isRedirect,
   isSuccess,
@@ -16,7 +17,7 @@ import {
   type TaskRecord,
   type TaskSuspendReq,
 } from "./network/types.js";
-import type { Result, Value } from "./types.js";
+import type { Result } from "./types.js";
 import * as util from "./util.js";
 
 export class Cache {
@@ -96,14 +97,14 @@ export class Handler {
       done({ kind: "value", value: promise });
       return;
     }
-    let param: Value<string>;
+    let param: Value;
     try {
       param = this.encryptor.encrypt(this.encoder.encode(req.data.param.data));
       req.data.param = param;
     } catch (e) {
       done({
         kind: "error",
-        error: exceptions.ENCODING_ARGS_UNENCODEABLE((req.data.param.data as any)?.func ?? func, e),
+        error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e),
       });
       return;
     }
@@ -121,7 +122,7 @@ export class Handler {
           });
         }
         try {
-          const promise = this.decode(res.data.promise, (req.data.param.data as any)?.func ?? func);
+          const promise = this.decode(res.data.promise, req.data.param.data?.func ?? func);
           this.cache.setPromise(promise);
           done({ kind: "value", value: promise });
         } catch (e) {
@@ -140,13 +141,13 @@ export class Handler {
     headers: { [key: string]: string } = {},
     retryForever = false,
   ) {
-    let param: Value<string>;
+    let param: Value;
     try {
       param = this.encryptor.encrypt(this.encoder.encode(req.data.action.data.param.data));
     } catch (e) {
       done({
         kind: "error",
-        error: exceptions.ENCODING_ARGS_UNENCODEABLE((req.data.action.data.param.data as any)?.func ?? func, e),
+        error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.action.data.param.data?.func ?? func, e),
       });
       return;
     }
@@ -167,7 +168,7 @@ export class Handler {
 
         let promise: PromiseRecord;
         try {
-          promise = this.decode(res.data.promise, (req.data.action.data.param.data as any)?.func ?? func);
+          promise = this.decode(res.data.promise, req.data.action.data.param.data?.func ?? func);
         } catch (e) {
           return done({ kind: "error", error: e as ResonateError });
         }
@@ -194,7 +195,7 @@ export class Handler {
       return;
     }
 
-    let value: Value<string>;
+    let value: Value;
     try {
       value = this.encryptor.encrypt(this.encoder.encode(req.data.value.data));
       req.data.value = value;
@@ -366,7 +367,7 @@ export class Handler {
     );
   }
 
-  public encodeValue(data: any, func: string): Result<Value<string>, ResonateError> {
+  public encodeValue(data: any, func: string): Result<Value, ResonateError> {
     try {
       return { kind: "value", value: this.encryptor.encrypt(this.encoder.encode(data)) };
     } catch (e) {
@@ -379,14 +380,14 @@ export class Handler {
     let valueData: any;
 
     try {
-      paramData = this.encoder.decode(this.encryptor.decrypt(promise.param as Value<string>));
+      paramData = this.encoder.decode(this.encryptor.decrypt(promise.param));
     } catch (e) {
       console.error(e);
       throw exceptions.ENCODING_ARGS_UNDECODEABLE(paramData?.func ?? func, e);
     }
 
     try {
-      valueData = this.encoder.decode(this.encryptor.decrypt(promise.value as Value<string>));
+      valueData = this.encoder.decode(this.encryptor.decrypt(promise.value));
     } catch (e) {
       throw exceptions.ENCODING_RETV_UNDECODEABLE(paramData?.func ?? func, e);
     }

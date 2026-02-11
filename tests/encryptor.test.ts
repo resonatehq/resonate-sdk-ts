@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { type Encryptor, NoopEncryptor } from "../src/encryptor.js";
-import type { Value } from "../src/types.js";
+import type { Value } from "../src/network/types.js";
 
 export class DummyEncryptor {
   private key: Buffer;
@@ -9,7 +9,7 @@ export class DummyEncryptor {
     this.key = crypto.createHash("sha256").update(secret).digest();
   }
 
-  encrypt(plaintext: Value<string>): Value<string> {
+  encrypt(plaintext: Value): Value {
     if (plaintext.data === undefined) return plaintext;
 
     const iv = crypto.randomBytes(12);
@@ -22,7 +22,7 @@ export class DummyEncryptor {
     return { headers: plaintext.headers, data: combined.toString("base64") };
   }
 
-  decrypt(ciphertext: Value<string>): Value<string> {
+  decrypt(ciphertext: Value): Value {
     if (ciphertext === undefined) return ciphertext;
     if (ciphertext.data === undefined) return ciphertext;
 
@@ -42,7 +42,7 @@ export class DummyEncryptor {
 
 describe("Encryptors", () => {
   const encryptors: Encryptor[] = [new NoopEncryptor(), new DummyEncryptor("foo")];
-  const plaintexts: Value<string>[] = [
+  const plaintexts: Value[] = [
     // Basic cases
     { headers: { foo: "bar" }, data: "Hello, world!" },
     { headers: { foo: "bar" }, data: "" },

@@ -1,5 +1,5 @@
 import type { MessageSource, Network } from "./network.js";
-import type { Message, PromiseRecord, Request, Response, TaskRecord } from "./types.js";
+import type { Message, PromiseRecord, Request, Response, TaskRecord, Value } from "./types.js";
 
 // =============================================================================
 // SERVER INTERNAL TYPES
@@ -9,11 +9,6 @@ import type { Message, PromiseRecord, Request, Response, TaskRecord } from "./ty
 // =============================================================================
 
 type SettleState = "resolved" | "rejected" | "rejected_canceled";
-
-interface Value {
-  headers?: Record<string, string>;
-  data?: string;
-}
 
 interface ServerPromise {
   id: string;

@@ -22,7 +22,7 @@ import { Promises } from "./promises.js";
 import { Registry } from "./registry.js";
 import { Schedules } from "./schedules.js";
 import { NoopTracer, type Tracer } from "./tracer.js";
-import type { Func, ParamsWithOptions, Return, Value } from "./types.js";
+import type { Func, ParamsWithOptions, Return } from "./types.js";
 import * as util from "./util.js";
 
 export interface ResonateHandle<T> {
@@ -556,7 +556,7 @@ export class Resonate {
                     args: args,
                     retry: opts.retryPolicy?.encode(),
                     version: registered.version,
-                  } as any,
+                  },
                   headers: {},
                 },
                 tags: {
@@ -700,7 +700,7 @@ export class Resonate {
                 args: args,
                 retry: opts.retryPolicy?.encode(),
                 version: version,
-              } as any,
+              },
               headers: {},
             },
             tags: {
@@ -912,7 +912,7 @@ export class Resonate {
     let valueData: any;
 
     try {
-      paramData = this.encoder.decode(this.encryptor.decrypt(msg.data.promise.param as Value<string>));
+      paramData = this.encoder.decode(this.encryptor.decrypt(msg.data.promise.param));
     } catch (e) {
       // TODO: improve this message
       this.notify(msg.data.promise.id, new Error("Failed to decode promise param"));
@@ -920,7 +920,7 @@ export class Resonate {
     }
 
     try {
-      valueData = this.encoder.decode(this.encryptor.decrypt(msg.data.promise.value as Value<string>));
+      valueData = this.encoder.decode(this.encryptor.decrypt(msg.data.promise.value));
     } catch (e) {
       // TODO: improve this message
       this.notify(msg.data.promise.id, new Error("Failed to decode promise value"));
