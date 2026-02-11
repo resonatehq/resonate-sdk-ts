@@ -1,12 +1,12 @@
-import type { Msg, Req, Res } from "./types.js";
+import type { Message, Request, Response } from "./types.js";
 
 export interface Network {
   start(): void;
   stop(): void;
 
-  send<K extends Req["kind"]>(
-    req: Extract<Req, { kind: K }>,
-    callback: (res: Extract<Res, { kind: K }>) => void,
+  send<K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+    callback: (res: Extract<Response, { kind: K }>) => void,
     headers?: { [key: string]: string },
     retryForever?: boolean,
   ): void;
@@ -22,7 +22,7 @@ export interface MessageSource {
   start(): void;
   stop(): void;
 
-  recv(msg: Msg): void;
-  subscribe(type: "execute" | "notify", callback: (msg: Msg) => void): void;
+  recv(msg: Message): void;
+  subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void;
   match(target: string): string;
 }

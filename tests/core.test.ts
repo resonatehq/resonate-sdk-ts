@@ -8,7 +8,7 @@ import { NoopEncryptor } from "../src/encryptor.js";
 import { Handler } from "../src/handler.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { LocalNetwork } from "../src/network/local.js";
-import type { PromiseRecord, Req, TaskRecord } from "../src/network/types.js";
+import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { NoopSpan, NoopTracer } from "../src/tracer.js";
@@ -149,7 +149,7 @@ async function seedPendingTask(
       (res) => {
         if (res.head.status === 200) {
           const serverTask = (network as any).server?.tasks?.get(task.id);
-          resolve({ id: task.id, version: serverTask?.version ?? task.version + 1 });
+          resolve({ id: task.id, state: "pending", version: serverTask?.version ?? task.version + 1 });
         } else {
           reject(new Error(`Failed to release task: ${res.head.status}`));
         }
@@ -158,8 +158,8 @@ async function seedPendingTask(
   });
 }
 
-function interceptNetwork(network: LocalNetwork): { sent: Req[] } {
-  const sent: Req[] = [];
+function interceptNetwork(network: LocalNetwork): { sent: Request[] } {
+  const sent: Request[] = [];
   const origSend = network.send.bind(network);
   network.send = ((req: any, cb: any, ...rest: any[]) => {
     sent.push(req);

@@ -3,7 +3,7 @@ import { Computation, type Done, type Status } from "./computation.js";
 import type { Handler } from "./handler.js";
 import type { Heartbeat } from "./heartbeat.js";
 import type { MessageSource, Network } from "./network/network.js";
-import type { Msg, PromiseRecord, TaskRecord } from "./network/types.js";
+import type { Message, PromiseRecord, TaskRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
@@ -219,10 +219,10 @@ export class Core {
     );
   }
 
-  public onMessage(msg: Msg, cb: (res: Result<Status, undefined>) => void): void {
+  public onMessage(msg: Message, cb: (res: Result<Status, undefined>) => void): void {
     util.assert(msg.kind === "execute");
 
-    const task = (msg as Extract<Msg, { kind: "execute" }>).data.task;
+    const task = msg.data.task;
     this.handler.taskAcquire(
       {
         kind: "task.acquire",
@@ -236,7 +236,7 @@ export class Core {
         } else {
           this.executeUntilBlocked(
             this.tracer.decode(msg.head),
-            { kind: "claimed", task: task, rootPromise: res.value.root },
+            { kind: "claimed", task: res.value.task, rootPromise: res.value.root },
             (execRes) => {
               cb(execRes);
             },

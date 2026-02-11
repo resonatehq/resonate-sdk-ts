@@ -1,8 +1,16 @@
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
-import { isSuccess, type PromiseRecord, type TaskRecord } from "./network/types.js";
+import {
+  isPromiseCreateRes200,
+  isPromiseGetRes200,
+  isPromiseRegisterRes200,
+  isPromiseSettleRes200,
+  isPromiseSubscribeRes200,
+  isTaskCreateRes200,
+  type PromiseRecord,
+  type TaskRecord,
+} from "./network/types.js";
 
-import * as util from "./util.js";
 export class Promises {
   private network: Network;
   constructor(network: Network = new LocalNetwork()) {
@@ -12,11 +20,10 @@ export class Promises {
   get(id: string): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } }, (res) => {
-        if (!isSuccess(res)) {
+        if (!isPromiseGetRes200(res)) {
           reject(res.data);
           return;
         }
-        util.assert(res.kind === "promise.get");
         resolve(res.data.promise);
       });
     });
@@ -48,11 +55,10 @@ export class Promises {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isPromiseCreateRes200(res)) {
             reject(res.data);
             return;
           }
-          util.assert(res.kind === "promise.create");
           resolve(res.data.promise);
         },
       );
@@ -90,11 +96,10 @@ export class Promises {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isTaskCreateRes200(res)) {
             reject(res.data);
             return;
           }
-          util.assert(res.kind === "task.create");
           resolve({ promise: res.data.promise, task: res.data.task });
         },
       );
@@ -124,11 +129,10 @@ export class Promises {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isPromiseSettleRes200(res)) {
             reject(res.data);
             return;
           }
-          util.assert(res.kind === "promise.settle");
           resolve(res.data.promise);
         },
       );
@@ -148,11 +152,10 @@ export class Promises {
           data: { awaited, awaiter },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isPromiseRegisterRes200(res)) {
             reject(res.data);
             return;
           }
-          util.assert(res.kind === "promise.register");
           resolve({ promise: res.data.promise });
         },
       );
@@ -169,12 +172,10 @@ export class Promises {
       this.network.send(
         { kind: "promise.subscribe", head: { corrId: "", version: "" }, data: { awaited, address } },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isPromiseSubscribeRes200(res)) {
             reject(res.data);
             return;
           }
-
-          util.assert(res.kind === "promise.subscribe");
           resolve({ promise: res.data.promise });
         },
       );

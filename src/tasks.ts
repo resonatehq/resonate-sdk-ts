@@ -1,7 +1,12 @@
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
-import { isSuccess, type PromiseRecord, type TaskAcquireRes } from "./network/types.js";
-import * as util from "./util.js";
+import {
+  isTaskAcquireRes200,
+  isTaskFulfillRes200,
+  isTaskHeartbeatRes200,
+  type PromiseRecord,
+  type TaskAcquireRes200,
+} from "./network/types.js";
 
 export class Tasks {
   private network: Network;
@@ -10,7 +15,7 @@ export class Tasks {
     this.network = network;
   }
 
-  acquire(id: string, version: number, pid: string, ttl: number): Promise<TaskAcquireRes["data"]> {
+  acquire(id: string, version: number, pid: string, ttl: number): Promise<TaskAcquireRes200["data"]> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -24,12 +29,11 @@ export class Tasks {
           },
         },
         (res) => {
-          if (res.head.status !== 200) {
+          if (!isTaskAcquireRes200(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
           }
-          util.assert(res.kind === "task.acquire");
           resolve(res.data);
         },
       );
@@ -53,12 +57,11 @@ export class Tasks {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isTaskFulfillRes200(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
           }
-          util.assert(res.kind === "task.fulfill");
           resolve(res.data.promise);
         },
       );
@@ -77,13 +80,12 @@ export class Tasks {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isTaskHeartbeatRes200(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
           }
-          util.assert(res.kind === "task.heartbeat");
-          resolve(res.data);
+          resolve(undefined);
         },
       );
     });

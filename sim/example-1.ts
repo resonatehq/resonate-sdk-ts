@@ -1,7 +1,7 @@
 import { StepClock } from "../src/clock.js";
 import type * as context from "../src/context.js";
 import { JsonEncoder } from "../src/encoder.js";
-import type { Req } from "../src/network/types.js";
+import type { Request } from "../src/network/types.js";
 import { Registry } from "../src/registry.js";
 import * as util from "../src/util.js";
 import { ServerProcess } from "./src/server.js";
@@ -74,7 +74,7 @@ const id = `fibonacci-${n}`;
 
 sim.delay(0, () => {
   sim.send(
-    new Message<Req>(
+    new Message<Request>(
       unicast("environment"),
       unicast("server"),
       {

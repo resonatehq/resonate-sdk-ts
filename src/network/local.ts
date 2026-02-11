@@ -1,5 +1,5 @@
 import type { MessageSource, Network } from "./network.js";
-import type { Msg, PromiseRecord, PromiseState, Req, Res, TaskRecord } from "./types.js";
+import type { Message, PromiseRecord, Request, Response, TaskRecord } from "./types.js";
 
 // =============================================================================
 // SERVER INTERNAL TYPES
@@ -17,7 +17,7 @@ interface Value {
 
 interface ServerPromise {
   id: string;
-  state: PromiseState;
+  state: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
   param: Value;
   value: Value;
   tags: Record<string, string>;
@@ -89,7 +89,7 @@ export class Server {
   private changes: Change[] = [];
   private branches: string[] = [];
 
-  apply(now: number, req?: Req): ServerResult {
+  apply(now: number, req?: Request): ServerResult {
     this.messages = [];
     this.changes = [];
     this.branches = [];
@@ -207,7 +207,7 @@ export class Server {
   // DISPATCH
   // ---------------------------------------------------------------------------
 
-  private dispatch(req: Req, now: number): ServerResponse {
+  private dispatch(req: Request, now: number): ServerResponse {
     switch (req.kind) {
       case "promise.get":
         return this.getPromise(now, req.data);
@@ -233,6 +233,12 @@ export class Server {
         return this.heartbeatTask(now, req.data);
       case "task.create":
         return this.createTask(now, req.data);
+      case "promise.subscribe":
+        return this.perror(501, "Not implemented", []);
+      case "schedule.get":
+      case "schedule.create":
+      case "schedule.delete":
+        return this.perror(501, "Not implemented", []);
       default:
         return this.perror(400, "Operation not supported", []);
     }
@@ -720,7 +726,7 @@ export class Server {
       ttl: number;
       action: {
         kind: "promise.create";
-        head: { auth?: string; corrId: string; version: string };
+        head: { auth?: string; corrId: string; version: string }; // RequestHead
         data: {
           id: string;
           timeoutAt: number;
@@ -836,7 +842,7 @@ export class Server {
   }
 
   private toTaskRecord(st: ServerTask): TaskRecord {
-    return { id: st.id, version: st.version };
+    return { id: st.id, state: st.state, version: st.version };
   }
 
   // ---------------------------------------------------------------------------
@@ -931,8 +937,8 @@ export class LocalNetwork implements Network, MessageSource {
 
   private server: Server;
   private subscriptions: {
-    execute: Array<(msg: Msg) => void>;
-    notify: Array<(msg: Msg) => void>;
+    execute: Array<(msg: Message) => void>;
+    notify: Array<(msg: Message) => void>;
   } = { execute: [], notify: [] };
   private tickInterval?: ReturnType<typeof setInterval>;
 
@@ -965,9 +971,9 @@ export class LocalNetwork implements Network, MessageSource {
     }
   }
 
-  send<K extends Req["kind"]>(
-    req: Extract<Req, { kind: K }>,
-    callback: (res: Extract<Res, { kind: K }>) => void,
+  send<K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+    callback: (res: Extract<Response, { kind: K }>) => void,
     _headers?: { [key: string]: string },
     _retryForever?: boolean,
   ): void {
@@ -979,7 +985,7 @@ export class LocalNetwork implements Network, MessageSource {
       callback({
         ...intercepted,
         head: { ...intercepted.head, corrId, version },
-      } as Extract<Res, { kind: K }>);
+      } as Extract<Response, { kind: K }>);
       return;
     }
 
@@ -991,7 +997,7 @@ export class LocalNetwork implements Network, MessageSource {
       kind: response.kind,
       head: { corrId, status: response.head.status, version },
       data: response.data,
-    } as Extract<Res, { kind: K }>;
+    } as Extract<Response, { kind: K }>;
 
     this.dispatchMessages(result);
 
@@ -1004,13 +1010,13 @@ export class LocalNetwork implements Network, MessageSource {
 
   // -- MessageSource ---------------------------------------------------------
 
-  recv(msg: Msg): void {
+  recv(msg: Message): void {
     for (const cb of this.subscriptions[msg.kind]) {
       cb(msg);
     }
   }
 
-  subscribe(type: "execute" | "notify", callback: (msg: Msg) => void): void {
+  subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void {
     this.subscriptions[type].push(callback);
   }
 
@@ -1025,7 +1031,7 @@ export class LocalNetwork implements Network, MessageSource {
    * Handle SDK request kinds the Server does not implement.
    * Returns a partial Res if handled, or undefined to fall through.
    */
-  private intercept(req: Req): Res | undefined {
+  private intercept(req: Request): Response | undefined {
     const head = { corrId: "" as const, status: 200 as const, version: "" as const };
 
     switch (req.kind) {
@@ -1057,12 +1063,12 @@ export class LocalNetwork implements Network, MessageSource {
     );
 
     for (const msg of result.messages) {
-      const taskRecord: TaskRecord = { id: msg.id, version: msg.version };
+      const task = { id: msg.id, version: msg.version };
 
       if (resumeIds.has(msg.id)) {
-        this.recv({ kind: "execute", head: {}, data: { task: taskRecord } });
+        this.recv({ kind: "execute", head: {}, data: { task } });
       } else {
-        this.recv({ kind: "execute", head: {}, data: { task: taskRecord } });
+        this.recv({ kind: "execute", head: {}, data: { task } });
       }
     }
 

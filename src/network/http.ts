@@ -3,7 +3,7 @@ import { EventSource } from "eventsource";
 import exceptions, { ResonateError } from "../exceptions.js";
 import * as util from "../util.js";
 import type { MessageSource, Network } from "./network.js";
-import type { Msg, Req, Res } from "./types.js";
+import type { Message, Request, Response } from "./types.js";
 
 export interface HttpNetworkConfig {
   url?: string;
@@ -48,9 +48,9 @@ export class HttpNetwork implements Network {
   start(): void {}
   stop(): void {}
 
-  send<K extends Req["kind"]>(
-    req: Extract<Req, { kind: K }>,
-    callback: (res: Extract<Res, { kind: K }>) => void,
+  send<K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+    callback: (res: Extract<Response, { kind: K }>) => void,
     headers: { [key: string]: string } = {},
     retryForever = false,
   ): void {
@@ -68,11 +68,11 @@ export class HttpNetwork implements Network {
     );
   }
 
-  private async doSend<K extends Req["kind"]>(
-    req: Extract<Req, { kind: K }>,
+  private async doSend<K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
     headers: { [key: string]: string },
     { retries = 0, delay = 1000 }: RetryPolicy = {},
-  ): Promise<Extract<Res, { kind: K }>> {
+  ): Promise<Extract<Response, { kind: K }>> {
     for (let attempt = 0; attempt <= retries; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -112,9 +112,7 @@ export class HttpNetwork implements Network {
           );
         }
 
-        const res: Res = body as Res;
-
-        return res as Extract<Res, { kind: K }>;
+        return body as Extract<Response, { kind: K }>;
       } catch (err) {
         console.log(err);
         if (err instanceof ResonateError && !err.retriable) {
@@ -152,8 +150,8 @@ export class PollMessageSource implements MessageSource {
   private headers: { [key: string]: string };
   private eventSource: EventSource;
   private subscriptions: {
-    execute: Array<(msg: Msg) => void>;
-    notify: Array<(msg: Msg) => void>;
+    execute: Array<(msg: Message) => void>;
+    notify: Array<(msg: Message) => void>;
   } = { execute: [], notify: [] };
 
   constructor({
@@ -199,7 +197,7 @@ export class PollMessageSource implements MessageSource {
     });
 
     this.eventSource.addEventListener("message", (event) => {
-      let msg: Msg;
+      let msg: Message;
 
       try {
         msg = JSON.parse(event.data);
@@ -221,7 +219,7 @@ export class PollMessageSource implements MessageSource {
     return this.eventSource;
   }
 
-  recv(msg: Msg): void {
+  recv(msg: Message): void {
     for (const callback of this.subscriptions[msg.kind]) {
       callback(msg);
     }
@@ -233,7 +231,7 @@ export class PollMessageSource implements MessageSource {
     this.eventSource.close();
   }
 
-  public subscribe(type: "execute" | "notify", callback: (msg: Msg) => void): void {
+  public subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void {
     this.subscriptions[type].push(callback);
   }
 
@@ -252,8 +250,8 @@ export class PushMessageSource implements MessageSource {
   private port: number;
   private server: Server;
   private subscriptions: {
-    execute: Array<(msg: Msg) => void>;
-    notify: Array<(msg: Msg) => void>;
+    execute: Array<(msg: Message) => void>;
+    notify: Array<(msg: Message) => void>;
   } = { execute: [], notify: [] };
 
   constructor({
@@ -319,7 +317,7 @@ export class PushMessageSource implements MessageSource {
     });
 
     req.on("end", () => {
-      let msg: Msg;
+      let msg: Message;
       try {
         msg = JSON.parse(body);
       } catch {
@@ -341,13 +339,13 @@ export class PushMessageSource implements MessageSource {
     });
   }
 
-  recv(msg: Msg): void {
+  recv(msg: Message): void {
     for (const callback of this.subscriptions[msg.kind]) {
       callback(msg);
     }
   }
 
-  public subscribe(type: "execute" | "notify", callback: (msg: Msg) => void): void {
+  public subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void {
     this.subscriptions[type].push(callback);
   }
 

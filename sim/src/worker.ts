@@ -5,7 +5,7 @@ import { NoopEncryptor } from "../../src/encryptor.js";
 import { Handler } from "../../src/handler.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import type { MessageSource, Network } from "../../src/network/network.js";
-import type { Msg as NetworkMessage, Req, Res } from "../../src/network/types.js";
+import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
 import { OptionsBuilder } from "../../src/options.js";
 import type { Registry } from "../../src/registry.js";
 import { NoopTracer } from "../../src/tracer.js";
@@ -63,8 +63,8 @@ class SimulatedNetwork implements Network {
 
   private prng: Random;
   private deliveryOptions: Required<DeliveryOptions>;
-  private buffer: Message<Req>[] = [];
-  private callbacks: Record<number, { req: Req; callback: (res: any) => void; timeout: number }> = {};
+  private buffer: Message<Request>[] = [];
+  private callbacks: Record<number, { req: Request; callback: (res: any) => void; timeout: number }> = {};
   private messageSource: SimulatedMessageSource;
 
   constructor(
@@ -85,18 +85,18 @@ class SimulatedNetwork implements Network {
     return this.messageSource;
   }
 
-  send<K extends Req["kind"]>(
-    req: Extract<Req, { kind: K }>,
-    callback: (res: Extract<Res, { kind: K }>) => void,
+  send<K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+    callback: (res: Extract<Response, { kind: K }>) => void,
     headers?: { [key: string]: string },
     retryForever?: boolean,
   ): void {
-    const message = new Message<Req>(this.source, this.target, req, {
+    const message = new Message<Request>(this.source, this.target, req, {
       requ: true,
       correlationId: this.correlationId++,
     });
 
-    const cb = (res: Extract<Res, { kind: K }>) => {
+    const cb = (res: Extract<Response, { kind: K }>) => {
       if (res.head.status >= 400) {
         callback(res);
       } else {
@@ -129,21 +129,21 @@ class SimulatedNetwork implements Network {
     }
   }
 
-  process(message: Message<{ err?: any; res?: Res } | NetworkMessage>): void {
+  process(message: Message<{ err?: any; res?: Response } | NetworkMessage>): void {
     if (message.isResponse()) {
       util.assert(message.source === this.target);
       util.assert(message.target === this.source);
       const correlationId = message.head?.correlationId;
       const entry = correlationId && this.callbacks[correlationId];
       if (entry) {
-        const msg = message as Message<{ err?: any; res?: Res }>;
+        const msg = message as Message<{ err?: any; res?: Response }>;
         if (msg.data.err) {
           util.assert(msg.data.res === undefined);
           entry.callback({
             kind: entry.req.kind,
             head: { corrId: entry.req.head.corrId, version: entry.req.head.version, status: 500 },
             data: typeof msg.data.err === "string" ? msg.data.err : msg.data.err?.message || "unknown error",
-          } as Res);
+          } as Response);
         } else {
           util.assertDefined(msg.data.res);
           entry.callback(this.maybeCorruptData(msg.data.res));
@@ -163,7 +163,7 @@ class SimulatedNetwork implements Network {
     return flushed;
   }
 
-  private maybeCorruptData(data: Res | NetworkMessage): any {
+  private maybeCorruptData(data: Response | NetworkMessage): any {
     // Serialize the data to a string
     let jsonStr = JSON.stringify(data);
 
@@ -218,7 +218,7 @@ export class WorkerProcess extends Process {
     });
   }
 
-  tick(tick: number, messages: Message<{ err?: any; res?: Res } | NetworkMessage>[]): Message<Req>[] {
+  tick(tick: number, messages: Message<{ err?: any; res?: Response } | NetworkMessage>[]): Message<Request>[] {
     this.log(tick, "[recv]", messages);
 
     this.network.time(this.clock.time);

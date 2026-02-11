@@ -75,7 +75,7 @@ function createClaimedTask(
         func,
         args,
         version: opts?.version ?? 1,
-      },
+      } as any,
     },
     tags: {
       "resonate:target": "default",
@@ -83,12 +83,12 @@ function createClaimedTask(
     },
     timeoutAt: now + 60_000,
     createdAt: now,
-    value: { headers: {}, data: null },
+    value: { headers: {}, data: undefined },
   };
 
   return {
     kind: "claimed",
-    task: { id: `__invoke:${id}`, version: 1 },
+    task: { id: `__invoke:${id}`, state: "acquired" as const, version: 1 },
     rootPromise,
   };
 }

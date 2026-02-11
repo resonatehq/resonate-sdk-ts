@@ -1,7 +1,12 @@
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
-import { isSuccess, type ScheduleRecord } from "./network/types.js";
-import * as util from "./util.js";
+import {
+  isScheduleCreateRes200,
+  isScheduleDeleteRes200,
+  isScheduleGetRes200,
+  type ScheduleRecord,
+} from "./network/types.js";
+
 export class Schedules {
   private network: Network;
 
@@ -20,13 +25,11 @@ export class Schedules {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isScheduleGetRes200(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
           }
-          util.assert(res.kind === "schedule.get");
-
           resolve(res.data.schedule);
         },
       );
@@ -65,12 +68,11 @@ export class Schedules {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isScheduleCreateRes200(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
           }
-          util.assert(res.kind === "schedule.create");
           resolve(res.data.schedule);
         },
       );
@@ -88,14 +90,12 @@ export class Schedules {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isScheduleDeleteRes200(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
           }
-          util.assert(res.kind === "schedule.delete");
-
-          resolve(res.data);
+          resolve(undefined);
         },
       );
     });

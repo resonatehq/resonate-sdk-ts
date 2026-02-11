@@ -6,7 +6,7 @@ import { NoopEncryptor } from "../src/encryptor.js";
 import { Handler } from "../src/handler.js";
 import { PollMessageSource } from "../src/network/http.js";
 import type { Network } from "../src/network/network.js";
-import type { Msg, PromiseRecord, Req, Res } from "../src/network/types.js";
+import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
@@ -18,15 +18,15 @@ class DummyNetwork implements Network {
   private promises = new Map<string, PromiseRecord>();
 
   start(): void {}
-  send<K extends Req["kind"]>(
-    req: Extract<Req, { kind: K }>,
-    callback: (res: Extract<Res, { kind: K }>) => void,
+  send<K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+    callback: (res: Extract<Response, { kind: K }>) => void,
     headers?: { [key: string]: string },
     retryForever?: boolean,
   ): void {
     switch (req.kind) {
       case "promise.create": {
-        const createReq = req as Extract<Req, { kind: "promise.create" }>;
+        const createReq = req as Extract<Request, { kind: "promise.create" }>;
         const p: PromiseRecord = {
           id: createReq.data.id,
           state: "pending",
@@ -41,12 +41,12 @@ class DummyNetwork implements Network {
           kind: req.kind,
           head: { corrId: req.head.corrId, status: 200, version: req.head.version },
           data: { promise: p },
-        } as Extract<Res, { kind: K }>);
+        } as Extract<Response, { kind: K }>);
         return;
       }
 
       case "promise.settle": {
-        const settleReq = req as Extract<Req, { kind: "promise.settle" }>;
+        const settleReq = req as Extract<Request, { kind: "promise.settle" }>;
         const p = this.promises.get(settleReq.data.id)!;
         p.state = "resolved";
         p.value = settleReq.data.value;
@@ -55,7 +55,7 @@ class DummyNetwork implements Network {
           kind: req.kind,
           head: { corrId: req.head.corrId, status: 200, version: req.head.version },
           data: { promise: p },
-        } as Extract<Res, { kind: K }>);
+        } as Extract<Response, { kind: K }>);
         break;
       }
       default:
@@ -63,12 +63,12 @@ class DummyNetwork implements Network {
     }
   }
 
-  recv(_msg: Msg): void {
+  recv(_msg: Message): void {
     throw new Error("Method not implemented.");
   }
 
   stop() {}
-  subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Msg) => void) {}
+  subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Message) => void) {}
 }
 
 describe("Coroutine", () => {
@@ -105,7 +105,7 @@ describe("Coroutine", () => {
         }),
         func,
         args,
-        { id: `__invoke:${uuid}`, version: 1 },
+        { id: `__invoke:${uuid}`, state: "acquired" as const, version: 1 },
         handler,
         new Map(),
         (res) => {
@@ -362,7 +362,7 @@ describe("Coroutine", () => {
         }),
         foo,
         [],
-        { id: "__invoke:foo.1", version: 1 },
+        { id: "__invoke:foo.1", state: "acquired" as const, version: 1 },
         h,
         new Map(),
         (res) => {

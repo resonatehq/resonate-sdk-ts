@@ -1,6 +1,6 @@
 import type { StepClock } from "../../src/clock.js";
 import { Server } from "../../src/network/local.js";
-import type { Msg as NetworkMessage, Req, Res } from "../../src/network/types.js";
+import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
 import * as util from "../../src/util.js";
 import { type Address, anycast, Message, Process, unicast } from "./simulator.js";
 
@@ -16,16 +16,16 @@ export class ServerProcess extends Process {
     this.clock = clock;
   }
 
-  tick(tick: number, messages: Message<Req>[]): Message<{ err?: any; res?: Res } | NetworkMessage>[] {
+  tick(tick: number, messages: Message<Request>[]): Message<{ err?: any; res?: Response } | NetworkMessage>[] {
     this.log(tick, "[recv]", messages);
 
-    const responses: Message<{ err?: any; res?: Res } | NetworkMessage>[] = [];
+    const responses: Message<{ err?: any; res?: Response } | NetworkMessage>[] = [];
     const outgoing: Array<{ id: string; version: number; address: string }> = [];
 
     for (const message of messages) {
       util.assert(message.target.iaddr === this.iaddr);
       if (message.isRequest()) {
-        let res: { err?: any; res?: Res };
+        let res: { err?: any; res?: Response };
         try {
           const result = this.server.apply(this.clock.time, message.data);
           outgoing.push(...result.messages);
@@ -33,7 +33,7 @@ export class ServerProcess extends Process {
             res: {
               ...result.response,
               head: { ...result.response.head, corrId: message.data.head.corrId, version: message.data.head.version },
-            } as Res,
+            } as Response,
           };
         } catch (err: any) {
           res = { err: err };
