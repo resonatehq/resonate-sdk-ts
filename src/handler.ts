@@ -3,15 +3,8 @@ import type { Encryptor } from "./encryptor.js";
 import exceptions, { type ResonateError } from "./exceptions.js";
 import type { Network } from "./network/network.js";
 import {
-  isPromiseCreateRes200,
-  isPromiseGetRes200,
-  isPromiseRegisterRes200,
-  isPromiseSettleRes200,
-  isPromiseSubscribeRes200,
-  isTaskAcquireRes200,
-  isTaskCreateRes200,
-  isTaskSuspendRes200,
-  isTaskSuspendRes300,
+  isRedirect,
+  isSuccess,
   type PromiseCreateReq,
   type PromiseGetReq,
   type PromiseRecord,
@@ -71,7 +64,7 @@ export class Handler {
     }
 
     this.network.send(req, (res) => {
-      if (!isPromiseGetRes200(res)) {
+      if (!isSuccess(res)) {
         return done({
           kind: "error",
           error: exceptions.SERVER_ERROR(res.data, true, {
@@ -118,7 +111,7 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (!isPromiseCreateRes200(res)) {
+        if (!isSuccess(res)) {
           return done({
             kind: "error",
             error: exceptions.SERVER_ERROR(res.data, true, {
@@ -162,7 +155,7 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (!isTaskCreateRes200(res)) {
+        if (!isSuccess(res)) {
           return done({
             kind: "error",
             error: exceptions.SERVER_ERROR(res.data, true, {
@@ -211,7 +204,7 @@ export class Handler {
     }
 
     this.network.send(req, (res) => {
-      if (!isPromiseSettleRes200(res)) {
+      if (!isSuccess(res)) {
         return done({
           kind: "error",
           error: exceptions.SERVER_ERROR(res.data, true, {
@@ -238,7 +231,7 @@ export class Handler {
     done: (res: Result<{ task: TaskRecord; root: PromiseRecord }, ResonateError>) => void,
   ): void {
     this.network.send(req, (res) => {
-      if (!isTaskAcquireRes200(res)) {
+      if (!isSuccess(res)) {
         return done({
           kind: "error",
           error: exceptions.SERVER_ERROR(res.data, true, {
@@ -265,12 +258,12 @@ export class Handler {
   public taskSuspend(req: TaskSuspendReq, done: (res: Result<{ continue: boolean }, ResonateError>) => void): void {
     this.cache.evictPromises(req.data.actions.map((a) => a.data.awaited));
     this.network.send(req, (res) => {
-      if (isTaskSuspendRes200(res)) {
+      if (isSuccess(res)) {
         return done({
           kind: "value",
           value: { continue: false },
         });
-      } else if (isTaskSuspendRes300(res)) {
+      } else if (isRedirect(res)) {
         return done({
           kind: "value",
           value: { continue: true },
@@ -304,7 +297,7 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (!isPromiseRegisterRes200(res)) {
+        if (!isSuccess(res)) {
           return done({
             kind: "error",
             error: exceptions.SERVER_ERROR(res.data, true, {
@@ -347,7 +340,7 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (!isPromiseSubscribeRes200(res)) {
+        if (!isSuccess(res)) {
           return done({
             kind: "error",
             error: exceptions.SERVER_ERROR(res.data, true, {

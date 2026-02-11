@@ -1,12 +1,6 @@
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
-import {
-  isTaskAcquireRes200,
-  isTaskFulfillRes200,
-  isTaskHeartbeatRes200,
-  type PromiseRecord,
-  type TaskAcquireRes200,
-} from "./network/types.js";
+import { isSuccess, type PromiseRecord, type TaskAcquireRes } from "./network/types.js";
 
 export class Tasks {
   private network: Network;
@@ -15,7 +9,12 @@ export class Tasks {
     this.network = network;
   }
 
-  acquire(id: string, version: number, pid: string, ttl: number): Promise<TaskAcquireRes200["data"]> {
+  acquire(
+    id: string,
+    version: number,
+    pid: string,
+    ttl: number,
+  ): Promise<Extract<TaskAcquireRes, { head: { status: 200 } }>["data"]> {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
@@ -29,7 +28,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (!isTaskAcquireRes200(res)) {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -57,7 +56,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (!isTaskFulfillRes200(res)) {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -80,7 +79,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (!isTaskHeartbeatRes200(res)) {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
