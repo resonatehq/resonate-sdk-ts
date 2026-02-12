@@ -1,16 +1,16 @@
-import type { Value } from "./types.js";
+import type { Value } from "./network/types.js";
 import * as util from "./util.js";
 
 export interface Encoder {
-  encode(value: any): Value<string>;
-  decode(value: Value<string>): any | undefined;
+  encode(value: any): Value;
+  decode(value: Value): any | undefined;
 }
 
 export class JsonEncoder implements Encoder {
   private inf = "__INF__";
   private negInf = "__NEG_INF__";
 
-  encode(value: any): Value<string> {
+  encode(value: any): Value {
     // note about undefined:
     // undefined is not json serializable, so immediately return undefined
     if (value === undefined) {
@@ -49,7 +49,7 @@ export class JsonEncoder implements Encoder {
     };
   }
 
-  decode(value: Value<string> | undefined): any | undefined {
+  decode(value: Value | undefined): any | undefined {
     if (!value?.data) {
       return undefined;
     }
