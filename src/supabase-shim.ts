@@ -128,7 +128,7 @@ export class Resonate {
         heartbeat: new NoopHeartbeat(),
         dependencies: this.dependencies,
         optsBuilder: new OptionsBuilder({
-          match: (_: string): string => "http://localhost:8000",
+          match: (_: string): string => "http://host.docker.internal:8000",
           idPrefix: "",
         }),
         verbose: this.verbose,
@@ -220,7 +220,12 @@ function buildForwardedURL(req: Request) {
   return `${proto}://${host}${port}${path}`;
 }
 
-const resonate = new Resonate({ verbose: true });
+const resonate = new Resonate();
+
+resonate.register("bar", function* (_ctx: Context, name: string): Generator<any, string, any> {
+  console.log("running bar");
+  return `Hello ${name} from bar`;
+});
 
 resonate.register("foo", function* (ctx: Context): Generator<any, void, any> {
   console.log("running foo");
@@ -229,9 +234,8 @@ resonate.register("foo", function* (ctx: Context): Generator<any, void, any> {
   });
 
   for (let i = 0; i < 5; i++) {
-    yield* ctx.run((_ctx: Context) => {
-      console.log(`Iteration: ${i}`);
-    });
+    const greeting = yield* ctx.rfc("bar", `name-${i}`);
+    yield* ctx.run(() => console.log(greeting));
     yield* ctx.sleep(3000);
   }
   yield* ctx.run(function* (_ctx: Context) {
