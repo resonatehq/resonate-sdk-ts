@@ -753,6 +753,7 @@ class InnerContext {
     return `${this.id}.${this.seq}`;
   }
 }
+
 // src/decorator.ts
 class Decorator {
   invokes;
@@ -1477,7 +1478,6 @@ function isValidData(data) {
   }
   return true;
 }
-
 // src/core.ts
 class Core {
   pid;
@@ -4009,6 +4009,15 @@ class Resonate {
   }
 }
 export {
+  isUnprocessable,
+  isSuccess,
+  isRedirect,
+  isRateLimited,
+  isNotImplemented,
+  isNotFound,
+  isError,
+  isConflict,
+  isBadRequest,
   exports_essential as essential,
   WallClock,
   Resonate,

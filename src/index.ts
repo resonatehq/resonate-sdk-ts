@@ -1,15 +1,14 @@
 export { WallClock } from "./clock.js";
+export { Status } from "./computation.js";
 export { Context } from "./context.js";
 export { Core, type Task } from "./core.js";
 export { JsonEncoder } from "./encoder.js";
-export {
-  type Encryptor,
-  NoopEncryptor,
-} from "./encryptor.js";
+export { type Encryptor, NoopEncryptor } from "./encryptor.js";
 export * as essential from "./essential.js";
 export { Handler } from "./handler.js";
 export { AsyncHeartbeat, NoopHeartbeat } from "./heartbeat.js";
 export { HttpNetwork } from "./network/http.js";
+export * from "./network/types.js";
 export { Message } from "./network/types.js";
 export { OptionsBuilder } from "./options.js";
 export { Registry } from "./registry.js";
