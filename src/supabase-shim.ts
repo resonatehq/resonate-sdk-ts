@@ -128,7 +128,7 @@ export class Resonate {
         heartbeat: new NoopHeartbeat(),
         dependencies: this.dependencies,
         optsBuilder: new OptionsBuilder({
-          match: (_: string): string => "http://host.docker.internal:8000",
+          match: (_: string): string => req.url,
           idPrefix: "",
         }),
         verbose: this.verbose,
@@ -229,6 +229,7 @@ resonate.register("bar", function* (_ctx: Context, name: string): Generator<any,
 
 resonate.register("foo", function* (ctx: Context): Generator<any, void, any> {
   console.log("running foo");
+
   yield* ctx.run((_ctx: Context) => {
     console.log("running internal function foo, should not repeat this log");
   });
