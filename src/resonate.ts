@@ -444,7 +444,7 @@ export class Resonate {
         this.beginRpc(id, func, ...this.getArgsAndOpts(args, version)),
       schedule: (scheduleId: string, cron: string, ...args: ParamsWithOptions<F>): Promise<ResonateSchedule> => {
         const [actualArgs, opts] = this.getArgsAndOpts(args, version);
-        return this.schedule(scheduleId, cron, func, ...[...actualArgs, opts] as any);
+        return this.schedule(scheduleId, cron, func, ...([...actualArgs, opts] as any));
       },
       options: this.options,
     };
