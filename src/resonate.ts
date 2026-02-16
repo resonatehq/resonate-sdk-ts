@@ -37,6 +37,7 @@ export interface ResonateFunc<F extends Func> {
   rpc: (id: string, ...args: ParamsWithOptions<F>) => Promise<Return<F>>;
   beginRun: (id: string, ...args: ParamsWithOptions<F>) => Promise<ResonateHandle<Return<F>>>;
   beginRpc: (id: string, ...args: ParamsWithOptions<F>) => Promise<ResonateHandle<Return<F>>>;
+  schedule: (scheduleId: string, cron: string, ...args: ParamsWithOptions<F>) => Promise<ResonateSchedule>;
   options: (opts?: Partial<Options>) => Options;
 }
 
@@ -441,6 +442,8 @@ export class Resonate {
         this.beginRun(id, func, ...this.getArgsAndOpts(args, version)),
       beginRpc: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
         this.beginRpc(id, func, ...this.getArgsAndOpts(args, version)),
+      schedule: (scheduleId: string, cron: string, ...args: ParamsWithOptions<F>): Promise<ResonateSchedule> =>
+        this.schedule(scheduleId, cron, func, ...this.getArgsAndOpts(args, version)),
       options: this.options,
     };
   }
@@ -720,6 +723,58 @@ export class Resonate {
     }
   }
 
+  /**
+   * Creates a schedule to execute a registered function periodically.
+   *
+   * This method creates a schedule that will automatically invoke the specified
+   * function according to the provided cron expression. Each scheduled execution
+   * creates a unique promise with an ID based on the schedule name, timestamp,
+   * and function name, preventing duplicate executions and enabling automatic
+   * recovery from failures.
+   *
+   * The function will be executed durably through Resonate's promise system,
+   * ensuring reliability and fault tolerance across scheduled executions.
+   *
+   * @param name - Unique identifier for the schedule. Used to update or retrieve
+   *   the schedule later.
+   * @param cron - Cron expression defining when to execute the function
+   *   (e.g., "0 9 * * *" for daily at 9am, "* /5 * * * *" for every 5 minutes).
+   * @param funcOrName - The function to execute on schedule, either as a callable
+   *   or the registered name of the function.
+   * @param args - Positional arguments to pass to the function on each execution.
+   *
+   * @returns A {@link ResonateSchedule} object that can be used to manage the schedule.
+   *
+   * @example
+   * Basic scheduling:
+   * ```ts
+   * const report = resonate.register("generateReport", async (ctx, userId: number) => {
+   *   return `Generated report for user ${userId}`;
+   * });
+   *
+   * // Schedule to run every day at 9am
+   * const schedule = await resonate.schedule("daily_report", "0 9 * * *", report, 123);
+   * ```
+   *
+   * @example
+   * Scheduling with options:
+   * ```ts
+   * const schedule = await resonate
+   *   .options({ timeout: 3600000, tags: { env: "production" } })
+   *   .schedule("priority_sync", "* /30 * * * *", syncData, "api");
+   * ```
+   *
+   * @example
+   * Function-level scheduling:
+   * ```ts
+   * const cleanup = resonate.register("cleanup", async (ctx, days: number) => {
+   *   // cleanup logic
+   * });
+   *
+   * // Schedule using the function instance
+   * await cleanup.schedule("nightly_cleanup", "0 2 * * *", 30);
+   * ```
+   */
   public async schedule<F extends Func>(
     name: string,
     cron: string,
@@ -741,19 +796,25 @@ export class Resonate {
       throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
+    const funcName = registered ? registered.name : (funcOrName as string);
+    const funcVersion = registered ? registered.version : opts.version || 1;
+
     // TODO: move this into the handler?
     const { headers, data } = this.encryptor.encrypt(
       this.encoder.encode({
-        func: registered ? registered.name : (funcOrName as string),
+        func: funcName,
         args: args,
-        version: registered ? registered.version : opts.version || 1,
+        version: funcVersion,
       }),
     );
 
-    await this.schedules.create(name, cron, `${this.idPrefix}{{.id}}.{{.timestamp}}`, opts.timeout, {
+    // Create promise ID pattern that includes the schedule name and function name
+    const promiseIdPattern = `${this.idPrefix}${name}.{{.timestamp}}.${funcName}`;
+
+    await this.schedules.create(name, cron, promiseIdPattern, opts.timeout, {
       promiseHeaders: headers,
       promiseData: data,
-      promiseTags: { ...opts.tags, "resonate:invoke": opts.target },
+      promiseTags: { ...opts.tags, "resonate:invoke": funcName },
     });
 
     return {
