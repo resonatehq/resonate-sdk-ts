@@ -380,14 +380,12 @@ export class Handler {
     try {
       paramData = this.encoder.decode(this.encryptor.decrypt(promise.param));
     } catch (e) {
-      console.error(e);
       throw exceptions.ENCODING_ARGS_UNDECODEABLE(paramData?.func ?? func, e);
     }
 
     try {
       valueData = this.encoder.decode(this.encryptor.decrypt(promise.value));
     } catch (e) {
-      console.error(e);
       throw exceptions.ENCODING_RETV_UNDECODEABLE(paramData?.func ?? func, e);
     }
 
