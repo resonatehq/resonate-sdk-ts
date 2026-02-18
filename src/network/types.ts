@@ -4,7 +4,7 @@
 
 export type Value = {
   headers?: Record<string, string>;
-  data?: any; // TODO: express external string type vs internal any type
+  data?: string;
 };
 
 // =============================================================================
@@ -39,6 +39,26 @@ export type ScheduleRecord = {
   nextRunAt: number;
   lastRunAt?: number;
 };
+
+// =============================================================================
+// MESSAGES
+// =============================================================================
+
+export type MessageHead = { serverUrl?: string };
+
+export type ExecuteMsg = {
+  kind: "execute";
+  head: MessageHead;
+  data: { task: { id: string; version: number } };
+};
+
+export type NotifyMsg = {
+  kind: "notify";
+  head: MessageHead;
+  data: { promise: PromiseRecord };
+};
+
+export type Message = ExecuteMsg | NotifyMsg;
 
 // =============================================================================
 // REQUEST HEAD
@@ -525,9 +545,10 @@ export type DebugSnapRes =
         promises: PromiseRecord[];
         promiseTimeouts: { id: string; timeout: number }[];
         callbacks: { awaiter: string; awaited: string }[];
+        subscriptions?: { id: string; address: string }[];
         tasks: TaskRecord[];
         taskTimeouts: { id: string; type: number; timeout: number }[];
-        messages: { id: string; version: number; address: string }[];
+        messages: { address: string; message: Message }[];
       };
     }
   | { kind: "debug.snap"; head: ResponseHead<400>; data: string }
@@ -568,26 +589,6 @@ export type Response =
   | DebugTickRes
   | DebugSnapRes
   | DebugStopRes;
-
-// =============================================================================
-// MESSAGES
-// =============================================================================
-
-export type MessageHead = { serverUrl?: string };
-
-export type ExecuteMsg = {
-  kind: "execute";
-  head: MessageHead;
-  data: { task: { id: string; version: number } };
-};
-
-export type NotifyMsg = {
-  kind: "notify";
-  head: MessageHead;
-  data: { promise: PromiseRecord };
-};
-
-export type Message = ExecuteMsg | NotifyMsg;
 
 // =============================================================================
 // TYPE GUARDS
