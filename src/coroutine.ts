@@ -220,7 +220,7 @@ export class Coroutine<T> {
                       },
                       (res) => {
                         span.end(this.ctx.clock.now());
-                        spans.splice(spans.indexOf(span));
+                        spans.splice(spans.indexOf(span), 1);
 
                         if (res.kind === "error") {
                           res.error.log(this.verbose);

@@ -215,15 +215,13 @@ export class Handler {
         });
       }
 
-      let promise: PromiseRecord;
       try {
-        promise = this.decode(res.data.promise, func);
+        const promise = this.decode(res.data.promise, func);
+        this.cache.setPromise(promise);
+        done({ kind: "value", value: promise });
       } catch (e) {
         return done({ kind: "error", error: e as ResonateError });
       }
-
-      this.cache.setPromise(promise);
-      done({ kind: "value", value: promise });
     });
   }
 
@@ -382,7 +380,6 @@ export class Handler {
     try {
       paramData = this.encoder.decode(this.encryptor.decrypt(promise.param));
     } catch (e) {
-      console.error(e);
       throw exceptions.ENCODING_ARGS_UNDECODEABLE(paramData?.func ?? func, e);
     }
 
