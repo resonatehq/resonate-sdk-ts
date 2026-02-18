@@ -48,7 +48,7 @@ import {
   type TaskSuspendReq,
   type TaskSuspendRes,
   type Value,
-} from "./types.ts";
+} from "./types.js";
 
 export interface PTimeout {
   id: string;
@@ -1287,7 +1287,8 @@ export class LocalNetwork implements Network, MessageSource {
 
   start(): void {
     this.tickInterval = setInterval(() => {
-      const result = this.server.apply(Date.now());
+      const now = Date.now()
+      const result = this.server.apply(now, {kind:"debug.tick", head: {corrId: "", version: ""}, data: {time: now}});
       this.dispatchMessages(result);
     }, 1000);
   }
@@ -1382,41 +1383,21 @@ export class LocalNetwork implements Network, MessageSource {
 
   // -- internal: message dispatch --------------------------------------------
 
-  private dispatchMessages(result: ServerResult): void {
-    const resumeIds = new Set(
-      result.changes
-        .filter((c): c is { kind: "DidTrigger"; awaiter: string } => c.kind === "DidTrigger")
-        .map((c) => c.awaiter),
-    );
-
-    for (const msg of result.messages) {
-      const task = { id: msg.id, version: msg.version };
-
-      if (resumeIds.has(msg.id)) {
-        this.recv({ kind: "execute", head: {}, data: { task } });
-      } else {
-        this.recv({ kind: "execute", head: {}, data: { task } });
+  private dispatchMessages(result: { response: Response; changes: Change[] }): void {
+    for (const msg of result.changes) {
+      if (msg.kind !== "message.send") continue
+      if (msg.message.kind === "notify"){
+        this.recv(msg.message)
       }
-    }
-
-    // DidSettle: send notify messages for settled promises.
-    for (const change of result.changes) {
-      if (change.kind === "DidSettle") {
-        const sp = this.server.promises.get(change.id);
-        if (sp) {
-          this.recv({
-            kind: "notify",
-            head: {},
-            data: { promise: this.toPromiseRecord(sp) },
-          });
-        }
+      else if (msg.message.kind === "execute") {
+        this.recv(msg.message)
       }
     }
   }
 
   // -- internal: type conversion ---------------------------------------------
 
-  private toPromiseRecord(sp: ServerPromise): PromiseRecord {
+  private toPromiseRecord(sp: Promise): PromiseRecord {
     return {
       id: sp.id,
       state: sp.state,
