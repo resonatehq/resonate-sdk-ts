@@ -1311,16 +1311,6 @@ export class LocalNetwork implements Network, MessageSource {
   ): void {
     const { corrId, version } = req.head;
 
-    // Handle request kinds the Server does not implement.
-    const intercepted = this.intercept(req);
-    if (intercepted) {
-      callback({
-        ...intercepted,
-        head: { ...intercepted.head, corrId, version },
-      } as Extract<Response, { kind: K }>);
-      return;
-    }
-
     const now = Date.now();
     const result = this.server.apply(now, req);
     const response = result.response;
@@ -1357,65 +1347,14 @@ export class LocalNetwork implements Network, MessageSource {
     return this.anycast;
   };
 
-  // -- internal: intercept ---------------------------------------------------
-
-  /**
-   * Handle SDK request kinds the Server does not implement.
-   * Returns a partial Res if handled, or undefined to fall through.
-   */
-  private intercept(req: Request): Response | undefined {
-    const head = { corrId: "" as const, status: 200 as const, version: "" as const };
-
-    switch (req.kind) {
-      // promise.subscribe: look up the promise and return it.
-      case "promise.subscribe": {
-        const sp = this.server.promises.get(req.data.awaited);
-        if (!sp) {
-          return {
-            kind: "promise.subscribe",
-            head: { corrId: "", status: 404 as const, version: "" },
-            data: "Promise not found",
-          };
-        }
-        return { kind: "promise.subscribe", head, data: { promise: this.toPromiseRecord(sp) } };
-      }
-
-      default:
-        return undefined;
-    }
-  }
 
   // -- internal: message dispatch --------------------------------------------
 
   private dispatchMessages(result: { response: Response; changes: Change[] }): void {
     for (const msg of result.changes) {
       if (msg.kind !== "message.send") continue;
-      if (msg.message.kind === "notify") {
-        this.recv(msg.message);
-      } else if (msg.message.kind === "execute") {
-        this.recv(msg.message);
-      }
+      this.recv(msg.message)
     }
   }
 
-  // -- internal: type conversion ---------------------------------------------
-
-  private toPromiseRecord(sp: Promise): PromiseRecord {
-    return {
-      id: sp.id,
-      state: sp.state,
-      param: {
-        headers: sp.param?.headers ?? {},
-        data: sp.param?.data ?? "",
-      },
-      value: {
-        headers: sp.value?.headers ?? {},
-        data: sp.value?.data ?? "",
-      },
-      tags: sp.tags,
-      timeoutAt: sp.timeoutAt,
-      createdAt: sp.createdAt,
-      settledAt: sp.settledAt ?? undefined,
-    };
-  }
 }
