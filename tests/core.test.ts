@@ -123,9 +123,23 @@ function seedAcquiredTask(
       (res) => {
         if (res.kind === "error") {
           reject(res.error);
-        } else {
-          resolve({ task: res.value.task!, rootPromise: res.value.promise });
+          return;
         }
+        const createdTask = res.value.task!;
+        handler.taskAcquire(
+          {
+            kind: "task.acquire",
+            head: { corrId: "", version: "" },
+            data: { id: createdTask.id, version: createdTask.version, pid: "test-pid", ttl: 60_000 },
+          },
+          (acquireRes) => {
+            if (acquireRes.kind === "error") {
+              reject(acquireRes.error);
+            } else {
+              resolve({ task: acquireRes.value.task, rootPromise: acquireRes.value.root });
+            }
+          },
+        );
       },
     );
   });

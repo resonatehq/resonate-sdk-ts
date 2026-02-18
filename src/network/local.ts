@@ -1,5 +1,5 @@
-import type { MessageSource, Network } from "./network.js";
 import { CronExpressionParser } from "cron-parser";
+import type { MessageSource, Network } from "./network.js";
 import {
   type DebugResetRes,
   type DebugSnapRes,
@@ -1287,8 +1287,12 @@ export class LocalNetwork implements Network, MessageSource {
 
   start(): void {
     this.tickInterval = setInterval(() => {
-      const now = Date.now()
-      const result = this.server.apply(now, {kind:"debug.tick", head: {corrId: "", version: ""}, data: {time: now}});
+      const now = Date.now();
+      const result = this.server.apply(now, {
+        kind: "debug.tick",
+        head: { corrId: "", version: "" },
+        data: { time: now },
+      });
       this.dispatchMessages(result);
     }, 1000);
   }
@@ -1385,12 +1389,11 @@ export class LocalNetwork implements Network, MessageSource {
 
   private dispatchMessages(result: { response: Response; changes: Change[] }): void {
     for (const msg of result.changes) {
-      if (msg.kind !== "message.send") continue
-      if (msg.message.kind === "notify"){
-        this.recv(msg.message)
-      }
-      else if (msg.message.kind === "execute") {
-        this.recv(msg.message)
+      if (msg.kind !== "message.send") continue;
+      if (msg.message.kind === "notify") {
+        this.recv(msg.message);
+      } else if (msg.message.kind === "execute") {
+        this.recv(msg.message);
       }
     }
   }
