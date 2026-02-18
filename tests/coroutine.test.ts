@@ -4,7 +4,6 @@ import { Coroutine, type Done, type Suspended } from "../src/coroutine.js";
 import { JsonEncoder } from "../src/encoder.js";
 import { NoopEncryptor } from "../src/encryptor.js";
 import { Handler } from "../src/handler.js";
-import { PollMessageSource } from "../src/network/http.js";
 import type { Network } from "../src/network/network.js";
 import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
@@ -74,8 +73,6 @@ class DummyNetwork implements Network {
 describe("Coroutine", () => {
   // Helper functions to write test easily
   const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], handler: Handler) => {
-    const m = new PollMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
-
     const boundaryPromise: PromiseRecord = {
       id: uuid,
       state: "pending",
@@ -100,7 +97,7 @@ describe("Coroutine", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
           span: new NoopSpan(),
         }),
         func,
@@ -333,7 +330,6 @@ describe("Coroutine", () => {
 
     const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
 
-    const m = new PollMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
     const boundaryPromise: PromiseRecord = {
       id: "foo.1",
       state: "pending",
@@ -357,7 +353,7 @@ describe("Coroutine", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
           span: new NoopSpan(),
         }),
         foo,

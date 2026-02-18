@@ -162,8 +162,8 @@ export class Computation {
           value: {
             kind: "done",
             id: this.id,
-            state: result.state === "resolved" ? "resolved" : "rejected",
-            value: result.value?.data,
+            state: result.state,
+            value: result.value,
           },
         });
       });

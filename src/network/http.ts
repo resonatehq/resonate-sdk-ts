@@ -100,19 +100,16 @@ export class HttpNetwork implements Network {
           );
         }
 
-        if (!response.ok) {
-          const err = await response
-            .json()
-            .then((r: any) => r.error)
-            .catch(() => undefined);
+        if (response.status === 200 || response.status === 300) {
+          return body as Extract<Response, { kind: K }>;
+        } else {
+          const err = body as any;
           throw exceptions.SERVER_ERROR(
-            err ? err.message : response.statusText,
+            err?.message ?? response.statusText,
             response.status >= 500 && response.status < 600,
             err,
           );
         }
-
-        return body as Extract<Response, { kind: K }>;
       } catch (err) {
         console.log(err);
         if (err instanceof ResonateError && !err.retriable) {

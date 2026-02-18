@@ -1,6 +1,5 @@
 import { WallClock } from "../src/clock.js";
 import { InnerContext } from "../src/context.js";
-import { PollMessageSource } from "../src/network/http.js";
 import { OptionsBuilder } from "../src/options.js";
 import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
@@ -18,7 +17,6 @@ type WorkItem = {
 };
 
 function buildCtx(id: string, retryPolicy: RetryPolicy = new Never()): InnerContext {
-  const m = new PollMessageSource({ url: "http://localhost:9999", pid: "0", group: "default" });
   return new InnerContext({
     id,
     func: id,
@@ -28,7 +26,7 @@ function buildCtx(id: string, retryPolicy: RetryPolicy = new Never()): InnerCont
     timeout: Date.now() + 60_000,
     version: 1,
     retryPolicy,
-    optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+    optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
     span: new NoopSpan(),
   });
 }
