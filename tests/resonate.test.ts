@@ -1119,7 +1119,7 @@ describe("Context usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("lfi/lfc/rfi/rfc/detached with function pointer and string are equivalent", async () => {
+  test("lfi/lfc/rfi/rfc/detached with function pointer and string are equivalent", async () => {
     const resonate = new Resonate();
 
     function* foo1(ctx: Context) {
@@ -1174,7 +1174,7 @@ describe("Context usage tests", () => {
     resonate.stop();
   });
 
-  test.each([Constant])("lfi/lfc/rfi/rfc/detached with %p retry policy", async (policyCtor) => {
+  test.skip.each([Constant])("lfi/lfc/rfi/rfc/detached with %p retry policy", async (policyCtor) => {
     const resonate = new Resonate();
     const retryPolicy = new policyCtor();
 
@@ -1317,7 +1317,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("LocalNetwork used when no url sources are set", async () => {
+  test("LocalNetwork used when no url sources are set", async () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation(() => {
       throw new Error("Fetch should not be called for LocalNetwork");
     });
@@ -1393,7 +1393,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("Empty RESONATE_URL and no url arg falls back to LocalNetwork", async () => {
+  test("Empty RESONATE_URL and no url arg falls back to LocalNetwork", async () => {
     process.env.RESONATE_URL = "";
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation(() => {

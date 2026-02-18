@@ -1,54 +1,53 @@
 import { CronExpressionParser } from "cron-parser";
 import type { MessageSource, Network } from "./network.js";
-import {
-  type DebugResetRes,
-  type DebugSnapRes,
-  type DebugStartRes,
-  type DebugStopRes,
-  type DebugTickAction,
-  type DebugTickReq,
-  type DebugTickRes,
-  isSuccess,
-  type Message,
-  type PromiseCreateReq,
-  type PromiseCreateRes,
-  type PromiseGetReq,
-  type PromiseGetRes,
-  type PromiseRecord,
-  type PromiseRegisterReq,
-  type PromiseRegisterRes,
-  type PromiseSettleReq,
-  type PromiseSettleRes,
-  type PromiseSubscribeReq,
-  type PromiseSubscribeRes,
-  type Request,
-  type Response,
-  type ScheduleCreateReq,
-  type ScheduleCreateRes,
-  type ScheduleDeleteReq,
-  type ScheduleDeleteRes,
-  type ScheduleGetReq,
-  type ScheduleGetRes,
-  type ScheduleRecord,
-  type TaskAcquireReq,
-  type TaskAcquireRes,
-  type TaskCreateReq,
-  type TaskCreateRes,
-  type TaskFenceReq,
-  type TaskFenceRes,
-  type TaskFulfillReq,
-  type TaskFulfillRes,
-  type TaskGetReq,
-  type TaskGetRes,
-  type TaskHeartbeatReq,
-  type TaskHeartbeatRes,
-  type TaskRecord,
-  type TaskReleaseReq,
-  type TaskReleaseRes,
-  type TaskSuspendReq,
-  type TaskSuspendRes,
-  type Value,
-} from "./types.js";
+import type {
+  DebugResetRes,
+  DebugSnapRes,
+  DebugStartRes,
+  DebugStopRes,
+  DebugTickAction,
+  DebugTickReq,
+  DebugTickRes,
+  Message,
+  PromiseCreateReq,
+  PromiseCreateRes,
+  PromiseGetReq,
+  PromiseGetRes,
+  PromiseRecord,
+  PromiseRegisterReq,
+  PromiseRegisterRes,
+  PromiseSettleReq,
+  PromiseSettleRes,
+  PromiseSubscribeReq,
+  PromiseSubscribeRes,
+  Request,
+  Response,
+  ScheduleCreateReq,
+  ScheduleCreateRes,
+  ScheduleDeleteReq,
+  ScheduleDeleteRes,
+  ScheduleGetReq,
+  ScheduleGetRes,
+  ScheduleRecord,
+  TaskAcquireReq,
+  TaskAcquireRes,
+  TaskCreateReq,
+  TaskCreateRes,
+  TaskFenceReq,
+  TaskFenceRes,
+  TaskFulfillReq,
+  TaskFulfillRes,
+  TaskGetReq,
+  TaskGetRes,
+  TaskHeartbeatReq,
+  TaskHeartbeatRes,
+  TaskRecord,
+  TaskReleaseReq,
+  TaskReleaseRes,
+  TaskSuspendReq,
+  TaskSuspendRes,
+  Value,
+} from "./types.ts";
 
 export interface PTimeout {
   id: string;
@@ -473,18 +472,70 @@ export class Server {
       return { response: this.response("task.create", 409, "Task already exists"), changes: [] };
     }
 
-    const { response: result, changes } = this.promiseCreate(now, req.data.action);
+    const changes: Change[] = [];
+    const actionData = req.data.action.data;
 
-    if (!isSuccess(result)) {
-      throw new Error(`Invariant violation: promiseCreate failed with status ${result.head.status}`);
+    // Guard: promise already exists
+    if (this.promises.get(actionData.id)) {
+      return { response: this.response("task.create", 409, "Promise already exists"), changes: [] };
     }
-    const promiseRecord = result.data.promise;
-    const task = this.getTaskOrThrow(promiseRecord.id);
+
+    // Guard: promise already timed out
+    if (now >= actionData.timeoutAt) {
+      const promise: Promise = {
+        id: actionData.id,
+        state: this.timeoutState(actionData.tags),
+        param: actionData.param,
+        value: {},
+        tags: actionData.tags,
+        createdAt: actionData.timeoutAt,
+        settledAt: actionData.timeoutAt,
+        timeoutAt: actionData.timeoutAt,
+        awaiters: new Set(),
+        subscribers: new Set(),
+      };
+      changes.push(this.setPromise(promise));
+      return {
+        response: this.response("task.create", 409, "Promise already timed out"),
+        changes,
+      };
+    }
+
+    // Create promise in pending state
+    const promise: Promise = {
+      id: actionData.id,
+      state: "pending",
+      param: actionData.param,
+      value: {},
+      tags: actionData.tags,
+      createdAt: now,
+      settledAt: null,
+      timeoutAt: actionData.timeoutAt,
+      awaiters: new Set(),
+      subscribers: new Set(),
+    };
+    changes.push(this.setPromise(promise));
+    changes.push(this.setPTimeout({ id: actionData.id, timeout: actionData.timeoutAt }));
+
+    // Step 2: Create task in acquired state
+    const task: Task = {
+      id: actionData.id,
+      state: "acquired",
+      version: 0,
+      pid: req.data.pid,
+      ttl: req.data.ttl,
+      current: actionData.id,
+      pending: new Set(),
+    };
+    changes.push(this.setTask(task));
+
+    // Step 3: Set type=1 (lease) timeout
+    changes.push(this.setTTimeout({ id: actionData.id, type: 1, timeout: now + req.data.ttl }));
 
     return {
       response: this.response("task.create", 200, {
         task: this.toTaskRecord(task),
-        promise: promiseRecord,
+        promise: this.toPromiseRecord(promise),
       }),
       changes,
     };
@@ -1347,14 +1398,12 @@ export class LocalNetwork implements Network, MessageSource {
     return this.anycast;
   };
 
-
   // -- internal: message dispatch --------------------------------------------
 
   private dispatchMessages(result: { response: Response; changes: Change[] }): void {
     for (const msg of result.changes) {
       if (msg.kind !== "message.send") continue;
-      this.recv(msg.message)
+      this.recv(msg.message);
     }
   }
-
 }

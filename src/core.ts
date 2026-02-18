@@ -93,7 +93,7 @@ export class Core {
 
     // subscribe to execute
     messageSource?.subscribe("execute", (msg) => {
-      this.onMessage(msg, () => undefined);
+      this.onMessage(msg, () => {throw new Error("todo")});
     });
   }
 
