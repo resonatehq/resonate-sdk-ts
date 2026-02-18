@@ -816,7 +816,7 @@ export class Resonate {
     await this.schedules.create(name, cron, promiseIdPattern, opts.timeout, {
       promiseHeaders: headers,
       promiseData: data,
-      promiseTags: { ...opts.tags, "resonate:invoke": funcName },
+      promiseTags: { ...opts.tags, "resonate:invoke": opts.target },
     });
 
     return {
