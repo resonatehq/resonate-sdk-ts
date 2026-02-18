@@ -4,7 +4,7 @@
 
 export type Value = {
   headers?: Record<string, string>;
-  data?: string;
+  data?: any;
 };
 
 // =============================================================================
