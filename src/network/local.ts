@@ -1394,8 +1394,8 @@ export class LocalNetwork implements Network, MessageSource {
   }
 
   // Arrow function to preserve `this` when extracted as a bare reference.
-  match = (_target: string): string => {
-    return this.anycast;
+  match = (target: string): string => {
+    return `local://any@${target}`;
   };
 
   // -- internal: message dispatch --------------------------------------------

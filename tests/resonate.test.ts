@@ -92,7 +92,7 @@ describe("Resonate usage tests", () => {
       "resonate:target": "poll://any@default",
     });
   });
-  test.skip("test lineage rfc set ids", async () => {
+  test("test lineage rfc set ids", async () => {
     const resonate = Resonate.local();
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       const v = yield ctx.rpc(bar, ctx.options({ id: "bar" }));
@@ -118,25 +118,25 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "foo",
       "resonate:parent": "foo",
       "resonate:scope": "global",
-      "resonate:target": "poll://any@default/default",
+      "resonate:target": "local://any@default/default",
     });
     expect((await resonate.promises.get("bar")).tags).toEqual({
       "resonate:origin": "bar",
       "resonate:branch": "bar",
       "resonate:parent": "foo",
       "resonate:scope": "global",
-      "resonate:target": "poll://any@default",
+      "resonate:target": "local://any@default",
     });
     expect((await resonate.promises.get("baz")).tags).toEqual({
       "resonate:origin": "baz",
       "resonate:branch": "baz",
       "resonate:parent": "bar",
       "resonate:scope": "global",
-      "resonate:target": "poll://any@default",
+      "resonate:target": "local://any@default",
     });
   });
 
-  test.skip("test lineage lfc", async () => {
+  test("test lineage lfc", async () => {
     const resonate = Resonate.local();
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       const v = yield ctx.lfc(bar);
@@ -159,7 +159,7 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
-      "resonate:target": "poll://any@default/default",
+      "resonate:target": "local://any@default/default",
     });
     expect((await resonate.promises.get("foo.1.0")).tags).toEqual({
       "resonate:origin": "foo.1",
@@ -174,7 +174,7 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "local",
     });
   });
-  test.skip("test lineage lfc set ids", async () => {
+  test("test lineage lfc set ids", async () => {
     const resonate = Resonate.local();
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       const v = yield ctx.lfc(bar, ctx.options({ id: "bar" }));
@@ -197,7 +197,7 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "foo",
       "resonate:parent": "foo",
       "resonate:scope": "global",
-      "resonate:target": "poll://any@default/default",
+      "resonate:target": "local://any@default/default",
     });
     expect((await resonate.promises.get("bar")).tags).toEqual({
       "resonate:origin": "bar",
@@ -715,7 +715,7 @@ describe("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Target is set to anycast without preference by default", async () => {
+  test("Target is set to anycast without preference by default", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -735,12 +735,12 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "f.0",
       "resonate:parent": "f",
       "resonate:origin": "f",
-      "resonate:target": "poll://any@default",
+      "resonate:target": "local://any@default",
     });
     resonate.stop();
   });
 
-  test.skip("Target is set to the target option", async () => {
+  test("Target is set to the target option", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -760,7 +760,7 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "f.0",
       "resonate:parent": "f",
       "resonate:origin": "f",
-      "resonate:target": "poll://any@remoteTarget",
+      "resonate:target": "local://any@remoteTarget",
     });
     resonate.stop();
   });
