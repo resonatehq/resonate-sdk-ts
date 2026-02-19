@@ -37,7 +37,6 @@ export interface ResonateFunc<F extends Func> {
   rpc: (id: string, ...args: ParamsWithOptions<F>) => Promise<Return<F>>;
   beginRun: (id: string, ...args: ParamsWithOptions<F>) => Promise<ResonateHandle<Return<F>>>;
   beginRpc: (id: string, ...args: ParamsWithOptions<F>) => Promise<ResonateHandle<Return<F>>>;
-  schedule: (scheduleId: string, cron: string, ...args: ParamsWithOptions<F>) => Promise<ResonateSchedule>;
   options: (opts?: Partial<Options>) => Options;
 }
 
@@ -442,10 +441,6 @@ export class Resonate {
         this.beginRun(id, func, ...this.getArgsAndOpts(args, version)),
       beginRpc: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
         this.beginRpc(id, func, ...this.getArgsAndOpts(args, version)),
-      schedule: (scheduleId: string, cron: string, ...args: ParamsWithOptions<F>): Promise<ResonateSchedule> => {
-        const [actualArgs, opts] = this.getArgsAndOpts(args, version);
-        return this.schedule(scheduleId, cron, func, ...([...actualArgs, opts] as any));
-      },
       options: this.options,
     };
   }
