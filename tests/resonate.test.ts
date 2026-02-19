@@ -5,8 +5,8 @@ import { Resonate } from "../src/resonate.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/retries.js";
 import * as util from "../src/util.js";
 
-describe.skip("Resonate usage tests", () => {
-  test("try versions", async () => {
+describe("Resonate usage tests", () => {
+  test.skip("try versions", async () => {
     const resonate = Resonate.local();
 
     const f1 = resonate.register(
@@ -40,7 +40,7 @@ describe.skip("Resonate usage tests", () => {
     );
   });
 
-  test("test lineage rfc", async () => {
+  test.skip("test lineage rfc", async () => {
     const resonate = Resonate.local();
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       // origin: foo.1
@@ -92,7 +92,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:target": "poll://any@default",
     });
   });
-  test("test lineage rfc set ids", async () => {
+  test.skip("test lineage rfc set ids", async () => {
     const resonate = Resonate.local();
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       const v = yield ctx.rpc(bar, ctx.options({ id: "bar" }));
@@ -136,7 +136,7 @@ describe.skip("Resonate usage tests", () => {
     });
   });
 
-  test("test lineage lfc", async () => {
+  test.skip("test lineage lfc", async () => {
     const resonate = Resonate.local();
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       const v = yield ctx.lfc(bar);
@@ -174,7 +174,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:scope": "local",
     });
   });
-  test("test lineage lfc set ids", async () => {
+  test.skip("test lineage lfc set ids", async () => {
     const resonate = Resonate.local();
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       const v = yield ctx.lfc(bar, ctx.options({ id: "bar" }));
@@ -213,7 +213,7 @@ describe.skip("Resonate usage tests", () => {
     });
   });
 
-  test("done check", async () => {
+  test.skip("done check", async () => {
     const resonate = Resonate.local();
 
     const f = resonate.register("f", function foo(ctx: Context): string {
@@ -256,7 +256,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("function is executed on schedule", async () => {
+  test.skip("function is executed on schedule", async () => {
     const resonate = Resonate.local();
 
     // A promise that resolves when the scheduled function runs
@@ -398,7 +398,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("Correctly matches target", async () => {
+  test.skip("Correctly matches target", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     resonate.register("foo", function* (ctx: Context, target: string) {
@@ -542,7 +542,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("Basic Durable sleep", async () => {
+  test.skip("Basic Durable sleep", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const time = Date.now();
@@ -715,7 +715,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("Target is set to anycast without preference by default", async () => {
+  test.skip("Target is set to anycast without preference by default", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -740,7 +740,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("Target is set to the target option", async () => {
+  test.skip("Target is set to the target option", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -790,7 +790,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("Target is set when using options in resonate class", async () => {
+  test.skip("Target is set when using options in resonate class", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -815,7 +815,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("Target is set in root promise to the unicast without preference address by default", async () => {
+  test.skip("Target is set in root promise to the unicast without preference address by default", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -840,7 +840,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("Target is set in root promise to the the poller and group when only group defined in opts", async () => {
+  test.skip("Target is set in root promise to the the poller and group when only group defined in opts", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -865,7 +865,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("run/rpc with function pointer and string are equivalent", async () => {
+  test.skip("run/rpc with function pointer and string are equivalent", async () => {
     const resonate = new Resonate();
 
     function* foo() {
@@ -903,7 +903,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test("run/rpc with version specified", async () => {
+  test.skip("run/rpc with version specified", async () => {
     const resonate = new Resonate();
 
     function* foo(ctx: Context) {
@@ -991,7 +991,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.each([Constant, Linear, Exponential, Never])("run/rpc with %p retry policy", async (policyCtor) => {
+  test.skip.each([Constant, Linear, Exponential, Never])("run/rpc with %p retry policy", async (policyCtor) => {
     const resonate = new Resonate();
     const retryPolicy = new policyCtor();
 
