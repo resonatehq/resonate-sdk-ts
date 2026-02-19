@@ -62,9 +62,7 @@ export class Schedules {
         },
         (res) => {
           if (res.kind === "error") {
-            console.log(res.error);
-            // TODO: reject with more information
-            reject(Error("not implemented"));
+            reject(res.error);
             return;
           }
 
