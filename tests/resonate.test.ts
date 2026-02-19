@@ -5,7 +5,7 @@ import { Resonate } from "../src/resonate.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/retries.js";
 import * as util from "../src/util.js";
 
-describe.skip("Resonate usage tests", () => {
+describe("Resonate usage tests", () => {
   test.skip("try versions", async () => {
     const resonate = Resonate.local();
 
@@ -230,7 +230,7 @@ describe.skip("Resonate usage tests", () => {
     expect(await h1.done()).toBe(true);
   });
 
-  test.skip("function retries", async () => {
+  test("function retries", async () => {
     const resonate = Resonate.local();
 
     let tries = 0;
@@ -286,7 +286,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("concurrent execution must be concurrent", async () => {
+  test("concurrent execution must be concurrent", async () => {
     const resonate = Resonate.local();
 
     const g = async (ctx: Context, msg: string) => {
@@ -316,7 +316,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("sequential execution must be sequential", async () => {
+  test("sequential execution must be sequential", async () => {
     const resonate = Resonate.local();
 
     const g = async (_ctx: Context, msg: string) => {
@@ -344,7 +344,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Correctly rejects a top level function using ctx.beginRun", async () => {
+  test("Correctly rejects a top level function using ctx.beginRun", async () => {
     const resonate = Resonate.local();
 
     const g = async (_ctx: Context, msg: string) => {
@@ -361,7 +361,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Correctly rejects a top level function using ctx.run", async () => {
+  test("Correctly rejects a top level function using ctx.run", async () => {
     const resonate = Resonate.local();
 
     const g = async (_ctx: Context, msg: string) => {
@@ -377,7 +377,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Correctly sets options on inner functions", async () => {
+  test("Correctly sets options on inner functions", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -437,7 +437,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Correctly sets options on inner functions without defined opts", async () => {
+  test("Correctly sets options on inner functions without defined opts", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -463,7 +463,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Basic human in the loop", async () => {
+  test("Basic human in the loop", async () => {
     const encoder = new JsonEncoder();
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
@@ -487,7 +487,7 @@ describe.skip("Resonate usage tests", () => {
       "resonate:scope": "global",
     });
   });
-  test.skip("Basic human in the loop without setting ids", async () => {
+  test("Basic human in the loop without setting ids", async () => {
     const encoder = new JsonEncoder();
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
@@ -512,7 +512,7 @@ describe.skip("Resonate usage tests", () => {
     });
   });
 
-  test.skip("Correctly sets timeout", async () => {
+  test("Correctly sets timeout", async () => {
     const encoder = new JsonEncoder();
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
@@ -569,7 +569,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Basic Detached", async () => {
+  test("Basic Detached", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     resonate.register("d", async (_ctx: Context): Promise<void> => {
@@ -590,7 +590,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Basic use of dependencies", async () => {
+  test("Basic use of dependencies", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     const g = (ctx: Context, name: string): string => {
@@ -610,7 +610,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Basic get", async () => {
+  test("Basic get", async () => {
     const encoder = new JsonEncoder();
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
@@ -626,7 +626,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Date", async () => {
+  test("Date", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     // with default date
@@ -652,7 +652,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Math", async () => {
+  test("Math", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     // with default math
@@ -678,7 +678,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Basic auth", async () => {
+  test("Basic auth", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -765,7 +765,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Target is set to the target option when it is a url", async () => {
+  test("Target is set to the target option when it is a url", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -991,7 +991,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.each([Constant, Linear, Exponential, Never])("run/rpc with %p retry policy", async (policyCtor) => {
+  test.skip.each([Constant, Linear, Exponential, Never])("run/rpc with %p retry policy", async (policyCtor) => {
     const resonate = new Resonate();
     const retryPolicy = new policyCtor();
 
@@ -1014,7 +1014,7 @@ describe.skip("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Using prefix at Resonate class prefixes all the promises", async () => {
+  test("Using prefix at Resonate class prefixes all the promises", async () => {
     const prefix = "myPrefix";
     const resonate = new Resonate({ prefix });
 
@@ -1053,7 +1053,7 @@ describe.skip("Resonate usage tests", () => {
 });
 
 describe("Context usage tests", () => {
-  test.skip("ctx.panic aborts execution when condition is true", async () => {
+  test("ctx.panic aborts execution when condition is true", async () => {
     const resonate = Resonate.local();
 
     let completed = false;
@@ -1072,7 +1072,7 @@ describe("Context usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("ctx.panic continues execution when condition is false", async () => {
+  test("ctx.panic continues execution when condition is false", async () => {
     const resonate = Resonate.local();
 
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -1086,7 +1086,7 @@ describe("Context usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("ctx.assert aborts execution when condition is false", async () => {
+  test("ctx.assert aborts execution when condition is false", async () => {
     const resonate = Resonate.local();
 
     let completed = false;
@@ -1105,7 +1105,7 @@ describe("Context usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("ctx.assert continues execution when condition is true", async () => {
+  test("ctx.assert continues execution when condition is true", async () => {
     const resonate = Resonate.local();
 
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -1174,7 +1174,7 @@ describe("Context usage tests", () => {
     resonate.stop();
   });
 
-  test.skip.each([Constant])("lfi/lfc/rfi/rfc/detached with %p retry policy", async (policyCtor) => {
+  test.each([Constant])("lfi/lfc/rfi/rfc/detached with %p retry policy", async (policyCtor) => {
     const resonate = new Resonate();
     const retryPolicy = new policyCtor();
 
@@ -1233,7 +1233,7 @@ describe("Resonate environment variable initialization", () => {
     global.fetch = originalFetch;
   });
 
-  test.skip("url arg takes priority over env vars", async () => {
+  test("url arg takes priority over env vars", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1262,7 +1262,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_HOST + RESONATE_PORT used when url arg not set", async () => {
+  test("RESONATE_HOST + RESONATE_PORT used when url arg not set", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1290,7 +1290,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_URL used when url arg not set", async () => {
+  test("RESONATE_URL used when url arg not set", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1335,7 +1335,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_URL takes priority over HOST and PORT", async () => {
+  test("RESONATE_URL takes priority over HOST and PORT", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1364,7 +1364,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_URL empty fallbacks to HOST and PORT", async () => {
+  test("RESONATE_URL empty fallbacks to HOST and PORT", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1410,7 +1410,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("auth arg takes priority over env vars", async () => {
+  test("auth arg takes priority over env vars", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1447,7 +1447,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_USERNAME and RESONATE_PASSWORD used when auth arg not set", async () => {
+  test("RESONATE_USERNAME and RESONATE_PASSWORD used when auth arg not set", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1483,7 +1483,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("auth is defined when only RESONATE_USERNAME is set", async () => {
+  test("auth is defined when only RESONATE_USERNAME is set", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1518,7 +1518,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("auth is undefined when only RESONATE_PASSWORD is set", async () => {
+  test("auth is undefined when only RESONATE_PASSWORD is set", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1553,7 +1553,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("auth is undefined when no env vars or arg are set", async () => {
+  test("auth is undefined when no env vars or arg are set", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1586,7 +1586,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_SCHEME defaults to http when not set", async () => {
+  test("RESONATE_SCHEME defaults to http when not set", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1614,7 +1614,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_SCHEME can be set to https", async () => {
+  test("RESONATE_SCHEME can be set to https", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1643,7 +1643,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_PORT defaults to 8001 when not set", async () => {
+  test("RESONATE_PORT defaults to 8001 when not set", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1670,7 +1670,7 @@ describe("Resonate environment variable initialization", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_SCHEME and RESONATE_PORT both use defaults", async () => {
+  test("RESONATE_SCHEME and RESONATE_PORT both use defaults", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1714,7 +1714,7 @@ describe("Bearer token authentication", () => {
     global.fetch = originalFetch;
   });
 
-  test.skip("Bearer token auth", async () => {
+  test("Bearer token auth", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1749,7 +1749,7 @@ describe("Bearer token authentication", () => {
     resonate.stop();
   });
 
-  test.skip("Bearer token takes priority over basic auth", async () => {
+  test("Bearer token takes priority over basic auth", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1785,7 +1785,7 @@ describe("Bearer token authentication", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_TOKEN used when token arg not set", async () => {
+  test("RESONATE_TOKEN used when token arg not set", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1821,7 +1821,7 @@ describe("Bearer token authentication", () => {
     resonate.stop();
   });
 
-  test.skip("RESONATE_TOKEN takes priority over RESONATE_USERNAME and RESONATE_PASSWORD", async () => {
+  test("RESONATE_TOKEN takes priority over RESONATE_USERNAME and RESONATE_PASSWORD", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
