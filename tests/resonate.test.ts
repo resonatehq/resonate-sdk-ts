@@ -6,7 +6,21 @@ import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/r
 import * as util from "../src/util.js";
 
 describe("Resonate usage tests", () => {
-  test.skip("try versions", async () => {
+  test("only rpc", async () => {
+    const resonate = Resonate.local();
+    const f1 = resonate.register(
+      "f",
+      function foo(ctx: Context): number {
+        return 1;
+      },
+      { version: 1 },
+    );
+
+
+    expect(await resonate.rpc(crypto.randomUUID().replace(/-/g, ""), "f", resonate.options({ version: 1 }))).toBe(1);
+  });
+
+  test("try versions", async () => {
     const resonate = Resonate.local();
 
     const f1 = resonate.register(
@@ -40,7 +54,7 @@ describe("Resonate usage tests", () => {
     );
   });
 
-  test.skip("test lineage rfc", async () => {
+  test("test lineage rfc", async () => {
     const resonate = Resonate.local();
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       // origin: foo.1
@@ -75,21 +89,21 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
-      "resonate:target": "poll://any@default/default",
+      "resonate:target": "local://any@default/default",
     });
     expect((await resonate.promises.get("foo.1.0")).tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1.0",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
-      "resonate:target": "poll://any@default",
+      "resonate:target": "local://any@default",
     });
     expect((await resonate.promises.get("foo.1.0.0")).tags).toEqual({
       "resonate:origin": "foo.1",
       "resonate:branch": "foo.1.0.0",
       "resonate:parent": "foo.1.0",
       "resonate:scope": "global",
-      "resonate:target": "poll://any@default",
+      "resonate:target": "local://any@default",
     });
   });
   test("test lineage rfc set ids", async () => {
@@ -213,7 +227,7 @@ describe("Resonate usage tests", () => {
     });
   });
 
-  test.skip("done check", async () => {
+  test("done check", async () => {
     const resonate = Resonate.local();
 
     const f = resonate.register("f", function foo(ctx: Context): string {
@@ -256,7 +270,7 @@ describe("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("function is executed on schedule", async () => {
+  test("function is executed on schedule", async () => {
     const resonate = Resonate.local();
 
     // A promise that resolves when the scheduled function runs
@@ -398,7 +412,7 @@ describe("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Correctly matches target", async () => {
+  test("Correctly matches target", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     resonate.register("foo", function* (ctx: Context, target: string) {
@@ -413,16 +427,16 @@ describe("Resonate usage tests", () => {
       const p1 = await resonate.promises.get(`f${i}`);
       const p2 = await resonate.promises.get(`f${i}.0`);
 
-      expect(p1.tags["resonate:target"]).toBe(`poll://any@${target}`);
-      expect(p2.tags["resonate:target"]).toBe(`poll://any@${target}`);
+      expect(p1.tags["resonate:target"]).toBe(`local://any@${target}`);
+      expect(p2.tags["resonate:target"]).toBe(`local://any@${target}`);
     }
 
     // test unmatched targets (urls)
     for (const [i, target] of [
-      "poll://default",
-      "poll://any@default",
-      "poll://any@default/0",
-      "poll://uni@default/0",
+      "local://default",
+      "local://any@default",
+      "local://any@default/0",
+      "local://uni@default/0",
       "http://resonatehq.io",
       "https://resonatehq.io",
       "sqs://region/queue",
@@ -542,7 +556,7 @@ describe("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Basic Durable sleep", async () => {
+  test("Basic Durable sleep", async () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const time = Date.now();
@@ -556,7 +570,7 @@ describe("Resonate usage tests", () => {
 
     const durable = await resonate.promises.get("f.0");
     expect(durable.tags).toEqual({
-      "resonate:timeout": "true",
+      "resonate:timer": "true",
       "resonate:branch": "f.0",
       "resonate:origin": "f",
       "resonate:parent": "f",
@@ -790,7 +804,7 @@ describe("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Target is set when using options in resonate class", async () => {
+  test("Target is set when using options in resonate class", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -815,7 +829,7 @@ describe("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("Target is set in root promise to the unicast without preference address by default", async () => {
+  test("Target is set in root promise to the unicast without preference address by default", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -835,12 +849,12 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "fid",
       "resonate:parent": "fid",
       "resonate:origin": "fid",
-      "resonate:target": "poll://any@default",
+      "resonate:target": "local://any@default",
     });
     resonate.stop();
   });
 
-  test.skip("Target is set in root promise to the the poller and group when only group defined in opts", async () => {
+  test("Target is set in root promise to the the poller and group when only group defined in opts", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
     const g = async (_ctx: Context, msg: string) => {
@@ -860,12 +874,12 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "fid",
       "resonate:parent": "fid",
       "resonate:origin": "fid",
-      "resonate:target": "poll://any@anotherNode",
+      "resonate:target": "local://any@anotherNode",
     });
     resonate.stop();
   });
 
-  test.skip("run/rpc with function pointer and string are equivalent", async () => {
+  test("run/rpc with function pointer and string are equivalent", async () => {
     const resonate = new Resonate();
 
     function* foo() {
@@ -903,7 +917,7 @@ describe("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip("run/rpc with version specified", async () => {
+  test("run/rpc with version specified", async () => {
     const resonate = new Resonate();
 
     function* foo(ctx: Context) {
@@ -991,7 +1005,7 @@ describe("Resonate usage tests", () => {
     resonate.stop();
   });
 
-  test.skip.each([Constant, Linear, Exponential, Never])("run/rpc with %p retry policy", async (policyCtor) => {
+  test.each([Constant, Linear, Exponential, Never])("run/rpc with %p retry policy", async (policyCtor) => {
     const resonate = new Resonate();
     const retryPolicy = new policyCtor();
 
