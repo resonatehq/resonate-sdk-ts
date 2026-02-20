@@ -242,7 +242,7 @@ export class Resonate {
 
     // subscribe to notify
     this.messageSource.subscribe("notify", this.onMessage.bind(this));
-
+    this.network.start()
     // periodically refresh subscriptions
     this.intervalId = setInterval(async () => {
       for (const [id, sub] of this.subscriptions.entries()) {
