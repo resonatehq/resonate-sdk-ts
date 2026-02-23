@@ -1349,13 +1349,14 @@ export class LocalNetwork implements Network, MessageSource {
       });
       this.dispatchMessages(result);
     }, 1000);
-    this.started = !this.started;
+    this.started = true;
   }
 
   stop(): void {
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
     }
+    this.started = false;
   }
 
   send<K extends Request["kind"]>(

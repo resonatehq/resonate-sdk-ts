@@ -125,7 +125,7 @@ function seedAcquiredTask(
         if (res.kind === "error") {
           reject(res.error);
         } else {
-          util.assert(res.value !== "subscribe")
+          util.assert(res.value !== "subscribe");
           resolve({ task: res.value.task!, rootPromise: res.value.promise });
         }
       },
