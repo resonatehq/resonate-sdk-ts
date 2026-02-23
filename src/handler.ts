@@ -4,6 +4,7 @@ import exceptions, { type ResonateError } from "./exceptions.js";
 import type { Network } from "./network/network.js";
 import type { Value } from "./network/types.js";
 import {
+  isConflict,
   isRedirect,
   isSuccess,
   type PromiseCreateReq,
@@ -136,7 +137,7 @@ export class Handler {
 
   public taskCreate(
     req: TaskCreateReq,
-    done: (res: Result<{ promise: PromiseRecord; task?: TaskRecord }, ResonateError>) => void,
+    done: (res: Result<{ promise: PromiseRecord; task?: TaskRecord } | "subscribe", ResonateError>) => void,
     func = "unknown",
     headers: { [key: string]: string } = {},
     retryForever = false,
@@ -156,7 +157,7 @@ export class Handler {
     this.network.send(
       req,
       (res) => {
-        if (!isSuccess(res)) {
+        if (!isSuccess(res) && !isConflict(res)) {
           return done({
             kind: "error",
             error: exceptions.SERVER_ERROR(res.data, true, {
@@ -165,17 +166,17 @@ export class Handler {
             }),
           });
         }
+        if (isConflict(res)) {
+          return done({ kind: "value", value: "subscribe" });
+        }
 
-        let promise: PromiseRecord;
         try {
-          promise = this.decode(res.data.promise, req.data.action.data.param.data?.func ?? func);
+          const promise = this.decode(res.data.promise, req.data.action.data.param.data?.func ?? func);
+          this.cache.setPromise(promise);
+          done({ kind: "value", value: { promise, task: res.data.task } });
         } catch (e) {
           return done({ kind: "error", error: e as ResonateError });
         }
-
-        this.cache.setPromise(promise);
-
-        done({ kind: "value", value: { promise, task: res.data.task } });
       },
       headers,
       retryForever,

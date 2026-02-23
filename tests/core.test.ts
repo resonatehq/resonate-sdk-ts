@@ -13,6 +13,7 @@ import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { NoopSpan, NoopTracer } from "../src/tracer.js";
 import type { Result } from "../src/types.js";
+import * as util from "../src/util.js";
 
 class TestHeartbeat implements Heartbeat {
   start(): void {}
@@ -124,6 +125,7 @@ function seedAcquiredTask(
         if (res.kind === "error") {
           reject(res.error);
         } else {
+          util.assert(res.value !== "subscribe")
           resolve({ task: res.value.task!, rootPromise: res.value.promise });
         }
       },

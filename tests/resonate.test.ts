@@ -16,7 +16,6 @@ describe("Resonate usage tests", () => {
       { version: 1 },
     );
 
-
     expect(await resonate.rpc(crypto.randomUUID().replace(/-/g, ""), "f", resonate.options({ version: 1 }))).toBe(1);
   });
 
@@ -230,7 +229,7 @@ describe("Resonate usage tests", () => {
   test("done check", async () => {
     const resonate = Resonate.local();
 
-    const f = resonate.register("f", function foo(ctx: Context): string {
+    const f = resonate.register("f", function foo(_: Context): string {
       return "hello world";
     });
 

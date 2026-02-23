@@ -242,7 +242,7 @@ export class Resonate {
 
     // subscribe to notify
     this.messageSource.subscribe("notify", this.onMessage.bind(this));
-    this.network.start()
+    this.network.start();
     // periodically refresh subscriptions
     this.intervalId = setInterval(async () => {
       for (const [id, sub] of this.subscriptions.entries()) {
@@ -832,7 +832,28 @@ export class Resonate {
           if (res.kind === "error") {
             reject(res.error);
           } else {
-            resolve({ promise: res.value.promise, task: res.value.task });
+            if (res.value === "subscribe") {
+              this.handler.promiseSubscribe(
+                {
+                  kind: "promise.subscribe",
+                  head: { corrId: "", version: "" },
+                  data: {
+                    awaited: req.data.action.data.id,
+                    address: this.unicast,
+                  },
+                },
+                (res) => {
+                  if (res.kind === "error") {
+                    reject(res.error);
+                  } else {
+                    resolve({ promise: res.value, task: undefined });
+                  }
+                },
+                true,
+              );
+            } else {
+              resolve({ promise: res.value.promise, task: res.value.task });
+            }
           }
         },
         undefined,
@@ -962,17 +983,20 @@ export class Resonate {
   }
 
   private notify(id: string, err: any, res?: PromiseRecord) {
-    const subscription = this.subscriptions.get(id);
-
-    // notify subscribers
+    let subscription = this.subscriptions.get(id);
+    if (!subscription) {
+      const { promise, resolve, reject } = Promise.withResolvers<PromiseRecord>();
+      // if no res, we cannot extract timeoutAt information. So we fallback to a large number
+      subscription = { promise, resolve, reject, timeout: res ? res.timeoutAt : 100000000 };
+      this.subscriptions.set(id, subscription);
+    } else {
+      this.subscriptions.delete(id);
+    }
     if (res) {
       util.assert(res.state !== "pending", "promise must be completed");
-      subscription?.resolve(res);
+      subscription.resolve(res);
     } else {
-      subscription?.reject(err);
+      subscription.reject(err);
     }
-
-    // remove subscription
-    this.subscriptions.delete(id);
   }
 }

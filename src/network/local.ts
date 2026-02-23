@@ -1313,6 +1313,7 @@ export class LocalNetwork implements Network, MessageSource {
   readonly unicast: string;
   readonly anycast: string;
 
+  private started: boolean;
   private server: Server;
   private subscriptions: {
     execute: Array<(msg: Message) => void>;
@@ -1327,6 +1328,7 @@ export class LocalNetwork implements Network, MessageSource {
     pid?: string;
     group?: string;
   } = {}) {
+    this.started = false;
     this.server = new Server();
     this.pid = pid;
     this.group = group;
@@ -1337,6 +1339,7 @@ export class LocalNetwork implements Network, MessageSource {
   // -- Network ---------------------------------------------------------------
 
   start(): void {
+    if (this.started) return;
     this.tickInterval = setInterval(() => {
       const now = Date.now();
       const result = this.server.apply(now, {
@@ -1346,6 +1349,7 @@ export class LocalNetwork implements Network, MessageSource {
       });
       this.dispatchMessages(result);
     }, 1000);
+    this.started = !this.started;
   }
 
   stop(): void {
