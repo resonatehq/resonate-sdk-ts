@@ -66,7 +66,13 @@ class SimulatedNetwork implements Network {
   private buffer: Message<Request>[] = [];
   private callbacks: Record<
     number,
-    { req: Request; callback: (res: any) => void; timeout: number; retryForever: boolean; headers?: { [key: string]: string } }
+    {
+      req: Request;
+      callback: (res: any) => void;
+      timeout: number;
+      retryForever: boolean;
+      headers?: { [key: string]: string };
+    }
   > = {};
   private messageSource: SimulatedMessageSource;
 

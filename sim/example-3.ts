@@ -26,7 +26,14 @@ const options: {
   dropProb?: number;
   duplProb?: number;
   charFlipProb?: number;
-} = { seed: Math.floor(Math.random() * 2 ** 32), steps: 100000, randomDelay: 0.5, dropProb: 0.5, duplProb: 0.5, charFlipProb: 0 };
+} = {
+  seed: Math.floor(Math.random() * 2 ** 32),
+  steps: 100000,
+  randomDelay: 0.5,
+  dropProb: 0.5,
+  duplProb: 0.5,
+  charFlipProb: 0,
+};
 
 console.log(`seed: ${options.seed}`);
 
