@@ -279,6 +279,4 @@ export function run(options: Options) {
   console.log("[outbox]: ", sim.outbox);
 }
 
-if (require.main === module) {
-  run(options);
-}
+run(options);
