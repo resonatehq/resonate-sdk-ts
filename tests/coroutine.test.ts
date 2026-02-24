@@ -1,11 +1,11 @@
 import { WallClock } from "../src/clock.js";
+import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
 import { Coroutine, type Done, type Suspended } from "../src/coroutine.js";
-import { JsonEncoder } from "../src/encoder.js";
-import { NoopEncryptor } from "../src/encryptor.js";
-import { Handler } from "../src/handler.js";
+import type { Effects } from "../src/effects.js";
+import exceptions, { type ResonateError } from "../src/exceptions.js";
 import type { Network } from "../src/network/network.js";
-import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
+import { isSuccess, type Message, type PromiseRecord, type Request, type Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
@@ -26,6 +26,15 @@ class DummyNetwork implements Network {
     switch (req.kind) {
       case "promise.create": {
         const createReq = req as Extract<Request, { kind: "promise.create" }>;
+        const existing = this.promises.get(createReq.data.id);
+        if (existing) {
+          callback({
+            kind: req.kind,
+            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+            data: { promise: existing },
+          } as Extract<Response, { kind: K }>);
+          return;
+        }
         const p: PromiseRecord = {
           id: createReq.data.id,
           state: "pending",
@@ -70,9 +79,64 @@ class DummyNetwork implements Network {
   subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Message) => void) {}
 }
 
+function buildEffects(network: Network): Effects {
+  const codec = new Codec();
+  return {
+    promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
+      try {
+        req.data.param = codec.encode(req.data.param.data);
+      } catch (e) {
+        done({ kind: "error", error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e) });
+        return;
+      }
+      network.send(
+        req,
+        (res) => {
+          if (!isSuccess(res)) {
+            return done({
+              kind: "error",
+              error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+            });
+          }
+          try {
+            const promise = codec.decodePromise(res.data.promise);
+            done({ kind: "value", value: promise });
+          } catch (e) {
+            return done({ kind: "error", error: e as ResonateError });
+          }
+        },
+        headers,
+        retryForever,
+      );
+    },
+    promiseSettle: (req, done, func = "unknown") => {
+      try {
+        req.data.value = codec.encode(req.data.value.data);
+      } catch (e) {
+        done({ kind: "error", error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e) });
+        return;
+      }
+      network.send(req, (res) => {
+        if (!isSuccess(res)) {
+          return done({
+            kind: "error",
+            error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+          });
+        }
+        try {
+          const promise = codec.decodePromise(res.data.promise);
+          done({ kind: "value", value: promise });
+        } catch (e) {
+          return done({ kind: "error", error: e as ResonateError });
+        }
+      });
+    },
+  };
+}
+
 describe("Coroutine", () => {
   // Helper functions to write test easily
-  const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], handler: Handler) => {
+  const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], effects: Effects) => {
     const boundaryPromise: PromiseRecord = {
       id: uuid,
       state: "pending",
@@ -103,7 +167,7 @@ describe("Coroutine", () => {
         func,
         args,
         { id: uuid, state: "acquired" as const, version: 1 },
-        handler,
+        effects,
         new Map(),
         (res) => {
           expect(res.kind).toBe("value");
@@ -114,9 +178,9 @@ describe("Coroutine", () => {
     });
   };
 
-  const completePromise = (handler: Handler, id: string, result: Result<any, any>) => {
+  const completePromise = (effects: Effects, id: string, result: Result<any, any>) => {
     return new Promise<any>((resolve) => {
-      handler.promiseSettle(
+      effects.promiseSettle(
         {
           kind: "promise.settle",
           head: { corrId: "", version: "" },
@@ -149,8 +213,9 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    const r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    const r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 
@@ -169,19 +234,20 @@ describe("Coroutine", () => {
       const v2 = yield* p2;
       return v + v2;
     }
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
 
     // First execution - should suspend
-    let r = await exec("foo.1", foo, [], h);
+    let r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "suspended" });
     const suspended = r as Suspended;
     expect(suspended.todo.local).toHaveLength(2);
 
-    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
-    await completePromise(h, "foo.1.1", { kind: "value", value: 31416 });
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 31416 });
 
     // Second execution - should complete
-    r = await exec("foo.1", foo, [], h);
+    r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 31458 } });
   });
 
@@ -199,15 +265,16 @@ describe("Coroutine", () => {
       return v1;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
 
-    let r = await exec("foo.1", foo, [], h);
+    let r = await exec("foo.1", foo, [], effects);
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 
@@ -222,22 +289,23 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    let r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    let r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(2);
 
-    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
   });
@@ -253,15 +321,16 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    let r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    let r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
   });
@@ -278,22 +347,23 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    let r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    let r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(2);
 
-    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
@@ -309,16 +379,17 @@ describe("Coroutine", () => {
       return v1 + v2;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
 
-    let r = await exec("foo.1", foo, [], h);
+    let r = await exec("foo.1", foo, [], effects);
     expect(r.type).toBe("suspended");
     const suspended = r as Suspended;
     expect(suspended.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
 
-    r = await exec("foo.1", foo, [], h);
+    r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 84 } });
   });
 
@@ -328,7 +399,8 @@ describe("Coroutine", () => {
       return 42;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
 
     const boundaryPromise: PromiseRecord = {
       id: "foo.1",
@@ -359,7 +431,7 @@ describe("Coroutine", () => {
         foo,
         [],
         { id: "foo.1", state: "acquired" as const, version: 1 },
-        h,
+        effects,
         new Map(),
         (res) => {
           resolve(res);
@@ -376,8 +448,9 @@ describe("Coroutine", () => {
       return 42;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    const r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    const r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 });

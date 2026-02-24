@@ -2,8 +2,8 @@ import type { Clock } from "./clock.js";
 import { InnerContext } from "./context.js";
 import type { ClaimedTask, Task } from "./core.js";
 import { Coroutine, type LocalTodo } from "./coroutine.js";
+import type { Effects } from "./effects.js";
 import exceptions from "./exceptions.js";
-import type { Handler } from "./handler.js";
 import type { Heartbeat } from "./heartbeat.js";
 import type { Network } from "./network/network.js";
 import type { PromiseRecord, TaskRecord } from "./network/types.js";
@@ -39,7 +39,7 @@ interface Data {
 export class Computation {
   private id: string;
   private clock: Clock;
-  private handler: Handler;
+  private effects: Effects;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
   private dependencies: Map<string, any>;
@@ -57,7 +57,7 @@ export class Computation {
     id: string,
     clock: Clock,
     network: Network,
-    handler: Handler,
+    effects: Effects,
     retries: Map<string, RetryPolicyConstructor>,
     registry: Registry,
     heartbeat: Heartbeat,
@@ -70,7 +70,7 @@ export class Computation {
   ) {
     this.id = id;
     this.clock = clock;
-    this.handler = handler;
+    this.effects = effects;
     this.retries = retries;
     this.registry = registry;
     this.heartbeat = heartbeat;
@@ -193,7 +193,7 @@ export class Computation {
 
     const ctx = new InnerContext(ctxConfig);
 
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.handler, this.spans, (res) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.effects, this.spans, (res) => {
       if (res.kind === "error") {
         return done(res);
       }
@@ -280,7 +280,7 @@ export class Computation {
       let settledCount = 0;
       for (const result of results) {
         const { id, result: res } = result;
-        this.handler.promiseSettle(
+        this.effects.promiseSettle(
           {
             kind: "promise.settle",
             head: { corrId: "", version: "" },

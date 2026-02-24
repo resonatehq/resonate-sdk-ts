@@ -1,14 +1,14 @@
 import { describe, expect, test } from "@jest/globals";
 import { WallClock } from "../src/clock.js";
+import { Codec } from "../src/codec.js";
 import { Computation, type Status } from "../src/computation.js";
 import type { Context } from "../src/context.js";
 import type { ClaimedTask } from "../src/core.js";
-import { JsonEncoder } from "../src/encoder.js";
-import { NoopEncryptor } from "../src/encryptor.js";
-import { Handler } from "../src/handler.js";
+import type { Effects } from "../src/effects.js";
+import exceptions, { type ResonateError } from "../src/exceptions.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { LocalNetwork } from "../src/network/local.js";
-import type { PromiseRecord } from "../src/network/types.js";
+import { isSuccess, type PromiseRecord } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
@@ -24,18 +24,66 @@ class TestHeartbeat implements Heartbeat {
 function buildComputation(registry: Registry): {
   computation: Computation;
   network: LocalNetwork;
-  handler: Handler;
+  effects: Effects;
 } {
   const network = new LocalNetwork();
-  const encoder = new JsonEncoder();
-  const encryptor = new NoopEncryptor();
-  const handler = new Handler(network, encoder, encryptor);
+  const codec = new Codec();
+
+  const effects: Effects = {
+    promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
+      try {
+        req.data.param = codec.encode(req.data.param.data);
+      } catch (e) {
+        done({ kind: "error", error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e) });
+        return;
+      }
+      network.send(
+        req,
+        (res) => {
+          if (!isSuccess(res)) {
+            return done({
+              kind: "error",
+              error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+            });
+          }
+          try {
+            done({ kind: "value", value: codec.decodePromise(res.data.promise) });
+          } catch (e) {
+            return done({ kind: "error", error: e as ResonateError });
+          }
+        },
+        headers,
+        retryForever,
+      );
+    },
+    promiseSettle: (req, done, func = "unknown") => {
+      try {
+        req.data.value = codec.encode(req.data.value.data);
+      } catch (e) {
+        done({ kind: "error", error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e) });
+        return;
+      }
+      network.send(req, (res) => {
+        if (!isSuccess(res)) {
+          return done({
+            kind: "error",
+            error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
+          });
+        }
+        try {
+          done({ kind: "value", value: codec.decodePromise(res.data.promise) });
+        } catch (e) {
+          return done({ kind: "error", error: e as ResonateError });
+        }
+      });
+    },
+  };
 
   const computation = new Computation(
     "test-computation",
     new WallClock(),
     network,
-    handler,
+    effects,
     new Map<string, any>([
       ["exponential", Exponential],
       ["never", Never],
@@ -50,7 +98,7 @@ function buildComputation(registry: Registry): {
     new AsyncProcessor(),
   );
 
-  return { computation, network, handler };
+  return { computation, network, effects };
 }
 
 function runUntilBlocked(computation: Computation, task: ClaimedTask): Promise<Result<Status, undefined>> {

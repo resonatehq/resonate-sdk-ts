@@ -1,9 +1,18 @@
 import type { Clock } from "./clock.js";
+import type { Codec } from "./codec.js";
 import { Computation, type Done, type Status } from "./computation.js";
-import type { Handler } from "./handler.js";
+import type { Effects } from "./effects.js";
+import exceptions, { type ResonateError } from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
 import type { MessageSource, Network } from "./network/network.js";
-import type { Message, PromiseRecord, TaskRecord } from "./network/types.js";
+import {
+  isRedirect,
+  isSuccess,
+  type Message,
+  type PromiseRecord,
+  type TaskRecord,
+  type Value,
+} from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
@@ -34,7 +43,7 @@ export class Core {
   private ttl: number;
   private clock: Clock;
   private network: Network;
-  private handler: Handler;
+  private codec: Codec;
   private tracer: Tracer;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
@@ -43,13 +52,14 @@ export class Core {
   private optsBuilder: OptionsBuilder;
   private verbose: boolean;
   private computations: Map<string, Computation> = new Map();
+  private effects: Effects;
 
   constructor({
     pid,
     ttl,
     clock,
     network,
-    handler,
+    codec,
     tracer,
     registry,
     heartbeat,
@@ -62,7 +72,7 @@ export class Core {
     ttl: number;
     clock: Clock;
     network: Network;
-    handler: Handler;
+    codec: Codec;
     tracer: Tracer;
     registry: Registry;
     heartbeat: Heartbeat;
@@ -75,7 +85,7 @@ export class Core {
     this.ttl = ttl;
     this.clock = clock;
     this.network = network;
-    this.handler = handler;
+    this.codec = codec;
     this.tracer = tracer;
     this.registry = registry;
     this.heartbeat = heartbeat;
@@ -91,10 +101,78 @@ export class Core {
       [Never.type, Never],
     ]);
 
+    this.effects = this.buildEffects();
+
     // subscribe to execute
     messageSource?.subscribe("execute", (msg) => {
       this.onMessage(msg, () => undefined);
     });
+  }
+
+  private buildEffects(): Effects {
+    return {
+      promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
+        try {
+          req.data.param = this.codec.encode(req.data.param.data);
+        } catch (e) {
+          done({
+            kind: "error",
+            error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e),
+          });
+          return;
+        }
+
+        this.network.send(
+          req,
+          (res) => {
+            if (!isSuccess(res)) {
+              return done({
+                kind: "error",
+                error: exceptions.SERVER_ERROR(res.data, true, {
+                  code: res.head.status,
+                  message: res.data,
+                }),
+              });
+            }
+            try {
+              const promise = this.codec.decodePromise(res.data.promise);
+              done({ kind: "value", value: promise });
+            } catch (e) {
+              return done({ kind: "error", error: e as ResonateError });
+            }
+          },
+          headers,
+          retryForever,
+        );
+      },
+
+      promiseSettle: (req, done, func = "unknown") => {
+        try {
+          req.data.value = this.codec.encode(req.data.value.data);
+        } catch (e) {
+          done({ kind: "error", error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e) });
+          return;
+        }
+
+        this.network.send(req, (res) => {
+          if (!isSuccess(res)) {
+            return done({
+              kind: "error",
+              error: exceptions.SERVER_ERROR(res.data, true, {
+                code: res.head.status,
+                message: res.data,
+              }),
+            });
+          }
+          try {
+            const promise = this.codec.decodePromise(res.data.promise);
+            done({ kind: "value", value: promise });
+          } catch (e) {
+            return done({ kind: "error", error: e as ResonateError });
+          }
+        });
+      },
+    };
   }
 
   public executeUntilBlocked(span: Span, claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
@@ -134,7 +212,7 @@ export class Core {
       id,
       this.clock,
       this.network,
-      this.handler,
+      this.effects,
       this.retries,
       this.registry,
       this.heartbeat,
@@ -163,7 +241,7 @@ export class Core {
     cb: (res: Result<{ continue: boolean }, undefined>) => void,
   ): void {
     const task = claimed.task;
-    this.handler.taskSuspend(
+    this.network.send(
       {
         kind: "task.suspend",
         head: { corrId: "", version: "" },
@@ -171,32 +249,40 @@ export class Core {
           id: task.id,
           version: task.version,
           actions: status.awaited.map((a) => ({
-            kind: "promise.register",
+            kind: "promise.register" as const,
             head: { corrId: "", version: "" },
             data: { awaiter: claimed.rootPromise.id, awaited: a },
           })),
         },
       },
       (res) => {
-        if (res.kind === "error") {
-          res.error.log(this.verbose);
-          return cb({ kind: "error", error: undefined });
-        } else if (res.kind === "value") {
-          return cb(res);
+        if (isSuccess(res)) {
+          return cb({ kind: "value", value: { continue: false } });
         }
+        if (isRedirect(res)) {
+          return cb({ kind: "value", value: { continue: true } });
+        }
+        const error = exceptions.SERVER_ERROR(res.data, true, {
+          code: res.head.status,
+          message: res.data,
+        });
+        error.log(this.verbose);
+        return cb({ kind: "error", error: undefined });
       },
     );
   }
 
   private fulfillTask(task: TaskRecord, doneValue: Done, callback: () => void): void {
-    const encoded = this.handler.encodeValue(doneValue.value, doneValue.id);
-    if (encoded.kind === "error") {
-      encoded.error.log(this.verbose);
+    let encoded: Value;
+    try {
+      encoded = this.codec.encode(doneValue.value);
+    } catch (e) {
+      const error = exceptions.ENCODING_RETV_UNENCODEABLE(doneValue.id, e);
+      error.log(this.verbose);
       callback();
       return;
     }
 
-    // TODO: put this in the handler to cache the settled promise
     this.network.send(
       {
         kind: "task.fulfill",
@@ -210,7 +296,7 @@ export class Core {
             data: {
               id: doneValue.id,
               state: doneValue.state,
-              value: encoded.value,
+              value: encoded,
             },
           },
         },
@@ -223,25 +309,37 @@ export class Core {
     util.assert(msg.kind === "execute");
 
     const task = msg.data.task;
-    this.handler.taskAcquire(
+    this.network.send(
       {
         kind: "task.acquire",
         head: { corrId: "", version: "" },
         data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
       },
       (res) => {
-        if (res.kind === "error") {
-          res.error?.log(this.verbose);
+        if (!isSuccess(res)) {
+          const error = exceptions.SERVER_ERROR(res.data, true, {
+            code: res.head.status,
+            message: res.data,
+          });
+          error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
-        } else {
-          this.executeUntilBlocked(
-            this.tracer.decode(msg.head),
-            { kind: "claimed", task: res.value.task, rootPromise: res.value.root },
-            (execRes) => {
-              cb(execRes);
-            },
-          );
         }
+
+        let promise: PromiseRecord;
+        try {
+          promise = this.codec.decodePromise(res.data.promise);
+        } catch (e) {
+          return cb({ kind: "error", error: undefined });
+        }
+
+        const acquiredTask: TaskRecord = { id: task.id, state: "acquired", version: task.version };
+        this.executeUntilBlocked(
+          this.tracer.decode(msg.head),
+          { kind: "claimed", task: acquiredTask, rootPromise: promise },
+          (execRes) => {
+            cb(execRes);
+          },
+        );
       },
     );
   }

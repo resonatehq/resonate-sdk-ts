@@ -1,6 +1,6 @@
 import { StepClock } from "../src/clock.js";
+import { Codec } from "../src/codec.js";
 import type * as context from "../src/context.js";
-import { JsonEncoder } from "../src/encoder.js";
 import type { Request } from "../src/network/types.js";
 import { Registry } from "../src/registry.js";
 import { ServerProcess } from "./src/server.js";
@@ -24,7 +24,7 @@ const options = { seed, steps: 20_000_000, randomDelay: 0.2, dropProb: 0.2, dupl
 
 const rnd = new Random(options.seed);
 const clock = new StepClock();
-const encoder = new JsonEncoder();
+const codec = new Codec();
 const registry = new Registry();
 registry.add(fibonacci);
 
@@ -35,33 +35,9 @@ const sim = new Simulator(rnd, {
 });
 
 const server = new ServerProcess(clock, "server");
-const worker1 = new WorkerProcess(
-  rnd,
-  clock,
-  encoder,
-  registry,
-  { charFlipProb: options.charFlipProb },
-  "worker-1",
-  "default",
-);
-const worker2 = new WorkerProcess(
-  rnd,
-  clock,
-  encoder,
-  registry,
-  { charFlipProb: options.charFlipProb },
-  "worker-2",
-  "default",
-);
-const worker3 = new WorkerProcess(
-  rnd,
-  clock,
-  encoder,
-  registry,
-  { charFlipProb: options.charFlipProb },
-  "worker-3",
-  "default",
-);
+const worker1 = new WorkerProcess(rnd, clock, registry, { charFlipProb: options.charFlipProb }, "worker-1", "default");
+const worker2 = new WorkerProcess(rnd, clock, registry, { charFlipProb: options.charFlipProb }, "worker-2", "default");
+const worker3 = new WorkerProcess(rnd, clock, registry, { charFlipProb: options.charFlipProb }, "worker-3", "default");
 
 sim.register(server);
 for (const worker of [worker1, worker2, worker3]) {
@@ -98,7 +74,7 @@ sim.repeat(1, () => {
           id,
           timeoutAt: Number.MAX_SAFE_INTEGER,
           tags: { "resonate:target": "sim://any@default" },
-          param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
+          param: codec.encode({ func: "fibonacci", args: [n], version: 1 }),
         },
       },
       { requ: true },
@@ -126,7 +102,7 @@ if (!settled) {
 }
 
 const promise = server.server.promises.get(id)!;
-const decoded = encoder.decode({ headers: promise.value.headers || {}, data: promise.value.data || "" });
+const decoded = codec.decode({ headers: promise.value.headers || {}, data: promise.value.data || "" });
 if (decoded !== f(n)) {
   console.error(`fibonacci(${n}) expected ${f(n)} but got ${decoded}`);
   process.exit(1);

@@ -1,18 +1,12 @@
-import type { Value } from "./network/types.js";
+import { type Encryptor, NoopEncryptor } from "./encryptor.js";
+import type { PromiseRecord, Value } from "./network/types.js";
 import * as util from "./util.js";
 
-export interface Encoder {
-  encode(value: any): Value;
-  decode(value: Value): any | undefined;
-}
-
-export class JsonEncoder implements Encoder {
+class JsonEncoder {
   private inf = "__INF__";
   private negInf = "__NEG_INF__";
 
   encode(value: any): Value {
-    // note about undefined:
-    // undefined is not json serializable, so immediately return undefined
     if (value === undefined) {
       return { data: "", headers: {} };
     }
@@ -71,5 +65,40 @@ export class JsonEncoder implements Encoder {
 
       return v;
     });
+  }
+}
+
+export class Codec {
+  private encoder: JsonEncoder;
+  private encryptor: Encryptor;
+
+  constructor(encryptor: Encryptor = new NoopEncryptor()) {
+    this.encoder = new JsonEncoder();
+    this.encryptor = encryptor;
+  }
+
+  encode(value: any): Value {
+    const encoded = this.encoder.encode(value);
+    return this.encryptor.encrypt(encoded);
+  }
+
+  decode(value: Value | undefined): any | undefined {
+    if (!value?.data) {
+      return undefined;
+    }
+
+    const decrypted = this.encryptor.decrypt(value);
+    return this.encoder.decode(decrypted);
+  }
+
+  decodePromise(promise: PromiseRecord): PromiseRecord {
+    const paramData = this.decode(promise.param);
+    const valueData = this.decode(promise.value);
+
+    return {
+      ...promise,
+      param: { headers: promise.param?.headers, data: paramData },
+      value: { headers: promise.value?.headers, data: valueData },
+    };
   }
 }

@@ -1,10 +1,9 @@
 import { WallClock } from "./clock.js";
+import { Codec } from "./codec.js";
 import type { Status } from "./computation.js";
 import type { Context } from "./context.js";
 import { Core } from "./core.js";
-import { JsonEncoder } from "./encoder.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
-import { Handler } from "./handler.js";
 import { NoopHeartbeat } from "./heartbeat.js";
 import { HttpNetwork } from "./network/http.js";
 import type { ExecuteMsg } from "./network/types.js";
@@ -19,13 +18,11 @@ export class Resonate {
   private registry = new Registry();
   private dependencies = new Map<string, any>();
   private verbose: boolean;
-  private encryptor: Encryptor;
-  private encoder: JsonEncoder;
+  private codec: Codec;
 
   constructor({ verbose = false, encryptor = undefined }: { verbose?: boolean; encryptor?: Encryptor } = {}) {
     this.verbose = verbose;
-    this.encryptor = encryptor ?? new NoopEncryptor();
-    this.encoder = new JsonEncoder();
+    this.codec = new Codec(encryptor ?? new NoopEncryptor());
   }
 
   public register<F extends Func>(
@@ -123,7 +120,7 @@ export class Resonate {
         ttl: 30 * 1000,
         clock,
         network,
-        handler: new Handler(network, this.encoder, this.encryptor),
+        codec: this.codec,
         registry: this.registry,
         heartbeat: new NoopHeartbeat(),
         dependencies: this.dependencies,
@@ -171,7 +168,7 @@ export class Resonate {
 
     return {
       ...res,
-      result: this.encoder.decode(this.encryptor.decrypt(res.result)),
+      result: this.codec.decode(res.result),
     };
   }
 

@@ -1,6 +1,6 @@
 import type { Context, InnerContext } from "./context.js";
 import { Decorator, type Value } from "./decorator.js";
-import type { Handler } from "./handler.js";
+import type { Effects } from "./effects.js";
 import type { TaskRecord } from "./network/types.js";
 import { Never } from "./retries.js";
 import type { Span } from "./tracer.js";
@@ -45,7 +45,7 @@ export class Coroutine<T> {
   private task: TaskRecord;
   private verbose: boolean;
   private decorator: Decorator<T>;
-  private handler: Handler;
+  private effects: Effects;
   private spans: Map<string, Span>;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
@@ -55,7 +55,7 @@ export class Coroutine<T> {
     task: TaskRecord,
     verbose: boolean,
     decorator: Decorator<T>,
-    handler: Handler,
+    effects: Effects,
     spans: Map<string, Span>,
     depth = 1,
   ) {
@@ -63,7 +63,7 @@ export class Coroutine<T> {
     this.task = task;
     this.verbose = verbose;
     this.decorator = decorator;
-    this.handler = handler;
+    this.effects = effects;
     this.spans = spans;
     this.depth = depth;
 
@@ -84,11 +84,11 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     task: TaskRecord,
-    handler: Handler,
+    effects: Effects,
     spans: Map<string, Span>,
     callback: (res: Result<Suspended | Done, any>) => void,
   ): void {
-    const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), handler, spans);
+    const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), effects, spans);
     coroutine.exec((res) => {
       if (res.kind === "error") return callback(res);
       const status = res.value;
@@ -134,7 +134,7 @@ export class Coroutine<T> {
             span = this.spans.get(action.createReq.data.id)!;
           }
 
-          this.handler.promiseCreate(
+          this.effects.promiseCreate(
             action.createReq,
             (res) => {
               if (res.kind === "error") {
@@ -182,7 +182,7 @@ export class Coroutine<T> {
                   this.task,
                   this.verbose,
                   new Decorator(action.func(ctx, ...action.args)),
-                  this.handler,
+                  this.effects,
                   this.spans,
                   this.depth + 1,
                 );
@@ -205,7 +205,7 @@ export class Coroutine<T> {
                     };
                     next();
                   } else {
-                    this.handler.promiseSettle(
+                    this.effects.promiseSettle(
                       {
                         kind: "promise.settle",
                         head: { corrId: "", version: "" },
@@ -307,7 +307,7 @@ export class Coroutine<T> {
             span = this.spans.get(action.createReq.data.id)!;
           }
 
-          this.handler.promiseCreate(
+          this.effects.promiseCreate(
             action.createReq,
             (res) => {
               if (res.kind === "error") {
