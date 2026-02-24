@@ -22,7 +22,7 @@ function* fibonacci(ctx: context.Context, n: number): Generator<any, number, any
 const seed = Math.floor(Math.random() * 2 ** 32);
 console.log(`seed: ${seed}`);
 
-const options = { seed, steps: 2_000_000, randomDelay: 0.5, dropProb: 0.5, duplProb: 0.5, charFlipProb: 0 };
+const options = { seed, steps: 2_000_000, randomDelay: 0.3, dropProb: 0.3, duplProb: 0.3, charFlipProb: 0 };
 
 const rnd = new Random(options.seed);
 const clock = new StepClock();
@@ -37,9 +37,33 @@ const sim = new Simulator(rnd, {
 });
 
 const server = new ServerProcess(clock, "server");
-const worker1 = new WorkerProcess(rnd, clock, encoder, registry, { charFlipProb: options.charFlipProb }, "worker-1", "default");
-const worker2 = new WorkerProcess(rnd, clock, encoder, registry, { charFlipProb: options.charFlipProb }, "worker-2", "default");
-const worker3 = new WorkerProcess(rnd, clock, encoder, registry, { charFlipProb: options.charFlipProb }, "worker-3", "default");
+const worker1 = new WorkerProcess(
+  rnd,
+  clock,
+  encoder,
+  registry,
+  { charFlipProb: options.charFlipProb },
+  "worker-1",
+  "default",
+);
+const worker2 = new WorkerProcess(
+  rnd,
+  clock,
+  encoder,
+  registry,
+  { charFlipProb: options.charFlipProb },
+  "worker-2",
+  "default",
+);
+const worker3 = new WorkerProcess(
+  rnd,
+  clock,
+  encoder,
+  registry,
+  { charFlipProb: options.charFlipProb },
+  "worker-3",
+  "default",
+);
 
 sim.register(server);
 for (const worker of [worker1, worker2, worker3]) {
@@ -59,7 +83,7 @@ sim.delay(0, () => {
         head: { corrId: "", version: "" },
         data: {
           id,
-          timeoutAt: 10_000_000,
+          timeoutAt: Number.MAX_SAFE_INTEGER,
           tags: { "resonate:target": "sim://any@default" },
           param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
         },

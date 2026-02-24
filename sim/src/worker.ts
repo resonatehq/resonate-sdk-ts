@@ -118,7 +118,7 @@ class SimulatedNetwork implements Network {
       req,
       callback: cb,
       timeout: this.currentTime + 2000,
-      retryForever: true,
+      retryForever: retryForever ?? false,
       headers,
     };
     this.buffer.push(message);
@@ -145,7 +145,7 @@ class SimulatedNetwork implements Network {
             req: cb.req,
             callback: cb.callback,
             timeout: this.currentTime + 2000,
-            retryForever: true,
+            retryForever: cb.retryForever,
             headers: cb.headers,
           };
           this.buffer.push(message);
