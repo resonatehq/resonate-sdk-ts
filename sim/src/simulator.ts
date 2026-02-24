@@ -232,27 +232,42 @@ export class Simulator {
   exec(steps: number): void {
     let i = 0;
     while (i < steps) {
-      for (const task of this.scheduledRepeat) {
-        if (this.step % task.interval === 0) {
-          task.fn();
-        }
-      }
-
-      if (this.scheduledDelay.length > 0) {
-        const remaining: { runAt: number; fn: () => void }[] = [];
-        for (const task of this.scheduledDelay) {
-          if (task.runAt === this.step) {
-            task.fn();
-          } else if (task.runAt > this.step) {
-            remaining.push(task);
-          }
-        }
-        this.scheduledDelay = remaining;
-      }
-
+      this.runScheduled();
       this.tick();
-
       i++;
+    }
+  }
+
+  execUntil(steps: number, condition: () => boolean): boolean {
+    let i = 0;
+    while (i < steps) {
+      this.runScheduled();
+      this.tick();
+      if (condition()) {
+        return true;
+      }
+      i++;
+    }
+    return false;
+  }
+
+  private runScheduled(): void {
+    for (const task of this.scheduledRepeat) {
+      if (this.step % task.interval === 0) {
+        task.fn();
+      }
+    }
+
+    if (this.scheduledDelay.length > 0) {
+      const remaining: { runAt: number; fn: () => void }[] = [];
+      for (const task of this.scheduledDelay) {
+        if (task.runAt === this.step) {
+          task.fn();
+        } else if (task.runAt > this.step) {
+          remaining.push(task);
+        }
+      }
+      this.scheduledDelay = remaining;
     }
   }
 

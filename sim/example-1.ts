@@ -19,7 +19,7 @@ function* fibonacci(ctx: context.Context, n: number): Generator<any, number, any
   return (yield p1) + (yield p2);
 }
 
-const options = { seed: 0, steps: 10000, randomDelay: 0.2, dropProb: 0, duplProb: 0, charFlipProb: 0 };
+const options = { seed: 0, steps: 100000, randomDelay: 0.8, dropProb: 0, duplProb: 0, charFlipProb: 0 };
 
 const rnd = new Random(options.seed);
 const clock = new StepClock();
@@ -92,8 +92,6 @@ sim.delay(0, () => {
   );
 });
 
-sim.exec(options.steps);
-
 function f(n: number, memo: Record<number, number> = {}): number {
   if (n <= 1) return n;
 
@@ -105,7 +103,11 @@ function f(n: number, memo: Record<number, number> = {}): number {
   return memo[n];
 }
 
-const promise = server.server.promises.get(id);
-const value = promise?.value;
-const valueWithHeaders = value ? { headers: value.headers || {}, data: value.data || "" } : undefined;
-util.assert(!!valueWithHeaders && encoder.decode(valueWithHeaders) === f(n));
+const result = sim.execUntil(options.steps, () => {
+  const promise = server.server.promises.get(id);
+  const value = promise?.value;
+  const valueWithHeaders = value ? { headers: value.headers || {}, data: value.data || "" } : undefined;
+  return !!valueWithHeaders && encoder.decode(valueWithHeaders) === f(n);
+});
+
+util.assert(result);

@@ -100,8 +100,6 @@ sim.delay(0, () => {
   sim.send(msg);
 });
 
-sim.exec(options.steps);
-
 function f(n: number, memo: Record<number, number> = {}): number {
   if (n <= 1) return n;
 
@@ -113,7 +111,11 @@ function f(n: number, memo: Record<number, number> = {}): number {
   return memo[n];
 }
 
-const promise = server.server.promises.get(id);
-const value = promise?.value;
-const valueWithHeaders = value ? { headers: value.headers || {}, data: value.data || "" } : undefined;
-util.assert(!!valueWithHeaders && encoder.decode(valueWithHeaders) === f(n));
+const result = sim.execUntil(options.steps, () => {
+  const promise = server.server.promises.get(id);
+  const value = promise?.value;
+  const valueWithHeaders = value ? { headers: value.headers || {}, data: value.data || "" } : undefined;
+  return !!valueWithHeaders && encoder.decode(valueWithHeaders) === f(n);
+});
+
+util.assert(result);
