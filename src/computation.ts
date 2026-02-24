@@ -2,7 +2,6 @@ import type { Clock } from "./clock.js";
 import { InnerContext } from "./context.js";
 import type { ClaimedTask, Task } from "./core.js";
 import { Coroutine, type LocalTodo } from "./coroutine.js";
-import type { Effects } from "./effects.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
 import type { Network } from "./network/network.js";
@@ -12,7 +11,7 @@ import { AsyncProcessor, type Processor } from "./processor/processor.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
 import type { Span, Tracer } from "./tracer.js";
-import type { Func, Result } from "./types.js";
+import type { Effects, Func, Result } from "./types.js";
 import * as util from "./util.js";
 
 export type Status = Done | Suspended;

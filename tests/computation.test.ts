@@ -4,17 +4,16 @@ import { Codec } from "../src/codec.js";
 import { Computation, type Status } from "../src/computation.js";
 import type { Context } from "../src/context.js";
 import type { ClaimedTask } from "../src/core.js";
-import type { Effects } from "../src/effects.js";
-import exceptions, { type ResonateError } from "../src/exceptions.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { LocalNetwork } from "../src/network/local.js";
-import { isSuccess, type PromiseRecord } from "../src/network/types.js";
+import type { PromiseRecord } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
 import { Exponential, Never } from "../src/retries.js";
 import { NoopSpan, NoopTracer } from "../src/tracer.js";
-import type { Result } from "../src/types.js";
+import type { Effects, Result } from "../src/types.js";
+import * as util from "../src/util.js";
 
 class TestHeartbeat implements Heartbeat {
   start(): void {}
@@ -29,55 +28,7 @@ function buildComputation(registry: Registry): {
   const network = new LocalNetwork();
   const codec = new Codec();
 
-  const effects: Effects = {
-    promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
-      try {
-        req.data.param = codec.encode(req.data.param.data);
-      } catch (e) {
-        done({ kind: "error", error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e) });
-        return;
-      }
-      network.send(
-        req,
-        (res) => {
-          if (!isSuccess(res)) {
-            return done({
-              kind: "error",
-              error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
-            });
-          }
-          try {
-            done({ kind: "value", value: codec.decodePromise(res.data.promise) });
-          } catch (e) {
-            return done({ kind: "error", error: e as ResonateError });
-          }
-        },
-        headers,
-        retryForever,
-      );
-    },
-    promiseSettle: (req, done, func = "unknown") => {
-      try {
-        req.data.value = codec.encode(req.data.value.data);
-      } catch (e) {
-        done({ kind: "error", error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e) });
-        return;
-      }
-      network.send(req, (res) => {
-        if (!isSuccess(res)) {
-          return done({
-            kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
-          });
-        }
-        try {
-          done({ kind: "value", value: codec.decodePromise(res.data.promise) });
-        } catch (e) {
-          return done({ kind: "error", error: e as ResonateError });
-        }
-      });
-    },
-  };
+  const effects = util.buildEffects(network, codec);
 
   const computation = new Computation(
     "test-computation",

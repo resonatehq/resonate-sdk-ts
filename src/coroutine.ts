@@ -1,10 +1,9 @@
 import type { Context, InnerContext } from "./context.js";
 import { Decorator, type Value } from "./decorator.js";
-import type { Effects } from "./effects.js";
 import type { TaskRecord } from "./network/types.js";
 import { Never } from "./retries.js";
 import type { Span } from "./tracer.js";
-import type { Result, Yieldable } from "./types.js";
+import type { Effects, Result, Yieldable } from "./types.js";
 import * as util from "./util.js";
 
 export type Suspended = {

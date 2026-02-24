@@ -1,5 +1,9 @@
-import type { MessageSource } from "./network/network.js";
+import type { Codec } from "./codec.js";
+import exceptions, { type ResonateError } from "./exceptions.js";
+import type { MessageSource, Network } from "./network/network.js";
+import { isSuccess } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
+import type { Effects } from "./types.js";
 
 // time
 
@@ -100,4 +104,72 @@ export function once<T extends () => any>(fn: T): T {
     called = true;
     return fn();
   }) as T;
+}
+
+// effects
+
+export function buildEffects(network: Network, codec: Codec): Effects {
+  return {
+    promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
+      try {
+        req.data.param = codec.encode(req.data.param.data);
+      } catch (e) {
+        done({
+          kind: "error",
+          error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e),
+        });
+        return;
+      }
+
+      network.send(
+        req,
+        (res) => {
+          if (!isSuccess(res)) {
+            return done({
+              kind: "error",
+              error: exceptions.SERVER_ERROR(res.data, true, {
+                code: res.head.status,
+                message: res.data,
+              }),
+            });
+          }
+          try {
+            const promise = codec.decodePromise(res.data.promise);
+            done({ kind: "value", value: promise });
+          } catch (e) {
+            return done({ kind: "error", error: e as ResonateError });
+          }
+        },
+        headers,
+        retryForever,
+      );
+    },
+
+    promiseSettle: (req, done, func = "unknown") => {
+      try {
+        req.data.value = codec.encode(req.data.value.data);
+      } catch (e) {
+        done({ kind: "error", error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e) });
+        return;
+      }
+
+      network.send(req, (res) => {
+        if (!isSuccess(res)) {
+          return done({
+            kind: "error",
+            error: exceptions.SERVER_ERROR(res.data, true, {
+              code: res.head.status,
+              message: res.data,
+            }),
+          });
+        }
+        try {
+          const promise = codec.decodePromise(res.data.promise);
+          done({ kind: "value", value: promise });
+        } catch (e) {
+          return done({ kind: "error", error: e as ResonateError });
+        }
+      });
+    },
+  };
 }

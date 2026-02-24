@@ -2,16 +2,14 @@ import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
 import { Coroutine, type Done, type Suspended } from "../src/coroutine.js";
-import type { Effects } from "../src/effects.js";
-import exceptions, { type ResonateError } from "../src/exceptions.js";
 import type { Network } from "../src/network/network.js";
-import { isSuccess, type Message, type PromiseRecord, type Request, type Response } from "../src/network/types.js";
+import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
 import { NoopSpan } from "../src/tracer.js";
-import type { Result } from "../src/types.js";
-import { assert } from "../src/util.js";
+import type { Effects, Result } from "../src/types.js";
+import * as util from "../src/util.js";
 
 class DummyNetwork implements Network {
   private promises = new Map<string, PromiseRecord>();
@@ -81,57 +79,7 @@ class DummyNetwork implements Network {
 
 function buildEffects(network: Network): Effects {
   const codec = new Codec();
-  return {
-    promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
-      try {
-        req.data.param = codec.encode(req.data.param.data);
-      } catch (e) {
-        done({ kind: "error", error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e) });
-        return;
-      }
-      network.send(
-        req,
-        (res) => {
-          if (!isSuccess(res)) {
-            return done({
-              kind: "error",
-              error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
-            });
-          }
-          try {
-            const promise = codec.decodePromise(res.data.promise);
-            done({ kind: "value", value: promise });
-          } catch (e) {
-            return done({ kind: "error", error: e as ResonateError });
-          }
-        },
-        headers,
-        retryForever,
-      );
-    },
-    promiseSettle: (req, done, func = "unknown") => {
-      try {
-        req.data.value = codec.encode(req.data.value.data);
-      } catch (e) {
-        done({ kind: "error", error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e) });
-        return;
-      }
-      network.send(req, (res) => {
-        if (!isSuccess(res)) {
-          return done({
-            kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, { code: res.head.status, message: res.data }),
-          });
-        }
-        try {
-          const promise = codec.decodePromise(res.data.promise);
-          done({ kind: "value", value: promise });
-        } catch (e) {
-          return done({ kind: "error", error: e as ResonateError });
-        }
-      });
-    },
-  };
+  return util.buildEffects(network, codec);
 }
 
 describe("Coroutine", () => {
@@ -171,7 +119,7 @@ describe("Coroutine", () => {
         new Map(),
         (res) => {
           expect(res.kind).toBe("value");
-          assert(res.kind === "value");
+          util.assert(res.kind === "value");
           resolve(res.value);
         },
       );
@@ -195,7 +143,7 @@ describe("Coroutine", () => {
         },
         (res) => {
           expect(res.kind).toBe("value");
-          assert(res.kind === "value");
+          util.assert(res.kind === "value");
           resolve(res.value);
         },
       );
