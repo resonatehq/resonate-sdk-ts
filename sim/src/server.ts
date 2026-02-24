@@ -1,8 +1,18 @@
 import type { StepClock } from "../../src/clock.js";
-import { Server } from "../../src/network/local.js";
+import { type Change, Server } from "../../src/network/local.js";
 import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
 import * as util from "../../src/util.js";
 import { type Address, anycast, Message, Process, unicast } from "./simulator.js";
+
+function extractOutgoing(changes: Change[]): Array<{ address: string; message: NetworkMessage }> {
+  const out: Array<{ address: string; message: NetworkMessage }> = [];
+  for (const c of changes) {
+    if (c.kind === "message.send") {
+      out.push({ address: c.address, message: c.message });
+    }
+  }
+  return out;
+}
 
 export class ServerProcess extends Process {
   private clock: StepClock;
@@ -19,8 +29,11 @@ export class ServerProcess extends Process {
   tick(tick: number, messages: Message<Request>[]): Message<{ err?: any; res?: Response } | NetworkMessage>[] {
     this.log(tick, "[recv]", messages);
 
+    // Advance the clock so that server-side timeouts (e.g. PENDING_RETRY_TTL = 30000) can fire.
+    this.clock.time += 100;
+
     const responses: Message<{ err?: any; res?: Response } | NetworkMessage>[] = [];
-    const outgoing: Array<{ id: string; version: number; address: string }> = [];
+    const outgoing: Array<{ address: string; message: NetworkMessage }> = [];
 
     for (const message of messages) {
       util.assert(message.target.iaddr === this.iaddr);
@@ -28,7 +41,7 @@ export class ServerProcess extends Process {
         let res: { err?: any; res?: Response };
         try {
           const result = this.server.apply(this.clock.time, message.data);
-          outgoing.push(...result.messages);
+          outgoing.push(...extractOutgoing(result.changes));
           res = {
             res: {
               ...result.response,
@@ -44,8 +57,12 @@ export class ServerProcess extends Process {
     }
 
     // Tick to process any remaining timeouts
-    const tickResult = this.server.apply(this.clock.time);
-    outgoing.push(...tickResult.messages);
+    const tickResult = this.server.apply(this.clock.time, {
+      kind: "debug.tick",
+      head: { corrId: "", version: "" },
+      data: { time: this.clock.time },
+    });
+    outgoing.push(...extractOutgoing(tickResult.changes));
 
     for (const msg of outgoing) {
       const url = new URL(msg.address);
@@ -58,12 +75,7 @@ export class ServerProcess extends Process {
         throw new Error(`not handled ${url}`);
       }
 
-      const networkMsg: NetworkMessage = {
-        kind: "execute",
-        head: {},
-        data: { task: { id: msg.id, version: msg.version } },
-      };
-      responses.push(new Message<NetworkMessage>(unicast(this.iaddr), target, networkMsg, { requ: true }));
+      responses.push(new Message<NetworkMessage>(unicast(this.iaddr), target, msg.message, { requ: true }));
     }
 
     this.log(tick, "[send]", responses);

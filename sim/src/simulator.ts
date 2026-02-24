@@ -169,19 +169,21 @@ export class Simulator {
     const consumed: Message<any>[] = [];
 
     for (const message of this.network) {
+      // Messages from the environment bypass all network disruptions
+      const fromEnv = message.source.kind === "unicast" && message.source.iaddr === "environment";
       // Drop?
-      if (this.prng.next() < this.deliveryOptions.dropProb) {
+      if (this.prng.next() < this.deliveryOptions.dropProb && !fromEnv) {
         continue;
       }
       // Delay?
-      if (this.prng.next() < this.deliveryOptions.randomDelay) {
+      if (this.prng.next() < this.deliveryOptions.randomDelay && !fromEnv) {
         retained.push(message);
         continue;
       }
       // Deliver now
       consumed.push(message);
       // Duplicate?
-      if (this.prng.next() < this.deliveryOptions.duplProb) {
+      if (this.prng.next() < this.deliveryOptions.duplProb && !fromEnv) {
         retained.push(message);
       }
     }

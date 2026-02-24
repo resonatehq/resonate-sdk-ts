@@ -105,7 +105,7 @@ class SimulatedNetwork implements Network {
       }
     };
 
-    this.callbacks[message.head!.correlationId] = { req, callback: cb, timeout: this.currentTime + 50000 };
+    this.callbacks[message.head!.correlationId] = { req, callback: cb, timeout: this.currentTime + 2000 };
     this.buffer.push(message);
   }
 
@@ -204,7 +204,7 @@ export class WorkerProcess extends Process {
     const messageSource = this.network.getMessageSource();
     this.core = new Core({
       pid: iaddr,
-      ttl: 5000,
+      ttl: 10000,
       clock: this.clock,
       network: this.network,
       handler: new Handler(this.network, encoder, new NoopEncryptor()),
