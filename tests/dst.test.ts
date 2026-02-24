@@ -1,7 +1,7 @@
 import { run } from "../sim/main.js";
 
 describe("run dst", () => {
-  test.skip("should execute simulation and not ", () => {
+  test("should execute simulation and not ", () => {
     expect(() =>
       run({
         seed: Math.floor(Math.random() * 1000000),
