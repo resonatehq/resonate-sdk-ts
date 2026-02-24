@@ -69,7 +69,7 @@ function* bar(ctx: Context): Generator<any, any, any> {
   return [yield p1, yield p2];
 }
 
-function* baz(ctx: Context): Generator<any, any, any> {
+function baz(_: Context): string {
   return "baz";
 }
 
