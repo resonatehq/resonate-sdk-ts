@@ -26,7 +26,9 @@ const options: {
   dropProb?: number;
   duplProb?: number;
   charFlipProb?: number;
-} = { seed: 0, steps: 1000, randomDelay: 0, dropProb: 0, duplProb: 0, charFlipProb: 0 };
+} = { seed: Math.floor(Math.random() * 2 ** 32), steps: 1000000, randomDelay: 0.5, dropProb: 0.5, duplProb: 0.5, charFlipProb: 0 };
+
+console.log(`seed: ${options.seed}`);
 
 // Run Simulation
 

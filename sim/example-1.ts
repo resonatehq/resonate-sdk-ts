@@ -19,7 +19,10 @@ function* fibonacci(ctx: context.Context, n: number): Generator<any, number, any
   return (yield p1) + (yield p2);
 }
 
-const options = { seed: 0, steps: 100000, randomDelay: 0.8, dropProb: 0, duplProb: 0, charFlipProb: 0 };
+const seed = Math.floor(Math.random() * 2 ** 32);
+console.log(`seed: ${seed}`);
+
+const options = { seed, steps: 2000000, randomDelay: 0.5, dropProb: 0.5, duplProb: 0.5, charFlipProb: 0 };
 
 const rnd = new Random(options.seed);
 const clock = new StepClock();

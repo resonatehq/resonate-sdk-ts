@@ -64,7 +64,10 @@ class SimulatedNetwork implements Network {
   private prng: Random;
   private deliveryOptions: Required<DeliveryOptions>;
   private buffer: Message<Request>[] = [];
-  private callbacks: Record<number, { req: Request; callback: (res: any) => void; timeout: number }> = {};
+  private callbacks: Record<
+    number,
+    { req: Request; callback: (res: any) => void; timeout: number; retryForever: boolean; headers?: { [key: string]: string } }
+  > = {};
   private messageSource: SimulatedMessageSource;
 
   constructor(
@@ -105,7 +108,13 @@ class SimulatedNetwork implements Network {
       }
     };
 
-    this.callbacks[message.head!.correlationId] = { req, callback: cb, timeout: this.currentTime + 2000 };
+    this.callbacks[message.head!.correlationId] = {
+      req,
+      callback: cb,
+      timeout: this.currentTime + 2000,
+      retryForever: true,
+      headers,
+    };
     this.buffer.push(message);
   }
 
@@ -119,12 +128,30 @@ class SimulatedNetwork implements Network {
       const cb = this.callbacks[key];
       const hasTimedOut = cb.timeout < this.currentTime;
       if (hasTimedOut) {
-        cb.callback({
-          kind: cb.req.kind,
-          head: { corrId: cb.req.head.corrId, version: cb.req.head.version, status: 500 },
-          data: "req timed out",
-        } as any);
-        delete this.callbacks[key];
+        if (cb.retryForever) {
+          // Re-send the request with a new correlation id
+          const newCorrelationId = this.correlationId++;
+          const message = new Message<Request>(this.source, this.target, cb.req, {
+            requ: true,
+            correlationId: newCorrelationId,
+          });
+          this.callbacks[newCorrelationId] = {
+            req: cb.req,
+            callback: cb.callback,
+            timeout: this.currentTime + 2000,
+            retryForever: true,
+            headers: cb.headers,
+          };
+          this.buffer.push(message);
+          delete this.callbacks[key];
+        } else {
+          cb.callback({
+            kind: cb.req.kind,
+            head: { corrId: cb.req.head.corrId, version: cb.req.head.version, status: 500 },
+            data: "req timed out",
+          } as any);
+          delete this.callbacks[key];
+        }
       }
     }
   }
