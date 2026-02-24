@@ -239,7 +239,7 @@ export function run(options: Options) {
               data: {
                 id,
                 timeoutAt,
-                tags: { "resonate:target": "local://any@default" },
+                tags: { "resonate:target": "sim://any@default" },
                 param: encoder.encode({ func: funcName, args: [rnd.randint(0, 20)], version: 1 }),
               },
             },
@@ -259,7 +259,7 @@ export function run(options: Options) {
               data: {
                 id,
                 timeoutAt,
-                tags: { "resonate:target": "local://any@default" },
+                tags: { "resonate:target": "sim://any@default" },
                 param: encoder.encode({ func: funcName, args: [], version: 1 }),
               },
             },
