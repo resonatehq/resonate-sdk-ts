@@ -8,36 +8,21 @@ import { ServerProcess } from "./src/server.js";
 import { Message, Random, Simulator, unicast } from "./src/simulator.js";
 import { WorkerProcess } from "./src/worker.js";
 
-// Function definition
+// Concurrent fibonacci using beginRpc (remote procedure call)
 function* fibonacci(ctx: context.Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
   }
-  const p1 = yield ctx.beginRpc("fibonacci", n - 1);
-  const p2 = yield ctx.beginRpc("fibonacci", n - 2);
+  const p1 = yield ctx.beginRpc("fibonacci", n - 1, ctx.options({ id: `fibonacci-${n - 1}` }));
+  const p2 = yield ctx.beginRpc("fibonacci", n - 2, ctx.options({ id: `fibonacci-${n - 2}` }));
 
   return (yield p1) + (yield p2);
 }
 
-const options: {
-  seed: number;
-  steps: number;
-  randomDelay?: number;
-  dropProb?: number;
-  duplProb?: number;
-  charFlipProb?: number;
-} = {
-  seed: Math.floor(Math.random() * 2 ** 32),
-  steps: 1000000,
-  randomDelay: 0.5,
-  dropProb: 0.5,
-  duplProb: 0.5,
-  charFlipProb: 0,
-};
+const seed = Math.floor(Math.random() * 2 ** 32);
+console.log(`seed: ${seed}`);
 
-console.log(`seed: ${options.seed}`);
-
-// Run Simulation
+const options = { seed, steps: 1_000_000, randomDelay: 0.5, dropProb: 0.5, duplProb: 0.5, charFlipProb: 0 };
 
 const rnd = new Random(options.seed);
 const clock = new StepClock();
@@ -52,38 +37,12 @@ const sim = new Simulator(rnd, {
 });
 
 const server = new ServerProcess(clock, "server");
-const worker1 = new WorkerProcess(
-  rnd,
-  clock,
-  encoder,
-  registry,
-  { charFlipProb: options.charFlipProb ?? rnd.random(0.05) },
-  "worker-1",
-  "default",
-);
-const worker2 = new WorkerProcess(
-  rnd,
-  clock,
-  encoder,
-  registry,
-  { charFlipProb: options.charFlipProb ?? rnd.random(0.05) },
-  "worker-2",
-  "default",
-);
-const worker3 = new WorkerProcess(
-  rnd,
-  clock,
-  encoder,
-  registry,
-  { charFlipProb: options.charFlipProb ?? rnd.random(0.05) },
-  "worker-3",
-  "default",
-);
-
-const workers = [worker1, worker2, worker3] as const;
+const worker1 = new WorkerProcess(rnd, clock, encoder, registry, { charFlipProb: options.charFlipProb }, "worker-1", "default");
+const worker2 = new WorkerProcess(rnd, clock, encoder, registry, { charFlipProb: options.charFlipProb }, "worker-2", "default");
+const worker3 = new WorkerProcess(rnd, clock, encoder, registry, { charFlipProb: options.charFlipProb }, "worker-3", "default");
 
 sim.register(server);
-for (const worker of workers) {
+for (const worker of [worker1, worker2, worker3]) {
   sim.register(worker);
 }
 
@@ -91,40 +50,43 @@ const n = 10;
 const id = `fibonacci-${n}`;
 
 sim.delay(0, () => {
-  const msg = new Message<Request>(
-    unicast("environment"),
-    unicast("server"),
-    {
-      kind: "promise.create",
-      head: { corrId: "", version: "" },
-      data: {
-        id,
-        timeoutAt: 10000000000,
-        tags: { "resonate:target": "sim://any@default" },
-        param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
+  sim.send(
+    new Message<Request>(
+      unicast("environment"),
+      unicast("server"),
+      {
+        kind: "promise.create",
+        head: { corrId: "", version: "" },
+        data: {
+          id,
+          timeoutAt: 10_000_000_000,
+          tags: { "resonate:target": "sim://any@default" },
+          param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
+        },
       },
-    },
-    { requ: true, correlationId: 1 },
+      { requ: true, correlationId: 1 },
+    ),
   );
-  sim.send(msg);
 });
 
 function f(n: number, memo: Record<number, number> = {}): number {
   if (n <= 1) return n;
-
-  if (memo[n] !== undefined) {
-    return memo[n];
-  }
-
+  if (memo[n] !== undefined) return memo[n];
   memo[n] = f(n - 1, memo) + f(n - 2, memo);
   return memo[n];
 }
 
-const result = sim.execUntil(options.steps, () => {
+const settled = sim.execUntil(options.steps, () => {
   const promise = server.server.promises.get(id);
-  const value = promise?.value;
-  const valueWithHeaders = value ? { headers: value.headers || {}, data: value.data || "" } : undefined;
-  return !!valueWithHeaders && encoder.decode(valueWithHeaders) === f(n);
+  return promise !== undefined && promise.state !== "pending";
 });
 
-util.assert(result);
+util.assert(settled);
+
+const promise = server.server.promises.get(id)!;
+util.assert(promise.state === "resolved");
+
+const decoded = encoder.decode({ headers: promise.value.headers || {}, data: promise.value.data || "" });
+util.assert(decoded === f(n));
+
+console.log(`fibonacci(${n}) = ${decoded} ✓`);
