@@ -70,7 +70,6 @@ class SimulatedNetwork implements Network {
       req: Request;
       callback: (res: any) => void;
       timeout: number;
-      retryForever: boolean;
       headers?: { [key: string]: string };
     }
   > = {};
@@ -98,7 +97,6 @@ class SimulatedNetwork implements Network {
     req: Extract<Request, { kind: K }>,
     callback: (res: Extract<Response, { kind: K }>) => void,
     headers?: { [key: string]: string },
-    retryForever?: boolean,
   ): void {
     const message = new Message<Request>(this.source, this.target, req, {
       requ: true,
@@ -118,7 +116,6 @@ class SimulatedNetwork implements Network {
       req,
       callback: cb,
       timeout: this.currentTime + 2000,
-      retryForever: retryForever ?? false,
       headers,
     };
     this.buffer.push(message);
@@ -134,30 +131,12 @@ class SimulatedNetwork implements Network {
       const cb = this.callbacks[key];
       const hasTimedOut = cb.timeout < this.currentTime;
       if (hasTimedOut) {
-        if (cb.retryForever) {
-          // Re-send the request with a new correlation id
-          const newCorrelationId = this.correlationId++;
-          const message = new Message<Request>(this.source, this.target, cb.req, {
-            requ: true,
-            correlationId: newCorrelationId,
-          });
-          this.callbacks[newCorrelationId] = {
-            req: cb.req,
-            callback: cb.callback,
-            timeout: this.currentTime + 2000,
-            retryForever: cb.retryForever,
-            headers: cb.headers,
-          };
-          this.buffer.push(message);
-          delete this.callbacks[key];
-        } else {
-          cb.callback({
-            kind: cb.req.kind,
-            head: { corrId: cb.req.head.corrId, version: cb.req.head.version, status: 500 },
-            data: "req timed out",
-          } as any);
-          delete this.callbacks[key];
-        }
+        cb.callback({
+          kind: cb.req.kind,
+          head: { corrId: cb.req.head.corrId, version: cb.req.head.version, status: 500 },
+          data: "req timed out",
+        } as any);
+        delete this.callbacks[key];
       }
     }
   }
