@@ -135,7 +135,7 @@ class SimulatedNetwork implements Network {
           kind: cb.req.kind,
           head: { corrId: cb.req.head.corrId, version: cb.req.head.version, status: 500 },
           data: "req timed out",
-        } as any);
+        });
         delete this.callbacks[key];
       }
     }
@@ -155,7 +155,7 @@ class SimulatedNetwork implements Network {
             kind: entry.req.kind,
             head: { corrId: entry.req.head.corrId, version: entry.req.head.version, status: 500 },
             data: typeof msg.data.err === "string" ? msg.data.err : msg.data.err?.message || "unknown error",
-          } as Response);
+          });
         } else {
           util.assertDefined(msg.data.res);
           entry.callback(this.maybeCorruptData(msg.data.res));

@@ -46,13 +46,10 @@ export class ServerProcess extends Process {
           const result = this.server.apply(this.clock.time, message.data);
           outgoing.push(...extractOutgoing(result.changes));
           res = {
-            res: {
-              ...result.response,
-              head: { ...result.response.head, corrId: message.data.head.corrId, version: message.data.head.version },
-            } as Response,
+            res: result.response,
           };
         } catch (err: any) {
-          res = { err: err };
+          res = { err };
         }
 
         responses.push(message.resp(res));
