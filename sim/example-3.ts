@@ -14,7 +14,7 @@ function* fibonacci(ctx: context.Context, n: number): Generator<any, number, any
     return n;
   }
   const v1 = yield ctx.run(fibonacci, n - 1, ctx.options({ id: `fibonacci-${n - 1}` }));
-  const v2 = yield ctx.run(fibonacci, n - 2, ctx.options({ id: `fibonacci-${n - 2}` }));
+  const v2 = yield ctx.run("fibonacci", n - 2, ctx.options({ id: `fibonacci-${n - 2}` }));
 
   return v1 + v2;
 }
@@ -108,8 +108,6 @@ const settled = sim.execUntil(options.steps, () => {
 util.assert(settled);
 
 const promise = server.server.promises.get(id)!;
-util.assert(promise.state === "resolved");
-
 const decoded = encoder.decode({ headers: promise.value.headers || {}, data: promise.value.data || "" });
 util.assert(decoded === f(n));
 

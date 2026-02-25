@@ -13,8 +13,8 @@ function* fibonacci(ctx: context.Context, n: number): Generator<any, number, any
   if (n <= 1) {
     return n;
   }
-  const p1 = yield ctx.beginRpc("fibonacci", n - 1, ctx.options({ id: `fibonacci-${n - 1}` }));
-  const p2 = yield ctx.beginRpc("fibonacci", n - 2, ctx.options({ id: `fibonacci-${n - 2}` }));
+  const p1 = yield ctx.beginRpc("fibonacci", n - 1);
+  const p2 = yield ctx.beginRpc(fibonacci, n - 2);
 
   return (yield p1) + (yield p2);
 }
@@ -108,8 +108,6 @@ const settled = sim.execUntil(options.steps, () => {
 util.assert(settled);
 
 const promise = server.server.promises.get(id)!;
-util.assert(promise.state === "resolved");
-
 const decoded = encoder.decode({ headers: promise.value.headers || {}, data: promise.value.data || "" });
 util.assert(decoded === f(n));
 

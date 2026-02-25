@@ -14,7 +14,7 @@ function* fibLfi(ctx: Context, n: number): Generator<any, number, any> {
     return n;
   }
   const p1 = yield ctx.beginRun(fibLfi, n - 1, ctx.options({ id: `fibLfi-${n - 1}` }));
-  const p2 = yield ctx.beginRun(fibLfi, n - 2, ctx.options({ id: `fibLfi-${n - 2}` }));
+  const p2 = yield ctx.beginRun("fibLfi", n - 2, ctx.options({ id: `fibLfi-${n - 2}` }));
 
   return (yield p1) + (yield p2);
 }
@@ -23,7 +23,7 @@ function* fibRfi(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
   }
-  const p1 = yield ctx.beginRpc("fibRfi", n - 1, ctx.options({ id: `fibRfi-${n - 1}` }));
+  const p1 = yield ctx.beginRpc(fibRfi, n - 1, ctx.options({ id: `fibRfi-${n - 1}` }));
   const p2 = yield ctx.beginRpc("fibRfi", n - 2, ctx.options({ id: `fibRfi-${n - 2}` }));
 
   return (yield p1) + (yield p2);
@@ -34,7 +34,7 @@ function* fibLfc(ctx: Context, n: number): Generator<any, number, any> {
     return n;
   }
   const v1 = yield ctx.run(fibLfc, n - 1, ctx.options({ id: `fibLfc-${n - 1}` }));
-  const v2 = yield ctx.run(fibLfc, n - 2, ctx.options({ id: `fibLfc-${n - 2}` }));
+  const v2 = yield ctx.run("fibLfc", n - 2, ctx.options({ id: `fibLfc-${n - 2}` }));
   return v1 + v2;
 }
 
@@ -42,7 +42,7 @@ function* fibRfc(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
   }
-  const v1 = yield ctx.rpc("fibRfc", n - 1, ctx.options({ id: `fibRfc-${n - 1}` }));
+  const v1 = yield ctx.rpc(fibRfc, n - 1, ctx.options({ id: `fibRfc-${n - 1}` }));
   const v2 = yield ctx.rpc("fibRfc", n - 2, ctx.options({ id: `fibRfc-${n - 2}` }));
   return v1 + v2;
 }
