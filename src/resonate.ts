@@ -22,7 +22,6 @@ import { type Options, OptionsBuilder } from "./options.js";
 import { Promises } from "./promises.js";
 import { Registry } from "./registry.js";
 import { Schedules } from "./schedules.js";
-import { NoopTracer, type Tracer } from "./tracer.js";
 import type { Func, ParamsWithOptions, Return } from "./types.js";
 import * as util from "./util.js";
 
@@ -68,7 +67,6 @@ export class Resonate {
   private verbose: boolean;
   private messageSource: MessageSource;
 
-  private tracer: Tracer;
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
@@ -97,7 +95,6 @@ export class Resonate {
    * @param options.token - Bearer token for authentication. Defaults to `process.env.RESONATE_TOKEN`.
    * @param options.verbose - Enables verbose logging. Defaults to `false`.
    * @param options.encryptor - Payload encryptor. Defaults to {@link NoopEncryptor}.
-   * @param options.tracer - Tracing implementation. Defaults to {@link NoopTracer}.
    * @param options.transport - Custom network transport implementation. Defaults to `undefined`.
    * @param options.prefix - ID prefix applied to generated IDs. Defaults to
    *   `process.env.RESONATE_PREFIX` when set.
@@ -111,7 +108,6 @@ export class Resonate {
     token = undefined,
     verbose = false,
     encryptor = undefined,
-    tracer = undefined,
     transport = undefined,
     prefix = undefined,
   }: {
@@ -123,13 +119,11 @@ export class Resonate {
     token?: string;
     verbose?: boolean;
     encryptor?: Encryptor;
-    tracer?: Tracer;
     transport?: Network | (Network & MessageSource);
     prefix?: string;
   } = {}) {
     this.clock = new WallClock();
     this.ttl = ttl;
-    this.tracer = tracer ?? new NoopTracer();
     this.codec = new Codec(encryptor ?? new NoopEncryptor());
 
     const resolvedPrefix = prefix ?? process.env.RESONATE_PREFIX;
@@ -231,7 +225,6 @@ export class Resonate {
       dependencies: this.dependencies,
       optsBuilder: this.optsBuilder,
       verbose: this.verbose,
-      tracer: this.tracer,
     });
 
     this.promises = new Promises(this.network);
@@ -289,11 +282,9 @@ export class Resonate {
   static local({
     verbose = false,
     encryptor = undefined,
-    tracer = undefined,
   }: {
     verbose?: boolean;
     encryptor?: Encryptor;
-    tracer?: Tracer;
   } = {}): Resonate {
     return new Resonate({
       group: "default",
@@ -301,7 +292,6 @@ export class Resonate {
       ttl: Number.MAX_SAFE_INTEGER,
       verbose,
       encryptor,
-      tracer,
     });
   }
 
@@ -350,7 +340,6 @@ export class Resonate {
     token = undefined,
     verbose = false,
     encryptor = undefined,
-    tracer = undefined,
     prefix = undefined,
   }: {
     url?: string;
@@ -361,10 +350,9 @@ export class Resonate {
     token?: string;
     verbose?: boolean;
     encryptor?: Encryptor;
-    tracer?: Tracer;
     prefix?: string;
   } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth, token, verbose, encryptor, tracer, prefix });
+    return new Resonate({ url, group, pid, ttl, auth, token, verbose, encryptor, prefix });
   }
 
   /**
@@ -527,67 +515,48 @@ export class Resonate {
     id = `${this.idPrefix}${id}`;
 
     util.assert(registered.version > 0, "function version must be greater than zero");
-
-    const span = this.tracer.startSpan(id, this.clock.now());
-    span.setAttribute("type", "run");
-    span.setAttribute("func", registered.name);
-    span.setAttribute("version", registered.version);
-
-    try {
-      const { promise, task } = await this.taskCreate(
-        {
-          kind: "task.create",
-          head: { corrId: "", version: "" },
-          data: {
-            pid: this.pid,
-            ttl: this.ttl,
-            action: {
-              kind: "promise.create",
-              head: { corrId: "", version: "" },
-              data: {
-                id: id,
-                timeoutAt: Date.now() + opts.timeout,
-                param: {
-                  data: {
-                    func: registered.name,
-                    args: args,
-                    retry: opts.retryPolicy?.encode(),
-                    version: registered.version,
-                  },
-                  headers: {},
+    const { promise, task } = await this.taskCreate(
+      {
+        kind: "task.create",
+        head: { corrId: "", version: "" },
+        data: {
+          pid: this.pid,
+          ttl: this.ttl,
+          action: {
+            kind: "promise.create",
+            head: { corrId: "", version: "" },
+            data: {
+              id: id,
+              timeoutAt: Date.now() + opts.timeout,
+              param: {
+                data: {
+                  func: registered.name,
+                  args: args,
+                  retry: opts.retryPolicy?.encode(),
+                  version: registered.version,
                 },
-                tags: {
-                  ...opts.tags,
-                  "resonate:origin": id,
-                  "resonate:branch": id,
-                  "resonate:parent": id,
-                  "resonate:scope": "global",
-                  "resonate:target": this.anycast,
-                },
+                headers: {},
+              },
+              tags: {
+                ...opts.tags,
+                "resonate:origin": id,
+                "resonate:branch": id,
+                "resonate:parent": id,
+                "resonate:scope": "global",
+                "resonate:target": this.anycast,
               },
             },
           },
         },
-        span.encode(),
-      );
+      },
+      {},
+    );
 
-      // if the promise is created, the span is considered successful
-      span.setStatus(true);
-
-      if (task) {
-        this.core.executeUntilBlocked(span, { kind: "claimed", task: task, rootPromise: promise }, () => {
-          span.end(this.clock.now());
-        });
-      } else {
-        span.end(this.clock.now());
-      }
-
-      return this.createHandle(promise);
-    } catch (e) {
-      span.setStatus(false, String(e));
-      span.end(this.clock.now());
-      throw e;
+    if (task) {
+      this.core.executeUntilBlocked({ kind: "claimed", task: task, rootPromise: promise }, () => {});
     }
+
+    return this.createHandle(promise);
   }
 
   /**
@@ -677,52 +646,36 @@ export class Resonate {
 
     const func = registered ? registered.name : (funcOrName as string);
     const version = registered ? registered.version : opts.version || 1;
-
-    const span = this.tracer.startSpan(id, this.clock.now());
-    span.setAttribute("type", "rpc");
-    span.setAttribute("func", func);
-    span.setAttribute("version", version);
-
-    try {
-      const promise = await this.promiseCreate(
-        {
-          kind: "promise.create",
-          head: { corrId: "", version: "" },
-          data: {
-            id: id,
-            timeoutAt: Date.now() + opts.timeout,
-            param: {
-              data: {
-                func: func,
-                args: args,
-                retry: opts.retryPolicy?.encode(),
-                version: version,
-              },
-              headers: {},
+    const promise = await this.promiseCreate(
+      {
+        kind: "promise.create",
+        head: { corrId: "", version: "" },
+        data: {
+          id: id,
+          timeoutAt: Date.now() + opts.timeout,
+          param: {
+            data: {
+              func: func,
+              args: args,
+              retry: opts.retryPolicy?.encode(),
+              version: version,
             },
-            tags: {
-              ...opts.tags,
-              "resonate:origin": id,
-              "resonate:branch": id,
-              "resonate:parent": id,
-              "resonate:scope": "global",
-              "resonate:target": opts.target,
-            },
+            headers: {},
+          },
+          tags: {
+            ...opts.tags,
+            "resonate:origin": id,
+            "resonate:branch": id,
+            "resonate:parent": id,
+            "resonate:scope": "global",
+            "resonate:target": opts.target,
           },
         },
-        span.encode(),
-      );
+      },
+      {},
+    );
 
-      // if the promise is created, the span is considered successful
-      span.setStatus(true);
-      span.end(this.clock.now());
-
-      return this.createHandle(promise);
-    } catch (e) {
-      span.setStatus(false, String(e));
-      span.end(this.clock.now());
-      throw e;
-    }
+    return this.createHandle(promise);
   }
 
   public async schedule<F extends Func>(

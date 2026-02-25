@@ -12,6 +12,5 @@ export { Message } from "./network/types.js";
 export { OptionsBuilder } from "./options.js";
 export { Registry } from "./registry.js";
 export { Resonate, ResonateFunc, ResonateHandle } from "./resonate.js";
-export { NoopTracer } from "./tracer.js";
 export type { Effects } from "./types.js";
 export { Func } from "./types.js";

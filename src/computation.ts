@@ -9,7 +9,6 @@ import type { OptionsBuilder } from "./options.js";
 import { AsyncProcessor, type Processor } from "./processor/processor.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
-import type { Span } from "./tracer.js";
 import type { Effects, Func, Result } from "./types.js";
 import * as util from "./util.js";
 
@@ -45,8 +44,6 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
-  private span: Span;
-  private spans: Map<string, Span>;
 
   private seen: Set<string> = new Set();
   private processing = false;
@@ -61,7 +58,6 @@ export class Computation {
     dependencies: Map<string, any>,
     optsBuilder: OptionsBuilder,
     verbose: boolean,
-    span: Span,
     processor?: Processor,
   ) {
     this.id = id;
@@ -74,8 +70,6 @@ export class Computation {
     this.optsBuilder = optsBuilder;
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
-    this.span = span;
-    this.spans = new Map();
   }
 
   public executeUntilBlocked(task: Task, done: (res: Result<Status, undefined>) => void) {
@@ -142,7 +136,6 @@ export class Computation {
       timeout: rootPromise.timeoutAt,
       version: registered.version,
       retryPolicy: retryPolicy,
-      span: this.span,
     };
 
     if (util.isGeneratorFunction(registered.func)) {
@@ -189,7 +182,7 @@ export class Computation {
 
     const ctx = new InnerContext(ctxConfig);
 
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.effects, this.spans, (res) => {
+    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.effects, (res) => {
       if (res.kind === "error") {
         return done(res);
       }
@@ -236,7 +229,6 @@ export class Computation {
         id,
         ctx,
         func: async () => await func(ctx, ...args),
-        span: ctx.span,
         verbose: this.verbose,
       },
     ]);
@@ -263,7 +255,6 @@ export class Computation {
       id: t.id,
       ctx: t.ctx,
       func: async () => await t.func(t.ctx, ...t.args),
-      span: t.ctx.span,
       verbose: this.verbose,
     }));
 

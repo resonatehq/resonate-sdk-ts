@@ -10,7 +10,6 @@ import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js
 import { isSuccess } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
-import { NoopSpan, NoopTracer } from "../src/tracer.js";
 import type { Result } from "../src/types.js";
 
 class TestHeartbeat implements Heartbeat {
@@ -58,7 +57,6 @@ function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { m
     clock: new WallClock(),
     network,
     codec,
-    tracer: new NoopTracer(),
     registry: new Registry(),
     heartbeat: new TestHeartbeat(),
     dependencies: new Map(),
@@ -177,7 +175,7 @@ describe("Core", () => {
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("value");
@@ -202,7 +200,7 @@ describe("Core", () => {
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("value");
@@ -223,7 +221,7 @@ describe("Core", () => {
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("error");
@@ -244,7 +242,7 @@ describe("Core", () => {
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("value");
@@ -289,7 +287,7 @@ describe("Core", () => {
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("value");

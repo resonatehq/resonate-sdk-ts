@@ -1045,7 +1045,6 @@ describe("Resonate usage tests", () => {
     }
 
     function* bar(ctx: Context) {
-      console.log(ctx.id);
       expect(ctx.id.startsWith(prefix)).toBe(true);
       expect(ctx.id.startsWith(`${prefix}:${prefix}`)).toBe(false);
       return "bar";
@@ -1067,6 +1066,9 @@ describe("Resonate usage tests", () => {
 
 describe("Context usage tests", () => {
   test("ctx.panic aborts execution when condition is true", async () => {
+    const originalError = console.error;
+    console.error = () => {};
+
     const resonate = Resonate.local();
 
     let completed = false;
@@ -1083,6 +1085,7 @@ describe("Context usage tests", () => {
     expect(completed).toBe(false);
 
     resonate.stop();
+    console.error = originalError;
   });
 
   test("ctx.panic continues execution when condition is false", async () => {
@@ -1100,6 +1103,9 @@ describe("Context usage tests", () => {
   });
 
   test("ctx.assert aborts execution when condition is false", async () => {
+    const originalError = console.error;
+    console.error = () => {};
+
     const resonate = Resonate.local();
 
     let completed = false;
@@ -1116,6 +1122,7 @@ describe("Context usage tests", () => {
     expect(completed).toBe(false);
 
     resonate.stop();
+    console.error = originalError;
   });
 
   test("ctx.assert continues execution when condition is true", async () => {

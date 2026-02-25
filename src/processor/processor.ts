@@ -1,11 +1,10 @@
 import type * as context from "../context.js";
-import type { Span } from "../tracer.js";
 import type { Result } from "../types.js";
 import * as util from "../util.js";
 
 type F = () => Promise<unknown>;
 
-type WorkItem = { id: string; ctx: context.InnerContext; func: F; span: Span; verbose: boolean };
+type WorkItem = { id: string; ctx: context.InnerContext; func: F; verbose: boolean };
 
 export interface Processor {
   process(work: WorkItem[]): void;
@@ -26,7 +25,7 @@ export class AsyncProcessor implements Processor {
       }
 
       this.pending.add(item.id);
-      this.executeWork(item.id, item.ctx, item.func, item.span, item.verbose).then(
+      this.executeWork(item.id, item.ctx, item.func, item.verbose).then(
         (result) => this.complete(item.id, result),
         (error) => this.complete(item.id, { kind: "error", error }),
       );
@@ -85,20 +84,13 @@ export class AsyncProcessor implements Processor {
     id: string,
     ctx: context.InnerContext,
     func: () => Promise<unknown>,
-    span: Span,
     verbose: boolean,
   ): Promise<Result<unknown, any>> {
     while (true) {
-      const childSpan = span.startSpan(`${id}::${ctx.info.attempt}`, ctx.clock.now());
-      childSpan.setAttribute("attempt", ctx.info.attempt);
-
       try {
         const data = await func();
-        childSpan.setStatus(true);
         return { kind: "value", value: data };
       } catch (error) {
-        childSpan.setStatus(false, String(error));
-
         const retryIn = ctx.retryPolicy.next(ctx.info.attempt);
         if (retryIn === null || ctx.clock.now() + retryIn >= ctx.info.timeout) {
           return { kind: "error", error };
@@ -113,8 +105,6 @@ export class AsyncProcessor implements Processor {
 
         ctx.info.attempt++;
         await new Promise((resolve) => setTimeout(resolve, retryIn));
-      } finally {
-        childSpan.end(ctx.clock.now());
       }
     }
   }

@@ -9,7 +9,6 @@ import { HttpNetwork } from "./network/http.js";
 import type { ExecuteMsg } from "./network/types.js";
 import { OptionsBuilder } from "./options.js";
 import { Registry } from "./registry.js";
-import { NoopTracer } from "./tracer.js";
 import type { Func } from "./types.js";
 
 declare const Deno: { serve(handler: (req: Request) => Promise<Response>): any } | undefined;
@@ -107,7 +106,6 @@ export class Resonate {
       }
 
       const clock = new WallClock();
-      const tracer = new NoopTracer();
       const network = new HttpNetwork({
         headers: {},
         timeout: 60 * 1000, // 60s
@@ -129,7 +127,6 @@ export class Resonate {
           idPrefix: "",
         }),
         verbose: this.verbose,
-        tracer,
       });
 
       // Process the message with async wrapper

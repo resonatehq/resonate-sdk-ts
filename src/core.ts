@@ -15,7 +15,6 @@ import {
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
-import type { Span, Tracer } from "./tracer.js";
 import type { Effects, Result } from "./types.js";
 import * as util from "./util.js";
 
@@ -44,7 +43,6 @@ export class Core {
   private clock: Clock;
   private network: Network;
   private codec: Codec;
-  private tracer: Tracer;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
   private heartbeat: Heartbeat;
@@ -58,7 +56,6 @@ export class Core {
     clock,
     network,
     codec,
-    tracer,
     registry,
     heartbeat,
     dependencies,
@@ -71,7 +68,6 @@ export class Core {
     clock: Clock;
     network: Network;
     codec: Codec;
-    tracer: Tracer;
     registry: Registry;
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
@@ -84,7 +80,6 @@ export class Core {
     this.clock = clock;
     this.network = network;
     this.codec = codec;
-    this.tracer = tracer;
     this.registry = registry;
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
@@ -105,10 +100,9 @@ export class Core {
     });
   }
 
-  public executeUntilBlocked(span: Span, claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
+  public executeUntilBlocked(claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
     const computation = this.createComputation(
       claimed.rootPromise.id,
-      span,
       util.buildEffects(this.network, this.codec, claimed.preload),
     );
 
@@ -124,7 +118,7 @@ export class Core {
               return done(res);
             }
             if (res.value.continue) {
-              return this.executeUntilBlocked(span, claimed, done);
+              return this.executeUntilBlocked(claimed, done);
             }
             return done(compRes);
           });
@@ -137,7 +131,7 @@ export class Core {
   }
 
   // Extracted to allow tests to spy on computation creation.
-  private createComputation(id: string, span: Span, effects: Effects): Computation {
+  private createComputation(id: string, effects: Effects): Computation {
     return new Computation(
       id,
       this.clock,
@@ -148,7 +142,6 @@ export class Core {
       this.dependencies,
       this.optsBuilder,
       this.verbose,
-      span,
     );
   }
 
@@ -262,7 +255,6 @@ export class Core {
 
         const acquiredTask: TaskRecord = { id: task.id, state: "acquired", version: task.version };
         this.executeUntilBlocked(
-          this.tracer.decode(msg.head),
           { kind: "claimed", task: acquiredTask, rootPromise: promise, preload: res.data.preload },
           (execRes) => {
             cb(execRes);

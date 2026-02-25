@@ -11,7 +11,6 @@ import { OptionsBuilder } from "../src/options.js";
 import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
 import { Exponential, Never } from "../src/retries.js";
-import { NoopSpan } from "../src/tracer.js";
 import type { Effects, Result } from "../src/types.js";
 import * as util from "../src/util.js";
 
@@ -43,7 +42,6 @@ function buildComputation(registry: Registry): {
     new Map(),
     new OptionsBuilder({ match: (target: string) => target, idPrefix: "test-" }),
     false,
-    new NoopSpan(),
     new AsyncProcessor(),
   );
 

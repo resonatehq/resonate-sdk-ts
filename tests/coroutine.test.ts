@@ -7,7 +7,6 @@ import type { Message, PromiseRecord, Request, Response } from "../src/network/t
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
-import { NoopSpan } from "../src/tracer.js";
 import type { Effects, Result } from "../src/types.js";
 import * as util from "../src/util.js";
 
@@ -110,13 +109,11 @@ describe("Coroutine", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
         func,
         args,
         { id: uuid, state: "acquired" as const, version: 1 },
         effects,
-        new Map(),
         (res) => {
           expect(res.kind).toBe("value");
           util.assert(res.kind === "value");
@@ -342,6 +339,9 @@ describe("Coroutine", () => {
   });
 
   test("DIE with condition true aborts execution", async () => {
+    const originalError = console.error;
+    console.error = () => {};
+
     function* foo(ctx: Context) {
       yield* ctx.panic(true, "Abort execution");
       return 42;
@@ -374,13 +374,11 @@ describe("Coroutine", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
         foo,
         [],
         { id: "foo.1", state: "acquired" as const, version: 1 },
         effects,
-        new Map(),
         (res) => {
           resolve(res);
         },
@@ -388,6 +386,8 @@ describe("Coroutine", () => {
     });
 
     expect(result.kind).toBe("error");
+
+    console.error = originalError;
   });
 
   test("DIE with condition false continues execution", async () => {

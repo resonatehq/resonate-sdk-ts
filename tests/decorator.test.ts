@@ -5,7 +5,6 @@ import { LocalNetwork } from "../src/network/local.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
-import { NoopSpan } from "../src/tracer.js";
 import type { Yieldable } from "../src/types.js";
 
 describe("Decorator", () => {
@@ -44,7 +43,6 @@ describe("Decorator", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
       ),
     );
@@ -93,7 +91,6 @@ describe("Decorator", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
       ),
     );
@@ -169,7 +166,6 @@ describe("Decorator", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
       ),
     );
@@ -216,7 +212,6 @@ describe("Decorator", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
       ),
     );
@@ -270,7 +265,6 @@ describe("Decorator", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
       ),
     );
@@ -326,7 +320,6 @@ describe("Decorator", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
       ),
     );
@@ -361,7 +354,6 @@ describe("Decorator", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
       ),
     );
