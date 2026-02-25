@@ -2,7 +2,7 @@ import type { StepClock } from "../../src/clock.js";
 import { type Change, Server } from "../../src/network/local.js";
 import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
 import * as util from "../../src/util.js";
-import { type Address, anycast, Message, Process, unicast, Random } from "./simulator.js";
+import { type Address, anycast, Message, Process, type Random, unicast } from "./simulator.js";
 
 function extractOutgoing(changes: Change[]): Array<{ address: string; message: NetworkMessage }> {
   const out: Array<{ address: string; message: NetworkMessage }> = [];
