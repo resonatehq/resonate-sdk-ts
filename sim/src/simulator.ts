@@ -169,21 +169,19 @@ export class Simulator {
     const consumed: Message<any>[] = [];
 
     for (const message of this.network) {
-      // Messages from the environment bypass all network disruptions
-      const fromEnv = message.source.kind === "unicast" && message.source.iaddr === "environment";
       // Drop?
-      if (this.prng.next() < this.deliveryOptions.dropProb && !fromEnv) {
+      if (this.prng.next() < this.deliveryOptions.dropProb) {
         continue;
       }
       // Delay?
-      if (this.prng.next() < this.deliveryOptions.randomDelay && !fromEnv) {
+      if (this.prng.next() < this.deliveryOptions.randomDelay) {
         retained.push(message);
         continue;
       }
       // Deliver now
       consumed.push(message);
       // Duplicate?
-      if (this.prng.next() < this.deliveryOptions.duplProb && !fromEnv) {
+      if (this.prng.next() < this.deliveryOptions.duplProb) {
         retained.push(message);
       }
     }
@@ -274,6 +272,7 @@ export class Simulator {
   repeat(interval: number, fn: () => void): void {
     this.scheduledRepeat.push({ interval, fn });
   }
+
   delay(runAt: number, fn: () => void): void {
     this.scheduledDelay.push({ runAt, fn });
   }

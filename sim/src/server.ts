@@ -2,7 +2,7 @@ import type { StepClock } from "../../src/clock.js";
 import { type Change, Server } from "../../src/network/local.js";
 import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
 import * as util from "../../src/util.js";
-import { type Address, anycast, Message, Process, type Random, unicast } from "./simulator.js";
+import { type Address, anycast, Message, Process, unicast } from "./simulator.js";
 
 function extractOutgoing(changes: Change[]): Array<{ address: string; message: NetworkMessage }> {
   const out: Array<{ address: string; message: NetworkMessage }> = [];
@@ -16,17 +16,14 @@ function extractOutgoing(changes: Change[]): Array<{ address: string; message: N
 
 export class ServerProcess extends Process {
   private clock: StepClock;
-  private prng: Random;
   server: Server = new Server();
 
   constructor(
     clock: StepClock,
-    prng: Random,
     public readonly iaddr: string,
   ) {
     super(iaddr);
     this.clock = clock;
-    this.prng = prng;
   }
 
   tick(tick: number, messages: Message<Request>[]): Message<{ err?: any; res?: Response } | NetworkMessage>[] {
@@ -54,16 +51,6 @@ export class ServerProcess extends Process {
 
         responses.push(message.resp(res));
       }
-    }
-
-    // Tick to process any remaining timeouts (50/50 chance)
-    if (this.prng.next() < 0.5) {
-      const tickResult = this.server.apply(this.clock.time, {
-        kind: "debug.tick",
-        head: { corrId: "", version: "" },
-        data: { time: this.clock.time },
-      });
-      outgoing.push(...extractOutgoing(tickResult.changes));
     }
 
     for (const msg of outgoing) {

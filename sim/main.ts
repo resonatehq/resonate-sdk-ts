@@ -196,7 +196,22 @@ export function run(options: Options) {
   }
 
   // server
-  sim.register(new ServerProcess(clock, rnd, "server"));
+  sim.register(new ServerProcess(clock, "server"));
+
+  sim.repeat(1, () => {
+    sim.send(
+      new Message(
+        unicast("environment"),
+        unicast("server"),
+        {
+          kind: "debug.tick",
+          head: { corrId: "", version: "" },
+          data: { time: clock.time },
+        },
+        { requ: true },
+      ),
+    );
+  });
 
   // workers
   for (let i = 1; i <= 3; i++) {
@@ -243,7 +258,7 @@ export function run(options: Options) {
                 param: encoder.encode({ func: funcName, args: [rnd.randint(0, 20)], version: 1 }),
               },
             },
-            { requ: true, correlationId: i },
+            { requ: true },
           );
           break;
         }
@@ -263,7 +278,7 @@ export function run(options: Options) {
                 param: encoder.encode({ func: funcName, args: [], version: 1 }),
               },
             },
-            { requ: true, correlationId: i },
+            { requ: true },
           );
           break;
         }

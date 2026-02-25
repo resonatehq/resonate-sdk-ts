@@ -36,7 +36,7 @@ const sim = new Simulator(rnd, {
   duplProb: options.duplProb,
 });
 
-const server = new ServerProcess(clock, rnd, "server");
+const server = new ServerProcess(clock, "server");
 const worker1 = new WorkerProcess(
   rnd,
   clock,
@@ -70,10 +70,25 @@ for (const worker of [worker1, worker2, worker3]) {
   sim.register(worker);
 }
 
-const n = 10;
+const n = 20;
 const id = `fibonacci-${n}`;
 
-sim.delay(0, () => {
+sim.repeat(1, () => {
+  sim.send(
+    new Message(
+      unicast("environment"),
+      unicast("server"),
+      {
+        kind: "debug.tick",
+        head: { corrId: "", version: "" },
+        data: { time: clock.time },
+      },
+      { requ: true },
+    ),
+  );
+});
+
+sim.repeat(1, () => {
   sim.send(
     new Message<Request>(
       unicast("environment"),
@@ -88,7 +103,7 @@ sim.delay(0, () => {
           param: encoder.encode({ func: "fibonacci", args: [n], version: 1 }),
         },
       },
-      { requ: true, correlationId: 1 },
+      { requ: true },
     ),
   );
 });
