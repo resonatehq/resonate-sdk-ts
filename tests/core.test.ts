@@ -298,25 +298,6 @@ describe("Core", () => {
       }
       expect(mockRef.mock.calls.length).toBe(2);
     });
-
-    test("computation reused for same root promise ID", async () => {
-      const { core, network, codec, ctorSpy } = buildCore({
-        responses: [{ kind: "value", value: { kind: "done", id: "reuse-id", state: "resolved", value: 1 } }],
-      });
-
-      const { task, rootPromise } = await seedAcquiredTask(network, codec, "reuse-id", "main", []);
-      const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-
-      const { promise: p1, cb: cb1 } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb1);
-      await p1;
-
-      const { promise: p2, cb: cb2 } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb2);
-      await p2;
-
-      expect(ctorSpy).toHaveBeenCalledTimes(1);
-    });
   });
 
   describe("onMessage", () => {

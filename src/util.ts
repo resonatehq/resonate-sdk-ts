@@ -1,7 +1,7 @@
 import type { Codec } from "./codec.js";
 import exceptions, { type ResonateError } from "./exceptions.js";
 import type { MessageSource, Network } from "./network/network.js";
-import { isSuccess } from "./network/types.js";
+import { isSuccess, type PromiseRecord } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
 import type { Effects } from "./types.js";
 
@@ -108,9 +108,17 @@ export function once<T extends () => any>(fn: T): T {
 
 // effects
 
-export function buildEffects(network: Network, codec: Codec): Effects {
+export function buildEffects(network: Network, codec: Codec, preload: PromiseRecord[] = []): Effects {
+  const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
+
   return {
     promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
+      const cached = cache.get(req.data.id);
+      if (cached) {
+        done({ kind: "value", value: cached });
+        return;
+      }
+
       try {
         req.data.param = codec.encode(req.data.param.data);
       } catch (e) {
@@ -135,6 +143,7 @@ export function buildEffects(network: Network, codec: Codec): Effects {
           }
           try {
             const promise = codec.decodePromise(res.data.promise);
+            cache.set(promise.id, promise);
             done({ kind: "value", value: promise });
           } catch (e) {
             return done({ kind: "error", error: e as ResonateError });
@@ -146,6 +155,12 @@ export function buildEffects(network: Network, codec: Codec): Effects {
     },
 
     promiseSettle: (req, done, func = "unknown") => {
+      const cached = cache.get(req.data.id);
+      if (cached && cached.state !== "pending") {
+        done({ kind: "value", value: cached });
+        return;
+      }
+
       try {
         req.data.value = codec.encode(req.data.value.data);
       } catch (e) {
@@ -165,6 +180,7 @@ export function buildEffects(network: Network, codec: Codec): Effects {
         }
         try {
           const promise = codec.decodePromise(res.data.promise);
+          cache.set(promise.id, promise);
           done({ kind: "value", value: promise });
         } catch (e) {
           return done({ kind: "error", error: e as ResonateError });

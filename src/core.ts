@@ -30,6 +30,7 @@ export type ClaimedTask = {
   kind: "claimed";
   task: TaskRecord;
   rootPromise: PromiseRecord;
+  preload?: PromiseRecord[];
 };
 
 export type UnclaimedTask = {
@@ -50,8 +51,6 @@ export class Core {
   private dependencies: Map<string, any>;
   private optsBuilder: OptionsBuilder;
   private verbose: boolean;
-  private computations: Map<string, Computation> = new Map();
-  private effects: Effects;
 
   constructor({
     pid,
@@ -100,8 +99,6 @@ export class Core {
       [Never.type, Never],
     ]);
 
-    this.effects = util.buildEffects(this.network, this.codec);
-
     // subscribe to execute
     messageSource?.subscribe("execute", (msg) => {
       this.onMessage(msg, () => undefined);
@@ -109,11 +106,11 @@ export class Core {
   }
 
   public executeUntilBlocked(span: Span, claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
-    let computation = this.computations.get(claimed.rootPromise.id);
-    if (!computation) {
-      computation = this.createComputation(claimed.rootPromise.id, span);
-      this.computations.set(claimed.rootPromise.id, computation);
-    }
+    const computation = this.createComputation(
+      claimed.rootPromise.id,
+      span,
+      util.buildEffects(this.network, this.codec, claimed.preload),
+    );
 
     computation.executeUntilBlocked(claimed, (compRes) => {
       if (compRes.kind === "error") {
@@ -140,19 +137,17 @@ export class Core {
   }
 
   // Extracted to allow tests to spy on computation creation.
-  private createComputation(id: string, span: Span): Computation {
+  private createComputation(id: string, span: Span, effects: Effects): Computation {
     return new Computation(
       id,
       this.clock,
-      this.network,
-      this.effects,
+      effects,
       this.retries,
       this.registry,
       this.heartbeat,
       this.dependencies,
       this.optsBuilder,
       this.verbose,
-      this.tracer,
       span,
     );
   }
@@ -268,7 +263,7 @@ export class Core {
         const acquiredTask: TaskRecord = { id: task.id, state: "acquired", version: task.version };
         this.executeUntilBlocked(
           this.tracer.decode(msg.head),
-          { kind: "claimed", task: acquiredTask, rootPromise: promise },
+          { kind: "claimed", task: acquiredTask, rootPromise: promise, preload: res.data.preload },
           (execRes) => {
             cb(execRes);
           },

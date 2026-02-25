@@ -4,13 +4,12 @@ import type { ClaimedTask, Task } from "./core.js";
 import { Coroutine, type LocalTodo } from "./coroutine.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
-import type { Network } from "./network/network.js";
 import type { PromiseRecord, TaskRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import { AsyncProcessor, type Processor } from "./processor/processor.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
-import type { Span, Tracer } from "./tracer.js";
+import type { Span } from "./tracer.js";
 import type { Effects, Func, Result } from "./types.js";
 import * as util from "./util.js";
 
@@ -55,7 +54,6 @@ export class Computation {
   constructor(
     id: string,
     clock: Clock,
-    network: Network,
     effects: Effects,
     retries: Map<string, RetryPolicyConstructor>,
     registry: Registry,
@@ -63,7 +61,6 @@ export class Computation {
     dependencies: Map<string, any>,
     optsBuilder: OptionsBuilder,
     verbose: boolean,
-    tracer: Tracer,
     span: Span,
     processor?: Processor,
   ) {

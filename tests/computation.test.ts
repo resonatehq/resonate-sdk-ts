@@ -11,7 +11,7 @@ import { OptionsBuilder } from "../src/options.js";
 import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
 import { Exponential, Never } from "../src/retries.js";
-import { NoopSpan, NoopTracer } from "../src/tracer.js";
+import { NoopSpan } from "../src/tracer.js";
 import type { Effects, Result } from "../src/types.js";
 import * as util from "../src/util.js";
 
@@ -33,7 +33,6 @@ function buildComputation(registry: Registry): {
   const computation = new Computation(
     "test-computation",
     new WallClock(),
-    network,
     effects,
     new Map<string, any>([
       ["exponential", Exponential],
@@ -44,7 +43,6 @@ function buildComputation(registry: Registry): {
     new Map(),
     new OptionsBuilder({ match: (target: string) => target, idPrefix: "test-" }),
     false,
-    new NoopTracer(),
     new NoopSpan(),
     new AsyncProcessor(),
   );
