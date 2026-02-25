@@ -36,7 +36,7 @@ const sim = new Simulator(rnd, {
   duplProb: options.duplProb,
 });
 
-const server = new ServerProcess(clock, "server");
+const server = new ServerProcess(clock, rnd, "server");
 const worker1 = new WorkerProcess(
   rnd,
   clock,

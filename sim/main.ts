@@ -196,7 +196,7 @@ export function run(options: Options) {
   }
 
   // server
-  sim.register(new ServerProcess(clock, "server"));
+  sim.register(new ServerProcess(clock, rnd, "server"));
 
   // workers
   for (let i = 1; i <= 3; i++) {
