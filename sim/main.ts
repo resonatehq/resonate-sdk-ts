@@ -14,7 +14,7 @@ function* fibLfi(ctx: Context, n: number): Generator<any, number, any> {
     return n;
   }
   const p1 = yield ctx.beginRun(fibLfi, n - 1, ctx.options({ id: `fibLfi-${n - 1}` }));
-  const p2 = yield ctx.beginRun(fibLfi, n - 2, ctx.options({ id: `fibLfi-${n - 2}` }));
+  const p2 = yield ctx.beginRun("fibLfi", n - 2, ctx.options({ id: `fibLfi-${n - 2}` }));
 
   return (yield p1) + (yield p2);
 }
@@ -23,7 +23,7 @@ function* fibRfi(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
   }
-  const p1 = yield ctx.beginRpc("fibRfi", n - 1, ctx.options({ id: `fibRfi-${n - 1}` }));
+  const p1 = yield ctx.beginRpc(fibRfi, n - 1, ctx.options({ id: `fibRfi-${n - 1}` }));
   const p2 = yield ctx.beginRpc("fibRfi", n - 2, ctx.options({ id: `fibRfi-${n - 2}` }));
 
   return (yield p1) + (yield p2);
@@ -34,7 +34,7 @@ function* fibLfc(ctx: Context, n: number): Generator<any, number, any> {
     return n;
   }
   const v1 = yield ctx.run(fibLfc, n - 1, ctx.options({ id: `fibLfc-${n - 1}` }));
-  const v2 = yield ctx.run(fibLfc, n - 2, ctx.options({ id: `fibLfc-${n - 2}` }));
+  const v2 = yield ctx.run("fibLfc", n - 2, ctx.options({ id: `fibLfc-${n - 2}` }));
   return v1 + v2;
 }
 
@@ -42,7 +42,7 @@ function* fibRfc(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return n;
   }
-  const v1 = yield ctx.rpc("fibRfc", n - 1, ctx.options({ id: `fibRfc-${n - 1}` }));
+  const v1 = yield ctx.rpc(fibRfc, n - 1, ctx.options({ id: `fibRfc-${n - 1}` }));
   const v2 = yield ctx.rpc("fibRfc", n - 2, ctx.options({ id: `fibRfc-${n - 2}` }));
   return v1 + v2;
 }
@@ -69,7 +69,7 @@ function* bar(ctx: Context): Generator<any, any, any> {
   return [yield p1, yield p2];
 }
 
-function* baz(ctx: Context): Generator<any, any, any> {
+function baz(_: Context): string {
   return "baz";
 }
 
@@ -198,6 +198,21 @@ export function run(options: Options) {
   // server
   sim.register(new ServerProcess(clock, "server"));
 
+  sim.repeat(1, () => {
+    sim.send(
+      new Message(
+        unicast("environment"),
+        unicast("server"),
+        {
+          kind: "debug.tick",
+          head: { corrId: "", version: "" },
+          data: { time: clock.time },
+        },
+        { requ: true },
+      ),
+    );
+  });
+
   // workers
   for (let i = 1; i <= 3; i++) {
     sim.register(
@@ -239,11 +254,11 @@ export function run(options: Options) {
               data: {
                 id,
                 timeoutAt,
-                tags: { "resonate:target": "local://any@default" },
+                tags: { "resonate:target": "sim://any@default" },
                 param: encoder.encode({ func: funcName, args: [rnd.randint(0, 20)], version: 1 }),
               },
             },
-            { requ: true, correlationId: i },
+            { requ: true },
           );
           break;
         }
@@ -259,11 +274,11 @@ export function run(options: Options) {
               data: {
                 id,
                 timeoutAt,
-                tags: { "resonate:target": "local://any@default" },
+                tags: { "resonate:target": "sim://any@default" },
                 param: encoder.encode({ func: funcName, args: [], version: 1 }),
               },
             },
-            { requ: true, correlationId: i },
+            { requ: true },
           );
           break;
         }
@@ -279,6 +294,4 @@ export function run(options: Options) {
   console.log("[outbox]: ", sim.outbox);
 }
 
-if (require.main === module) {
-  run(options);
-}
+run(options);

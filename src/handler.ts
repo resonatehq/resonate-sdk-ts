@@ -285,7 +285,6 @@ export class Handler {
     done: (res: Result<PromiseRecord, ResonateError>) => void,
     headers: { [key: string]: string } = {},
   ): void {
-    const id = `__resume:${req.data.awaiter}:${req.data.awaited}`;
     const promise = this.cache.getPromise(req.data.awaited);
     util.assertDefined(promise);
 
@@ -328,7 +327,6 @@ export class Handler {
     done: (res: Result<PromiseRecord, ResonateError>) => void,
     retryForever = false,
   ) {
-    const id = `__notify:${req.data.awaited}:${req.data.address}`;
     const promise = this.cache.getPromise(req.data.awaited);
     util.assertDefined(promise);
 

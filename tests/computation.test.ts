@@ -89,7 +89,7 @@ function createClaimedTask(
 
   return {
     kind: "claimed",
-    task: { id: `__invoke:${id}`, state: "acquired" as const, version: 1 },
+    task: { id, state: "acquired" as const, version: 1 },
     rootPromise,
   };
 }

@@ -102,7 +102,7 @@ describe("Coroutine", () => {
         }),
         func,
         args,
-        { id: `__invoke:${uuid}`, state: "acquired" as const, version: 1 },
+        { id: uuid, state: "acquired" as const, version: 1 },
         handler,
         new Map(),
         (res) => {
@@ -358,7 +358,7 @@ describe("Coroutine", () => {
         }),
         foo,
         [],
-        { id: "__invoke:foo.1", state: "acquired" as const, version: 1 },
+        { id: "foo.1", state: "acquired" as const, version: 1 },
         h,
         new Map(),
         (res) => {

@@ -64,7 +64,15 @@ class SimulatedNetwork implements Network {
   private prng: Random;
   private deliveryOptions: Required<DeliveryOptions>;
   private buffer: Message<Request>[] = [];
-  private callbacks: Record<number, { req: Request; callback: (res: any) => void; timeout: number }> = {};
+  private callbacks: Record<
+    number,
+    {
+      req: Request;
+      callback: (res: any) => void;
+      timeout: number;
+      headers?: { [key: string]: string };
+    }
+  > = {};
   private messageSource: SimulatedMessageSource;
 
   constructor(
@@ -89,7 +97,6 @@ class SimulatedNetwork implements Network {
     req: Extract<Request, { kind: K }>,
     callback: (res: Extract<Response, { kind: K }>) => void,
     headers?: { [key: string]: string },
-    retryForever?: boolean,
   ): void {
     const message = new Message<Request>(this.source, this.target, req, {
       requ: true,
@@ -105,7 +112,12 @@ class SimulatedNetwork implements Network {
       }
     };
 
-    this.callbacks[message.head!.correlationId] = { req, callback: cb, timeout: this.currentTime + 50000 };
+    this.callbacks[message.head!.correlationId] = {
+      req,
+      callback: cb,
+      timeout: this.currentTime + 2000,
+      headers,
+    };
     this.buffer.push(message);
   }
 
@@ -123,7 +135,7 @@ class SimulatedNetwork implements Network {
           kind: cb.req.kind,
           head: { corrId: cb.req.head.corrId, version: cb.req.head.version, status: 500 },
           data: "req timed out",
-        } as any);
+        });
         delete this.callbacks[key];
       }
     }
@@ -143,7 +155,7 @@ class SimulatedNetwork implements Network {
             kind: entry.req.kind,
             head: { corrId: entry.req.head.corrId, version: entry.req.head.version, status: 500 },
             data: typeof msg.data.err === "string" ? msg.data.err : msg.data.err?.message || "unknown error",
-          } as Response);
+          });
         } else {
           util.assertDefined(msg.data.res);
           entry.callback(this.maybeCorruptData(msg.data.res));
@@ -204,7 +216,7 @@ export class WorkerProcess extends Process {
     const messageSource = this.network.getMessageSource();
     this.core = new Core({
       pid: iaddr,
-      ttl: 5000,
+      ttl: 10000,
       clock: this.clock,
       network: this.network,
       handler: new Handler(this.network, encoder, new NoopEncryptor()),
