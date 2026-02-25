@@ -3,7 +3,6 @@ import type * as context from "../src/context.js";
 import { JsonEncoder } from "../src/encoder.js";
 import type { Request } from "../src/network/types.js";
 import { Registry } from "../src/registry.js";
-import * as util from "../src/util.js";
 import { ServerProcess } from "./src/server.js";
 import { Message, Random, Simulator, unicast } from "./src/simulator.js";
 import { WorkerProcess } from "./src/worker.js";
@@ -20,7 +19,6 @@ function* fibonacci(ctx: context.Context, n: number): Generator<any, number, any
 }
 
 const seed = Math.floor(Math.random() * 2 ** 32);
-console.log(`seed: ${seed}`);
 
 const options = { seed, steps: 20_000_000, randomDelay: 0.2, dropProb: 0.2, duplProb: 0.2, charFlipProb: 0 };
 
@@ -120,10 +118,16 @@ const settled = sim.execUntil(options.steps, () => {
   return promise !== undefined && promise.state !== "pending";
 });
 
-util.assert(settled);
+if (!settled) {
+  console.error(
+    `fibonacci(${n}) did not settle after ${options.steps} steps (seed=${seed}, randomDelay=${options.randomDelay}, dropProb=${options.dropProb}, duplProb=${options.duplProb}, charFlipProb=${options.charFlipProb})`,
+  );
+  process.exit(1);
+}
 
 const promise = server.server.promises.get(id)!;
 const decoded = encoder.decode({ headers: promise.value.headers || {}, data: promise.value.data || "" });
-util.assert(decoded === f(n));
-
-console.log(`fibonacci(${n}) = ${decoded} ✓`);
+if (decoded !== f(n)) {
+  console.error(`fibonacci(${n}) expected ${f(n)} but got ${decoded}`);
+  process.exit(1);
+}
