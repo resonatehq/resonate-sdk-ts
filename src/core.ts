@@ -162,9 +162,10 @@ export class Core {
     cb: (res: Result<{ continue: boolean }, undefined>) => void,
   ): void {
     const task = claimed.task;
+    const kind = "task.suspend" as const;
     this.network.send(
       {
-        kind: "task.suspend",
+        kind,
         head: { corrId: "", version: "" },
         data: {
           id: task.id,
@@ -178,7 +179,7 @@ export class Core {
       },
       (res) => {
         if (!util.isValidResponse(res)) {
-          const error = exceptions.CORRUPTED_MSG("response");
+          const error = exceptions.UNEXPECTED_MSG(`${kind} response`, res);
           error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
         }
@@ -233,22 +234,23 @@ export class Core {
 
   public onMessage(msg: Message, cb: (res: Result<Status, undefined>) => void): void {
     if (!util.isValidExecuteMsg(msg)) {
-      const error = exceptions.CORRUPTED_MSG("execute message");
+      const error = exceptions.UNEXPECTED_MSG("execute message", msg);
       error.log(this.verbose);
       cb({ kind: "error", error: undefined });
       return;
     }
 
     const task = msg.data.task;
+    const kind = "task.acquire" as const;
     this.network.send(
       {
-        kind: "task.acquire",
+        kind,
         head: { corrId: "", version: "" },
         data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
       },
       (res) => {
         if (!util.isValidResponse(res)) {
-          const error = exceptions.CORRUPTED_MSG("response");
+          const error = exceptions.UNEXPECTED_MSG(`${kind} response`, res);
           error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
         }
@@ -268,7 +270,7 @@ export class Core {
           return cb({ kind: "error", error: undefined });
         }
         if (!util.isValidPromiseRecord(promise)) {
-          const error = exceptions.CORRUPTED_MSG("promise record");
+          const error = exceptions.UNEXPECTED_MSG(`${kind} promise record`, promise);
           error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
         }

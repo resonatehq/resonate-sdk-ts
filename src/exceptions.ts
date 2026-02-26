@@ -97,10 +97,21 @@ export default {
       cause: c,
     });
   },
-  CORRUPTED_MSG: (m: string) => {
-    return new ResonateError("10", "Network", `Corrupted message received: ${m}`, {
-      next: "Will drop",
-    });
+  UNEXPECTED_MSG: (m: string, received?: unknown) => {
+    let detail = "";
+    if (received !== undefined) {
+      try {
+        detail = ` Received: ${JSON.stringify(received)}`;
+      } catch {
+        detail = " Received: [unserializable]";
+      }
+    }
+    return new ResonateError(
+      "10",
+      "Network",
+      `Unexpected message format for ${m}.${detail} This may indicate a server/SDK version mismatch or data corruption.`,
+      { next: "Will drop" },
+    );
   },
   PANIC: (src: string, msg: string | undefined) => {
     src = src.charAt(0).toUpperCase() + src.slice(1);

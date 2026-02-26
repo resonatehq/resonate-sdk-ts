@@ -196,7 +196,7 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
         req,
         (res) => {
           if (!isValidResponse(res)) {
-            return done({ kind: "error", error: exceptions.CORRUPTED_MSG("response") });
+            return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
           }
           if (!isSuccess(res)) {
             return done({
@@ -208,14 +208,17 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
             });
           }
           if (!isValidPromiseRecord(res.data?.promise)) {
-            return done({ kind: "error", error: exceptions.CORRUPTED_MSG("promise record") });
+            return done({
+              kind: "error",
+              error: exceptions.UNEXPECTED_MSG(`${res.kind} promise record`, res.data?.promise),
+            });
           }
           try {
             const promise = codec.decodePromise(res.data.promise);
             cache.set(promise.id, promise);
             done({ kind: "value", value: promise });
           } catch (e) {
-            return done({ kind: "error", error: exceptions.CORRUPTED_MSG("response") });
+            return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
           }
         },
         headers,
@@ -239,7 +242,7 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
 
       network.send(req, (res) => {
         if (!isValidResponse(res)) {
-          return done({ kind: "error", error: exceptions.CORRUPTED_MSG("response") });
+          return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
         }
         if (!isSuccess(res)) {
           return done({
@@ -251,14 +254,17 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
           });
         }
         if (!isValidPromiseRecord(res.data?.promise)) {
-          return done({ kind: "error", error: exceptions.CORRUPTED_MSG("promise record") });
+          return done({
+            kind: "error",
+            error: exceptions.UNEXPECTED_MSG(`${req.kind} promise record`, res.data?.promise),
+          });
         }
         try {
           const promise = codec.decodePromise(res.data.promise);
           cache.set(promise.id, promise);
           done({ kind: "value", value: promise });
         } catch (e) {
-          return done({ kind: "error", error: exceptions.CORRUPTED_MSG("response") });
+          return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
         }
       });
     },
