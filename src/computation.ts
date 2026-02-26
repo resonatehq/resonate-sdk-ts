@@ -26,7 +26,7 @@ export type Suspended = {
   awaited: string[];
 };
 
-interface Data {
+export interface Data {
   func: string;
   args: any[];
   retry?: { type: string; data: any };
@@ -83,7 +83,7 @@ export class Computation {
   }
 
   private processAcquired({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
-    if (!isValidData(rootPromise.param?.data)) {
+    if (!util.isValidData(rootPromise.param?.data)) {
       return done({ kind: "error", error: undefined });
     }
 
@@ -284,32 +284,4 @@ export class Computation {
       }
     });
   }
-}
-
-// Helper functions
-
-function isValidData(data: unknown): data is Data {
-  if (data === null || typeof data !== "object") return false;
-
-  const d = data as any;
-
-  // func must be a string
-  if (typeof d.func !== "string") return false;
-
-  // args must be an array
-  if (!Array.isArray(d.args)) return false;
-
-  // retry (if present) must be an object with string `type` and any `data`
-  if (d.retry !== undefined) {
-    if (d.retry === null || typeof d.retry !== "object" || typeof d.retry.type !== "string" || !("data" in d.retry)) {
-      return false;
-    }
-  }
-
-  // version (if present) must be a number
-  if (d.version !== undefined && typeof d.version !== "number") {
-    return false;
-  }
-
-  return true;
 }

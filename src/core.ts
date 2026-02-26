@@ -177,6 +177,9 @@ export class Core {
         },
       },
       (res) => {
+        if (!util.isValidResponse(res)) {
+          return cb({ kind: "error", error: undefined });
+        }
         if (isSuccess(res)) {
           return cb({ kind: "value", value: { continue: false } });
         }
@@ -227,7 +230,10 @@ export class Core {
   }
 
   public onMessage(msg: Message, cb: (res: Result<Status, undefined>) => void): void {
-    util.assert(msg.kind === "execute");
+    if (!util.isValidExecuteMsg(msg)) {
+      cb({ kind: "error", error: undefined });
+      return;
+    }
 
     const task = msg.data.task;
     this.network.send(
@@ -237,6 +243,9 @@ export class Core {
         data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
       },
       (res) => {
+        if (!util.isValidResponse(res)) {
+          return cb({ kind: "error", error: undefined });
+        }
         if (!isSuccess(res)) {
           const error = exceptions.SERVER_ERROR(res.data, true, {
             code: res.head.status,
@@ -250,6 +259,9 @@ export class Core {
         try {
           promise = this.codec.decodePromise(res.data.promise);
         } catch (e) {
+          return cb({ kind: "error", error: undefined });
+        }
+        if (!util.isValidPromiseRecord(promise)) {
           return cb({ kind: "error", error: undefined });
         }
 

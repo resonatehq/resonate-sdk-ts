@@ -1,7 +1,8 @@
 import type { Codec } from "./codec.js";
-import exceptions, { type ResonateError } from "./exceptions.js";
+import type { Data } from "./computation.js";
+import exceptions from "./exceptions.js";
 import type { MessageSource, Network } from "./network/network.js";
-import { isSuccess, type PromiseRecord } from "./network/types.js";
+import { type ExecuteMsg, isSuccess, type PromiseRecord, type Response } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
 import type { Effects } from "./types.js";
 
@@ -37,12 +38,73 @@ export function isGeneratorFunction(func: Function): boolean {
 
 // guards
 
+export function isValidData(data: unknown): data is Data {
+  if (data === null || typeof data !== "object") return false;
+
+  const d = data as any;
+
+  // func must be a string
+  if (typeof d.func !== "string") return false;
+
+  // args must be an array
+  if (!Array.isArray(d.args)) return false;
+
+  // retry (if present) must be an object with string `type` and any `data`
+  if (d.retry !== undefined) {
+    if (d.retry === null || typeof d.retry !== "object" || typeof d.retry.type !== "string" || !("data" in d.retry)) {
+      return false;
+    }
+  }
+
+  // version (if present) must be a number
+  if (d.version !== undefined && typeof d.version !== "number") {
+    return false;
+  }
+
+  return true;
+}
+
 export function isOptions(obj: unknown): obj is Options {
   return typeof obj === "object" && obj !== null && RESONATE_OPTIONS in obj;
 }
 
 export function isMessageSource(v: unknown): v is MessageSource {
   return typeof v === "object" && v !== null && "recv" in v && typeof (v as any).recv === "function";
+}
+
+export function isValidExecuteMsg(msg: unknown): msg is ExecuteMsg {
+  if (msg === null || typeof msg !== "object") return false;
+  const m = msg as any;
+  return (
+    m.kind === "execute" &&
+    m.data !== null &&
+    typeof m.data === "object" &&
+    m.data.task !== null &&
+    typeof m.data.task === "object" &&
+    typeof m.data.task.id === "string" &&
+    typeof m.data.task.version === "number"
+  );
+}
+
+export function isValidResponse(res: unknown): res is Response {
+  if (res === null || typeof res !== "object") return false;
+  const r = res as any;
+  return (
+    typeof r.kind === "string" && r.head !== null && typeof r.head === "object" && typeof r.head.status === "number"
+  );
+}
+
+export function isValidPromiseRecord(p: unknown): p is PromiseRecord {
+  if (p === null || typeof p !== "object") return false;
+  const r = p as any;
+  return (
+    typeof r.id === "string" &&
+    typeof r.state === "string" &&
+    r.tags !== null &&
+    typeof r.tags === "object" &&
+    typeof r.timeoutAt === "number" &&
+    typeof r.createdAt === "number"
+  );
 }
 
 // helpers
@@ -109,7 +171,8 @@ export function once<T extends () => any>(fn: T): T {
 // effects
 
 export function buildEffects(network: Network, codec: Codec, preload: PromiseRecord[] = []): Effects {
-  const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
+  const safePreload = Array.isArray(preload) ? preload.filter(isValidPromiseRecord) : [];
+  const cache = new Map<string, PromiseRecord>(safePreload.map((p) => [p.id, codec.decodePromise(p)]));
 
   return {
     promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
@@ -132,6 +195,9 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
       network.send(
         req,
         (res) => {
+          if (!isValidResponse(res)) {
+            return done({ kind: "error", error: exceptions.CORRUPTED_MSG("response") });
+          }
           if (!isSuccess(res)) {
             return done({
               kind: "error",
@@ -141,12 +207,15 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
               }),
             });
           }
+          if (!isValidPromiseRecord(res.data?.promise)) {
+            return done({ kind: "error", error: exceptions.CORRUPTED_MSG("promise record") });
+          }
           try {
             const promise = codec.decodePromise(res.data.promise);
             cache.set(promise.id, promise);
             done({ kind: "value", value: promise });
           } catch (e) {
-            return done({ kind: "error", error: e as ResonateError });
+            return done({ kind: "error", error: exceptions.CORRUPTED_MSG("response") });
           }
         },
         headers,
@@ -169,6 +238,9 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
       }
 
       network.send(req, (res) => {
+        if (!isValidResponse(res)) {
+          return done({ kind: "error", error: exceptions.CORRUPTED_MSG("response") });
+        }
         if (!isSuccess(res)) {
           return done({
             kind: "error",
@@ -178,12 +250,15 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
             }),
           });
         }
+        if (!isValidPromiseRecord(res.data?.promise)) {
+          return done({ kind: "error", error: exceptions.CORRUPTED_MSG("promise record") });
+        }
         try {
           const promise = codec.decodePromise(res.data.promise);
           cache.set(promise.id, promise);
           done({ kind: "value", value: promise });
         } catch (e) {
-          return done({ kind: "error", error: e as ResonateError });
+          return done({ kind: "error", error: exceptions.CORRUPTED_MSG("response") });
         }
       });
     },

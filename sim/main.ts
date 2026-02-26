@@ -220,7 +220,7 @@ export function run(options: Options) {
         rnd,
         clock,
         registry,
-        { charFlipProb: options.charFlipProb ?? rnd.random(0.05) },
+        { charFlipProb: options.charFlipProb ?? rnd.random(0.15) },
         `worker-${i}`,
         "default",
       ),

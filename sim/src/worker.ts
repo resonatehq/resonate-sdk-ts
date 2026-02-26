@@ -101,10 +101,9 @@ class SimulatedNetwork implements Network {
     });
 
     const cb = (res: Extract<Response, { kind: K }>) => {
-      if (res.head.status >= 400) {
+      if (res.head?.status >= 400 || res.kind !== req.kind) {
         callback(res);
       } else {
-        util.assert(res.kind === req.kind, "res kind must match req kind");
         callback(res);
       }
     };
@@ -185,9 +184,12 @@ class SimulatedNetwork implements Network {
 
     // Corrupt that character
     jsonStr = `${jsonStr.slice(0, idx)}X${jsonStr.slice(idx + 1)}`;
-
-    // Return corrupted string, even if it's invalid JSON
-    return jsonStr;
+    // Parse back to an object, return original if invalid JSON
+    try {
+      return JSON.parse(jsonStr);
+    } catch {
+      return data;
+    }
   }
 }
 
@@ -201,13 +203,13 @@ export class WorkerProcess extends Process {
     prng: Random,
     clock: StepClock,
     registry: Registry,
-    { charFlipProb = 0 }: DeliveryOptions,
+    { charFlipProb }: DeliveryOptions,
     public readonly iaddr: string,
     public readonly gaddr: string,
   ) {
     super(iaddr, gaddr);
     this.clock = clock;
-    this.network = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb: 0 }, unicast(iaddr), unicast("server"));
+    this.network = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server"));
     this.registry = registry;
     const messageSource = this.network.getMessageSource();
     this.core = new Core({

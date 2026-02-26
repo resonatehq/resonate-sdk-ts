@@ -97,6 +97,11 @@ export default {
       cause: c,
     });
   },
+  CORRUPTED_MSG: (m: string) => {
+    return new ResonateError("10", "Network", `Corrupted message received: ${m}`, {
+      next: "Will drop",
+    });
+  },
   PANIC: (src: string, msg: string | undefined) => {
     src = src.charAt(0).toUpperCase() + src.slice(1);
     msg = msg ? `: ${msg}` : "";

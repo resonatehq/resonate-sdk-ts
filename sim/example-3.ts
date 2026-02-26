@@ -20,7 +20,7 @@ function* fibonacci(ctx: context.Context, n: number): Generator<any, number, any
 
 const seed = Math.floor(Math.random() * 2 ** 32);
 
-const options = { seed, steps: 2_000_000, randomDelay: 0.3, dropProb: 0.3, duplProb: 0.3, charFlipProb: 0 };
+const options = { seed, steps: 20_000_000, randomDelay: 0.3, dropProb: 0.3, duplProb: 0.3, charFlipProb: 0.05 };
 
 const rnd = new Random(options.seed);
 const clock = new StepClock();
@@ -44,7 +44,7 @@ for (const worker of [worker1, worker2, worker3]) {
   sim.register(worker);
 }
 
-const n = 20;
+const n = 5;
 const id = `fibonacci-${n}`;
 
 sim.repeat(1, () => {
@@ -104,6 +104,6 @@ if (!settled) {
 const promise = server.server.promises.get(id)!;
 const decoded = codec.decode({ headers: promise.value.headers || {}, data: promise.value.data || "" });
 if (decoded !== f(n)) {
-  console.error(`fibonacci(${n}) expected ${f(n)} but got ${decoded}`);
+  console.error(`fibonacci(${n}) expected ${f(n)} but got ${decoded} with seed=${seed}`);
   process.exit(1);
 }
