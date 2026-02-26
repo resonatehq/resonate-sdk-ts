@@ -178,6 +178,8 @@ export class Core {
       },
       (res) => {
         if (!util.isValidResponse(res)) {
+          const error = exceptions.CORRUPTED_MSG("response");
+          error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
         }
         if (isSuccess(res)) {
@@ -231,6 +233,8 @@ export class Core {
 
   public onMessage(msg: Message, cb: (res: Result<Status, undefined>) => void): void {
     if (!util.isValidExecuteMsg(msg)) {
+      const error = exceptions.CORRUPTED_MSG("execute message");
+      error.log(this.verbose);
       cb({ kind: "error", error: undefined });
       return;
     }
@@ -244,6 +248,8 @@ export class Core {
       },
       (res) => {
         if (!util.isValidResponse(res)) {
+          const error = exceptions.CORRUPTED_MSG("response");
+          error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
         }
         if (!isSuccess(res)) {
@@ -262,6 +268,8 @@ export class Core {
           return cb({ kind: "error", error: undefined });
         }
         if (!util.isValidPromiseRecord(promise)) {
+          const error = exceptions.CORRUPTED_MSG("promise record");
+          error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
         }
 
