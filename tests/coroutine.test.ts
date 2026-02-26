@@ -96,7 +96,6 @@ describe("Coroutine", () => {
 
     return new Promise<any>((resolve) => {
       Coroutine.exec(
-        uuid,
         false,
         new InnerContext({
           id: uuid,
@@ -112,7 +111,6 @@ describe("Coroutine", () => {
         }),
         func,
         args,
-        { id: uuid, state: "acquired" as const, version: 1 },
         effects,
         (res) => {
           expect(res.kind).toBe("value");
@@ -362,7 +360,6 @@ describe("Coroutine", () => {
     // DIE with condition=true causes callback to be called with err=true
     const result = await new Promise<Result<Suspended | Done, any>>((resolve) => {
       Coroutine.exec(
-        "foo.1",
         false,
         new InnerContext({
           id: "foo.1",
@@ -377,7 +374,6 @@ describe("Coroutine", () => {
         }),
         foo,
         [],
-        { id: "foo.1", state: "acquired" as const, version: 1 },
         effects,
         (res) => {
           resolve(res);

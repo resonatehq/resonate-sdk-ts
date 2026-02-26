@@ -1,6 +1,6 @@
 import type { Clock } from "./clock.js";
 import { InnerContext } from "./context.js";
-import type { ClaimedTask, Task } from "./core.js";
+import type { ClaimedTask } from "./core.js";
 import { Coroutine, type LocalTodo } from "./coroutine.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
@@ -44,8 +44,6 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
-
-  private seen: Set<string> = new Set();
   private processing = false;
 
   constructor(
@@ -72,26 +70,16 @@ export class Computation {
     this.processor = processor ?? new AsyncProcessor();
   }
 
-  public executeUntilBlocked(task: Task, done: (res: Result<Status, undefined>) => void) {
+  public executeUntilBlocked(task: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
     // If we are already processing there is nothing to do, the
     // caller will be notified via the promise handler
     if (this.processing) return done({ kind: "error", error: undefined });
-    this.processing = true;
 
-    const doneProcessing = (res: Result<Status, undefined>) => {
+    this.processing = true;
+    this.processAcquired(task, (res: Result<Status, undefined>) => {
       this.processing = false;
       done(res);
-    };
-
-    switch (task.kind) {
-      case "claimed":
-        this.processAcquired(task, doneProcessing);
-        break;
-
-      case "unclaimed":
-        util.assert(false, "All tasks must be claimed at this point");
-        break;
-    }
+    });
   }
 
   private processAcquired({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
@@ -182,7 +170,7 @@ export class Computation {
 
     const ctx = new InnerContext(ctxConfig);
 
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.effects, (res) => {
+    Coroutine.exec(this.verbose, ctx, func, args, this.effects, (res) => {
       if (res.kind === "error") {
         return done(res);
       }

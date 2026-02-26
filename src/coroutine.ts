@@ -1,6 +1,5 @@
 import type { Context, InnerContext } from "./context.js";
 import { Decorator, type Value } from "./decorator.js";
-import type { TaskRecord } from "./network/types.js";
 import { Never } from "./retries.js";
 import type { Effects, Result, Yieldable } from "./types.js";
 import * as util from "./util.js";
@@ -37,23 +36,14 @@ const logged: Map<string, boolean> = new Map();
 
 export class Coroutine<T> {
   private ctx: InnerContext;
-  private task: TaskRecord;
   private verbose: boolean;
   private decorator: Decorator<T>;
   private effects: Effects;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
 
-  constructor(
-    ctx: InnerContext,
-    task: TaskRecord,
-    verbose: boolean,
-    decorator: Decorator<T>,
-    effects: Effects,
-    depth = 1,
-  ) {
+  constructor(ctx: InnerContext, verbose: boolean, decorator: Decorator<T>, effects: Effects, depth = 1) {
     this.ctx = ctx;
-    this.task = task;
     this.verbose = verbose;
     this.decorator = decorator;
     this.effects = effects;
@@ -70,16 +60,14 @@ export class Coroutine<T> {
   }
 
   public static exec(
-    id: string,
     verbose: boolean,
     ctx: InnerContext,
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
-    task: TaskRecord,
     effects: Effects,
     callback: (res: Result<Suspended | Done, any>) => void,
   ): void {
-    const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), effects);
+    const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), effects);
     coroutine.exec((res) => {
       if (res.kind === "error") return callback(res);
       const status = res.value;
@@ -89,7 +77,7 @@ export class Coroutine<T> {
           break;
 
         case "done":
-          // Propagate raw result — no promise.settle. task.fulfill handles it.
+          // Propagate raw result, no promise.settle. task.fulfill handles it.
           callback({ kind: "value", value: status });
           break;
       }
@@ -148,7 +136,6 @@ export class Coroutine<T> {
 
                 const coroutine = new Coroutine(
                   ctx,
-                  this.task,
                   this.verbose,
                   new Decorator(action.func(ctx, ...action.args)),
                   this.effects,
