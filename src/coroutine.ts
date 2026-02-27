@@ -1,22 +1,17 @@
 import type { Context, InnerContext } from "./context.js";
 import { Decorator, type Value } from "./decorator.js";
-import type { Handler } from "./handler.js";
-import type { TaskRecord } from "./network/types.js";
 import { Never } from "./retries.js";
-import type { Span } from "./tracer.js";
-import type { Result, Yieldable } from "./types.js";
+import type { Effects, Result, Yieldable } from "./types.js";
 import * as util from "./util.js";
 
 export type Suspended = {
   type: "suspended";
   todo: { local: LocalTodo[]; remote: RemoteTodo[] };
-  spans: Span[];
 };
 
 export interface LocalTodo {
   id: string;
   ctx: InnerContext;
-  span: Span;
   func: (ctx: Context, ...args: any[]) => any;
   args: any[];
 }
@@ -28,7 +23,6 @@ export interface RemoteTodo {
 type More = {
   type: "more";
   todo: { local: LocalTodo[]; remote: RemoteTodo[] };
-  spans: Span[];
 };
 
 export type Done = {
@@ -42,29 +36,17 @@ const logged: Map<string, boolean> = new Map();
 
 export class Coroutine<T> {
   private ctx: InnerContext;
-  private task: TaskRecord;
   private verbose: boolean;
   private decorator: Decorator<T>;
-  private handler: Handler;
-  private spans: Map<string, Span>;
+  private effects: Effects;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
 
-  constructor(
-    ctx: InnerContext,
-    task: TaskRecord,
-    verbose: boolean,
-    decorator: Decorator<T>,
-    handler: Handler,
-    spans: Map<string, Span>,
-    depth = 1,
-  ) {
+  constructor(ctx: InnerContext, verbose: boolean, decorator: Decorator<T>, effects: Effects, depth = 1) {
     this.ctx = ctx;
-    this.task = task;
     this.verbose = verbose;
     this.decorator = decorator;
-    this.handler = handler;
-    this.spans = spans;
+    this.effects = effects;
     this.depth = depth;
 
     if (!(this.ctx.retryPolicy instanceof Never) && !logged.has(this.ctx.id)) {
@@ -78,27 +60,24 @@ export class Coroutine<T> {
   }
 
   public static exec(
-    id: string,
     verbose: boolean,
     ctx: InnerContext,
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
-    task: TaskRecord,
-    handler: Handler,
-    spans: Map<string, Span>,
+    effects: Effects,
     callback: (res: Result<Suspended | Done, any>) => void,
   ): void {
-    const coroutine = new Coroutine(ctx, task, verbose, new Decorator(func(ctx, ...args)), handler, spans);
+    const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), effects);
     coroutine.exec((res) => {
       if (res.kind === "error") return callback(res);
       const status = res.value;
       switch (status.type) {
         case "more":
-          callback({ kind: "value", value: { type: "suspended", todo: status.todo, spans: status.spans } });
+          callback({ kind: "value", value: { type: "suspended", todo: status.todo } });
           break;
 
         case "done":
-          // Propagate raw result — no promise.settle. task.fulfill handles it.
+          // Propagate raw result, no promise.settle. task.fulfill handles it.
           callback({ kind: "value", value: status });
           break;
       }
@@ -108,7 +87,6 @@ export class Coroutine<T> {
   private exec(callback: (res: Result<More | Done, any>) => void) {
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
-    const spans: Span[] = [];
 
     let input: Value<any> = {
       type: "internal.nothing",
@@ -121,32 +99,14 @@ export class Coroutine<T> {
 
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
-          let span: Span;
-          if (!this.spans.has(action.createReq.data.id)) {
-            span = this.ctx.span.startSpan(action.createReq.data.id, this.ctx.clock.now());
-            span.setAttribute("type", "run");
-            span.setAttribute("func", action.func.name);
-            span.setAttribute("version", action.version);
-            span.setAttribute("task.id", this.task.id);
-            span.setAttribute("task.version", this.task.version);
-            this.spans.set(action.createReq.data.id, span);
-          } else {
-            span = this.spans.get(action.createReq.data.id)!;
-          }
-
-          this.handler.promiseCreate(
+          this.effects.promiseCreate(
             action.createReq,
             (res) => {
               if (res.kind === "error") {
                 res.error.log(this.verbose);
-                span.setStatus(false, String(res.error));
-                span.end(this.ctx.clock.now());
                 return callback({ kind: "error", error: undefined });
               }
               util.assertDefined(res);
-
-              // if the promise is created, the span is considered successful
-              span.setStatus(true);
 
               const ctx = this.ctx.child({
                 id: res.value.id,
@@ -154,7 +114,6 @@ export class Coroutine<T> {
                 timeout: res.value.timeoutAt,
                 version: action.version,
                 retryPolicy: action.retryPolicy,
-                span: span,
               });
 
               if (res.value.state === "pending") {
@@ -162,7 +121,6 @@ export class Coroutine<T> {
                   local.push({
                     id: action.id,
                     ctx,
-                    span,
                     func: action.func,
                     args: action.args,
                   });
@@ -176,20 +134,16 @@ export class Coroutine<T> {
                   return;
                 }
 
-                spans.push(span);
                 const coroutine = new Coroutine(
                   ctx,
-                  this.task,
                   this.verbose,
                   new Decorator(action.func(ctx, ...action.args)),
-                  this.handler,
-                  this.spans,
+                  this.effects,
                   this.depth + 1,
                 );
 
                 const cb = (res: Result<More | Done, any>) => {
                   if (res.kind === "error") {
-                    span.end(this.ctx.clock.now());
                     return callback(res);
                   }
                   const status = res.value;
@@ -205,7 +159,7 @@ export class Coroutine<T> {
                     };
                     next();
                   } else {
-                    this.handler.promiseSettle(
+                    this.effects.promiseSettle(
                       {
                         kind: "promise.settle",
                         head: { corrId: "", version: "" },
@@ -219,9 +173,6 @@ export class Coroutine<T> {
                         },
                       },
                       (res) => {
-                        span.end(this.ctx.clock.now());
-                        spans.splice(spans.indexOf(span), 1);
-
                         if (res.kind === "error") {
                           res.error.log(this.verbose);
                           return callback({ kind: "error", error: undefined });
@@ -268,7 +219,6 @@ export class Coroutine<T> {
                   coroutine.exec(cb);
                 }
               } else {
-                span.end(ctx.clock.now());
                 // durable promise is completed
                 input = {
                   type: "internal.promise",
@@ -286,40 +236,19 @@ export class Coroutine<T> {
               }
             },
             action.func.name,
-            span.encode(),
           );
           return; // Exit the while loop to wait for async callback
         }
 
         // Handle internal.async.r
         if (action.type === "internal.async.r") {
-          let span: Span;
-          if (!this.spans.has(action.createReq.data.id)) {
-            span = this.ctx.span.startSpan(action.createReq.data.id, this.ctx.clock.now());
-            span.setAttribute("type", "rpc");
-            span.setAttribute("mode", action.mode);
-            span.setAttribute("func", action.func);
-            span.setAttribute("version", action.version);
-            span.setAttribute("task.id", this.task.id);
-            span.setAttribute("task.version", this.task.version);
-            this.spans.set(action.createReq.data.id, span);
-          } else {
-            span = this.spans.get(action.createReq.data.id)!;
-          }
-
-          this.handler.promiseCreate(
+          this.effects.promiseCreate(
             action.createReq,
             (res) => {
               if (res.kind === "error") {
                 res.error.log(this.verbose);
-                span.setStatus(false, String(res.error));
-                span.end(this.ctx.clock.now());
                 return callback({ kind: "error", error: undefined });
               }
-
-              // if the promise is created, the span is considered successful
-              span.setStatus(true);
-              span.end(this.ctx.clock.now());
 
               util.assertDefined(res);
 
@@ -349,7 +278,6 @@ export class Coroutine<T> {
               next();
             },
             "unknown",
-            span.encode(),
           );
           return; // Exit the while loop to wait for async callback
         }
@@ -386,7 +314,7 @@ export class Coroutine<T> {
             // All detached are remotes.
             remote.push({ id: action.id });
           }
-          callback({ kind: "value", value: { type: "more", todo: { local, remote }, spans } });
+          callback({ kind: "value", value: { type: "more", todo: { local, remote } } });
           return;
         }
 
@@ -394,8 +322,6 @@ export class Coroutine<T> {
         if (action.type === "internal.return") {
           util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
           util.assertDefined(action.value);
-          util.assert(spans.length === 0, "all spans should've been closed");
-
           callback({ kind: "value", value: { type: "done", result: action.value.value } });
           return;
         }

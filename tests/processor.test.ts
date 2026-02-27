@@ -5,14 +5,12 @@ import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
 import type { RetryPolicy } from "../src/retries.js";
 import { Constant, Never } from "../src/retries.js";
-import { NoopSpan } from "../src/tracer.js";
 import type { Result } from "../src/types.js";
 
 type WorkItem = {
   id: string;
   ctx: InnerContext;
   func: () => Promise<unknown>;
-  span: NoopSpan;
   verbose: boolean;
 };
 
@@ -27,16 +25,15 @@ function buildCtx(id: string, retryPolicy: RetryPolicy = new Never()): InnerCont
     version: 1,
     retryPolicy,
     optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
-    span: new NoopSpan(),
   });
 }
 
 function createWork(id: string, func: () => Promise<unknown>): WorkItem {
-  return { id, ctx: buildCtx(id), func, span: new NoopSpan(), verbose: false };
+  return { id, ctx: buildCtx(id), func, verbose: false };
 }
 
 function createWorkWithRetry(id: string, func: () => Promise<unknown>, retryPolicy: RetryPolicy): WorkItem {
-  return { id, ctx: buildCtx(id, retryPolicy), func, span: new NoopSpan(), verbose: false };
+  return { id, ctx: buildCtx(id, retryPolicy), func, verbose: false };
 }
 
 function waitForReady(

@@ -4,7 +4,6 @@ import type { PromiseCreateReq } from "./network/types.js";
 import type { Options, OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicy } from "./retries.js";
-import type { Span } from "./tracer.js";
 import type { Func, ParamsWithOptions, Result, Return } from "./types.js";
 import * as util from "./util.js";
 
@@ -264,7 +263,6 @@ export class InnerContext implements Context {
   readonly branchId: string;
   readonly parentId: string;
   readonly clock: Clock;
-  readonly span: Span;
   private registry: Registry;
   private dependencies: Map<string, any>;
   private optsBuilder: OptionsBuilder;
@@ -288,7 +286,6 @@ export class InnerContext implements Context {
     timeout,
     version,
     retryPolicy,
-    span,
   }: {
     id: string;
     oId?: string;
@@ -302,7 +299,6 @@ export class InnerContext implements Context {
     timeout: number;
     version: number;
     retryPolicy: RetryPolicy;
-    span: Span;
   }) {
     this.id = id;
     this.originId = oId;
@@ -314,7 +310,6 @@ export class InnerContext implements Context {
     this.dependencies = dependencies;
     this.optsBuilder = optsBuilder;
     this.retryPolicy = retryPolicy;
-    this.span = span;
 
     this.info = {
       attempt: 1,
@@ -329,14 +324,12 @@ export class InnerContext implements Context {
     timeout,
     version,
     retryPolicy,
-    span,
   }: {
     id: string;
     func: string;
     timeout: number;
     version: number;
     retryPolicy: RetryPolicy;
-    span: Span;
   }) {
     return new InnerContext({
       id,
@@ -351,7 +344,6 @@ export class InnerContext implements Context {
       timeout,
       version,
       retryPolicy,
-      span,
     });
   }
 

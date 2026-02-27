@@ -1,14 +1,11 @@
 import type { StepClock } from "../../src/clock.js";
+import { Codec } from "../../src/codec.js";
 import { Core } from "../../src/core.js";
-import type { Encoder } from "../../src/encoder.js";
-import { NoopEncryptor } from "../../src/encryptor.js";
-import { Handler } from "../../src/handler.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import type { MessageSource, Network } from "../../src/network/network.js";
 import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
 import { OptionsBuilder } from "../../src/options.js";
 import type { Registry } from "../../src/registry.js";
-import { NoopTracer } from "../../src/tracer.js";
 import * as util from "../../src/util.js";
 import { type Address, Message, Process, type Random, unicast } from "./simulator.js";
 
@@ -203,7 +200,6 @@ export class WorkerProcess extends Process {
   constructor(
     prng: Random,
     clock: StepClock,
-    encoder: Encoder,
     registry: Registry,
     { charFlipProb = 0 }: DeliveryOptions,
     public readonly iaddr: string,
@@ -219,14 +215,13 @@ export class WorkerProcess extends Process {
       ttl: 10000,
       clock: this.clock,
       network: this.network,
-      handler: new Handler(this.network, encoder, new NoopEncryptor()),
+      codec: new Codec(),
       messageSource: this.network.getMessageSource(),
       registry: registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
       optsBuilder: new OptionsBuilder({ match: messageSource.match, idPrefix: "" }),
       verbose: false,
-      tracer: new NoopTracer(),
     });
   }
 

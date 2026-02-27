@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { StepClock } from "../src/clock.js";
+import { Codec } from "../src/codec.js";
 import type { Context } from "../src/context.js";
-import { JsonEncoder } from "../src/encoder.js";
 import type { Request } from "../src/network/types.js";
 import { Registry } from "../src/registry.js";
 import { ServerProcess } from "./src/server.js";
@@ -188,7 +188,7 @@ export function run(options: Options) {
   });
 
   const clock = new StepClock();
-  const encoder = new JsonEncoder();
+  const codec = new Codec();
   const registry = new Registry();
 
   for (const [name, func] of Object.entries(availableFuncs)) {
@@ -219,7 +219,6 @@ export function run(options: Options) {
       new WorkerProcess(
         rnd,
         clock,
-        encoder,
         registry,
         { charFlipProb: options.charFlipProb ?? rnd.random(0.05) },
         `worker-${i}`,
@@ -255,7 +254,7 @@ export function run(options: Options) {
                 id,
                 timeoutAt,
                 tags: { "resonate:target": "sim://any@default" },
-                param: encoder.encode({ func: funcName, args: [rnd.randint(0, 20)], version: 1 }),
+                param: codec.encode({ func: funcName, args: [rnd.randint(0, 20)], version: 1 }),
               },
             },
             { requ: true },
@@ -275,7 +274,7 @@ export function run(options: Options) {
                 id,
                 timeoutAt,
                 tags: { "resonate:target": "sim://any@default" },
-                param: encoder.encode({ func: funcName, args: [], version: 1 }),
+                param: codec.encode({ func: funcName, args: [], version: 1 }),
               },
             },
             { requ: true },

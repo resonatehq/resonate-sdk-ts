@@ -1,27 +1,27 @@
 import { WallClock } from "./clock.js";
+import { Codec } from "./codec.js";
 import { Core } from "./core.js";
-import { type Encoder, JsonEncoder } from "./encoder.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import exceptions from "./exceptions.js";
-import { Handler } from "./handler.js";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
 import { HttpNetwork, PollMessageSource } from "./network/http.js";
 import { LocalNetwork } from "./network/local.js";
 import type { MessageSource, Network } from "./network/network.js";
-import type {
-  Message,
-  PromiseCreateReq,
-  PromiseGetReq,
-  PromiseRecord,
-  PromiseSubscribeReq,
-  TaskCreateReq,
-  TaskRecord,
+import {
+  isConflict,
+  isSuccess,
+  type Message,
+  type PromiseCreateReq,
+  type PromiseGetReq,
+  type PromiseRecord,
+  type PromiseSubscribeReq,
+  type TaskCreateReq,
+  type TaskRecord,
 } from "./network/types.js";
 import { type Options, OptionsBuilder } from "./options.js";
 import { Promises } from "./promises.js";
 import { Registry } from "./registry.js";
 import { Schedules } from "./schedules.js";
-import { NoopTracer, type Tracer } from "./tracer.js";
 import type { Func, ParamsWithOptions, Return } from "./types.js";
 import * as util from "./util.js";
 
@@ -63,13 +63,10 @@ export class Resonate {
 
   private core: Core;
   private network: Network;
-  private encoder: Encoder;
-  private encryptor: Encryptor;
+  private codec: Codec;
   private verbose: boolean;
   private messageSource: MessageSource;
 
-  private tracer: Tracer;
-  private handler: Handler;
   private registry: Registry;
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
@@ -98,7 +95,6 @@ export class Resonate {
    * @param options.token - Bearer token for authentication. Defaults to `process.env.RESONATE_TOKEN`.
    * @param options.verbose - Enables verbose logging. Defaults to `false`.
    * @param options.encryptor - Payload encryptor. Defaults to {@link NoopEncryptor}.
-   * @param options.tracer - Tracing implementation. Defaults to {@link NoopTracer}.
    * @param options.transport - Custom network transport implementation. Defaults to `undefined`.
    * @param options.prefix - ID prefix applied to generated IDs. Defaults to
    *   `process.env.RESONATE_PREFIX` when set.
@@ -112,7 +108,6 @@ export class Resonate {
     token = undefined,
     verbose = false,
     encryptor = undefined,
-    tracer = undefined,
     transport = undefined,
     prefix = undefined,
   }: {
@@ -124,15 +119,12 @@ export class Resonate {
     token?: string;
     verbose?: boolean;
     encryptor?: Encryptor;
-    tracer?: Tracer;
     transport?: Network | (Network & MessageSource);
     prefix?: string;
   } = {}) {
     this.clock = new WallClock();
     this.ttl = ttl;
-    this.tracer = tracer ?? new NoopTracer();
-    this.encryptor = encryptor ?? new NoopEncryptor();
-    this.encoder = new JsonEncoder();
+    this.codec = new Codec(encryptor ?? new NoopEncryptor());
 
     const resolvedPrefix = prefix ?? process.env.RESONATE_PREFIX;
     this.idPrefix = resolvedPrefix ? `${resolvedPrefix}:` : "";
@@ -212,7 +204,6 @@ export class Resonate {
       }
     }
 
-    this.handler = new Handler(this.network, this.encoder, this.encryptor);
     this.registry = new Registry();
     this.dependencies = new Map();
 
@@ -228,13 +219,12 @@ export class Resonate {
       clock: this.clock,
       network: this.network,
       messageSource: this.messageSource,
-      handler: this.handler,
+      codec: this.codec,
       registry: this.registry,
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
       optsBuilder: this.optsBuilder,
       verbose: this.verbose,
-      tracer: this.tracer,
     });
 
     this.promises = new Promises(this.network);
@@ -292,11 +282,9 @@ export class Resonate {
   static local({
     verbose = false,
     encryptor = undefined,
-    tracer = undefined,
   }: {
     verbose?: boolean;
     encryptor?: Encryptor;
-    tracer?: Tracer;
   } = {}): Resonate {
     return new Resonate({
       group: "default",
@@ -304,7 +292,6 @@ export class Resonate {
       ttl: Number.MAX_SAFE_INTEGER,
       verbose,
       encryptor,
-      tracer,
     });
   }
 
@@ -353,7 +340,6 @@ export class Resonate {
     token = undefined,
     verbose = false,
     encryptor = undefined,
-    tracer = undefined,
     prefix = undefined,
   }: {
     url?: string;
@@ -364,10 +350,9 @@ export class Resonate {
     token?: string;
     verbose?: boolean;
     encryptor?: Encryptor;
-    tracer?: Tracer;
     prefix?: string;
   } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth, token, verbose, encryptor, tracer, prefix });
+    return new Resonate({ url, group, pid, ttl, auth, token, verbose, encryptor, prefix });
   }
 
   /**
@@ -530,67 +515,48 @@ export class Resonate {
     id = `${this.idPrefix}${id}`;
 
     util.assert(registered.version > 0, "function version must be greater than zero");
-
-    const span = this.tracer.startSpan(id, this.clock.now());
-    span.setAttribute("type", "run");
-    span.setAttribute("func", registered.name);
-    span.setAttribute("version", registered.version);
-
-    try {
-      const { promise, task } = await this.taskCreate(
-        {
-          kind: "task.create",
-          head: { corrId: "", version: "" },
-          data: {
-            pid: this.pid,
-            ttl: this.ttl,
-            action: {
-              kind: "promise.create",
-              head: { corrId: "", version: "" },
-              data: {
-                id: id,
-                timeoutAt: Date.now() + opts.timeout,
-                param: {
-                  data: {
-                    func: registered.name,
-                    args: args,
-                    retry: opts.retryPolicy?.encode(),
-                    version: registered.version,
-                  },
-                  headers: {},
+    const { promise, task } = await this.taskCreate(
+      {
+        kind: "task.create",
+        head: { corrId: "", version: "" },
+        data: {
+          pid: this.pid,
+          ttl: this.ttl,
+          action: {
+            kind: "promise.create",
+            head: { corrId: "", version: "" },
+            data: {
+              id: id,
+              timeoutAt: Date.now() + opts.timeout,
+              param: {
+                data: {
+                  func: registered.name,
+                  args: args,
+                  retry: opts.retryPolicy?.encode(),
+                  version: registered.version,
                 },
-                tags: {
-                  ...opts.tags,
-                  "resonate:origin": id,
-                  "resonate:branch": id,
-                  "resonate:parent": id,
-                  "resonate:scope": "global",
-                  "resonate:target": this.anycast,
-                },
+                headers: {},
+              },
+              tags: {
+                ...opts.tags,
+                "resonate:origin": id,
+                "resonate:branch": id,
+                "resonate:parent": id,
+                "resonate:scope": "global",
+                "resonate:target": this.anycast,
               },
             },
           },
         },
-        span.encode(),
-      );
+      },
+      {},
+    );
 
-      // if the promise is created, the span is considered successful
-      span.setStatus(true);
-
-      if (task) {
-        this.core.executeUntilBlocked(span, { kind: "claimed", task: task, rootPromise: promise }, () => {
-          span.end(this.clock.now());
-        });
-      } else {
-        span.end(this.clock.now());
-      }
-
-      return this.createHandle(promise);
-    } catch (e) {
-      span.setStatus(false, String(e));
-      span.end(this.clock.now());
-      throw e;
+    if (task) {
+      this.core.executeUntilBlocked({ kind: "claimed", task: task, rootPromise: promise }, () => {});
     }
+
+    return this.createHandle(promise);
   }
 
   /**
@@ -680,52 +646,36 @@ export class Resonate {
 
     const func = registered ? registered.name : (funcOrName as string);
     const version = registered ? registered.version : opts.version || 1;
-
-    const span = this.tracer.startSpan(id, this.clock.now());
-    span.setAttribute("type", "rpc");
-    span.setAttribute("func", func);
-    span.setAttribute("version", version);
-
-    try {
-      const promise = await this.promiseCreate(
-        {
-          kind: "promise.create",
-          head: { corrId: "", version: "" },
-          data: {
-            id: id,
-            timeoutAt: Date.now() + opts.timeout,
-            param: {
-              data: {
-                func: func,
-                args: args,
-                retry: opts.retryPolicy?.encode(),
-                version: version,
-              },
-              headers: {},
+    const promise = await this.promiseCreate(
+      {
+        kind: "promise.create",
+        head: { corrId: "", version: "" },
+        data: {
+          id: id,
+          timeoutAt: Date.now() + opts.timeout,
+          param: {
+            data: {
+              func: func,
+              args: args,
+              retry: opts.retryPolicy?.encode(),
+              version: version,
             },
-            tags: {
-              ...opts.tags,
-              "resonate:origin": id,
-              "resonate:branch": id,
-              "resonate:parent": id,
-              "resonate:scope": "global",
-              "resonate:target": opts.target,
-            },
+            headers: {},
+          },
+          tags: {
+            ...opts.tags,
+            "resonate:origin": id,
+            "resonate:branch": id,
+            "resonate:parent": id,
+            "resonate:scope": "global",
+            "resonate:target": opts.target,
           },
         },
-        span.encode(),
-      );
+      },
+      {},
+    );
 
-      // if the promise is created, the span is considered successful
-      span.setStatus(true);
-      span.end(this.clock.now());
-
-      return this.createHandle(promise);
-    } catch (e) {
-      span.setStatus(false, String(e));
-      span.end(this.clock.now());
-      throw e;
-    }
+    return this.createHandle(promise);
   }
 
   public async schedule<F extends Func>(
@@ -750,13 +700,11 @@ export class Resonate {
     }
 
     // TODO: move this into the handler?
-    const { headers, data } = this.encryptor.encrypt(
-      this.encoder.encode({
-        func: registered ? registered.name : (funcOrName as string),
-        args: args,
-        version: registered ? registered.version : opts.version || 1,
-      }),
-    );
+    const { headers, data } = this.codec.encode({
+      func: registered ? registered.name : (funcOrName as string),
+      args: args,
+      version: registered ? registered.version : opts.version || 1,
+    });
 
     await this.schedules.create(name, cron, `${this.idPrefix}{{.id}}.{{.timestamp}}`, opts.timeout, {
       promiseHeaders: headers,
@@ -825,88 +773,135 @@ export class Resonate {
     req: TaskCreateReq,
     headers: { [key: string]: string },
   ): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
-    return new Promise((resolve, reject) =>
-      this.handler.taskCreate(
+    return new Promise((resolve, reject) => {
+      try {
+        req.data.action.data.param = this.codec.encode(req.data.action.data.param.data);
+      } catch (e) {
+        reject(exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.action.data.param.data?.func ?? "unknown", e));
+        return;
+      }
+
+      this.network.send(
         req,
         (res) => {
-          if (res.kind === "error") {
-            reject(res.error);
-          } else {
-            if (res.value === "subscribe") {
-              this.handler.promiseSubscribe(
-                {
-                  kind: "promise.subscribe",
-                  head: { corrId: "", version: "" },
-                  data: {
-                    awaited: req.data.action.data.id,
-                    address: this.unicast,
-                  },
-                },
-                (res) => {
-                  if (res.kind === "error") {
-                    reject(res.error);
-                  } else {
-                    resolve({ promise: res.value, task: undefined });
-                  }
-                },
-                true,
-              );
-            } else {
-              resolve({ promise: res.value.promise, task: res.value.task });
-            }
+          if (!isSuccess(res) && !isConflict(res)) {
+            reject(
+              exceptions.SERVER_ERROR(res.data, true, {
+                code: res.head.status,
+                message: res.data,
+              }),
+            );
+            return;
+          }
+
+          if (isConflict(res)) {
+            this.promiseSubscribe({
+              kind: "promise.subscribe",
+              head: { corrId: "", version: "" },
+              data: {
+                awaited: req.data.action.data.id,
+                address: this.unicast,
+              },
+            })
+              .then((promise) => resolve({ promise, task: undefined }))
+              .catch(reject);
+            return;
+          }
+
+          try {
+            const promise = this.codec.decodePromise(res.data.promise);
+            resolve({ promise, task: res.data.task });
+          } catch (e) {
+            reject(e);
           }
         },
-        undefined,
         headers,
         true,
-      ),
-    );
+      );
+    });
   }
 
   private promiseCreate(req: PromiseCreateReq, headers: { [key: string]: string }): Promise<PromiseRecord> {
-    return new Promise((resolve, reject) =>
-      this.handler.promiseCreate(
+    return new Promise((resolve, reject) => {
+      try {
+        req.data.param = this.codec.encode(req.data.param.data);
+      } catch (e) {
+        reject(exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? "unknown", e));
+        return;
+      }
+
+      this.network.send(
         req,
         (res) => {
-          if (res.kind === "error") {
-            reject(res.error);
-          } else {
-            resolve(res.value);
+          if (!isSuccess(res)) {
+            reject(
+              exceptions.SERVER_ERROR(res.data, true, {
+                code: res.head.status,
+                message: res.data,
+              }),
+            );
+            return;
+          }
+          try {
+            const promise = this.codec.decodePromise(res.data.promise);
+            resolve(promise);
+          } catch (e) {
+            reject(e);
           }
         },
-        undefined,
         headers,
         true,
-      ),
-    );
+      );
+    });
   }
 
   private promiseSubscribe(req: PromiseSubscribeReq): Promise<PromiseRecord> {
-    return new Promise((resolve, reject) =>
-      this.handler.promiseSubscribe(
+    return new Promise((resolve, reject) => {
+      this.network.send(
         req,
         (res) => {
-          if (res.kind === "error") {
-            reject(res.error);
-          } else {
-            resolve(res.value);
+          if (!isSuccess(res)) {
+            reject(
+              exceptions.SERVER_ERROR(res.data, true, {
+                code: res.head.status,
+                message: res.data,
+              }),
+            );
+            return;
+          }
+          try {
+            const promise = this.codec.decodePromise(res.data.promise);
+            resolve(promise);
+          } catch (e) {
+            reject(e);
           }
         },
+        {},
         true,
-      ),
-    );
+      );
+    });
   }
 
   private promiseGet(req: PromiseGetReq): Promise<PromiseRecord> {
-    return new Promise((resolve, reject) =>
-      this.handler.promiseGet(req, (res) => {
-        if (res.kind === "error") {
-          reject(res.error);
-        } else {
-          resolve(res.value);
+    return new Promise((resolve, reject) => {
+      this.network.send(req, (res) => {
+        if (!isSuccess(res)) {
+          reject(
+            exceptions.SERVER_ERROR(res.data, true, {
+              code: res.head.status,
+              message: res.data,
+            }),
+          );
+          return;
         }
-      }),
-    );
+        try {
+          const promise = this.codec.decodePromise(res.data.promise);
+          resolve(promise);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
   }
 
   private createHandle(promise: PromiseRecord): ResonateHandle<any> {
@@ -929,30 +924,12 @@ export class Resonate {
   private onMessage(msg: Message): void {
     util.assert(msg.kind === "notify");
 
-    let paramData: any;
-    let valueData: any;
-
     try {
-      paramData = this.encoder.decode(this.encryptor.decrypt(msg.data.promise.param));
+      const decoded = this.codec.decodePromise(msg.data.promise);
+      this.notify(msg.data.promise.id, undefined, decoded);
     } catch (e) {
-      // TODO: improve this message
-      this.notify(msg.data.promise.id, new Error("Failed to decode promise param"));
-      return;
+      this.notify(msg.data.promise.id, new Error("Failed to decode promise"));
     }
-
-    try {
-      valueData = this.encoder.decode(this.encryptor.decrypt(msg.data.promise.value));
-    } catch (e) {
-      // TODO: improve this message
-      this.notify(msg.data.promise.id, new Error("Failed to decode promise value"));
-      return;
-    }
-
-    this.notify(msg.data.promise.id, undefined, {
-      ...msg.data.promise,
-      param: { headers: msg.data.promise.param.headers, data: paramData },
-      value: { headers: msg.data.promise.value.headers, data: valueData },
-    });
   }
 
   private async subscribe(id: string, res: PromiseRecord) {

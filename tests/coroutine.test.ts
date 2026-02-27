@@ -1,17 +1,14 @@
 import { WallClock } from "../src/clock.js";
+import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
 import { Coroutine, type Done, type Suspended } from "../src/coroutine.js";
-import { JsonEncoder } from "../src/encoder.js";
-import { NoopEncryptor } from "../src/encryptor.js";
-import { Handler } from "../src/handler.js";
 import type { Network } from "../src/network/network.js";
 import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
-import { NoopSpan } from "../src/tracer.js";
-import type { Result } from "../src/types.js";
-import { assert } from "../src/util.js";
+import type { Effects, Result } from "../src/types.js";
+import * as util from "../src/util.js";
 
 class DummyNetwork implements Network {
   private promises = new Map<string, PromiseRecord>();
@@ -26,6 +23,15 @@ class DummyNetwork implements Network {
     switch (req.kind) {
       case "promise.create": {
         const createReq = req as Extract<Request, { kind: "promise.create" }>;
+        const existing = this.promises.get(createReq.data.id);
+        if (existing) {
+          callback({
+            kind: req.kind,
+            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+            data: { promise: existing },
+          } as Extract<Response, { kind: K }>);
+          return;
+        }
         const p: PromiseRecord = {
           id: createReq.data.id,
           state: "pending",
@@ -70,9 +76,14 @@ class DummyNetwork implements Network {
   subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Message) => void) {}
 }
 
+function buildEffects(network: Network): Effects {
+  const codec = new Codec();
+  return util.buildEffects(network, codec);
+}
+
 describe("Coroutine", () => {
   // Helper functions to write test easily
-  const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], handler: Handler) => {
+  const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], effects: Effects) => {
     const boundaryPromise: PromiseRecord = {
       id: uuid,
       state: "pending",
@@ -85,7 +96,6 @@ describe("Coroutine", () => {
 
     return new Promise<any>((resolve) => {
       Coroutine.exec(
-        uuid,
         false,
         new InnerContext({
           id: uuid,
@@ -98,25 +108,22 @@ describe("Coroutine", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
         func,
         args,
-        { id: uuid, state: "acquired" as const, version: 1 },
-        handler,
-        new Map(),
+        effects,
         (res) => {
           expect(res.kind).toBe("value");
-          assert(res.kind === "value");
+          util.assert(res.kind === "value");
           resolve(res.value);
         },
       );
     });
   };
 
-  const completePromise = (handler: Handler, id: string, result: Result<any, any>) => {
+  const completePromise = (effects: Effects, id: string, result: Result<any, any>) => {
     return new Promise<any>((resolve) => {
-      handler.promiseSettle(
+      effects.promiseSettle(
         {
           kind: "promise.settle",
           head: { corrId: "", version: "" },
@@ -131,7 +138,7 @@ describe("Coroutine", () => {
         },
         (res) => {
           expect(res.kind).toBe("value");
-          assert(res.kind === "value");
+          util.assert(res.kind === "value");
           resolve(res.value);
         },
       );
@@ -149,8 +156,9 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    const r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    const r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 
@@ -169,19 +177,20 @@ describe("Coroutine", () => {
       const v2 = yield* p2;
       return v + v2;
     }
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
 
     // First execution - should suspend
-    let r = await exec("foo.1", foo, [], h);
+    let r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "suspended" });
     const suspended = r as Suspended;
     expect(suspended.todo.local).toHaveLength(2);
 
-    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
-    await completePromise(h, "foo.1.1", { kind: "value", value: 31416 });
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 31416 });
 
     // Second execution - should complete
-    r = await exec("foo.1", foo, [], h);
+    r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 31458 } });
   });
 
@@ -199,15 +208,16 @@ describe("Coroutine", () => {
       return v1;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
 
-    let r = await exec("foo.1", foo, [], h);
+    let r = await exec("foo.1", foo, [], effects);
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 
@@ -222,22 +232,23 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    let r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    let r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(2);
 
-    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
   });
@@ -253,15 +264,16 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    let r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    let r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
   });
@@ -278,22 +290,23 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    let r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    let r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(2);
 
-    await completePromise(h, "foo.1.0", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], h);
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
 
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
@@ -309,26 +322,31 @@ describe("Coroutine", () => {
       return v1 + v2;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
 
-    let r = await exec("foo.1", foo, [], h);
+    let r = await exec("foo.1", foo, [], effects);
     expect(r.type).toBe("suspended");
     const suspended = r as Suspended;
     expect(suspended.todo.remote).toHaveLength(1);
 
-    await completePromise(h, "foo.1.1", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
 
-    r = await exec("foo.1", foo, [], h);
+    r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 84 } });
   });
 
   test("DIE with condition true aborts execution", async () => {
+    const originalError = console.error;
+    console.error = () => {};
+
     function* foo(ctx: Context) {
       yield* ctx.panic(true, "Abort execution");
       return 42;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
 
     const boundaryPromise: PromiseRecord = {
       id: "foo.1",
@@ -342,7 +360,6 @@ describe("Coroutine", () => {
     // DIE with condition=true causes callback to be called with err=true
     const result = await new Promise<Result<Suspended | Done, any>>((resolve) => {
       Coroutine.exec(
-        "foo.1",
         false,
         new InnerContext({
           id: "foo.1",
@@ -354,13 +371,10 @@ describe("Coroutine", () => {
           version: 1,
           retryPolicy: new Never(),
           optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
-          span: new NoopSpan(),
         }),
         foo,
         [],
-        { id: "foo.1", state: "acquired" as const, version: 1 },
-        h,
-        new Map(),
+        effects,
         (res) => {
           resolve(res);
         },
@@ -368,6 +382,8 @@ describe("Coroutine", () => {
     });
 
     expect(result.kind).toBe("error");
+
+    console.error = originalError;
   });
 
   test("DIE with condition false continues execution", async () => {
@@ -376,8 +392,9 @@ describe("Coroutine", () => {
       return 42;
     }
 
-    const h = new Handler(new DummyNetwork(), new JsonEncoder(), new NoopEncryptor());
-    const r = await exec("foo.1", foo, [], h);
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    const r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 });

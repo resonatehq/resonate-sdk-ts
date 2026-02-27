@@ -1,6 +1,6 @@
 import { setTimeout } from "node:timers/promises";
+import { Codec } from "../src/codec.js";
 import type { Context, InnerContext } from "../src/context.js";
-import { JsonEncoder } from "../src/encoder.js";
 import { Resonate } from "../src/resonate.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/retries.js";
 import * as util from "../src/util.js";
@@ -477,7 +477,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Basic human in the loop", async () => {
-    const encoder = new JsonEncoder();
+    const codec = new Codec();
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -489,7 +489,7 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    await resonate.promises.settle("myId", "resolved", { data: encoder.encode("myValue").data });
+    await resonate.promises.settle("myId", "resolved", { data: codec.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
@@ -501,7 +501,7 @@ describe("Resonate usage tests", () => {
     });
   });
   test("Basic human in the loop without setting ids", async () => {
-    const encoder = new JsonEncoder();
+    const codec = new Codec();
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -513,7 +513,7 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    await resonate.promises.settle("f.0", "resolved", { data: encoder.encode("myValue").data });
+    await resonate.promises.settle("f.0", "resolved", { data: codec.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
@@ -526,7 +526,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Correctly sets timeout", async () => {
-    const encoder = new JsonEncoder();
+    const codec = new Codec();
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const time = Date.now();
@@ -549,7 +549,7 @@ describe("Resonate usage tests", () => {
       "resonate:parent": "f",
       "resonate:scope": "global",
     });
-    await resonate.promises.settle("myId", "resolved", { data: encoder.encode("myValue").data });
+    await resonate.promises.settle("myId", "resolved", { data: codec.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     resonate.stop();
@@ -624,7 +624,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Basic get", async () => {
-    const encoder = new JsonEncoder();
+    const codec = new Codec();
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
 
     // get throws when promise does not exist
@@ -632,7 +632,7 @@ describe("Resonate usage tests", () => {
 
     // get returns the promise value
     await resonate.promises.create("foo", Number.MAX_SAFE_INTEGER);
-    await resonate.promises.settle("foo", "resolved", { data: encoder.encode("foo").data });
+    await resonate.promises.settle("foo", "resolved", { data: codec.encode("foo").data });
 
     const handle = await resonate.get("foo");
     expect(await handle.result()).toBe("foo");
@@ -1045,7 +1045,6 @@ describe("Resonate usage tests", () => {
     }
 
     function* bar(ctx: Context) {
-      console.log(ctx.id);
       expect(ctx.id.startsWith(prefix)).toBe(true);
       expect(ctx.id.startsWith(`${prefix}:${prefix}`)).toBe(false);
       return "bar";
@@ -1067,6 +1066,9 @@ describe("Resonate usage tests", () => {
 
 describe("Context usage tests", () => {
   test("ctx.panic aborts execution when condition is true", async () => {
+    const originalError = console.error;
+    console.error = () => {};
+
     const resonate = Resonate.local();
 
     let completed = false;
@@ -1083,6 +1085,7 @@ describe("Context usage tests", () => {
     expect(completed).toBe(false);
 
     resonate.stop();
+    console.error = originalError;
   });
 
   test("ctx.panic continues execution when condition is false", async () => {
@@ -1100,6 +1103,9 @@ describe("Context usage tests", () => {
   });
 
   test("ctx.assert aborts execution when condition is false", async () => {
+    const originalError = console.error;
+    console.error = () => {};
+
     const resonate = Resonate.local();
 
     let completed = false;
@@ -1116,6 +1122,7 @@ describe("Context usage tests", () => {
     expect(completed).toBe(false);
 
     resonate.stop();
+    console.error = originalError;
   });
 
   test("ctx.assert continues execution when condition is true", async () => {

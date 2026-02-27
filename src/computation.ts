@@ -1,18 +1,15 @@
 import type { Clock } from "./clock.js";
 import { InnerContext } from "./context.js";
-import type { ClaimedTask, Task } from "./core.js";
+import type { ClaimedTask } from "./core.js";
 import { Coroutine, type LocalTodo } from "./coroutine.js";
 import exceptions from "./exceptions.js";
-import type { Handler } from "./handler.js";
 import type { Heartbeat } from "./heartbeat.js";
-import type { Network } from "./network/network.js";
 import type { PromiseRecord, TaskRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import { AsyncProcessor, type Processor } from "./processor/processor.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
-import type { Span, Tracer } from "./tracer.js";
-import type { Func, Result } from "./types.js";
+import type { Effects, Func, Result } from "./types.js";
 import * as util from "./util.js";
 
 export type Status = Done | Suspended;
@@ -39,7 +36,7 @@ interface Data {
 export class Computation {
   private id: string;
   private clock: Clock;
-  private handler: Handler;
+  private effects: Effects;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
   private dependencies: Map<string, any>;
@@ -47,30 +44,23 @@ export class Computation {
   private verbose: boolean;
   private heartbeat: Heartbeat;
   private processor: Processor;
-  private span: Span;
-  private spans: Map<string, Span>;
-
-  private seen: Set<string> = new Set();
   private processing = false;
 
   constructor(
     id: string,
     clock: Clock,
-    network: Network,
-    handler: Handler,
+    effects: Effects,
     retries: Map<string, RetryPolicyConstructor>,
     registry: Registry,
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
     optsBuilder: OptionsBuilder,
     verbose: boolean,
-    tracer: Tracer,
-    span: Span,
     processor?: Processor,
   ) {
     this.id = id;
     this.clock = clock;
-    this.handler = handler;
+    this.effects = effects;
     this.retries = retries;
     this.registry = registry;
     this.heartbeat = heartbeat;
@@ -78,30 +68,18 @@ export class Computation {
     this.optsBuilder = optsBuilder;
     this.verbose = verbose;
     this.processor = processor ?? new AsyncProcessor();
-    this.span = span;
-    this.spans = new Map();
   }
 
-  public executeUntilBlocked(task: Task, done: (res: Result<Status, undefined>) => void) {
+  public executeUntilBlocked(task: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
     // If we are already processing there is nothing to do, the
     // caller will be notified via the promise handler
     if (this.processing) return done({ kind: "error", error: undefined });
-    this.processing = true;
 
-    const doneProcessing = (res: Result<Status, undefined>) => {
+    this.processing = true;
+    this.processAcquired(task, (res: Result<Status, undefined>) => {
       this.processing = false;
       done(res);
-    };
-
-    switch (task.kind) {
-      case "claimed":
-        this.processAcquired(task, doneProcessing);
-        break;
-
-      case "unclaimed":
-        util.assert(false, "All tasks must be claimed at this point");
-        break;
-    }
+    });
   }
 
   private processAcquired({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
@@ -146,7 +124,6 @@ export class Computation {
       timeout: rootPromise.timeoutAt,
       version: registered.version,
       retryPolicy: retryPolicy,
-      span: this.span,
     };
 
     if (util.isGeneratorFunction(registered.func)) {
@@ -193,7 +170,7 @@ export class Computation {
 
     const ctx = new InnerContext(ctxConfig);
 
-    Coroutine.exec(this.id, this.verbose, ctx, func, args, task, this.handler, this.spans, (res) => {
+    Coroutine.exec(this.verbose, ctx, func, args, this.effects, (res) => {
       if (res.kind === "error") {
         return done(res);
       }
@@ -240,7 +217,6 @@ export class Computation {
         id,
         ctx,
         func: async () => await func(ctx, ...args),
-        span: ctx.span,
         verbose: this.verbose,
       },
     ]);
@@ -267,7 +243,6 @@ export class Computation {
       id: t.id,
       ctx: t.ctx,
       func: async () => await t.func(t.ctx, ...t.args),
-      span: t.ctx.span,
       verbose: this.verbose,
     }));
 
@@ -280,7 +255,7 @@ export class Computation {
       let settledCount = 0;
       for (const result of results) {
         const { id, result: res } = result;
-        this.handler.promiseSettle(
+        this.effects.promiseSettle(
           {
             kind: "promise.settle",
             head: { corrId: "", version: "" },

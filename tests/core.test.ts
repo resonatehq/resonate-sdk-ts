@@ -1,19 +1,16 @@
 import { describe, expect, jest, test } from "@jest/globals";
 import { WallClock } from "../src/clock.js";
+import { Codec } from "../src/codec.js";
 import type { Status } from "../src/computation.js";
 import type { ClaimedTask } from "../src/core.js";
 import { Core } from "../src/core.js";
-import { JsonEncoder } from "../src/encoder.js";
-import { NoopEncryptor } from "../src/encryptor.js";
-import { Handler } from "../src/handler.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { LocalNetwork } from "../src/network/local.js";
 import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js";
+import { isSuccess } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
-import { NoopSpan, NoopTracer } from "../src/tracer.js";
 import type { Result } from "../src/types.js";
-import * as util from "../src/util.js";
 
 class TestHeartbeat implements Heartbeat {
   start(): void {}
@@ -43,13 +40,11 @@ class MockComputation {
 function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { mock: MockComputation } }): {
   core: Core;
   network: LocalNetwork;
-  handler: Handler;
+  codec: Codec;
   ctorSpy: jest.Spied<any>;
 } {
   const network = new LocalNetwork();
-  const encoder = new JsonEncoder();
-  const encryptor = new NoopEncryptor();
-  const handler = new Handler(network, encoder, encryptor);
+  const codec = new Codec();
 
   const activeMock = new MockComputation(opts.responses);
   if (opts.mockRef) {
@@ -61,8 +56,7 @@ function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { m
     ttl: 60_000,
     clock: new WallClock(),
     network,
-    handler,
-    tracer: new NoopTracer(),
+    codec,
     registry: new Registry(),
     heartbeat: new TestHeartbeat(),
     dependencies: new Map(),
@@ -72,7 +66,7 @@ function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { m
 
   const ctorSpy = jest.spyOn(core as any, "createComputation").mockReturnValue(activeMock);
 
-  return { core, network, handler, ctorSpy };
+  return { core, network, codec, ctorSpy };
 }
 
 function wrapCb<T>(): { promise: Promise<T>; cb: (val: T) => void } {
@@ -93,16 +87,15 @@ function wrapVoidCb(): { promise: Promise<void>; cb: () => void } {
 
 function seedAcquiredTask(
   network: LocalNetwork,
-  handler: Handler,
+  codec: Codec,
   id: string,
   func: string,
   args: any[],
 ): Promise<{ task: TaskRecord; rootPromise: PromiseRecord }> {
   return new Promise((resolve, reject) => {
-    const encoder = new JsonEncoder();
-    const param = encoder.encode({ func, args, version: 1 });
+    const param = codec.encode({ func, args, version: 1 });
 
-    handler.taskCreate(
+    network.send(
       {
         kind: "task.create",
         head: { corrId: "", version: "" },
@@ -122,11 +115,11 @@ function seedAcquiredTask(
         },
       },
       (res) => {
-        if (res.kind === "error") {
-          reject(res.error);
+        if (isSuccess(res)) {
+          const rootPromise = codec.decodePromise(res.data.promise);
+          resolve({ task: res.data.task, rootPromise });
         } else {
-          util.assert(res.value !== "subscribe");
-          resolve({ task: res.value.task!, rootPromise: res.value.promise });
+          reject(new Error(`Failed to create task: ${res.head.status}`));
         }
       },
     );
@@ -135,12 +128,12 @@ function seedAcquiredTask(
 
 async function seedPendingTask(
   network: LocalNetwork,
-  handler: Handler,
+  codec: Codec,
   id: string,
   func: string,
   args: any[],
 ): Promise<TaskRecord> {
-  const { task } = await seedAcquiredTask(network, handler, id, func, args);
+  const { task } = await seedAcquiredTask(network, codec, id, func, args);
   return new Promise((resolve, reject) => {
     network.send(
       {
@@ -173,16 +166,16 @@ function interceptNetwork(network: LocalNetwork): { sent: Request[] } {
 describe("Core", () => {
   describe("executeUntilBlocked", () => {
     test("computation resolves - sends task.fulfill with resolved value", async () => {
-      const { core, network, handler } = buildCore({
+      const { core, network, codec } = buildCore({
         responses: [{ kind: "value", value: { kind: "done", id: "p1", state: "resolved", value: 42 } }],
       });
 
-      const { task, rootPromise } = await seedAcquiredTask(network, handler, "p1", "main", []);
+      const { task, rootPromise } = await seedAcquiredTask(network, codec, "p1", "main", []);
       const { sent } = interceptNetwork(network);
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("value");
@@ -198,16 +191,16 @@ describe("Core", () => {
     });
 
     test("computation rejects - sends task.fulfill with rejected value", async () => {
-      const { core, network, handler } = buildCore({
+      const { core, network, codec } = buildCore({
         responses: [{ kind: "value", value: { kind: "done", id: "p2", state: "rejected", value: "err" } }],
       });
 
-      const { task, rootPromise } = await seedAcquiredTask(network, handler, "p2", "main", []);
+      const { task, rootPromise } = await seedAcquiredTask(network, codec, "p2", "main", []);
       const { sent } = interceptNetwork(network);
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("value");
@@ -219,16 +212,16 @@ describe("Core", () => {
     });
 
     test("computation errors - sends task.release", async () => {
-      const { core, network, handler } = buildCore({
+      const { core, network, codec } = buildCore({
         responses: [{ kind: "error", error: undefined }],
       });
 
-      const { task, rootPromise } = await seedAcquiredTask(network, handler, "p3", "main", []);
+      const { task, rootPromise } = await seedAcquiredTask(network, codec, "p3", "main", []);
       const { sent } = interceptNetwork(network);
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("error");
@@ -237,19 +230,19 @@ describe("Core", () => {
     });
 
     test("computation suspends - sends task.suspend with awaited IDs", async () => {
-      const { core, network, handler } = buildCore({
+      const { core, network, codec } = buildCore({
         responses: [{ kind: "value", value: { kind: "suspended", awaited: ["dep-a", "dep-b"] } }],
       });
 
-      const { task, rootPromise } = await seedAcquiredTask(network, handler, "p4", "main", []);
-      await seedAcquiredTask(network, handler, "dep-a", "depFunc", []);
-      await seedAcquiredTask(network, handler, "dep-b", "depFunc", []);
+      const { task, rootPromise } = await seedAcquiredTask(network, codec, "p4", "main", []);
+      await seedAcquiredTask(network, codec, "dep-a", "depFunc", []);
+      await seedAcquiredTask(network, codec, "dep-b", "depFunc", []);
 
       const { sent } = interceptNetwork(network);
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("value");
@@ -268,7 +261,7 @@ describe("Core", () => {
 
     test("computation suspends with redirect (continue) - re-executes", async () => {
       const mockRef = { mock: null as unknown as MockComputation };
-      const { core, network, handler } = buildCore({
+      const { core, network, codec } = buildCore({
         responses: [
           { kind: "value", value: { kind: "suspended", awaited: ["dep-x"] } },
           { kind: "value", value: { kind: "done", id: "p5", state: "resolved", value: "final" } },
@@ -276,8 +269,8 @@ describe("Core", () => {
         mockRef,
       });
 
-      const { task, rootPromise } = await seedAcquiredTask(network, handler, "p5", "main", []);
-      await seedAcquiredTask(network, handler, "dep-x", "depFunc", []);
+      const { task, rootPromise } = await seedAcquiredTask(network, codec, "p5", "main", []);
+      await seedAcquiredTask(network, codec, "dep-x", "depFunc", []);
 
       const origSend = network.send.bind(network);
       network.send = ((req: any, cb: any, ...rest: any[]) => {
@@ -294,7 +287,7 @@ describe("Core", () => {
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
       const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb);
+      core.executeUntilBlocked(claimed, cb);
       const res = await promise;
 
       expect(res.kind).toBe("value");
@@ -303,36 +296,17 @@ describe("Core", () => {
       }
       expect(mockRef.mock.calls.length).toBe(2);
     });
-
-    test("computation reused for same root promise ID", async () => {
-      const { core, network, handler, ctorSpy } = buildCore({
-        responses: [{ kind: "value", value: { kind: "done", id: "reuse-id", state: "resolved", value: 1 } }],
-      });
-
-      const { task, rootPromise } = await seedAcquiredTask(network, handler, "reuse-id", "main", []);
-      const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-
-      const { promise: p1, cb: cb1 } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb1);
-      await p1;
-
-      const { promise: p2, cb: cb2 } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(new NoopSpan(), claimed, cb2);
-      await p2;
-
-      expect(ctorSpy).toHaveBeenCalledTimes(1);
-    });
   });
 
   describe("onMessage", () => {
     test("acquires task then delegates to executeUntilBlocked", async () => {
       const mockRef = { mock: null as unknown as MockComputation };
-      const { core, network, handler } = buildCore({
+      const { core, network, codec } = buildCore({
         responses: [{ kind: "value", value: { kind: "done", id: "on-msg-1", state: "resolved", value: "ok" } }],
         mockRef,
       });
 
-      const task = await seedPendingTask(network, handler, "on-msg-1", "main", []);
+      const task = await seedPendingTask(network, codec, "on-msg-1", "main", []);
 
       const { promise, cb } = wrapVoidCb();
       core.onMessage({ kind: "execute", head: {}, data: { task } }, cb);
@@ -344,12 +318,12 @@ describe("Core", () => {
 
     test("acquire failure (409) calls cb without hanging", async () => {
       const mockRef = { mock: null as unknown as MockComputation };
-      const { core, network, handler } = buildCore({
+      const { core, network, codec } = buildCore({
         responses: [{ kind: "value", value: { kind: "done", id: "fail-acq", state: "resolved", value: 0 } }],
         mockRef,
       });
 
-      const { task } = await seedAcquiredTask(network, handler, "fail-acq", "main", []);
+      const { task } = await seedAcquiredTask(network, codec, "fail-acq", "main", []);
 
       const { promise, cb } = wrapVoidCb();
       core.onMessage({ kind: "execute", head: {}, data: { task: { id: task.id, version: task.version } } }, cb);
@@ -359,7 +333,7 @@ describe("Core", () => {
     });
 
     test("fulfill encodes value via handler.encodeValue", async () => {
-      const { core, network, handler } = buildCore({
+      const { core, network, codec } = buildCore({
         responses: [
           {
             kind: "value",
@@ -368,7 +342,7 @@ describe("Core", () => {
         ],
       });
 
-      const task = await seedPendingTask(network, handler, "encode-test", "main", []);
+      const task = await seedPendingTask(network, codec, "encode-test", "main", []);
       const { sent } = interceptNetwork(network);
 
       const { promise, cb } = wrapVoidCb();
