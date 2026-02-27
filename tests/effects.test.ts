@@ -1,7 +1,6 @@
 import { Codec } from "../src/codec.js";
-import type { ResonateError } from "../src/exceptions.js";
 import type { PromiseRecord, Request, Response } from "../src/network/types.js";
-import type { Result, Send } from "../src/types.js";
+import type { Send } from "../src/types.js";
 import { buildEffects } from "../src/util.js";
 
 // A simple in-memory stub that handles promise.create and promise.settle.
@@ -81,12 +80,6 @@ function resolvedPromise(id: string, value: any): PromiseRecord {
   };
 }
 
-function collect(
-  fn: (done: (res: Result<PromiseRecord, ResonateError>) => void) => void,
-): Promise<Result<PromiseRecord, ResonateError>> {
-  return new Promise((resolve) => fn(resolve));
-}
-
 describe("Effects", () => {
   describe("promiseCreate", () => {
     test("returns cached promise from preload without hitting network", async () => {
@@ -94,12 +87,11 @@ describe("Effects", () => {
       const preloaded = pendingPromise("p1");
       const effects = buildEffects(network.send, codec, [preloaded]);
 
-      const res = await collect((done) =>
-        effects.promiseCreate(
-          { kind: "promise.create", head, data: { id: "p1", timeoutAt: 0, param: { data: undefined }, tags: {} } },
-          done,
-        ),
-      );
+      const res = await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "p1", timeoutAt: 0, param: { data: undefined }, tags: {} },
+      });
 
       expect(res.kind).toBe("value");
       expect(network.sendCount).toBe(0);
@@ -109,16 +101,11 @@ describe("Effects", () => {
       const network = new StubNetwork();
       const effects = buildEffects(network.send, codec);
 
-      const res = await collect((done) =>
-        effects.promiseCreate(
-          {
-            kind: "promise.create",
-            head,
-            data: { id: "p2", timeoutAt: Date.now() + 60_000, param: { data: { func: "f", args: [] } }, tags: {} },
-          },
-          done,
-        ),
-      );
+      const res = await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "p2", timeoutAt: Date.now() + 60_000, param: { data: { func: "f", args: [] } }, tags: {} },
+      });
 
       expect(res.kind).toBe("value");
       expect(network.sendCount).toBe(1);
@@ -129,25 +116,19 @@ describe("Effects", () => {
       const effects = buildEffects(network.send, codec);
 
       // first call hits network
-      await collect((done) =>
-        effects.promiseCreate(
-          {
-            kind: "promise.create",
-            head,
-            data: { id: "p3", timeoutAt: Date.now() + 60_000, param: { data: { func: "f", args: [] } }, tags: {} },
-          },
-          done,
-        ),
-      );
+      await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "p3", timeoutAt: Date.now() + 60_000, param: { data: { func: "f", args: [] } }, tags: {} },
+      });
       expect(network.sendCount).toBe(1);
 
       // second call should use cache
-      const res = await collect((done) =>
-        effects.promiseCreate(
-          { kind: "promise.create", head, data: { id: "p3", timeoutAt: 0, param: { data: undefined }, tags: {} } },
-          done,
-        ),
-      );
+      const res = await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "p3", timeoutAt: 0, param: { data: undefined }, tags: {} },
+      });
 
       expect(res.kind).toBe("value");
       expect(network.sendCount).toBe(1);
@@ -160,12 +141,11 @@ describe("Effects", () => {
       const preloaded = resolvedPromise("s1", 42);
       const effects = buildEffects(network.send, codec, [preloaded]);
 
-      const res = await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "s1", state: "resolved", value: { data: 99 } } },
-          done,
-        ),
-      );
+      const res = await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "s1", state: "resolved", value: { data: 99 } },
+      });
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -190,12 +170,11 @@ describe("Effects", () => {
       );
       const beforeCount = network.sendCount;
 
-      const res = await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "s2", state: "resolved", value: { data: "ok" } } },
-          done,
-        ),
-      );
+      const res = await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "s2", state: "resolved", value: { data: "ok" } },
+      });
 
       expect(res.kind).toBe("value");
       expect(network.sendCount).toBe(beforeCount + 1);
@@ -206,34 +185,27 @@ describe("Effects", () => {
       const effects = buildEffects(network.send, codec);
 
       // create via network
-      await collect((done) =>
-        effects.promiseCreate(
-          {
-            kind: "promise.create",
-            head,
-            data: { id: "s3", timeoutAt: Date.now() + 60_000, param: { data: { func: "f", args: [] } }, tags: {} },
-          },
-          done,
-        ),
-      );
+      await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "s3", timeoutAt: Date.now() + 60_000, param: { data: { func: "f", args: [] } }, tags: {} },
+      });
       expect(network.sendCount).toBe(1);
 
       // first settle hits network
-      await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "s3", state: "resolved", value: { data: "v" } } },
-          done,
-        ),
-      );
+      await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "s3", state: "resolved", value: { data: "v" } },
+      });
       expect(network.sendCount).toBe(2);
 
       // second settle should use cache (now settled)
-      const res = await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "s3", state: "resolved", value: { data: "v" } } },
-          done,
-        ),
-      );
+      const res = await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "s3", state: "resolved", value: { data: "v" } },
+      });
 
       expect(res.kind).toBe("value");
       expect(network.sendCount).toBe(2);
@@ -254,12 +226,11 @@ describe("Effects", () => {
       );
       const beforeCount = network.sendCount;
 
-      const res = await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "s4", state: "resolved", value: { data: "x" } } },
-          done,
-        ),
-      );
+      const res = await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "s4", state: "resolved", value: { data: "x" } },
+      });
 
       expect(res.kind).toBe("value");
       expect(network.sendCount).toBe(beforeCount + 1);
@@ -272,12 +243,11 @@ describe("Effects", () => {
       const preloaded = pendingPromise("v1");
       const effects = buildEffects(network.send, codec, [preloaded]);
 
-      const res = await collect((done) =>
-        effects.promiseCreate(
-          { kind: "promise.create", head, data: { id: "v1", timeoutAt: 0, param: { data: undefined }, tags: {} } },
-          done,
-        ),
-      );
+      const res = await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "v1", timeoutAt: 0, param: { data: undefined }, tags: {} },
+      });
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -292,12 +262,11 @@ describe("Effects", () => {
       const preloaded = resolvedPromise("v2", { answer: 42 });
       const effects = buildEffects(network.send, codec, [preloaded]);
 
-      const res = await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "v2", state: "resolved", value: { data: "ignored" } } },
-          done,
-        ),
-      );
+      const res = await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "v2", state: "resolved", value: { data: "ignored" } },
+      });
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -314,24 +283,18 @@ describe("Effects", () => {
       const paramData = { func: "myFunc", args: [1, "two"] };
 
       // first call goes to network and populates cache
-      await collect((done) =>
-        effects.promiseCreate(
-          {
-            kind: "promise.create",
-            head,
-            data: { id: "v3", timeoutAt: Date.now() + 60_000, param: { data: paramData }, tags: {} },
-          },
-          done,
-        ),
-      );
+      await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "v3", timeoutAt: Date.now() + 60_000, param: { data: paramData }, tags: {} },
+      });
 
       // second call returns from cache
-      const res = await collect((done) =>
-        effects.promiseCreate(
-          { kind: "promise.create", head, data: { id: "v3", timeoutAt: 0, param: { data: undefined }, tags: {} } },
-          done,
-        ),
-      );
+      const res = await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "v3", timeoutAt: 0, param: { data: undefined }, tags: {} },
+      });
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -346,34 +309,27 @@ describe("Effects", () => {
       const effects = buildEffects(network.send, codec);
 
       // create promise via network
-      await collect((done) =>
-        effects.promiseCreate(
-          {
-            kind: "promise.create",
-            head,
-            data: { id: "v4", timeoutAt: Date.now() + 60_000, param: { data: { func: "f", args: [] } }, tags: {} },
-          },
-          done,
-        ),
-      );
+      await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "v4", timeoutAt: Date.now() + 60_000, param: { data: { func: "f", args: [] } }, tags: {} },
+      });
 
       const settleValue = { result: "success", count: 7 };
 
       // settle via network, populates cache with settled state
-      await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "v4", state: "resolved", value: { data: settleValue } } },
-          done,
-        ),
-      );
+      await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "v4", state: "resolved", value: { data: settleValue } },
+      });
 
       // second settle returns from cache
-      const res = await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "v4", state: "resolved", value: { data: "ignored" } } },
-          done,
-        ),
-      );
+      const res = await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "v4", state: "resolved", value: { data: "ignored" } },
+      });
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -390,24 +346,21 @@ describe("Effects", () => {
       const p3 = resolvedPromise("m3", [1, 2, 3]);
       const effects = buildEffects(network.send, codec, [p1, p2, p3]);
 
-      const res1 = await collect((done) =>
-        effects.promiseCreate(
-          { kind: "promise.create", head, data: { id: "m1", timeoutAt: 0, param: { data: undefined }, tags: {} } },
-          done,
-        ),
-      );
-      const res2 = await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "m2", state: "resolved", value: { data: "ignored" } } },
-          done,
-        ),
-      );
-      const res3 = await collect((done) =>
-        effects.promiseSettle(
-          { kind: "promise.settle", head, data: { id: "m3", state: "resolved", value: { data: "ignored" } } },
-          done,
-        ),
-      );
+      const res1 = await effects.promiseCreate({
+        kind: "promise.create",
+        head,
+        data: { id: "m1", timeoutAt: 0, param: { data: undefined }, tags: {} },
+      });
+      const res2 = await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "m2", state: "resolved", value: { data: "ignored" } },
+      });
+      const res3 = await effects.promiseSettle({
+        kind: "promise.settle",
+        head,
+        data: { id: "m3", state: "resolved", value: { data: "ignored" } },
+      });
 
       expect(network.sendCount).toBe(0);
 

@@ -1,5 +1,5 @@
 import type { Codec } from "./codec.js";
-import exceptions from "./exceptions.js";
+import exceptions, { type ResonateError } from "./exceptions.js";
 import type { Network } from "./network/network.js";
 import {
   isMessage,
@@ -168,74 +168,77 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
   const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
 
   return {
-    promiseCreate: (req, done, func = "unknown") => {
+    promiseCreate: (req, func = "unknown") => {
       const cached = cache.get(req.data.id);
       if (cached) {
-        done({ kind: "value", value: cached });
-        return;
+        return Promise.resolve({ kind: "value" as const, value: cached });
       }
 
       try {
         req.data.param = codec.encode(req.data.param.data);
       } catch (e) {
-        done({
-          kind: "error",
+        return Promise.resolve({
+          kind: "error" as const,
           error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e),
         });
-        return;
       }
 
-      send(req, (res) => {
-        if (!isSuccess(res)) {
-          return done({
-            kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, {
-              code: res.head.status,
-              message: res.data,
-            }),
-          });
-        }
-        try {
-          const promise = codec.decodePromise(res.data.promise);
-          cache.set(promise.id, promise);
-          done({ kind: "value", value: promise });
-        } catch (e) {
-          return done({ kind: "error", error: exceptions.SERVER_ERROR(`Unexpected ${req.kind} response`) });
-        }
+      return new Promise((resolve) => {
+        send(req, (res) => {
+          if (!isSuccess(res)) {
+            return resolve({
+              kind: "error",
+              error: exceptions.SERVER_ERROR(res.data, true, {
+                code: res.head.status,
+                message: res.data,
+              }),
+            });
+          }
+          try {
+            const promise = codec.decodePromise(res.data.promise);
+            cache.set(promise.id, promise);
+            resolve({ kind: "value", value: promise });
+          } catch (e) {
+            return resolve({ kind: "error", error: e as ResonateError });
+          }
+        });
       });
     },
 
-    promiseSettle: (req, done, func = "unknown") => {
+    promiseSettle: (req, func = "unknown") => {
       const cached = cache.get(req.data.id);
       if (cached && cached.state !== "pending") {
-        done({ kind: "value", value: cached });
-        return;
+        return Promise.resolve({ kind: "value" as const, value: cached });
       }
 
       try {
         req.data.value = codec.encode(req.data.value.data);
       } catch (e) {
-        done({ kind: "error", error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e) });
-        return;
+        return Promise.resolve({
+          kind: "error" as const,
+          error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e),
+        });
       }
 
-      send(req, (res) => {
-        if (!isSuccess(res)) {
-          return done({
-            kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, {
-              code: res.head.status,
-              message: res.data,
-            }),
-          });
-        }
-        try {
-          const promise = codec.decodePromise(res.data.promise);
-          cache.set(promise.id, promise);
-          done({ kind: "value", value: promise });
-        } catch (e) {
-          return done({ kind: "error", error: exceptions.SERVER_ERROR(`Unexpected ${req.kind} response`) });
-        }
+      return new Promise((resolve) => {
+        send(req, (res) => {
+          if (!isSuccess(res)) {
+            return resolve({
+              kind: "error",
+              error: exceptions.SERVER_ERROR(res.data, true, {
+                code: res.head.status,
+                message: res.data,
+              }),
+            });
+          }
+          try {
+            const promise = codec.decodePromise(res.data.promise);
+            cache.set(promise.id, promise);
+            resolve({ kind: "value", value: promise });
+          } catch (e) {
+            return resolve({ kind: "error", error: e as ResonateError });
+          }
+        });
       });
     },
   };

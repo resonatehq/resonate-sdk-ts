@@ -59,32 +59,25 @@ export class Coroutine<T> {
     }
   }
 
-  public static exec(
+  public static async exec(
     verbose: boolean,
     ctx: InnerContext,
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     effects: Effects,
-    callback: (res: Result<Suspended | Done, any>) => void,
-  ): void {
+  ): Promise<Result<Suspended | Done, any>> {
     const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), effects);
-    coroutine.exec((res) => {
-      if (res.kind === "error") return callback(res);
-      const status = res.value;
-      switch (status.type) {
-        case "more":
-          callback({ kind: "value", value: { type: "suspended", todo: status.todo } });
-          break;
-
-        case "done":
-          // Propagate raw result, no promise.settle. task.fulfill handles it.
-          callback({ kind: "value", value: status });
-          break;
-      }
-    });
+    const res = await coroutine.exec();
+    if (res.kind === "error") {
+      return res;
+    }
+    if (res.value.type === "more") {
+      return { kind: "value", value: { type: "suspended", todo: res.value.todo } };
+    }
+    return { kind: "value", value: res.value };
   }
 
-  private exec(callback: (res: Result<More | Done, any>) => void) {
+  private async exec(): Promise<Result<More | Done, any>> {
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
 
@@ -92,242 +85,200 @@ export class Coroutine<T> {
       type: "internal.nothing",
     };
 
-    // next needs to be called when we want to go to the top of the loop but are inside a callback
-    const next = () => {
-      while (true) {
-        const action = this.decorator.next(input);
+    while (true) {
+      const action = this.decorator.next(input);
 
-        // Handle internal.async.l (lfi/lfc)
-        if (action.type === "internal.async.l") {
-          this.effects.promiseCreate(
-            action.createReq,
-            (res) => {
-              if (res.kind === "error") {
-                res.error.log(this.verbose);
-                return callback({ kind: "error", error: undefined });
-              }
-              util.assertDefined(res);
+      // Handle internal.async.l (lfi/lfc)
+      if (action.type === "internal.async.l") {
+        const res = await this.effects.promiseCreate(action.createReq, action.func.name);
 
-              const ctx = this.ctx.child({
-                id: res.value.id,
-                func: action.func.name,
-                timeout: res.value.timeoutAt,
-                version: action.version,
-                retryPolicy: action.retryPolicy,
-              });
-
-              if (res.value.state === "pending") {
-                if (!util.isGeneratorFunction(action.func)) {
-                  local.push({
-                    id: action.id,
-                    ctx,
-                    func: action.func,
-                    args: action.args,
-                  });
-                  input = {
-                    type: "internal.promise",
-                    state: "pending",
-                    mode: "attached",
-                    id: action.id,
-                  };
-                  next(); // Go back to the top of the loop
-                  return;
-                }
-
-                const coroutine = new Coroutine(
-                  ctx,
-                  this.verbose,
-                  new Decorator(action.func(ctx, ...action.args)),
-                  this.effects,
-                  this.depth + 1,
-                );
-
-                const cb = (res: Result<More | Done, any>) => {
-                  if (res.kind === "error") {
-                    return callback(res);
-                  }
-                  const status = res.value;
-
-                  if (status.type === "more") {
-                    local.push(...status.todo.local);
-                    remote.push(...status.todo.remote);
-                    input = {
-                      type: "internal.promise",
-                      state: "pending",
-                      mode: "attached",
-                      id: action.id,
-                    };
-                    next();
-                  } else {
-                    this.effects.promiseSettle(
-                      {
-                        kind: "promise.settle",
-                        head: { corrId: "", version: "" },
-                        data: {
-                          id: action.id,
-                          state: status.result.kind === "value" ? "resolved" : "rejected",
-                          value: {
-                            headers: {},
-                            data: status.result.kind === "value" ? status.result.value : status.result.error,
-                          },
-                        },
-                      },
-                      (res) => {
-                        if (res.kind === "error") {
-                          res.error.log(this.verbose);
-                          return callback({ kind: "error", error: undefined });
-                        }
-                        util.assert(res.value.state !== "pending", "promise must be completed");
-
-                        input = {
-                          type: "internal.promise",
-                          state: "completed",
-                          id: action.id,
-                          value: {
-                            type: "internal.literal",
-                            value:
-                              res.value.state === "resolved"
-                                ? { kind: "value", value: res.value.value?.data }
-                                : { kind: "error", error: res.value.value?.data },
-                          },
-                        };
-                        next();
-                      },
-                      action.func.name,
-                    );
-                  }
-                };
-
-                // Every nth level we kick off the next coroutine in a
-                // microtask, escaping the current call stack. This is
-                // necessary to avoid exceeding the maximum call stack
-                // when the user program has adequate recursion.
-                //
-                // The microtask queue is exhausted before the
-                // javascript engine moves on to macrotasks and a
-                // coroutine may spawn recursive coroutines, opening up
-                // the possibility of blocking the event loop
-                // indefinitely. However, this is analagous to writing
-                // a program with unbounded recursion, something that
-                // is always possible.
-                //
-                // Experimenting with the queueMicrotaskEveryN value
-                // shows that a value of 1 (our default) is optimal.
-                if (this.depth % this.queueMicrotaskEveryN === 0) {
-                  queueMicrotask(() => coroutine.exec(cb));
-                } else {
-                  coroutine.exec(cb);
-                }
-              } else {
-                // durable promise is completed
-                input = {
-                  type: "internal.promise",
-                  state: "completed",
-                  id: action.id,
-                  value: {
-                    type: "internal.literal",
-                    value:
-                      res.value.state === "resolved"
-                        ? { kind: "value", value: res.value.value?.data }
-                        : { kind: "error", error: res.value.value?.data },
-                  },
-                };
-                next();
-              }
-            },
-            action.func.name,
-          );
-          return; // Exit the while loop to wait for async callback
+        if (res.kind === "error") {
+          res.error.log(this.verbose);
+          return res;
         }
 
-        // Handle internal.async.r
-        if (action.type === "internal.async.r") {
-          this.effects.promiseCreate(
-            action.createReq,
-            (res) => {
-              if (res.kind === "error") {
-                res.error.log(this.verbose);
-                return callback({ kind: "error", error: undefined });
-              }
+        const ctx = this.ctx.child({
+          id: res.value.id,
+          func: action.func.name,
+          timeout: res.value.timeoutAt,
+          version: action.version,
+          retryPolicy: action.retryPolicy,
+        });
 
-              util.assertDefined(res);
-
-              if (res.value.state === "pending") {
-                if (action.mode === "attached") remote.push({ id: action.id });
-
-                input = {
-                  type: "internal.promise",
-                  state: "pending",
-                  mode: action.mode,
-                  id: action.id,
-                };
-              } else {
-                input = {
-                  type: "internal.promise",
-                  state: "completed",
-                  id: action.id,
-                  value: {
-                    type: "internal.literal",
-                    value:
-                      res.value.state === "resolved"
-                        ? { kind: "value", value: res.value.value?.data }
-                        : { kind: "error", error: res.value.value?.data },
-                  },
-                };
-              }
-              next();
-            },
-            "unknown",
-          );
-          return; // Exit the while loop to wait for async callback
-        }
-
-        // Handle die
-        if (action.type === "internal.die" && !action.condition) {
-          input = {
-            type: "internal.nothing",
-          };
-          continue;
-        }
-
-        if (action.type === "internal.die" && action.condition) {
-          action.error.log(this.verbose);
-          return callback({ kind: "error", error: undefined });
-        }
-
-        // Handle await
-        if (action.type === "internal.await" && action.promise.state === "completed") {
-          util.assert(
-            action.promise.value.type === "internal.literal",
-            "promise value must be an 'internal.literal' type",
-          );
-          util.assertDefined(action.promise.value);
-          input = action.promise.value;
-          continue;
-        }
-
-        // invoke the callback when awaiting a pending "Future" the list of todos will include
-        // the global callbacks to create.
-        if (action.type === "internal.await" && action.promise.state === "pending") {
-          if (action.promise.mode === "detached") {
-            // We didn't add the associated todo of this promise, since the user is explicitly awaiting it we need to add the todo now.
-            // All detached are remotes.
-            remote.push({ id: action.id });
+        if (res.value.state === "pending") {
+          if (!util.isGeneratorFunction(action.func)) {
+            local.push({
+              id: action.id,
+              ctx,
+              func: action.func,
+              args: action.args,
+            });
+            input = {
+              type: "internal.promise",
+              state: "pending",
+              mode: "attached",
+              id: action.id,
+            };
+            continue;
           }
-          callback({ kind: "value", value: { type: "more", todo: { local, remote } } });
-          return;
-        }
 
-        // Handle return
-        if (action.type === "internal.return") {
-          util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
-          util.assertDefined(action.value);
-          callback({ kind: "value", value: { type: "done", result: action.value.value } });
-          return;
+          const coroutine = new Coroutine(
+            ctx,
+            this.verbose,
+            new Decorator(action.func(ctx, ...action.args)),
+            this.effects,
+            this.depth + 1,
+          );
+
+          const statusRes = await coroutine.exec();
+
+          if (statusRes.kind === "error") {
+            statusRes.error.log(this.verbose);
+            return statusRes;
+          }
+
+          const status = statusRes.value;
+
+          if (status.type === "more") {
+            local.push(...status.todo.local);
+            remote.push(...status.todo.remote);
+            input = {
+              type: "internal.promise",
+              state: "pending",
+              mode: "attached",
+              id: action.id,
+            };
+          } else {
+            const settleRes = await this.effects.promiseSettle(
+              {
+                kind: "promise.settle",
+                head: { corrId: "", version: "" },
+                data: {
+                  id: action.id,
+                  state: status.result.kind === "value" ? "resolved" : "rejected",
+                  value: {
+                    headers: {},
+                    data: status.result.kind === "value" ? status.result.value : status.result.error,
+                  },
+                },
+              },
+              action.func.name,
+            );
+
+            if (settleRes.kind === "error") {
+              settleRes.error.log(this.verbose);
+              return settleRes;
+            }
+
+            util.assert(settleRes.value.state !== "pending", "promise must be completed");
+
+            input = {
+              type: "internal.promise",
+              state: "completed",
+              id: action.id,
+              value: {
+                type: "internal.literal",
+                value:
+                  settleRes.value.state === "resolved"
+                    ? { kind: "value", value: settleRes.value.value?.data }
+                    : { kind: "error", error: settleRes.value.value?.data },
+              },
+            };
+          }
+        } else {
+          // durable promise is completed
+          input = {
+            type: "internal.promise",
+            state: "completed",
+            id: action.id,
+            value: {
+              type: "internal.literal",
+              value:
+                res.value.state === "resolved"
+                  ? { kind: "value", value: res.value.value?.data }
+                  : { kind: "error", error: res.value.value?.data },
+            },
+          };
         }
+        continue;
       }
-    };
 
-    next();
+      // Handle internal.async.r
+      if (action.type === "internal.async.r") {
+        const res = await this.effects.promiseCreate(action.createReq, "unknown");
+
+        if (res.kind === "error") {
+          res.error.log(this.verbose);
+          return res;
+        }
+
+        if (res.value.state === "pending") {
+          if (action.mode === "attached") remote.push({ id: action.id });
+
+          input = {
+            type: "internal.promise",
+            state: "pending",
+            mode: action.mode,
+            id: action.id,
+          };
+        } else {
+          input = {
+            type: "internal.promise",
+            state: "completed",
+            id: action.id,
+            value: {
+              type: "internal.literal",
+              value:
+                res.value.state === "resolved"
+                  ? { kind: "value", value: res.value.value?.data }
+                  : { kind: "error", error: res.value.value?.data },
+            },
+          };
+        }
+        continue;
+      }
+
+      // Handle die
+      if (action.type === "internal.die" && !action.condition) {
+        input = {
+          type: "internal.nothing",
+        };
+        continue;
+      }
+
+      if (action.type === "internal.die" && action.condition) {
+        action.error.log(this.verbose);
+        return { kind: "error", error: action.error };
+      }
+
+      // Handle await
+      if (action.type === "internal.await" && action.promise.state === "completed") {
+        util.assert(
+          action.promise.value.type === "internal.literal",
+          "promise value must be an 'internal.literal' type",
+        );
+        util.assertDefined(action.promise.value);
+        input = action.promise.value;
+        continue;
+      }
+
+      // invoke the callback when awaiting a pending "Future" the list of todos will include
+      // the global callbacks to create.
+      if (action.type === "internal.await" && action.promise.state === "pending") {
+        if (action.promise.mode === "detached") {
+          // We didn't add the associated todo of this promise, since the user is explicitly awaiting it we need to add the todo now.
+          // All detached are remotes.
+          remote.push({ id: action.id });
+        }
+        return { kind: "value", value: { type: "more", todo: { local, remote } } };
+      }
+
+      // Handle return
+      if (action.type === "internal.return") {
+        util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
+        util.assertDefined(action.value);
+        return { kind: "value", value: { type: "done", result: action.value.value } };
+      }
+    }
   }
 }

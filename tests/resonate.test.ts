@@ -1065,9 +1065,12 @@ describe("Resonate usage tests", () => {
 });
 
 describe("Context usage tests", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   test("ctx.panic aborts execution when condition is true", async () => {
-    const originalError = console.error;
-    console.error = () => {};
+    jest.spyOn(console, "error").mockImplementation(() => {});
 
     const resonate = Resonate.local();
 
@@ -1079,13 +1082,12 @@ describe("Context usage tests", () => {
     });
 
     await f.beginRun("test");
-    await setTimeout(100); // Give time for function to run
+    await setTimeout(50); // Give time for function to run
 
     // Promise is dropped, but execution after panic should not run
     expect(completed).toBe(false);
 
     resonate.stop();
-    console.error = originalError;
   });
 
   test("ctx.panic continues execution when condition is false", async () => {
@@ -1103,8 +1105,7 @@ describe("Context usage tests", () => {
   });
 
   test("ctx.assert aborts execution when condition is false", async () => {
-    const originalError = console.error;
-    console.error = () => {};
+    jest.spyOn(console, "error").mockImplementation(() => {});
 
     const resonate = Resonate.local();
 
@@ -1116,13 +1117,12 @@ describe("Context usage tests", () => {
     });
 
     await f.beginRun("test");
-    await setTimeout(100); // Give time for function to run
+    await setTimeout(50); // Give time for function to run
 
     // Promise is dropped, but execution after assert should not run
     expect(completed).toBe(false);
 
     resonate.stop();
-    console.error = originalError;
   });
 
   test("ctx.assert continues execution when condition is true", async () => {

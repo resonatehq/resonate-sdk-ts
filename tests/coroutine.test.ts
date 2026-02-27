@@ -1,7 +1,7 @@
 import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
-import { Coroutine, type Done, type Suspended } from "../src/coroutine.js";
+import { Coroutine, type Suspended } from "../src/coroutine.js";
 import type { PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
@@ -71,57 +71,48 @@ function buildEffects(network: DummyNetwork): Effects {
 }
 
 describe("Coroutine", () => {
-  // Helper functions to write test easily
-  const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], effects: Effects) => {
-    return new Promise<any>((resolve) => {
-      Coroutine.exec(
-        false,
-        new InnerContext({
-          id: uuid,
-          oId: uuid,
-          func: func.name,
-          clock: new WallClock(),
-          registry: new Registry(),
-          dependencies: new Map(),
-          timeout: 0,
-          version: 1,
-          retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
-        }),
-        func,
-        args,
-        effects,
-        (res) => {
-          expect(res.kind).toBe("value");
-          util.assert(res.kind === "value");
-          resolve(res.value);
-        },
-      );
-    });
+  const exec = async (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], effects: Effects) => {
+    const res = await Coroutine.exec(
+      false,
+      new InnerContext({
+        id: uuid,
+        oId: uuid,
+        func: func.name,
+        clock: new WallClock(),
+        registry: new Registry(),
+        dependencies: new Map(),
+        timeout: 0,
+        version: 1,
+        retryPolicy: new Never(),
+        optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
+      }),
+      func,
+      args,
+      effects,
+    );
+
+    expect(res.kind).toBe("value");
+    util.assert(res.kind === "value");
+    return res.value;
   };
 
-  const completePromise = (effects: Effects, id: string, result: Result<any, any>) => {
-    return new Promise<any>((resolve) => {
-      effects.promiseSettle(
-        {
-          kind: "promise.settle",
-          head: { corrId: "", version: "" },
-          data: {
-            id: id,
-            state: result.kind === "value" ? "resolved" : "rejected",
-            value: {
-              headers: {},
-              data: result.kind === "value" ? result.value : result.error,
-            },
-          },
+  const completePromise = async (effects: Effects, id: string, result: Result<any, any>) => {
+    const res = await effects.promiseSettle({
+      kind: "promise.settle",
+      head: { corrId: "", version: "" },
+      data: {
+        id: id,
+        state: result.kind === "value" ? "resolved" : "rejected",
+        value: {
+          headers: {},
+          data: result.kind === "value" ? result.value : result.error,
         },
-        (res) => {
-          expect(res.kind).toBe("value");
-          util.assert(res.kind === "value");
-          resolve(res.value);
-        },
-      );
+      },
     });
+
+    expect(res.kind).toBe("value");
+    util.assert(res.kind === "value");
+    return res.value;
   };
 
   test("basic coroutine completes with done", async () => {
@@ -327,38 +318,23 @@ describe("Coroutine", () => {
     const network = new DummyNetwork();
     const effects = buildEffects(network);
 
-    const boundaryPromise: PromiseRecord = {
-      id: "foo.1",
-      state: "pending",
-      param: { headers: {}, data: undefined },
-      value: { headers: {}, data: undefined },
-      tags: {},
-      timeoutAt: 0,
-      createdAt: Date.now(),
-    };
-    // DIE with condition=true causes callback to be called with err=true
-    const result = await new Promise<Result<Suspended | Done, any>>((resolve) => {
-      Coroutine.exec(
-        false,
-        new InnerContext({
-          id: "foo.1",
-          func: foo.name,
-          clock: new WallClock(),
-          registry: new Registry(),
-          dependencies: new Map(),
-          timeout: 0,
-          version: 1,
-          retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
-        }),
-        foo,
-        [],
-        effects,
-        (res) => {
-          resolve(res);
-        },
-      );
-    });
+    const result = await Coroutine.exec(
+      false,
+      new InnerContext({
+        id: "foo.1",
+        func: foo.name,
+        clock: new WallClock(),
+        registry: new Registry(),
+        dependencies: new Map(),
+        timeout: 0,
+        version: 1,
+        retryPolicy: new Never(),
+        optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
+      }),
+      foo,
+      [],
+      effects,
+    );
 
     expect(result.kind).toBe("error");
 

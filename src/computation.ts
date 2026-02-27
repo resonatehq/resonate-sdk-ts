@@ -170,7 +170,7 @@ export class Computation {
 
     const ctx = new InnerContext(ctxConfig);
 
-    Coroutine.exec(this.verbose, ctx, func, args, this.effects, (res) => {
+    Coroutine.exec(this.verbose, ctx, func, args, this.effects).then((res) => {
       if (res.kind === "error") {
         return done(res);
       }
@@ -255,20 +255,23 @@ export class Computation {
       let settledCount = 0;
       for (const result of results) {
         const { id, result: res } = result;
-        this.effects.promiseSettle(
-          {
-            kind: "promise.settle",
-            head: { corrId: "", version: "" },
-            data: {
-              id: id,
-              state: res.kind === "value" ? "resolved" : "rejected",
-              value: {
-                data: res.kind === "value" ? res.value : res.error,
-                headers: {},
+        this.effects
+          .promiseSettle(
+            {
+              kind: "promise.settle",
+              head: { corrId: "", version: "" },
+              data: {
+                id: id,
+                state: res.kind === "value" ? "resolved" : "rejected",
+                value: {
+                  data: res.kind === "value" ? res.value : res.error,
+                  headers: {},
+                },
               },
             },
-          },
-          (settleRes) => {
+            id,
+          )
+          .then((settleRes) => {
             if (settleRes.kind === "error") {
               settleRes.error.log(this.verbose);
               onErr(settleRes.error);
@@ -278,9 +281,7 @@ export class Computation {
             if (settledCount === results.length) {
               cb();
             }
-          },
-          id,
-        );
+          });
       }
     });
   }

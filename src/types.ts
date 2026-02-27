@@ -39,15 +39,6 @@ export type Transport = {
 // Effects
 
 export type Effects = {
-  promiseCreate: (
-    req: PromiseCreateReq,
-    done: (res: Result<PromiseRecord, ResonateError>) => void,
-    func?: string,
-  ) => void;
-
-  promiseSettle: (
-    req: PromiseSettleReq,
-    done: (res: Result<PromiseRecord, ResonateError>) => void,
-    func?: string,
-  ) => void;
+  promiseCreate: (req: PromiseCreateReq, func?: string) => Promise<Result<PromiseRecord, ResonateError>>;
+  promiseSettle: (req: PromiseSettleReq, func?: string) => Promise<Result<PromiseRecord, ResonateError>>;
 };
