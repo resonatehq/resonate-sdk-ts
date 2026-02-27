@@ -84,7 +84,7 @@ export class HttpNetwork implements Network<string, string> {
         const response = await fetch(`${this.url}/api`, {
           method: "POST",
           headers: { ...this.headers, ...headers },
-          body: JSON.stringify(req),
+          body: req,
           signal: controller.signal,
         });
 
@@ -193,16 +193,7 @@ export class PollMessageSource implements MessageSource {
     });
 
     this.eventSource.addEventListener("message", (event) => {
-      let msg: Message;
-
-      try {
-        msg = JSON.parse(event.data);
-      } catch (e) {
-        console.warn("Networking. Received invalid message. Will continue.");
-        return;
-      }
-
-      this.recv(msg);
+      this.recv(event.data);
     });
 
     this.eventSource.addEventListener("error", () => {

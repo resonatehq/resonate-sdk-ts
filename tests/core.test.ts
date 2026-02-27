@@ -279,7 +279,7 @@ describe("Core", () => {
           cb({
             kind: "task.suspend",
             head: { corrId: "", status: 300, version: "" },
-            data: undefined,
+            data: { preload: [] },
           });
           return;
         }

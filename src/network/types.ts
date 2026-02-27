@@ -701,95 +701,790 @@ export function isNotImplemented<T extends Response>(res: T): res is Extract<T, 
   return res.head.status === 501;
 }
 
-function isPromiseRecord(value: unknown): value is PromiseRecord {
-  if (typeof value !== "object" || value === null) return false;
-  const rec = value as Record<string, unknown>;
+// =============================================================================
+// TYPE GUARDS - DEBUG TICK ACTION
+// =============================================================================
+
+export function isDebugTickAction(val: unknown): val is DebugTickAction {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  if (v.kind === "promise.settle") {
+    return typeof d.id === "string" && (d.state === "rejected_timedout" || d.state === "resolved");
+  }
+  if (v.kind === "task.release" || v.kind === "task.retry") {
+    return typeof d.id === "string" && typeof d.version === "number";
+  }
+  return false;
+}
+
+// =============================================================================
+// TYPE GUARDS - REQUESTS
+// =============================================================================
+
+function isRequestHead(val: unknown): val is RequestHead {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  return typeof v.corrId === "string" && typeof v.version === "string";
+}
+
+export function isPromiseGetReq(val: unknown): val is PromiseGetReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.get" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  return typeof (v.data as Record<string, unknown>).id === "string";
+}
+
+export function isPromiseCreateReq(val: unknown): val is PromiseCreateReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.create" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
   return (
-    typeof rec.id === "string" &&
-    typeof rec.state === "string" &&
-    typeof rec.tags === "object" &&
-    rec.tags !== null &&
-    typeof rec.timeoutAt === "number" &&
-    typeof rec.createdAt === "number"
+    typeof d.id === "string" &&
+    typeof d.timeoutAt === "number" &&
+    isValue(d.param) &&
+    typeof d.tags === "object" &&
+    d.tags !== null
   );
 }
 
-const MESSAGE_KINDS = new Set<string>(["execute", "notify"]);
+export function isPromiseSettleReq(val: unknown): val is PromiseSettleReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.settle" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return (
+    typeof d.id === "string" &&
+    (d.state === "resolved" || d.state === "rejected" || d.state === "rejected_canceled") &&
+    isValue(d.value)
+  );
+}
 
-const REQUEST_KINDS = new Set<string>([
-  "promise.get",
-  "promise.create",
-  "promise.settle",
-  "promise.register_callback",
-  "promise.register_listener",
-  "promise.search",
-  "task.get",
-  "task.create",
-  "task.acquire",
-  "task.release",
-  "task.suspend",
-  "task.fulfill",
-  "task.fence",
-  "task.heartbeat",
-  "task.search",
-  "schedule.get",
-  "schedule.create",
-  "schedule.delete",
-  "schedule.search",
-  "debug.start",
-  "debug.reset",
-  "debug.tick",
-  "debug.snap",
-  "debug.stop",
-]);
+export function isPromiseRegisterCallbackReq(val: unknown): val is PromiseRegisterCallbackReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.register_callback" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return typeof d.awaited === "string" && typeof d.awaiter === "string";
+}
 
-const RESPONSE_KINDS = REQUEST_KINDS;
+export function isPromiseRegisterListenerReq(val: unknown): val is PromiseRegisterListenerReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.register_listener" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return typeof d.awaited === "string" && typeof d.address === "string";
+}
 
-export function isMessage(value: unknown): value is Message {
-  if (typeof value !== "object" || value === null) return false;
-  if (!("kind" in value) || !("head" in value) || !("data" in value)) return false;
-  const { kind, data } = value as { kind: unknown; data: unknown };
-  if (!MESSAGE_KINDS.has(kind as string)) return false;
-  if (kind === "execute") {
-    if (typeof data !== "object" || data === null) return false;
-    const { task } = data as { task: unknown };
-    if (typeof task !== "object" || task === null) return false;
-    const { id, version } = task as { id: unknown; version: unknown };
-    return typeof id === "string" && typeof version === "number";
+export function isPromiseSearchReq(val: unknown): val is PromiseSearchReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.search" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return (
+    (d.state === undefined ||
+      d.state === "pending" ||
+      d.state === "resolved" ||
+      d.state === "rejected" ||
+      d.state === "rejected_canceled" ||
+      d.state === "rejected_timedout") &&
+    (d.tags === undefined || (typeof d.tags === "object" && d.tags !== null)) &&
+    (d.limit === undefined || typeof d.limit === "number") &&
+    (d.cursor === undefined || typeof d.cursor === "string")
+  );
+}
+
+export function isTaskGetReq(val: unknown): val is TaskGetReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.get" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  return typeof (v.data as Record<string, unknown>).id === "string";
+}
+
+export function isTaskCreateReq(val: unknown): val is TaskCreateReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.create" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return typeof d.pid === "string" && typeof d.ttl === "number" && isPromiseCreateReq(d.action);
+}
+
+export function isTaskAcquireReq(val: unknown): val is TaskAcquireReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.acquire" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return (
+    typeof d.id === "string" && typeof d.version === "number" && typeof d.pid === "string" && typeof d.ttl === "number"
+  );
+}
+
+export function isTaskReleaseReq(val: unknown): val is TaskReleaseReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.release" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return typeof d.id === "string" && typeof d.version === "number";
+}
+
+export function isTaskSuspendReq(val: unknown): val is TaskSuspendReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.suspend" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return (
+    typeof d.id === "string" &&
+    typeof d.version === "number" &&
+    Array.isArray(d.actions) &&
+    (d.actions as unknown[]).every(isPromiseRegisterCallbackReq)
+  );
+}
+
+export function isTaskFulfillReq(val: unknown): val is TaskFulfillReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.fulfill" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return typeof d.id === "string" && typeof d.version === "number" && isPromiseSettleReq(d.action);
+}
+
+export function isTaskFenceReq(val: unknown): val is TaskFenceReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.fence" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return (
+    typeof d.id === "string" &&
+    typeof d.version === "number" &&
+    (isPromiseCreateReq(d.action) || isPromiseSettleReq(d.action))
+  );
+}
+
+export function isTaskHeartbeatReq(val: unknown): val is TaskHeartbeatReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.heartbeat" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return (
+    typeof d.pid === "string" &&
+    Array.isArray(d.tasks) &&
+    (d.tasks as unknown[]).every(
+      (t) =>
+        typeof t === "object" &&
+        t !== null &&
+        typeof (t as Record<string, unknown>).id === "string" &&
+        typeof (t as Record<string, unknown>).version === "number",
+    )
+  );
+}
+
+export function isTaskSearchReq(val: unknown): val is TaskSearchReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.search" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return (
+    (d.state === undefined ||
+      d.state === "pending" ||
+      d.state === "acquired" ||
+      d.state === "suspended" ||
+      d.state === "fulfilled") &&
+    (d.limit === undefined || typeof d.limit === "number") &&
+    (d.cursor === undefined || typeof d.cursor === "string")
+  );
+}
+
+export function isScheduleGetReq(val: unknown): val is ScheduleGetReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "schedule.get" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  return typeof (v.data as Record<string, unknown>).id === "string";
+}
+
+export function isScheduleCreateReq(val: unknown): val is ScheduleCreateReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "schedule.create" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return (
+    typeof d.id === "string" &&
+    typeof d.cron === "string" &&
+    typeof d.promiseId === "string" &&
+    typeof d.promiseTimeout === "number" &&
+    isValue(d.promiseParam) &&
+    typeof d.promiseTags === "object" &&
+    d.promiseTags !== null
+  );
+}
+
+export function isScheduleDeleteReq(val: unknown): val is ScheduleDeleteReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "schedule.delete" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  return typeof (v.data as Record<string, unknown>).id === "string";
+}
+
+export function isScheduleSearchReq(val: unknown): val is ScheduleSearchReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "schedule.search" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  return (
+    (d.tags === undefined || (typeof d.tags === "object" && d.tags !== null)) &&
+    (d.limit === undefined || typeof d.limit === "number") &&
+    (d.cursor === undefined || typeof d.cursor === "string")
+  );
+}
+
+export function isDebugStartReq(val: unknown): val is DebugStartReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  return v.kind === "debug.start" && isRequestHead(v.head) && typeof v.data === "object" && v.data !== null;
+}
+
+export function isDebugResetReq(val: unknown): val is DebugResetReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  return v.kind === "debug.reset" && isRequestHead(v.head) && typeof v.data === "object" && v.data !== null;
+}
+
+export function isDebugTickReq(val: unknown): val is DebugTickReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "debug.tick" || !isRequestHead(v.head)) return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  return typeof (v.data as Record<string, unknown>).time === "number";
+}
+
+export function isDebugSnapReq(val: unknown): val is DebugSnapReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  return v.kind === "debug.snap" && isRequestHead(v.head) && typeof v.data === "object" && v.data !== null;
+}
+
+export function isDebugStopReq(val: unknown): val is DebugStopReq {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  return v.kind === "debug.stop" && isRequestHead(v.head) && typeof v.data === "object" && v.data !== null;
+}
+
+export function isRequest(val: unknown): val is Request {
+  return (
+    isPromiseGetReq(val) ||
+    isPromiseCreateReq(val) ||
+    isPromiseSettleReq(val) ||
+    isPromiseRegisterCallbackReq(val) ||
+    isPromiseRegisterListenerReq(val) ||
+    isPromiseSearchReq(val) ||
+    isTaskGetReq(val) ||
+    isTaskCreateReq(val) ||
+    isTaskAcquireReq(val) ||
+    isTaskReleaseReq(val) ||
+    isTaskSuspendReq(val) ||
+    isTaskFulfillReq(val) ||
+    isTaskFenceReq(val) ||
+    isTaskHeartbeatReq(val) ||
+    isTaskSearchReq(val) ||
+    isScheduleGetReq(val) ||
+    isScheduleCreateReq(val) ||
+    isScheduleDeleteReq(val) ||
+    isScheduleSearchReq(val) ||
+    isDebugStartReq(val) ||
+    isDebugResetReq(val) ||
+    isDebugTickReq(val) ||
+    isDebugSnapReq(val) ||
+    isDebugStopReq(val)
+  );
+}
+
+// =============================================================================
+// TYPE GUARDS - RESPONSES
+// =============================================================================
+
+function isResponseHead(val: unknown): val is ResponseHead<number> {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  return typeof v.corrId === "string" && typeof v.status === "number" && typeof v.version === "string";
+}
+
+export function isPromiseGetRes(val: unknown): val is PromiseGetRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.get" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    return isPromiseRecord((v.data as Record<string, unknown>).promise);
   }
+  return typeof v.data === "string";
+}
+
+export function isPromiseCreateRes(val: unknown): val is PromiseCreateRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.create" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    return isPromiseRecord((v.data as Record<string, unknown>).promise);
+  }
+  return typeof v.data === "string";
+}
+
+export function isPromiseSettleRes(val: unknown): val is PromiseSettleRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.settle" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    return isPromiseRecord((v.data as Record<string, unknown>).promise);
+  }
+  return typeof v.data === "string";
+}
+
+export function isPromiseRegisterCallbackRes(val: unknown): val is PromiseRegisterCallbackRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.register_callback" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    return isPromiseRecord((v.data as Record<string, unknown>).promise);
+  }
+  return typeof v.data === "string";
+}
+
+export function isPromiseRegisterListenerRes(val: unknown): val is PromiseRegisterListenerRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.register_listener" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    return isPromiseRecord((v.data as Record<string, unknown>).promise);
+  }
+  return typeof v.data === "string";
+}
+
+export function isPromiseSearchRes(val: unknown): val is PromiseSearchRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "promise.search" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    const d = v.data as Record<string, unknown>;
+    return (
+      Array.isArray(d.promises) &&
+      (d.promises as unknown[]).every(isPromiseRecord) &&
+      (d.cursor === undefined || typeof d.cursor === "string")
+    );
+  }
+  return typeof v.data === "string";
+}
+
+export function isTaskGetRes(val: unknown): val is TaskGetRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.get" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    return isTaskRecord((v.data as Record<string, unknown>).task);
+  }
+  return typeof v.data === "string";
+}
+
+export function isTaskCreateRes(val: unknown): val is TaskCreateRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.create" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    const d = v.data as Record<string, unknown>;
+    return (
+      isTaskRecord(d.task) &&
+      isPromiseRecord(d.promise) &&
+      Array.isArray(d.preload) &&
+      (d.preload as unknown[]).every(isPromiseRecord)
+    );
+  }
+  return typeof v.data === "string";
+}
+
+export function isTaskAcquireRes(val: unknown): val is TaskAcquireRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.acquire" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    const d = v.data as Record<string, unknown>;
+    return isPromiseRecord(d.promise) && Array.isArray(d.preload) && (d.preload as unknown[]).every(isPromiseRecord);
+  }
+  return typeof v.data === "string";
+}
+
+export function isTaskReleaseRes(val: unknown): val is TaskReleaseRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.release" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) return typeof v.data === "object" && v.data !== null;
+  return typeof v.data === "string";
+}
+
+export function isTaskSuspendRes(val: unknown): val is TaskSuspendRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.suspend" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) return typeof v.data === "object" && v.data !== null;
+  if (status === 300) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    const d = v.data as Record<string, unknown>;
+    return Array.isArray(d.preload) && (d.preload as unknown[]).every(isPromiseRecord);
+  }
+  return typeof v.data === "string";
+}
+
+export function isTaskFulfillRes(val: unknown): val is TaskFulfillRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.fulfill" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    return isPromiseRecord((v.data as Record<string, unknown>).promise);
+  }
+  return typeof v.data === "string";
+}
+
+export function isTaskFenceRes(val: unknown): val is TaskFenceRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.fence" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    const d = v.data as Record<string, unknown>;
+    return (
+      (isPromiseCreateRes(d.action) || isPromiseSettleRes(d.action)) &&
+      Array.isArray(d.preload) &&
+      (d.preload as unknown[]).every(isPromiseRecord)
+    );
+  }
+  return typeof v.data === "string";
+}
+
+export function isTaskHeartbeatRes(val: unknown): val is TaskHeartbeatRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.heartbeat" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) return typeof v.data === "object" && v.data !== null;
+  return typeof v.data === "string";
+}
+
+export function isTaskSearchRes(val: unknown): val is TaskSearchRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "task.search" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    const d = v.data as Record<string, unknown>;
+    return (
+      Array.isArray(d.tasks) &&
+      (d.tasks as unknown[]).every(isTaskRecord) &&
+      (d.cursor === undefined || typeof d.cursor === "string")
+    );
+  }
+  return typeof v.data === "string";
+}
+
+export function isScheduleGetRes(val: unknown): val is ScheduleGetRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "schedule.get" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    return isScheduleRecord((v.data as Record<string, unknown>).schedule);
+  }
+  return typeof v.data === "string";
+}
+
+export function isScheduleCreateRes(val: unknown): val is ScheduleCreateRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "schedule.create" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    return isScheduleRecord((v.data as Record<string, unknown>).schedule);
+  }
+  return typeof v.data === "string";
+}
+
+export function isScheduleDeleteRes(val: unknown): val is ScheduleDeleteRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "schedule.delete" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) return typeof v.data === "object" && v.data !== null;
+  return typeof v.data === "string";
+}
+
+export function isScheduleSearchRes(val: unknown): val is ScheduleSearchRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "schedule.search" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    const d = v.data as Record<string, unknown>;
+    return (
+      Array.isArray(d.schedules) &&
+      (d.schedules as unknown[]).every(isScheduleRecord) &&
+      (d.cursor === undefined || typeof d.cursor === "string")
+    );
+  }
+  return typeof v.data === "string";
+}
+
+export function isDebugStartRes(val: unknown): val is DebugStartRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "debug.start" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) return typeof v.data === "object" && v.data !== null;
+  return typeof v.data === "string";
+}
+
+export function isDebugResetRes(val: unknown): val is DebugResetRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "debug.reset" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) return typeof v.data === "object" && v.data !== null;
+  return typeof v.data === "string";
+}
+
+export function isDebugTickRes(val: unknown): val is DebugTickRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "debug.tick" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    return Array.isArray(v.data) && (v.data as unknown[]).every(isDebugTickAction);
+  }
+  return typeof v.data === "string";
+}
+
+export function isDebugSnapRes(val: unknown): val is DebugSnapRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "debug.snap" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) {
+    if (typeof v.data !== "object" || v.data === null) return false;
+    const d = v.data as Record<string, unknown>;
+    return (
+      Array.isArray(d.promises) &&
+      (d.promises as unknown[]).every(isPromiseRecord) &&
+      Array.isArray(d.promiseTimeouts) &&
+      (d.promiseTimeouts as unknown[]).every(
+        (t) =>
+          typeof t === "object" &&
+          t !== null &&
+          typeof (t as Record<string, unknown>).id === "string" &&
+          typeof (t as Record<string, unknown>).timeout === "number",
+      ) &&
+      Array.isArray(d.callbacks) &&
+      (d.callbacks as unknown[]).every(
+        (c) =>
+          typeof c === "object" &&
+          c !== null &&
+          typeof (c as Record<string, unknown>).awaiter === "string" &&
+          typeof (c as Record<string, unknown>).awaited === "string",
+      ) &&
+      (d.listeners === undefined ||
+        (Array.isArray(d.listeners) &&
+          (d.listeners as unknown[]).every(
+            (l) =>
+              typeof l === "object" &&
+              l !== null &&
+              typeof (l as Record<string, unknown>).id === "string" &&
+              typeof (l as Record<string, unknown>).address === "string",
+          ))) &&
+      Array.isArray(d.tasks) &&
+      (d.tasks as unknown[]).every(isTaskRecord) &&
+      Array.isArray(d.taskTimeouts) &&
+      (d.taskTimeouts as unknown[]).every(
+        (t) =>
+          typeof t === "object" &&
+          t !== null &&
+          typeof (t as Record<string, unknown>).id === "string" &&
+          typeof (t as Record<string, unknown>).type === "number" &&
+          typeof (t as Record<string, unknown>).timeout === "number",
+      ) &&
+      Array.isArray(d.messages) &&
+      (d.messages as unknown[]).every(
+        (m) =>
+          typeof m === "object" &&
+          m !== null &&
+          typeof (m as Record<string, unknown>).address === "string" &&
+          isMessage((m as Record<string, unknown>).message),
+      )
+    );
+  }
+  return typeof v.data === "string";
+}
+
+export function isDebugStopRes(val: unknown): val is DebugStopRes {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "debug.stop" || !isResponseHead(v.head)) return false;
+  const { status } = v.head as ResponseHead<number>;
+  if (status === 200) return typeof v.data === "object" && v.data !== null;
+  return typeof v.data === "string";
+}
+
+export function isResponse(val: unknown): val is Response {
+  return (
+    isPromiseGetRes(val) ||
+    isPromiseCreateRes(val) ||
+    isPromiseSettleRes(val) ||
+    isPromiseRegisterCallbackRes(val) ||
+    isPromiseRegisterListenerRes(val) ||
+    isPromiseSearchRes(val) ||
+    isTaskGetRes(val) ||
+    isTaskCreateRes(val) ||
+    isTaskAcquireRes(val) ||
+    isTaskReleaseRes(val) ||
+    isTaskSuspendRes(val) ||
+    isTaskFulfillRes(val) ||
+    isTaskFenceRes(val) ||
+    isTaskHeartbeatRes(val) ||
+    isTaskSearchRes(val) ||
+    isScheduleGetRes(val) ||
+    isScheduleCreateRes(val) ||
+    isScheduleDeleteRes(val) ||
+    isScheduleSearchRes(val) ||
+    isDebugStartRes(val) ||
+    isDebugResetRes(val) ||
+    isDebugTickRes(val) ||
+    isDebugSnapRes(val) ||
+    isDebugStopRes(val)
+  );
+}
+
+// =============================================================================
+// TYPE GUARDS - RECORDS
+// =============================================================================
+
+export function isValue(val: unknown): val is Value {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.headers !== undefined && (typeof v.headers !== "object" || v.headers === null)) return false;
+  if (v.data !== undefined && typeof v.data !== "string") return false;
   return true;
 }
 
-export function isRequest(value: unknown): value is Request {
-  if (typeof value !== "object" || value === null) return false;
-  if (!("kind" in value) || !("head" in value) || !("data" in value)) return false;
-  const { kind, head } = value as { kind: unknown; head: unknown };
-  if (typeof kind !== "string" || !REQUEST_KINDS.has(kind)) return false;
-  if (typeof head !== "object" || head === null) return false;
-  const { corrId, version } = head as { corrId: unknown; version: unknown };
-  return typeof corrId === "string" && typeof version === "string";
+export function isPromiseRecord(val: unknown): val is PromiseRecord {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  return (
+    typeof v.id === "string" &&
+    (v.state === "pending" ||
+      v.state === "resolved" ||
+      v.state === "rejected" ||
+      v.state === "rejected_canceled" ||
+      v.state === "rejected_timedout") &&
+    isValue(v.param) &&
+    isValue(v.value) &&
+    typeof v.tags === "object" &&
+    v.tags !== null &&
+    typeof v.timeoutAt === "number" &&
+    typeof v.createdAt === "number" &&
+    (v.settledAt === undefined || typeof v.settledAt === "number")
+  );
 }
 
-export function isResponse(value: unknown): value is Response {
-  if (typeof value !== "object" || value === null) return false;
-  if (!("kind" in value) || !("head" in value) || !("data" in value)) return false;
-  const { kind, head, data } = value as { kind: unknown; head: unknown; data: unknown };
-  if (typeof kind !== "string" || !RESPONSE_KINDS.has(kind)) return false;
-  if (typeof head !== "object" || head === null) return false;
-  const { corrId, status, version } = head as { corrId: unknown; status: unknown; version: unknown };
-  if (
-    (corrId !== undefined && typeof corrId !== "string") ||
-    typeof status !== "number" ||
-    (version !== undefined && typeof version !== "string")
-  )
-    return false;
-  // For error responses, data must be a string
-  if (status >= 400) return typeof data === "string";
-  // For success/redirect responses that carry a promise, validate the promise record
-  if (typeof data === "object" && data !== null && !Array.isArray(data)) {
-    const d = data as Record<string, unknown>;
-    if ("promise" in d && !isPromiseRecord(d.promise)) return false;
-    if ("preload" in d && Array.isArray(d.preload) && !d.preload.every(isPromiseRecord)) return false;
-  }
-  return true;
+export function isTaskRecord(val: unknown): val is TaskRecord {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  return (
+    typeof v.id === "string" &&
+    (v.state === "pending" || v.state === "acquired" || v.state === "suspended" || v.state === "fulfilled") &&
+    typeof v.version === "number"
+  );
+}
+
+export function isScheduleRecord(val: unknown): val is ScheduleRecord {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  return (
+    typeof v.id === "string" &&
+    typeof v.cron === "string" &&
+    typeof v.promiseId === "string" &&
+    typeof v.promiseTimeout === "number" &&
+    isValue(v.promiseParam) &&
+    typeof v.promiseTags === "object" &&
+    v.promiseTags !== null &&
+    typeof v.createdAt === "number" &&
+    typeof v.nextRunAt === "number" &&
+    (v.lastRunAt === undefined || typeof v.lastRunAt === "number")
+  );
+}
+
+// =============================================================================
+// TYPE GUARDS - MESSAGES
+// =============================================================================
+
+export function isExecuteMsg(val: unknown): val is ExecuteMsg {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "execute") return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  const d = v.data as Record<string, unknown>;
+  if (typeof d.task !== "object" || d.task === null) return false;
+  const task = d.task as Record<string, unknown>;
+  return typeof task.id === "string" && typeof task.version === "number";
+}
+
+export function isNotifyMsg(val: unknown): val is NotifyMsg {
+  if (typeof val !== "object" || val === null) return false;
+  const v = val as Record<string, unknown>;
+  if (v.kind !== "notify") return false;
+  if (typeof v.data !== "object" || v.data === null) return false;
+  return isPromiseRecord((v.data as Record<string, unknown>).promise);
+}
+
+export function isMessage(val: unknown): val is Message {
+  return isExecuteMsg(val) || isNotifyMsg(val);
 }

@@ -554,6 +554,7 @@ export class Server {
       response: this.response("task.create", 200, {
         task: this.toTaskRecord(task),
         promise: this.toPromiseRecord(promise),
+        preload: [],
       }),
       changes,
     };
@@ -675,7 +676,7 @@ export class Server {
       const [next] = task.pending;
       task.pending.delete(next);
       changes.push(this.setTask({ ...task, current: next }));
-      return { response: this.response("task.suspend", 300, {}), changes };
+      return { response: this.response("task.suspend", 300, { preload: [] }), changes };
     }
 
     // Register this task as an awaiter on each awaited promise.
@@ -698,7 +699,7 @@ export class Server {
     }
 
     if (triggers.length > 0) {
-      return { response: this.response("task.suspend", 300, {}), changes };
+      return { response: this.response("task.suspend", 300, { preload: [] }), changes };
     }
 
     // Actually suspend
