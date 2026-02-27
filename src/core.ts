@@ -171,7 +171,7 @@ export class Core {
           id: task.id,
           version: task.version,
           actions: status.awaited.map((a) => ({
-            kind: "promise.register" as const,
+            kind: "promise.register_callback" as const,
             head: { corrId: "", version: "" },
             data: { awaiter: claimed.rootPromise.id, awaited: a },
           })),

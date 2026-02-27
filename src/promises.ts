@@ -129,7 +129,7 @@ export class Promises {
       );
     });
   }
-  register(
+  registerCallback(
     awaited: string,
     awaiter: string,
   ): Promise<{
@@ -138,7 +138,7 @@ export class Promises {
     return new Promise((resolve, reject) => {
       this.network.send(
         {
-          kind: "promise.register",
+          kind: "promise.register_callback",
           head: { corrId: "", version: "" },
           data: { awaited, awaiter },
         },
@@ -153,7 +153,7 @@ export class Promises {
     });
   }
 
-  subscribe(
+  registerListener(
     awaited: string,
     address: string,
   ): Promise<{
@@ -161,7 +161,7 @@ export class Promises {
   }> {
     return new Promise((resolve, reject) => {
       this.network.send(
-        { kind: "promise.subscribe", head: { corrId: "", version: "" }, data: { awaited, address } },
+        { kind: "promise.register_listener", head: { corrId: "", version: "" }, data: { awaited, address } },
         (res) => {
           if (!isSuccess(res)) {
             reject(res.data);

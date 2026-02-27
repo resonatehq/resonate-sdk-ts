@@ -14,12 +14,12 @@ import type {
   PromiseGetReq,
   PromiseGetRes,
   PromiseRecord,
-  PromiseRegisterReq,
-  PromiseRegisterRes,
+  PromiseRegisterCallbackReq,
+  PromiseRegisterCallbackRes,
+  PromiseRegisterListenerReq,
+  PromiseRegisterListenerRes,
   PromiseSettleReq,
   PromiseSettleRes,
-  PromiseSubscribeReq,
-  PromiseSubscribeRes,
   Request,
   Response,
   ScheduleCreateReq,
@@ -164,15 +164,15 @@ export class Server {
         result = this.promiseSettle(now, req);
         break;
       }
-      case "promise.register": {
+      case "promise.register_callback": {
         changes.push(...this.tryAutoTimeout(now, req.data.awaited));
         changes.push(...this.tryAutoTimeout(now, req.data.awaiter));
-        result = this.promiseRegister(now, req);
+        result = this.promiseRegisterCallback(now, req);
         break;
       }
-      case "promise.subscribe": {
+      case "promise.register_listener": {
         changes.push(...this.tryAutoTimeout(now, req.data.awaited));
-        result = this.promiseSubscribe(now, req);
+        result = this.promiseRegisterListener(now, req);
         break;
       }
       case "task.get": {
@@ -250,6 +250,18 @@ export class Server {
         result = this.scheduleDelete(req);
         break;
       }
+      case "promise.search": {
+        result = { response: this.response(req.kind, 501, "not implemented"), changes: [] };
+        break;
+      }
+      case "schedule.search": {
+        result = { response: this.response(req.kind, 501, "not implemented"), changes: [] };
+        break;
+      }
+      case "task.search": {
+        result = { response: this.response(req.kind, 501, "not implemented"), changes: [] };
+        break;
+      }
     }
 
     changes.push(...result.changes);
@@ -258,7 +270,7 @@ export class Server {
 
   private validate(req: Request): string | null {
     switch (req.kind) {
-      case "promise.register":
+      case "promise.register_callback":
         if (req.data.awaited === req.data.awaiter) {
           return "Awaited and awaiter must be different";
         }
@@ -404,20 +416,23 @@ export class Server {
     return { response: this.response("promise.settle", 200, { promise: this.toPromiseRecord(settled) }), changes };
   }
 
-  private promiseRegister(now: number, req: PromiseRegisterReq): { response: PromiseRegisterRes; changes: Change[] } {
+  private promiseRegisterCallback(
+    now: number,
+    req: PromiseRegisterCallbackReq,
+  ): { response: PromiseRegisterCallbackRes; changes: Change[] } {
     const awaitedPromise = this.promises.get(req.data.awaited);
     if (!awaitedPromise) {
-      return { response: this.response("promise.register", 404, "Awaited promise not found"), changes: [] };
+      return { response: this.response("promise.register_callback", 404, "Awaited promise not found"), changes: [] };
     }
 
     const awaiterPromise = this.promises.get(req.data.awaiter);
     if (!awaiterPromise) {
-      return { response: this.response("promise.register", 422, "Awaiter promise not found"), changes: [] };
+      return { response: this.response("promise.register_callback", 422, "Awaiter promise not found"), changes: [] };
     }
 
     // HasAddress check: awaiter must have a resonate:target tag
     if (!awaiterPromise.tags["resonate:target"]) {
-      return { response: this.response("promise.register", 422, "Awaiter has no address"), changes: [] };
+      return { response: this.response("promise.register_callback", 422, "Awaiter has no address"), changes: [] };
     }
 
     const changes: Change[] = [];
@@ -429,18 +444,18 @@ export class Server {
     }
 
     return {
-      response: this.response("promise.register", 200, { promise: this.toPromiseRecord(awaitedPromise) }),
+      response: this.response("promise.register_callback", 200, { promise: this.toPromiseRecord(awaitedPromise) }),
       changes,
     };
   }
 
-  private promiseSubscribe(
+  private promiseRegisterListener(
     now: number,
-    req: PromiseSubscribeReq,
-  ): { response: PromiseSubscribeRes; changes: Change[] } {
+    req: PromiseRegisterListenerReq,
+  ): { response: PromiseRegisterListenerRes; changes: Change[] } {
     const promise = this.promises.get(req.data.awaited);
     if (!promise) {
-      return { response: this.response("promise.subscribe", 404, "Promise not found"), changes: [] };
+      return { response: this.response("promise.register_listener", 404, "Promise not found"), changes: [] };
     }
 
     const changes: Change[] = [];
@@ -451,7 +466,10 @@ export class Server {
       changes.push(this.setPromise(promise));
     }
 
-    return { response: this.response("promise.subscribe", 200, { promise: this.toPromiseRecord(promise) }), changes };
+    return {
+      response: this.response("promise.register_listener", 200, { promise: this.toPromiseRecord(promise) }),
+      changes,
+    };
   }
 
   // ===========================================================================

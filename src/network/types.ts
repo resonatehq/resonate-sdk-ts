@@ -68,6 +68,7 @@ export type RequestHead = {
   auth?: string;
   corrId: string;
   version: string;
+  "resonate:debug_time"?: number;
 };
 
 // =============================================================================
@@ -101,8 +102,8 @@ export type PromiseSettleReq = {
   };
 };
 
-export type PromiseRegisterReq = {
-  kind: "promise.register";
+export type PromiseRegisterCallbackReq = {
+  kind: "promise.register_callback";
   head: RequestHead;
   data: {
     awaited: string;
@@ -110,12 +111,23 @@ export type PromiseRegisterReq = {
   };
 };
 
-export type PromiseSubscribeReq = {
-  kind: "promise.subscribe";
+export type PromiseRegisterListenerReq = {
+  kind: "promise.register_listener";
   head: RequestHead;
   data: {
     awaited: string;
     address: string;
+  };
+};
+
+export type PromiseSearchReq = {
+  kind: "promise.search";
+  head: RequestHead;
+  data: {
+    state?: "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
+    tags?: Record<string, string>;
+    limit?: number;
+    cursor?: string;
   };
 };
 
@@ -150,13 +162,22 @@ export type TaskAcquireReq = {
   };
 };
 
+export type TaskReleaseReq = {
+  kind: "task.release";
+  head: RequestHead;
+  data: {
+    id: string;
+    version: number;
+  };
+};
+
 export type TaskSuspendReq = {
   kind: "task.suspend";
   head: RequestHead;
   data: {
     id: string;
     version: number;
-    actions: PromiseRegisterReq[];
+    actions: PromiseRegisterCallbackReq[];
   };
 };
 
@@ -167,15 +188,6 @@ export type TaskFulfillReq = {
     id: string;
     version: number;
     action: PromiseSettleReq;
-  };
-};
-
-export type TaskReleaseReq = {
-  kind: "task.release";
-  head: RequestHead;
-  data: {
-    id: string;
-    version: number;
   };
 };
 
@@ -195,6 +207,16 @@ export type TaskHeartbeatReq = {
   data: {
     pid: string;
     tasks: { id: string; version: number }[];
+  };
+};
+
+export type TaskSearchReq = {
+  kind: "task.search";
+  head: RequestHead;
+  data: {
+    state?: "pending" | "acquired" | "suspended" | "fulfilled";
+    limit?: number;
+    cursor?: string;
   };
 };
 
@@ -225,6 +247,16 @@ export type ScheduleDeleteReq = {
   kind: "schedule.delete";
   head: RequestHead;
   data: { id: string };
+};
+
+export type ScheduleSearchReq = {
+  kind: "schedule.search";
+  head: RequestHead;
+  data: {
+    tags?: Record<string, string>;
+    limit?: number;
+    cursor?: string;
+  };
 };
 
 // =============================================================================
@@ -269,19 +301,22 @@ export type Request =
   | PromiseGetReq
   | PromiseCreateReq
   | PromiseSettleReq
-  | PromiseRegisterReq
-  | PromiseSubscribeReq
+  | PromiseRegisterCallbackReq
+  | PromiseRegisterListenerReq
+  | PromiseSearchReq
   | TaskGetReq
   | TaskCreateReq
   | TaskAcquireReq
+  | TaskReleaseReq
   | TaskSuspendReq
   | TaskFulfillReq
-  | TaskReleaseReq
   | TaskFenceReq
   | TaskHeartbeatReq
+  | TaskSearchReq
   | ScheduleGetReq
   | ScheduleCreateReq
   | ScheduleDeleteReq
+  | ScheduleSearchReq
   | DebugStartReq
   | DebugResetReq
   | DebugTickReq
@@ -334,29 +369,40 @@ export type PromiseSettleRes =
   | { kind: "promise.settle"; head: ResponseHead<429>; data: string }
   | { kind: "promise.settle"; head: ResponseHead<500>; data: string };
 
-export type PromiseRegisterRes =
+export type PromiseRegisterCallbackRes =
   | {
-      kind: "promise.register";
+      kind: "promise.register_callback";
       head: ResponseHead<200>;
       data: { promise: PromiseRecord };
     }
-  | { kind: "promise.register"; head: ResponseHead<400>; data: string }
-  | { kind: "promise.register"; head: ResponseHead<404>; data: string }
-  | { kind: "promise.register"; head: ResponseHead<422>; data: string }
-  | { kind: "promise.register"; head: ResponseHead<429>; data: string }
-  | { kind: "promise.register"; head: ResponseHead<500>; data: string };
+  | { kind: "promise.register_callback"; head: ResponseHead<400>; data: string }
+  | { kind: "promise.register_callback"; head: ResponseHead<404>; data: string }
+  | { kind: "promise.register_callback"; head: ResponseHead<422>; data: string }
+  | { kind: "promise.register_callback"; head: ResponseHead<429>; data: string }
+  | { kind: "promise.register_callback"; head: ResponseHead<500>; data: string };
 
-export type PromiseSubscribeRes =
+export type PromiseRegisterListenerRes =
   | {
-      kind: "promise.subscribe";
+      kind: "promise.register_listener";
       head: ResponseHead<200>;
       data: { promise: PromiseRecord };
     }
-  | { kind: "promise.subscribe"; head: ResponseHead<400>; data: string }
-  | { kind: "promise.subscribe"; head: ResponseHead<404>; data: string }
-  | { kind: "promise.subscribe"; head: ResponseHead<429>; data: string }
-  | { kind: "promise.subscribe"; head: ResponseHead<500>; data: string }
-  | { kind: "promise.subscribe"; head: ResponseHead<501>; data: string };
+  | { kind: "promise.register_listener"; head: ResponseHead<400>; data: string }
+  | { kind: "promise.register_listener"; head: ResponseHead<404>; data: string }
+  | { kind: "promise.register_listener"; head: ResponseHead<429>; data: string }
+  | { kind: "promise.register_listener"; head: ResponseHead<500>; data: string }
+  | { kind: "promise.register_listener"; head: ResponseHead<501>; data: string };
+
+export type PromiseSearchRes =
+  | {
+      kind: "promise.search";
+      head: ResponseHead<200>;
+      data: { promises: PromiseRecord[]; cursor?: string };
+    }
+  | { kind: "promise.search"; head: ResponseHead<400>; data: string }
+  | { kind: "promise.search"; head: ResponseHead<429>; data: string }
+  | { kind: "promise.search"; head: ResponseHead<500>; data: string }
+  | { kind: "promise.search"; head: ResponseHead<501>; data: string };
 
 // =============================================================================
 // RESPONSES - TASK
@@ -373,7 +419,7 @@ export type TaskCreateRes =
   | {
       kind: "task.create";
       head: ResponseHead<200>;
-      data: { task: TaskRecord; promise: PromiseRecord };
+      data: { task: TaskRecord; promise: PromiseRecord; preload: PromiseRecord[] };
     }
   | { kind: "task.create"; head: ResponseHead<400>; data: string }
   | { kind: "task.create"; head: ResponseHead<409>; data: string }
@@ -393,6 +439,18 @@ export type TaskAcquireRes =
   | { kind: "task.acquire"; head: ResponseHead<429>; data: string }
   | { kind: "task.acquire"; head: ResponseHead<500>; data: string };
 
+export type TaskReleaseRes =
+  | {
+      kind: "task.release";
+      head: ResponseHead<200>;
+      data: Record<string, never>;
+    }
+  | { kind: "task.release"; head: ResponseHead<400>; data: string }
+  | { kind: "task.release"; head: ResponseHead<404>; data: string }
+  | { kind: "task.release"; head: ResponseHead<409>; data: string }
+  | { kind: "task.release"; head: ResponseHead<429>; data: string }
+  | { kind: "task.release"; head: ResponseHead<500>; data: string };
+
 export type TaskSuspendRes =
   | {
       kind: "task.suspend";
@@ -402,7 +460,7 @@ export type TaskSuspendRes =
   | {
       kind: "task.suspend";
       head: ResponseHead<300>;
-      data: Record<string, never>;
+      data: { preload: PromiseRecord[] };
     }
   | { kind: "task.suspend"; head: ResponseHead<400>; data: string }
   | { kind: "task.suspend"; head: ResponseHead<404>; data: string }
@@ -423,23 +481,11 @@ export type TaskFulfillRes =
   | { kind: "task.fulfill"; head: ResponseHead<429>; data: string }
   | { kind: "task.fulfill"; head: ResponseHead<500>; data: string };
 
-export type TaskReleaseRes =
-  | {
-      kind: "task.release";
-      head: ResponseHead<200>;
-      data: Record<string, never>;
-    }
-  | { kind: "task.release"; head: ResponseHead<400>; data: string }
-  | { kind: "task.release"; head: ResponseHead<404>; data: string }
-  | { kind: "task.release"; head: ResponseHead<409>; data: string }
-  | { kind: "task.release"; head: ResponseHead<429>; data: string }
-  | { kind: "task.release"; head: ResponseHead<500>; data: string };
-
 export type TaskFenceRes =
   | {
       kind: "task.fence";
       head: ResponseHead<200>;
-      data: { action: PromiseCreateRes | PromiseSettleRes };
+      data: { action: PromiseCreateRes | PromiseSettleRes; preload: PromiseRecord[] };
     }
   | { kind: "task.fence"; head: ResponseHead<400>; data: string }
   | { kind: "task.fence"; head: ResponseHead<404>; data: string }
@@ -456,6 +502,17 @@ export type TaskHeartbeatRes =
   | { kind: "task.heartbeat"; head: ResponseHead<400>; data: string }
   | { kind: "task.heartbeat"; head: ResponseHead<429>; data: string }
   | { kind: "task.heartbeat"; head: ResponseHead<500>; data: string };
+
+export type TaskSearchRes =
+  | {
+      kind: "task.search";
+      head: ResponseHead<200>;
+      data: { tasks: TaskRecord[]; cursor?: string };
+    }
+  | { kind: "task.search"; head: ResponseHead<400>; data: string }
+  | { kind: "task.search"; head: ResponseHead<429>; data: string }
+  | { kind: "task.search"; head: ResponseHead<500>; data: string }
+  | { kind: "task.search"; head: ResponseHead<501>; data: string };
 
 // =============================================================================
 // RESPONSES - SCHEDULE
@@ -495,6 +552,17 @@ export type ScheduleDeleteRes =
   | { kind: "schedule.delete"; head: ResponseHead<429>; data: string }
   | { kind: "schedule.delete"; head: ResponseHead<500>; data: string }
   | { kind: "schedule.delete"; head: ResponseHead<501>; data: string };
+
+export type ScheduleSearchRes =
+  | {
+      kind: "schedule.search";
+      head: ResponseHead<200>;
+      data: { schedules: ScheduleRecord[]; cursor?: string };
+    }
+  | { kind: "schedule.search"; head: ResponseHead<400>; data: string }
+  | { kind: "schedule.search"; head: ResponseHead<429>; data: string }
+  | { kind: "schedule.search"; head: ResponseHead<500>; data: string }
+  | { kind: "schedule.search"; head: ResponseHead<501>; data: string };
 
 // =============================================================================
 // RESPONSES - DEBUG
@@ -545,7 +613,7 @@ export type DebugSnapRes =
         promises: PromiseRecord[];
         promiseTimeouts: { id: string; timeout: number }[];
         callbacks: { awaiter: string; awaited: string }[];
-        subscriptions?: { id: string; address: string }[];
+        listeners?: { id: string; address: string }[];
         tasks: TaskRecord[];
         taskTimeouts: { id: string; type: number; timeout: number }[];
         messages: { address: string; message: Message }[];
@@ -571,19 +639,22 @@ export type Response =
   | PromiseGetRes
   | PromiseCreateRes
   | PromiseSettleRes
-  | PromiseRegisterRes
-  | PromiseSubscribeRes
+  | PromiseRegisterCallbackRes
+  | PromiseRegisterListenerRes
+  | PromiseSearchRes
   | TaskGetRes
   | TaskCreateRes
   | TaskAcquireRes
+  | TaskReleaseRes
   | TaskSuspendRes
   | TaskFulfillRes
-  | TaskReleaseRes
   | TaskFenceRes
   | TaskHeartbeatRes
+  | TaskSearchRes
   | ScheduleGetRes
   | ScheduleCreateRes
   | ScheduleDeleteRes
+  | ScheduleSearchRes
   | DebugStartRes
   | DebugResetRes
   | DebugTickRes
@@ -628,4 +699,61 @@ export function isError<T extends Response>(res: T): res is Extract<T, { head: {
 
 export function isNotImplemented<T extends Response>(res: T): res is Extract<T, { head: { status: 501 } }> {
   return res.head.status === 501;
+}
+
+const MESSAGE_KINDS = new Set<string>(["execute", "notify"]);
+
+const REQUEST_KINDS = new Set<string>([
+  "promise.get",
+  "promise.create",
+  "promise.settle",
+  "promise.register_callback",
+  "promise.register_listener",
+  "promise.search",
+  "task.get",
+  "task.create",
+  "task.acquire",
+  "task.release",
+  "task.suspend",
+  "task.fulfill",
+  "task.fence",
+  "task.heartbeat",
+  "task.search",
+  "schedule.get",
+  "schedule.create",
+  "schedule.delete",
+  "schedule.search",
+  "debug.start",
+  "debug.reset",
+  "debug.tick",
+  "debug.snap",
+  "debug.stop",
+]);
+
+const RESPONSE_KINDS = REQUEST_KINDS;
+
+export function isMessage(value: unknown): value is Message {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("kind" in value) || !("head" in value) || !("data" in value)) return false;
+  return MESSAGE_KINDS.has((value as { kind: unknown }).kind as string);
+}
+
+export function isRequest(value: unknown): value is Request {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("kind" in value) || !("head" in value) || !("data" in value)) return false;
+  const { kind, head } = value as { kind: unknown; head: unknown };
+  if (typeof kind !== "string" || !REQUEST_KINDS.has(kind)) return false;
+  if (typeof head !== "object" || head === null) return false;
+  const { corrId, version } = head as { corrId: unknown; version: unknown };
+  return typeof corrId === "string" && typeof version === "string";
+}
+
+export function isResponse(value: unknown): value is Response {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("kind" in value) || !("head" in value) || !("data" in value)) return false;
+  const { kind, head } = value as { kind: unknown; head: unknown };
+  if (typeof kind !== "string" || !RESPONSE_KINDS.has(kind)) return false;
+  if (typeof head !== "object" || head === null) return false;
+  const { corrId, status, version } = head as { corrId: unknown; status: unknown; version: unknown };
+  return typeof corrId === "string" && typeof status === "number" && typeof version === "string";
 }

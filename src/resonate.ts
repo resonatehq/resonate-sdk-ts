@@ -14,7 +14,7 @@ import {
   type PromiseCreateReq,
   type PromiseGetReq,
   type PromiseRecord,
-  type PromiseSubscribeReq,
+  type PromiseRegisterListenerReq,
   type TaskCreateReq,
   type TaskRecord,
 } from "./network/types.js";
@@ -237,8 +237,8 @@ export class Resonate {
     this.intervalId = setInterval(async () => {
       for (const [id, sub] of this.subscriptions.entries()) {
         try {
-          const createSubscriptionReq: PromiseSubscribeReq = {
-            kind: "promise.subscribe",
+          const registerListenerReq: PromiseRegisterListenerReq = {
+            kind: "promise.register_listener",
             head: { corrId: "", version: "" },
             data: {
               awaited: id,
@@ -246,7 +246,7 @@ export class Resonate {
             },
           };
 
-          const res = await this.promiseSubscribe(createSubscriptionReq);
+          const res = await this.promiseRegisterListener(registerListenerReq);
           if (res.state !== "pending") {
             sub.resolve(res);
             this.subscriptions.delete(id);
@@ -795,8 +795,8 @@ export class Resonate {
           }
 
           if (isConflict(res)) {
-            this.promiseSubscribe({
-              kind: "promise.subscribe",
+            this.promiseRegisterListener({
+              kind: "promise.register_listener",
               head: { corrId: "", version: "" },
               data: {
                 awaited: req.data.action.data.id,
@@ -855,7 +855,7 @@ export class Resonate {
     });
   }
 
-  private promiseSubscribe(req: PromiseSubscribeReq): Promise<PromiseRecord> {
+  private promiseRegisterListener(req: PromiseRegisterListenerReq): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(
         req,
@@ -905,8 +905,8 @@ export class Resonate {
   }
 
   private createHandle(promise: PromiseRecord): ResonateHandle<any> {
-    const createSubscriptionReq: PromiseSubscribeReq = {
-      kind: "promise.subscribe",
+    const registerListenerReq: PromiseRegisterListenerReq = {
+      kind: "promise.register_listener",
       head: { corrId: "", version: "" },
       data: {
         awaited: promise.id,
@@ -916,8 +916,8 @@ export class Resonate {
 
     return {
       id: promise.id,
-      done: () => this.promiseSubscribe(createSubscriptionReq).then((res) => res.state !== "pending"),
-      result: () => this.promiseSubscribe(createSubscriptionReq).then((res) => this.subscribe(promise.id, res)),
+      done: () => this.promiseRegisterListener(registerListenerReq).then((res) => res.state !== "pending"),
+      result: () => this.promiseRegisterListener(registerListenerReq).then((res) => this.subscribe(promise.id, res)),
     };
   }
 
