@@ -1,5 +1,6 @@
+import exceptions from "../exceptions.js";
 import type { MessageSource, Network } from "./network.js";
-import type { Request, Response } from "./types.js";
+import { isRequest, isResponse, type Request, type Response } from "./types.js";
 
 export class DecoratedNetwork<T extends Network<string, string>> implements Network<Request, Response> {
   readonly inner: T;
@@ -19,13 +20,43 @@ export class DecoratedNetwork<T extends Network<string, string>> implements Netw
   send<K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
     callback: (res: Extract<Response, { kind: K }>) => void,
-    headers?: { [key: string]: string },
-    retryForever?: boolean,
+    headers: { [key: string]: string } = {},
+    retryForever: boolean = false,
   ): void {
+    if (!isRequest(req)) {
+      throw exceptions.UNEXPECTED_MSG((req as any).kind ?? "unknown", req);
+    }
+
+    let reqStr: string;
+    try {
+      reqStr = JSON.stringify(req);
+    } catch {
+      throw exceptions.UNEXPECTED_MSG(req.kind, req);
+    }
+
     this.inner.send(
-      JSON.stringify(req),
+      reqStr,
       (resStr) => {
-        callback(JSON.parse(resStr));
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(resStr);
+        } catch {
+          throw exceptions.UNEXPECTED_MSG("unknown", resStr);
+        }
+
+        if (!isResponse(parsed)) {
+          throw exceptions.UNEXPECTED_MSG((req as any).kind ?? "unknown", parsed);
+        }
+
+        if (parsed.kind !== req.kind) {
+          throw exceptions.UNEXPECTED_MSG(req.kind, parsed);
+        }
+
+        if (parsed.head.corrId !== req.head.corrId) {
+          throw exceptions.UNEXPECTED_MSG(req.kind, parsed);
+        }
+
+        callback(parsed as Extract<Response, { kind: K }>);
       },
       headers,
       retryForever,

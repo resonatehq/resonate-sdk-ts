@@ -3,7 +3,7 @@ import { EventSource } from "eventsource";
 import exceptions, { ResonateError } from "../exceptions.js";
 import * as util from "../util.js";
 import type { MessageSource, Network } from "./network.js";
-import type { Message } from "./types.js";
+import { isMessage, type Message } from "./types.js";
 
 export interface HttpNetworkConfig {
   url?: string;
@@ -78,7 +78,7 @@ export class HttpNetwork implements Network<string, string> {
 
       try {
         if (this.verbose) {
-          console.log("[HttpNetwork] Sending:", JSON.stringify(req, null, 2));
+          console.log("[HttpNetwork] Sending:", req);
         }
 
         const response = await fetch(`${this.url}/api`, {
@@ -88,7 +88,7 @@ export class HttpNetwork implements Network<string, string> {
           signal: controller.signal,
         });
 
-        const body = await response.json();
+        const body = await response.text();
         if (this.verbose) {
           console.log(
             `[HttpNetwork] Received ${response.status}:`,
@@ -100,9 +100,14 @@ export class HttpNetwork implements Network<string, string> {
         }
 
         if (response.status === 200 || response.status === 300) {
-          return body as string;
+          return body;
         } else {
-          const err = body as any;
+          let err: any;
+          try {
+            err = JSON.parse(body);
+          } catch {
+            err = { message: body };
+          }
           throw exceptions.SERVER_ERROR(
             err?.message ?? response.statusText,
             response.status >= 500 && response.status < 600,
@@ -193,7 +198,20 @@ export class PollMessageSource implements MessageSource {
     });
 
     this.eventSource.addEventListener("message", (event) => {
-      this.recv(event.data);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(event.data);
+      } catch {
+        console.warn("[PollMessageSource] Received invalid JSON, discarding:", event.data);
+        return;
+      }
+
+      if (!isMessage(parsed)) {
+        console.warn("[PollMessageSource] Received invalid message, discarding:", parsed);
+        return;
+      }
+
+      this.recv(parsed);
     });
 
     this.eventSource.addEventListener("error", () => {
@@ -304,22 +322,22 @@ export class PushMessageSource implements MessageSource {
     });
 
     req.on("end", () => {
-      let msg: Message;
+      let parsed: unknown;
       try {
-        msg = JSON.parse(body);
+        parsed = JSON.parse(body);
       } catch {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Invalid JSON" }));
         return;
       }
 
-      if (!msg.kind || !this.subscriptions[msg.kind]) {
+      if (!isMessage(parsed)) {
         res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid message kind" }));
+        res.end(JSON.stringify({ error: "Invalid message" }));
         return;
       }
 
-      this.recv(msg);
+      this.recv(parsed);
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
