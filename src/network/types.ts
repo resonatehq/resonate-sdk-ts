@@ -777,7 +777,12 @@ export function isResponse(value: unknown): value is Response {
   if (typeof kind !== "string" || !RESPONSE_KINDS.has(kind)) return false;
   if (typeof head !== "object" || head === null) return false;
   const { corrId, status, version } = head as { corrId: unknown; status: unknown; version: unknown };
-  if ((corrId !== undefined && typeof corrId !== "string") || typeof status !== "number" || (version !== undefined && typeof version !== "string")) return false;
+  if (
+    (corrId !== undefined && typeof corrId !== "string") ||
+    typeof status !== "number" ||
+    (version !== undefined && typeof version !== "string")
+  )
+    return false;
   // For error responses, data must be a string
   if (status >= 400) return typeof data === "string";
   // For success/redirect responses that carry a promise, validate the promise record

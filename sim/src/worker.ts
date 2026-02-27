@@ -101,11 +101,7 @@ class SimulatedNetwork implements Network {
     });
 
     const cb = (res: Extract<Response, { kind: K }>) => {
-      if (res.head?.status >= 400 || res.kind !== req.kind) {
-        callback(res);
-      } else {
-        callback(res);
-      }
+      callback(res);
     };
 
     this.callbacks[message.head!.correlationId] = {
