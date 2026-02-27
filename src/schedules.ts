@@ -1,12 +1,13 @@
 import { DecoratedNetwork } from "./network/decorator.js";
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
-import { isSuccess, type ScheduleRecord } from "./network/types.js";
+import { isSuccess, type Request, type Response, type ScheduleRecord } from "./network/types.js";
+import { assert } from "./util.js";
 
 export class Schedules {
-  private network: DecoratedNetwork<Network<string, string>>;
+  private network: Network<Request, Response>;
 
-  constructor(network: DecoratedNetwork<Network<string, string>> = new DecoratedNetwork(new LocalNetwork())) {
+  constructor(network: Network<Request, Response> = new DecoratedNetwork(new LocalNetwork())) {
     this.network = network;
   }
 
@@ -21,6 +22,8 @@ export class Schedules {
           },
         },
         (res) => {
+          assert(res.kind === "schedule.get");
+
           if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
@@ -64,6 +67,8 @@ export class Schedules {
           },
         },
         (res) => {
+          assert(res.kind === "schedule.create");
+
           if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
@@ -86,6 +91,8 @@ export class Schedules {
           },
         },
         (res) => {
+          assert(res.kind === "schedule.delete");
+
           if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));

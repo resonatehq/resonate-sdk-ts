@@ -3,8 +3,8 @@ import type { Codec } from "./codec.js";
 import { Computation, type Done, type Status } from "./computation.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
-import type { DecoratedNetwork } from "./network/decorator.js";
 import type { MessageSource, Network } from "./network/network.js";
+import type { Request, Response } from "./network/types.js";
 import {
   isMessage,
   isRedirect,
@@ -44,7 +44,7 @@ export class Core {
   private pid: string;
   private ttl: number;
   private clock: Clock;
-  private network: DecoratedNetwork<Network<string, string>>;
+  private network: Network<Request, Response>;
   private codec: Codec;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
@@ -69,7 +69,7 @@ export class Core {
     pid: string;
     ttl: number;
     clock: Clock;
-    network: DecoratedNetwork<Network<string, string>>;
+    network: Network<Request, Response>;
     codec: Codec;
     registry: Registry;
     heartbeat: Heartbeat;
@@ -244,19 +244,15 @@ export class Core {
     }
 
     const task = msg.data.task;
-    const kind = "task.acquire" as const;
     this.network.send(
       {
-        kind,
+        kind: "task.acquire",
         head: { corrId: "", version: "" },
         data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
       },
       (res) => {
-        if (!isResponse(res)) {
-          const error = exceptions.UNEXPECTED_MSG(`${kind} response`, res);
-          error.log(this.verbose);
-          return cb({ kind: "error", error: undefined });
-        }
+        util.assert(res.kind === "task.acquire");
+
         if (!isSuccess(res)) {
           const error = exceptions.SERVER_ERROR(res.data, true, {
             code: res.head.status,

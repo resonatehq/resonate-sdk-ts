@@ -7,11 +7,13 @@ import { Core } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { DecoratedNetwork } from "../src/network/decorator.js";
 import { LocalNetwork } from "../src/network/local.js";
-import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js";
+import type { Network } from "../src/network/network.js";
+import type { PromiseRecord, Request, Response, TaskRecord } from "../src/network/types.js";
 import { isSuccess } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import type { Result } from "../src/types.js";
+import { assert } from "../src/util.js";
 
 class TestHeartbeat implements Heartbeat {
   start(): void {}
@@ -40,7 +42,7 @@ class MockComputation {
 
 function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { mock: MockComputation } }): {
   core: Core;
-  network: DecoratedNetwork<LocalNetwork>;
+  network: Network<Request, Response>;
   codec: Codec;
   ctorSpy: jest.Spied<any>;
 } {
@@ -87,7 +89,7 @@ function wrapVoidCb(): { promise: Promise<void>; cb: () => void } {
 }
 
 function seedAcquiredTask(
-  network: DecoratedNetwork<LocalNetwork>,
+  network: Network<Request, Response>,
   codec: Codec,
   id: string,
   func: string,
@@ -116,6 +118,8 @@ function seedAcquiredTask(
         },
       },
       (res) => {
+        assert(res.kind === "task.create");
+
         if (isSuccess(res)) {
           const rootPromise = codec.decodePromise(res.data.promise);
           resolve({ task: res.data.task, rootPromise });
@@ -128,7 +132,7 @@ function seedAcquiredTask(
 }
 
 async function seedPendingTask(
-  network: DecoratedNetwork<LocalNetwork>,
+  network: Network<Request, Response>,
   codec: Codec,
   id: string,
   func: string,
@@ -154,7 +158,7 @@ async function seedPendingTask(
   });
 }
 
-function interceptNetwork(network: DecoratedNetwork<LocalNetwork>): { sent: Request[] } {
+function interceptNetwork(network: Network<Request, Response>): { sent: Request[] } {
   const sent: Request[] = [];
   const origSend = network.send.bind(network);
   network.send = ((req: any, cb: any, ...rest: any[]) => {

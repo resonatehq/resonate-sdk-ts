@@ -8,6 +8,7 @@ import { DecoratedNetwork } from "./network/decorator.js";
 import { HttpNetwork, PollMessageSource } from "./network/http.js";
 import { LocalNetwork } from "./network/local.js";
 import type { MessageSource, Network } from "./network/network.js";
+import type { Request, Response } from "./network/types.js";
 import {
   isConflict,
   isSuccess,
@@ -63,7 +64,7 @@ export class Resonate {
   private match: (target: string) => string;
 
   private core: Core;
-  private network: DecoratedNetwork<Network<string, string>>;
+  private network: Network<Request, Response>;
   private codec: Codec;
   private verbose: boolean;
   private messageSource: MessageSource;
@@ -787,6 +788,7 @@ export class Resonate {
       this.network.send(
         req,
         (res) => {
+          util.assert(res.kind === "task.create");
           if (!isSuccess(res) && !isConflict(res)) {
             reject(
               exceptions.SERVER_ERROR(res.data, true, {
@@ -836,6 +838,7 @@ export class Resonate {
       this.network.send(
         req,
         (res) => {
+          util.assert(res.kind === "promise.create");
           if (!isSuccess(res)) {
             reject(
               exceptions.SERVER_ERROR(res.data, true, {
@@ -863,6 +866,8 @@ export class Resonate {
       this.network.send(
         req,
         (res) => {
+          util.assert(res.kind === "promise.register_listener");
+
           if (!isSuccess(res)) {
             reject(
               exceptions.SERVER_ERROR(res.data, true, {
@@ -888,6 +893,7 @@ export class Resonate {
   private promiseGet(req: PromiseGetReq): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       this.network.send(req, (res) => {
+        util.assert(res.kind === "promise.get");
         if (!isSuccess(res)) {
           reject(
             exceptions.SERVER_ERROR(res.data, true, {

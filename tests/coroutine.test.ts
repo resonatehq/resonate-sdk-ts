@@ -4,7 +4,7 @@ import { type Context, InnerContext } from "../src/context.js";
 import { Coroutine, type Done, type Suspended } from "../src/coroutine.js";
 import { DecoratedNetwork } from "../src/network/decorator.js";
 import type { Network } from "../src/network/network.js";
-import type { Message, PromiseRecord, Request } from "../src/network/types.js";
+import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
@@ -84,7 +84,7 @@ class DummyNetwork implements Network<string, string> {
   subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Message) => void) {}
 }
 
-function buildEffects(network: DecoratedNetwork<DummyNetwork>): Effects {
+function buildEffects(network: Network<Request, Response>): Effects {
   const codec = new Codec();
   return util.buildEffects(network, codec);
 }

@@ -7,7 +7,8 @@ import type { ClaimedTask } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { DecoratedNetwork } from "../src/network/decorator.js";
 import { LocalNetwork } from "../src/network/local.js";
-import type { PromiseRecord } from "../src/network/types.js";
+import type { Network } from "../src/network/network.js";
+import type { PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
@@ -22,7 +23,7 @@ class TestHeartbeat implements Heartbeat {
 
 function buildComputation(registry: Registry): {
   computation: Computation;
-  network: DecoratedNetwork<LocalNetwork>;
+  network: Network<Request, Response>;
   effects: Effects;
 } {
   const network = new DecoratedNetwork(new LocalNetwork());

@@ -1,9 +1,8 @@
 import type { Codec } from "./codec.js";
 import type { Data } from "./computation.js";
 import exceptions from "./exceptions.js";
-import type { DecoratedNetwork } from "./network/decorator.js";
 import type { MessageSource, Network } from "./network/network.js";
-import { isResponse, isSuccess, type PromiseRecord } from "./network/types.js";
+import { isSuccess, type PromiseRecord, type Request, type Response } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
 import type { Effects } from "./types.js";
 
@@ -137,7 +136,7 @@ export function once<T extends () => any>(fn: T): T {
 // effects
 
 export function buildEffects(
-  network: DecoratedNetwork<Network<string, string>>,
+  network: Network<Request, Response>,
   codec: Codec,
   preload: PromiseRecord[] = [],
 ): Effects {
@@ -164,9 +163,8 @@ export function buildEffects(
       network.send(
         req,
         (res) => {
-          if (!isResponse(res)) {
-            return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
-          }
+          assert(res.kind === "promise.create");
+
           if (!isSuccess(res)) {
             return done({
               kind: "error",
@@ -204,9 +202,8 @@ export function buildEffects(
       }
 
       network.send(req, (res) => {
-        if (!isResponse(res)) {
-          return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
-        }
+        assert(res.kind === "promise.settle");
+
         if (!isSuccess(res)) {
           return done({
             kind: "error",

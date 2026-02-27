@@ -1,12 +1,20 @@
 import { DecoratedNetwork } from "./network/decorator.js";
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
-import { isSuccess, type PromiseRecord, type TaskAcquireRes } from "./network/types.js";
+import {
+  isSuccess,
+  isTaskAcquireRes,
+  isTaskFulfillRes,
+  type PromiseRecord,
+  type Request,
+  type Response,
+  type TaskAcquireRes,
+} from "./network/types.js";
 
 export class Tasks {
-  private network: DecoratedNetwork<Network<string, string>>;
+  private network: Network<Request, Response>;
 
-  constructor(network: DecoratedNetwork<Network<string, string>> = new DecoratedNetwork(new LocalNetwork())) {
+  constructor(network: Network<Request, Response> = new DecoratedNetwork(new LocalNetwork())) {
     this.network = network;
   }
 
@@ -29,7 +37,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isSuccess(res) || !isTaskAcquireRes(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -57,7 +65,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (!isSuccess(res)) {
+          if (!isSuccess(res) || !isTaskFulfillRes(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
