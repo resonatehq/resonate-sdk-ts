@@ -1,7 +1,7 @@
 import type { Context, InnerContext } from "./context.js";
 import { Decorator, type Value } from "./decorator.js";
 import { Never } from "./retries.js";
-import { traceEvent } from "./trace.js";
+import type { ExecutionTrace } from "./trace.js";
 import type { Effects, Result, Yieldable } from "./types.js";
 import * as util from "./util.js";
 
@@ -40,14 +40,23 @@ export class Coroutine<T> {
   private verbose: boolean;
   private decorator: Decorator<T>;
   private effects: Effects;
+  private execution: ExecutionTrace;
   private readonly depth: number;
   private readonly queueMicrotaskEveryN: number = 1;
 
-  constructor(ctx: InnerContext, verbose: boolean, decorator: Decorator<T>, effects: Effects, depth = 1) {
+  constructor(
+    ctx: InnerContext,
+    verbose: boolean,
+    decorator: Decorator<T>,
+    effects: Effects,
+    execution: ExecutionTrace,
+    depth = 1,
+  ) {
     this.ctx = ctx;
     this.verbose = verbose;
     this.decorator = decorator;
     this.effects = effects;
+    this.execution = execution;
     this.depth = depth;
 
     if (!(this.ctx.retryPolicy instanceof Never) && !logged.has(this.ctx.id)) {
@@ -66,9 +75,10 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     effects: Effects,
+    execution: ExecutionTrace,
     callback: (res: Result<Suspended | Done, any>) => void,
   ): void {
-    const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), effects);
+    const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), effects, execution);
     coroutine.exec((res) => {
       if (res.kind === "error") return callback(res);
       const status = res.value;
@@ -101,7 +111,7 @@ export class Coroutine<T> {
 
         // Handle internal.async.l (lfi/lfc)
         if (action.type === "internal.async.l") {
-          traceEvent("async", this.ctx.func, action.id);
+          this.execution.event("async", this.ctx.func, action.id);
           this.effects.promiseCreate(
             action.createReq,
             (res) => {
@@ -142,6 +152,7 @@ export class Coroutine<T> {
                   this.verbose,
                   new Decorator(action.func(ctx, ...action.args)),
                   this.effects,
+                  this.execution,
                   this.depth + 1,
                 );
 
@@ -216,7 +227,7 @@ export class Coroutine<T> {
                 //
                 // Experimenting with the queueMicrotaskEveryN value
                 // shows that a value of 1 (our default) is optimal.
-                traceEvent("spawn", action.func.name, action.id);
+                this.execution.event("spawn", action.func.name, action.id);
                 if (this.depth % this.queueMicrotaskEveryN === 0) {
                   queueMicrotask(() => coroutine.exec(cb));
                 } else {
@@ -224,7 +235,7 @@ export class Coroutine<T> {
                 }
               } else {
                 // durable promise is completed
-                traceEvent("dedup", action.func.name, action.id);
+                this.execution.event("dedup", action.func.name, action.id);
                 input = {
                   type: "internal.promise",
                   state: "completed",
@@ -247,7 +258,7 @@ export class Coroutine<T> {
 
         // Handle internal.async.r
         if (action.type === "internal.async.r") {
-          traceEvent("async", this.ctx.func, action.id);
+          this.execution.event("async", this.ctx.func, action.id);
           this.effects.promiseCreate(
             action.createReq,
             (res) => {
@@ -269,7 +280,7 @@ export class Coroutine<T> {
                   id: action.id,
                 };
               } else {
-                traceEvent("dedup", action.func, action.id);
+                this.execution.event("dedup", action.func, action.id);
                 input = {
                   type: "internal.promise",
                   state: "completed",
@@ -317,9 +328,9 @@ export class Coroutine<T> {
         // invoke the callback when awaiting a pending "Future" the list of todos will include
         // the global callbacks to create.
         if (action.type === "internal.await" && action.promise.state === "pending") {
-          traceEvent("await", this.ctx.func, action.id);
+          this.execution.event("await", this.ctx.func, action.id);
           if (remoteIds.has(action.id) || action.promise.mode === "detached") {
-            traceEvent("block", this.ctx.func, action.id);
+            this.execution.event("block", this.ctx.func, action.id);
           }
           if (action.promise.mode === "detached") {
             // We didn't add the associated todo of this promise, since the user is explicitly awaiting it we need to add the todo now.
@@ -332,7 +343,7 @@ export class Coroutine<T> {
 
         // Handle return
         if (action.type === "internal.return") {
-          traceEvent("return", this.ctx.func, this.ctx.id);
+          this.execution.event("return", this.ctx.func, this.ctx.id);
           util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
           util.assertDefined(action.value);
           callback({ kind: "value", value: { type: "done", result: action.value.value } });

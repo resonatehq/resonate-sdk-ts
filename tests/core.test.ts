@@ -10,6 +10,7 @@ import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js
 import { isSuccess } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
+import type { ExecutionTrace } from "../src/trace.js";
 import type { Result } from "../src/types.js";
 
 class TestHeartbeat implements Heartbeat {
@@ -27,6 +28,7 @@ class MockComputation {
   }
 
   executeUntilBlocked(
+    _execution: ExecutionTrace,
     task: ClaimedTask | { kind: "unclaimed"; task: TaskRecord },
     done: (res: Result<Status, undefined>) => void,
   ) {

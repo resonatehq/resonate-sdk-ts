@@ -11,6 +11,7 @@ import { OptionsBuilder } from "../src/options.js";
 import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
 import { Exponential, Never } from "../src/retries.js";
+import { Tracer } from "../src/trace.js";
 import type { Effects, Result } from "../src/types.js";
 import * as util from "../src/util.js";
 
@@ -50,7 +51,7 @@ function buildComputation(registry: Registry): {
 
 function runUntilBlocked(computation: Computation, task: ClaimedTask): Promise<Result<Status, undefined>> {
   return new Promise((resolve) => {
-    computation.executeUntilBlocked(task, resolve);
+    computation.executeUntilBlocked(new Tracer().newExecution(), task, resolve);
   });
 }
 

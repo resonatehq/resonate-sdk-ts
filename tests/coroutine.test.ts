@@ -7,6 +7,7 @@ import type { Message, PromiseRecord, Request, Response } from "../src/network/t
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
+import { Tracer } from "../src/trace.js";
 import type { Effects, Result } from "../src/types.js";
 import * as util from "../src/util.js";
 
@@ -112,6 +113,7 @@ describe("Coroutine", () => {
         func,
         args,
         effects,
+        new Tracer().newExecution(),
         (res) => {
           expect(res.kind).toBe("value");
           util.assert(res.kind === "value");
@@ -375,6 +377,7 @@ describe("Coroutine", () => {
         foo,
         [],
         effects,
+        new Tracer().newExecution(),
         (res) => {
           resolve(res);
         },

@@ -3,7 +3,6 @@ import { Codec } from "../src/codec.js";
 import type { Context } from "../src/context.js";
 import type { Request } from "../src/network/types.js";
 import { Registry } from "../src/registry.js";
-import { enableTrace, logTrace } from "../src/trace.js";
 import { ServerProcess } from "./src/server.js";
 import { Message, Random, Simulator, unicast } from "./src/simulator.js";
 import { WorkerProcess } from "./src/worker.js";
@@ -41,15 +40,13 @@ const sim = new Simulator(rnd, {
 const server = new ServerProcess(clock, "server");
 const worker1 = new WorkerProcess(rnd, clock, registry, { charFlipProb: options.charFlipProb }, "worker-1", "default");
 const worker2 = new WorkerProcess(rnd, clock, registry, { charFlipProb: options.charFlipProb }, "worker-2", "default");
-const worker3 = new WorkerProcess(rnd, clock, registry, { charFlipProb: options.charFlipProb }, "worker-3", "default");
 
 sim.register(server);
-for (const worker of [worker1, worker2, worker3]) {
+for (const worker of [worker1, worker2]) {
   sim.register(worker);
+  worker.core.tracer.enable();
 }
-const n = 10;
-
-enableTrace();
+const n = 3;
 
 sim.repeat(1, () => {
   sim.send(
@@ -114,4 +111,10 @@ if (JSON.stringify(decoded) !== JSON.stringify(expected)) {
 }
 
 console.log(`foo() settled correctly: ${JSON.stringify(decoded)} (seed=${seed})`);
-logTrace();
+for (const worker of [worker1, worker2]) {
+  const n = worker.core.tracer.executions.length;
+  if (n > 0) {
+    console.log(`\n[${worker.iaddr}]`);
+    worker.core.tracer.log();
+  }
+}

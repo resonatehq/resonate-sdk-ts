@@ -9,7 +9,7 @@ import type { OptionsBuilder } from "./options.js";
 import { AsyncProcessor, type Processor } from "./processor/processor.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
-import { traceEvent } from "./trace.js";
+import type { ExecutionTrace } from "./trace.js";
 import type { Effects, Func, Result } from "./types.js";
 import * as util from "./util.js";
 
@@ -71,19 +71,27 @@ export class Computation {
     this.processor = processor ?? new AsyncProcessor();
   }
 
-  public executeUntilBlocked(task: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
+  public executeUntilBlocked(
+    execution: ExecutionTrace,
+    task: ClaimedTask,
+    done: (res: Result<Status, undefined>) => void,
+  ) {
     // If we are already processing there is nothing to do, the
     // caller will be notified via the promise handler
     if (this.processing) return done({ kind: "error", error: undefined });
 
     this.processing = true;
-    this.processAcquired(task, (res: Result<Status, undefined>) => {
+    this.processAcquired(execution, task, (res: Result<Status, undefined>) => {
       this.processing = false;
       done(res);
     });
   }
 
-  private processAcquired({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
+  private processAcquired(
+    execution: ExecutionTrace,
+    { task, rootPromise }: ClaimedTask,
+    done: (res: Result<Status, undefined>) => void,
+  ) {
     if (!util.isValidData(rootPromise.param?.data)) {
       return done({ kind: "error", error: undefined });
     }
@@ -127,11 +135,11 @@ export class Computation {
       retryPolicy: retryPolicy,
     };
 
-    traceEvent("spawn", registered.name, this.id);
+    execution.event("spawn", registered.name, this.id);
     if (util.isGeneratorFunction(registered.func)) {
-      this.processGenerator(ctxConfig, registered.func, args, task, rootPromise, done);
+      this.processGenerator(execution, ctxConfig, registered.func, args, task, rootPromise, done);
     } else {
-      this.processFunction(this.id, new InnerContext(ctxConfig), registered.func, args, (res) => {
+      this.processFunction(execution, this.id, new InnerContext(ctxConfig), registered.func, args, (res) => {
         if (res.kind === "error") return done({ kind: "error", error: undefined });
 
         const result = res.value;
@@ -150,6 +158,7 @@ export class Computation {
   }
 
   private processGenerator(
+    execution: ExecutionTrace,
     ctxConfig: ConstructorParameters<typeof InnerContext>[0],
     func: Func,
     args: any[],
@@ -172,7 +181,7 @@ export class Computation {
 
     const ctx = new InnerContext(ctxConfig);
 
-    Coroutine.exec(this.verbose, ctx, func, args, this.effects, (res) => {
+    Coroutine.exec(this.verbose, ctx, func, args, this.effects, execution, (res) => {
       if (res.kind === "error") {
         return done(res);
       }
@@ -195,10 +204,11 @@ export class Computation {
           util.assert(status.todo.local.length > 0 || status.todo.remote.length > 0, "must be at least one todo");
           if (status.todo.local.length > 0) {
             return this.processLocalTodo(
+              execution,
               status.todo.local,
               util.once(() => {
-                traceEvent("resume", ctxConfig.func, this.id);
-                this.processGenerator(ctxConfig, func, args, task, rootPromise, done);
+                execution.event("resume", ctxConfig.func, this.id);
+                this.processGenerator(execution, ctxConfig, func, args, task, rootPromise, done);
               }),
               (err) => done({ kind: "error", error: undefined }),
             );
@@ -211,6 +221,7 @@ export class Computation {
   }
 
   private processFunction(
+    execution: ExecutionTrace,
     id: string,
     ctx: InnerContext,
     func: Func,
@@ -231,7 +242,7 @@ export class Computation {
       const result = results[0];
       const { result: res } = result;
 
-      traceEvent("return", ctx.func, this.id);
+      execution.event("return", ctx.func, this.id);
       done({
         kind: "value",
         value: {
@@ -244,9 +255,9 @@ export class Computation {
     });
   }
 
-  private processLocalTodo(todo: LocalTodo[], cb: () => void, onErr: (err: any) => void) {
+  private processLocalTodo(execution: ExecutionTrace, todo: LocalTodo[], cb: () => void, onErr: (err: any) => void) {
     const work = todo.map((t) => {
-      traceEvent("spawn", t.ctx.func, t.id);
+      execution.event("spawn", t.ctx.func, t.id);
       return {
         id: t.id,
         ctx: t.ctx,

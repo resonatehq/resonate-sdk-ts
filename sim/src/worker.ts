@@ -198,7 +198,7 @@ export class WorkerProcess extends Process {
   private clock: StepClock;
   private network: SimulatedNetwork;
   private registry: Registry;
-  private core: Core;
+  public readonly core: Core;
 
   constructor(
     prng: Random,

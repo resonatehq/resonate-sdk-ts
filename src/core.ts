@@ -16,7 +16,7 @@ import type { OptionsBuilder } from "./options.js";
 import type { Processor } from "./processor/processor.js";
 import type { Registry } from "./registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
-import { newExecution } from "./trace.js";
+import { Tracer } from "./trace.js";
 import type { Effects, Result } from "./types.js";
 import * as util from "./util.js";
 
@@ -40,6 +40,7 @@ export type UnclaimedTask = {
 };
 
 export class Core {
+  public readonly tracer = new Tracer();
   private pid: string;
   private ttl: number;
   private clock: Clock;
@@ -107,13 +108,13 @@ export class Core {
   }
 
   public executeUntilBlocked(claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
-    newExecution();
+    const execution = this.tracer.newExecution();
     const computation = this.createComputation(
       claimed.rootPromise.id,
       util.buildEffects(this.network, this.codec, claimed.preload),
     );
 
-    computation.executeUntilBlocked(claimed, (compRes) => {
+    computation.executeUntilBlocked(execution, claimed, (compRes) => {
       if (compRes.kind === "error") {
         return this.releaseTask(claimed.task, () => done(compRes));
       }

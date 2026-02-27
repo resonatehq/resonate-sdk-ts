@@ -4,41 +4,46 @@ export type TraceEvent = {
   id: string;
 };
 
-export const trace: TraceEvent[][] = [];
-export let traceEnabled = false;
+export class ExecutionTrace {
+  constructor(private readonly events: TraceEvent[] | null) {}
 
-export function enableTrace() {
-  traceEnabled = true;
-}
-
-export function clearTrace() {
-  trace.splice(0, trace.length);
-}
-
-export function newExecution() {
-  if (traceEnabled) {
-    trace.push([]);
+  event(type: TraceEvent["event"], func: string, id: string): void {
+    this.events?.push({ event: type, func, id });
   }
 }
 
-export function traceEvent(event: TraceEvent["event"], func: string, id: string) {
-  if (traceEnabled && trace.length > 0) {
-    trace[trace.length - 1].push({ event, func, id });
-  }
-}
+export class Tracer {
+  public readonly executions: TraceEvent[][] = [];
+  private enabled = false;
 
-export function logTrace() {
-  console.log(`\n--- Trace (${trace.length} executions) ---`);
-  for (let i = 0; i < trace.length; i++) {
-    const execution = trace[i];
-    console.log(`\nexecution ${i + 1} (${execution.length} events):`);
-    const eventW = Math.max(5, ...execution.map((e) => e.event.length));
-    const funcW = Math.max(4, ...execution.map((e) => e.func.length));
-    console.log(`  ${"#".padStart(3)}  ${"event".padEnd(eventW)}  ${"func".padEnd(funcW)}  id`);
-    console.log(`  ${"".padStart(3)}  ${"".padEnd(eventW, "-")}  ${"".padEnd(funcW, "-")}  ----`);
-    for (let j = 0; j < execution.length; j++) {
-      const e = execution[j];
-      console.log(`  ${String(j + 1).padStart(3)}  ${e.event.padEnd(eventW)}  ${e.func.padEnd(funcW)}  ${e.id}`);
+  enable(): void {
+    this.enabled = true;
+  }
+
+  clear(): void {
+    this.executions.length = 0;
+  }
+
+  newExecution(): ExecutionTrace {
+    if (!this.enabled) return new ExecutionTrace(null);
+    const events: TraceEvent[] = [];
+    this.executions.push(events);
+    return new ExecutionTrace(events);
+  }
+
+  log(): void {
+    console.log(`\n--- Trace (${this.executions.length} executions) ---`);
+    for (let i = 0; i < this.executions.length; i++) {
+      const execution = this.executions[i];
+      console.log(`\nexecution ${i + 1} (${execution.length} events):`);
+      const eventW = Math.max(5, ...execution.map((e) => e.event.length));
+      const funcW = Math.max(4, ...execution.map((e) => e.func.length));
+      console.log(`  ${"#".padStart(3)}  ${"event".padEnd(eventW)}  ${"func".padEnd(funcW)}  id`);
+      console.log(`  ${"".padStart(3)}  ${"".padEnd(eventW, "-")}  ${"".padEnd(funcW, "-")}  ----`);
+      for (let j = 0; j < execution.length; j++) {
+        const e = execution[j];
+        console.log(`  ${String(j + 1).padStart(3)}  ${e.event.padEnd(eventW)}  ${e.func.padEnd(funcW)}  ${e.id}`);
+      }
     }
   }
 }
