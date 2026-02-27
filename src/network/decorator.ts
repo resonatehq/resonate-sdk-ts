@@ -1,12 +1,13 @@
-import exceptions from "../exceptions.js";
-import type { MessageSource, Network } from "./network.js";
-import { isRequest, isResponse, type Request, type Response } from "./types.js";
+import type { Network } from "./network.js";
+import { isError, isResponse, type Request, type Response } from "./types.js";
 
-export class DecoratedNetwork<T extends Network<string, string>> implements Network<Request, Response> {
-  private inner: T;
+export class DecoratedNetwork implements Network<Request, Response> {
+  private inner: Network<string, string>;
+  private verbose: boolean;
 
-  constructor(network: T) {
-    this.inner = network;
+  constructor(inner: Network<string, string>, verbose: boolean = false) {
+    this.inner = inner;
+    this.verbose = verbose;
   }
 
   start(): void {
@@ -23,45 +24,67 @@ export class DecoratedNetwork<T extends Network<string, string>> implements Netw
     headers: { [key: string]: string } = {},
     retryForever: boolean = false,
   ): void {
-    if (!isRequest(req)) {
-      throw exceptions.UNEXPECTED_MSG((req as any).kind ?? "unknown", req);
-    }
+    const retries = retryForever ? Number.MAX_SAFE_INTEGER : 0;
+    const delay = 10000;
+    let attempt = 0;
 
-    let reqStr: string;
-    try {
-      reqStr = JSON.stringify(req);
-    } catch {
-      throw exceptions.UNEXPECTED_MSG(req.kind, req);
-    }
+    const doSend = () => {
+      if (this.verbose) {
+        console.log("[Network] Sending:", req);
+      }
 
-    this.inner.send(
-      reqStr,
-      (resStr) => {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(resStr);
-        } catch {
-          throw exceptions.UNEXPECTED_MSG("unknown", resStr);
-        }
+      this.inner.send(
+        JSON.stringify(req),
+        (resStr) => {
+          let res: unknown;
+          try {
+            res = JSON.parse(resStr);
+          } catch {
+            attempt++;
+            console.warn(`Server error (500) for ${req.kind}. Retrying in ${delay / 1000}s.`);
+            setTimeout(doSend, delay);
+            return;
+          }
 
-        if (!isResponse(parsed)) {
-          throw exceptions.UNEXPECTED_MSG((req as any).kind ?? "unknown", parsed);
-        }
+          if (!isResponse(res)) {
+            attempt++;
+            console.warn(`Server error (500) for ${req.kind}. Retrying in ${delay / 1000}s.`);
+            setTimeout(doSend, delay);
+            return;
+          }
 
-        if (parsed.kind !== req.kind) {
-          throw exceptions.UNEXPECTED_MSG(req.kind, parsed);
-        }
+          if (res.kind !== req.kind) {
+            attempt++;
+            console.warn(`Server error (500) for ${req.kind}. Retrying in ${delay / 1000}s.`);
+            setTimeout(doSend, delay);
+            return;
+          }
 
-        if (parsed.head.corrId !== req.head.corrId) {
-          throw exceptions.UNEXPECTED_MSG(req.kind, parsed);
-        }
+          if (res.head.corrId !== req.head.corrId) {
+            attempt++;
+            console.warn(`Server error (500) for ${req.kind}. Retrying in ${delay / 1000}s.`);
+            setTimeout(doSend, delay);
+            return;
+          }
 
-        callback(parsed as Extract<Response, { kind: K }>);
-      },
-      headers,
-      retryForever,
-    );
+          if (isError(res) && attempt < retries) {
+            attempt++;
+            console.warn(`Server error (500) for ${req.kind}. Retrying in ${delay / 1000}s.`);
+            setTimeout(doSend, delay);
+            return;
+          }
+
+          if (this.verbose) {
+            console.log(`[Network] Received ${res.head.status}:`, `for request:`, req, `response:${res.data}`);
+          }
+
+          callback(res as Extract<Response, { kind: K }>);
+        },
+        headers,
+        retryForever,
+      );
+    };
+
+    doSend();
   }
 }
-
-export type { MessageSource };

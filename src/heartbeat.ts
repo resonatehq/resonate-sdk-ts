@@ -1,5 +1,5 @@
-import type { Request, Response } from "./essential.js";
 import type { Network } from "./network/network.js";
+import type { Request, Response } from "./network/types.js";
 
 export interface Heartbeat {
   start(): void;

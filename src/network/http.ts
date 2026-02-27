@@ -1,6 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { EventSource } from "eventsource";
-import exceptions, { ResonateError } from "../exceptions.js";
 import * as util from "../util.js";
 import type { MessageSource, Network } from "./network.js";
 import { isMessage, type Message } from "./types.js";
@@ -11,19 +10,12 @@ export interface HttpNetworkConfig {
   headers?: { [key: string]: string };
   auth?: { username: string; password: string };
   token?: string;
-  verbose?: boolean;
 }
-
-export type RetryPolicy = {
-  retries?: number;
-  delay?: number;
-};
 
 export class HttpNetwork implements Network<string, string> {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
-  private verbose: boolean;
 
   constructor({
     url = "http://localhost:8001",
@@ -31,11 +23,9 @@ export class HttpNetwork implements Network<string, string> {
     headers = {},
     auth = undefined,
     token = undefined,
-    verbose = true,
   }: HttpNetworkConfig) {
     this.url = url;
     this.timeout = timeout;
-    this.verbose = verbose;
 
     this.headers = { "Content-Type": "application/json", ...headers };
     if (token) {
@@ -48,18 +38,9 @@ export class HttpNetwork implements Network<string, string> {
   start(): void {}
   stop(): void {}
 
-  send(
-    req: string,
-    callback: (res: string) => void,
-    headers: { [key: string]: string } = {},
-    retryForever = false,
-  ): void {
-    const retryPolicy = retryForever ? { retries: Number.MAX_SAFE_INTEGER, delay: 10000 } : { retries: 0 };
-
-    this.doSend(req, headers, retryPolicy).then(
-      (res) => {
-        callback(res);
-      },
+  send(req: string, callback: (res: string) => void, headers: { [key: string]: string } = {}): void {
+    this.doSend(req, headers).then(
+      (res) => callback(res),
       (err) => {
         console.error(err);
         util.assert(false, "something went wrong");
@@ -67,77 +48,22 @@ export class HttpNetwork implements Network<string, string> {
     );
   }
 
-  private async doSend(
-    req: string,
-    headers: { [key: string]: string },
-    { retries = 0, delay = 1000 }: RetryPolicy = {},
-  ): Promise<string> {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+  private async doSend(req: string, headers: { [key: string]: string }): Promise<string> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      try {
-        if (this.verbose) {
-          console.log("[HttpNetwork] Sending:", req);
-        }
+    try {
+      const response = await fetch(`${this.url}/api`, {
+        method: "POST",
+        headers: { ...this.headers, ...headers },
+        body: req,
+        signal: controller.signal,
+      });
 
-        const response = await fetch(`${this.url}/api`, {
-          method: "POST",
-          headers: { ...this.headers, ...headers },
-          body: req,
-          signal: controller.signal,
-        });
-
-        const body = await response.text();
-        if (this.verbose) {
-          console.log(
-            `[HttpNetwork] Received ${response.status}:`,
-            `for request:`,
-            req,
-            `response.ok:${response.ok}`,
-            body,
-          );
-        }
-
-        if (response.status === 200 || response.status === 300) {
-          return body;
-        } else {
-          let err: any;
-          try {
-            err = JSON.parse(body);
-          } catch {
-            err = { message: body };
-          }
-          throw exceptions.SERVER_ERROR(
-            err?.message ?? response.statusText,
-            response.status >= 500 && response.status < 600,
-            err,
-          );
-        }
-      } catch (err) {
-        console.log(err);
-        if (err instanceof ResonateError && !err.retriable) {
-          throw err;
-        }
-        if (attempt >= retries) {
-          if (err instanceof ResonateError) {
-            throw err;
-          }
-          throw exceptions.SERVER_ERROR(String(err));
-        }
-
-        console.warn(`Networking. Cannot connect to [${this.url}]. Retrying in ${delay / 1000}s.`);
-        if (this.verbose) {
-          console.warn(err);
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      } finally {
-        clearTimeout(timeoutId);
-      }
+      return await response.text();
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    throw new Error("Fetch error");
   }
 }
 

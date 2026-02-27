@@ -1375,6 +1375,8 @@ export class LocalNetwork implements Network<string, string>, MessageSource {
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
     }
+    this.subscriptions.execute = [];
+    this.subscriptions.notify = [];
     this.started = false;
   }
 
@@ -1397,7 +1399,7 @@ export class LocalNetwork implements Network<string, string>, MessageSource {
       data: response.data,
     });
 
-    this.dispatchMessages(result);
+    setTimeout(() => this.dispatchMessages(result), 0);
 
     callback(res);
   }

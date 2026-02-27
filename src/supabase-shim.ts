@@ -112,8 +112,8 @@ export class Resonate {
           headers: {},
           timeout: 60 * 1000, // 60s
           url: body.head.serverUrl,
-          verbose: this.verbose,
         }),
+        this.verbose,
       );
 
       const core = new Core({

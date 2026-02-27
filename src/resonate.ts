@@ -188,13 +188,13 @@ export class Resonate {
       } else {
         this.network = new DecoratedNetwork(
           new HttpNetwork({
-            verbose: this.verbose,
             url: resolvedUrl,
             auth: resolvedAuth,
             token: resolvedToken,
             timeout: 1 * util.MIN,
             headers: {},
           }),
+          this.verbose,
         );
         this.messageSource = new PollMessageSource({
           url: resolvedUrl,
