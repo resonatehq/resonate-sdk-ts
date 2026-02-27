@@ -5,6 +5,7 @@ import { NoopHeartbeat } from "../../src/heartbeat.js";
 import type { MessageSource, Network } from "../../src/network/network.js";
 import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
 import { OptionsBuilder } from "../../src/options.js";
+import { SyncProcessor } from "../../src/processor/processor.js";
 import type { Registry } from "../../src/registry.js";
 import * as util from "../../src/util.js";
 import { type Address, Message, Process, type Random, unicast } from "./simulator.js";
@@ -224,6 +225,7 @@ export class WorkerProcess extends Process {
       dependencies: new Map(),
       optsBuilder: new OptionsBuilder({ match: messageSource.match, idPrefix: "" }),
       verbose: false,
+      processor: new SyncProcessor(),
     });
   }
 

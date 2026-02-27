@@ -13,8 +13,10 @@ import {
   type Value,
 } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
+import type { Processor } from "./processor/processor.js";
 import type { Registry } from "./registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
+import { newExecution } from "./trace.js";
 import type { Effects, Result } from "./types.js";
 import * as util from "./util.js";
 
@@ -49,6 +51,7 @@ export class Core {
   private dependencies: Map<string, any>;
   private optsBuilder: OptionsBuilder;
   private verbose: boolean;
+  private processor?: Processor;
 
   constructor({
     pid,
@@ -62,6 +65,7 @@ export class Core {
     optsBuilder,
     verbose,
     messageSource = undefined,
+    processor = undefined,
   }: {
     pid: string;
     ttl: number;
@@ -74,6 +78,7 @@ export class Core {
     optsBuilder: OptionsBuilder;
     verbose: boolean;
     messageSource?: MessageSource;
+    processor?: Processor;
   }) {
     this.pid = pid;
     this.ttl = ttl;
@@ -85,6 +90,7 @@ export class Core {
     this.dependencies = dependencies;
     this.optsBuilder = optsBuilder;
     this.verbose = verbose;
+    this.processor = processor;
 
     // default retry policies
     this.retries = new Map<string, RetryPolicyConstructor>([
@@ -101,6 +107,7 @@ export class Core {
   }
 
   public executeUntilBlocked(claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
+    newExecution();
     const computation = this.createComputation(
       claimed.rootPromise.id,
       util.buildEffects(this.network, this.codec, claimed.preload),
@@ -142,6 +149,7 @@ export class Core {
       this.dependencies,
       this.optsBuilder,
       this.verbose,
+      this.processor,
     );
   }
 

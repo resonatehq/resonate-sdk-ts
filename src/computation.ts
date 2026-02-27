@@ -9,6 +9,7 @@ import type { OptionsBuilder } from "./options.js";
 import { AsyncProcessor, type Processor } from "./processor/processor.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
+import { traceEvent } from "./trace.js";
 import type { Effects, Func, Result } from "./types.js";
 import * as util from "./util.js";
 
@@ -126,6 +127,7 @@ export class Computation {
       retryPolicy: retryPolicy,
     };
 
+    traceEvent("spawn", registered.name, this.id);
     if (util.isGeneratorFunction(registered.func)) {
       this.processGenerator(ctxConfig, registered.func, args, task, rootPromise, done);
     } else {
@@ -194,7 +196,10 @@ export class Computation {
           if (status.todo.local.length > 0) {
             return this.processLocalTodo(
               status.todo.local,
-              util.once(() => this.processGenerator(ctxConfig, func, args, task, rootPromise, done)),
+              util.once(() => {
+                traceEvent("resume", ctxConfig.func, this.id);
+                this.processGenerator(ctxConfig, func, args, task, rootPromise, done);
+              }),
               (err) => done({ kind: "error", error: undefined }),
             );
           } else if (status.todo.remote.length > 0) {
@@ -216,7 +221,7 @@ export class Computation {
       {
         id,
         ctx,
-        func: async () => await func(ctx, ...args),
+        func: () => func(ctx, ...args),
         verbose: this.verbose,
       },
     ]);
@@ -226,6 +231,7 @@ export class Computation {
       const result = results[0];
       const { result: res } = result;
 
+      traceEvent("return", ctx.func, this.id);
       done({
         kind: "value",
         value: {
@@ -239,12 +245,15 @@ export class Computation {
   }
 
   private processLocalTodo(todo: LocalTodo[], cb: () => void, onErr: (err: any) => void) {
-    const work = todo.map((t) => ({
-      id: t.id,
-      ctx: t.ctx,
-      func: async () => await t.func(t.ctx, ...t.args),
-      verbose: this.verbose,
-    }));
+    const work = todo.map((t) => {
+      traceEvent("spawn", t.ctx.func, t.id);
+      return {
+        id: t.id,
+        ctx: t.ctx,
+        func: () => t.func(t.ctx, ...t.args),
+        verbose: this.verbose,
+      };
+    });
 
     this.processor.process(work);
 

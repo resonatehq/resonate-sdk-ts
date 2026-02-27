@@ -2,7 +2,7 @@ import type * as context from "../context.js";
 import type { Result } from "../types.js";
 import * as util from "../util.js";
 
-type F = () => Promise<unknown>;
+type F = () => unknown;
 
 type WorkItem = { id: string; ctx: context.InnerContext; func: F; verbose: boolean };
 
@@ -83,7 +83,7 @@ export class AsyncProcessor implements Processor {
   private async executeWork(
     id: string,
     ctx: context.InnerContext,
-    func: () => Promise<unknown>,
+    func: () => unknown,
     verbose: boolean,
   ): Promise<Result<unknown, any>> {
     while (true) {
@@ -106,6 +106,44 @@ export class AsyncProcessor implements Processor {
         ctx.info.attempt++;
         await new Promise((resolve) => setTimeout(resolve, retryIn));
       }
+    }
+  }
+}
+
+export class SyncProcessor implements Processor {
+  private results: Map<string, Result<unknown, any>> = new Map();
+  private completed: Set<string> = new Set();
+
+  process(work: WorkItem[]): void {
+    for (const item of work) {
+      if (this.completed.has(item.id)) {
+        continue;
+      }
+
+      try {
+        const data = item.func();
+        this.completed.add(item.id);
+        this.results.set(item.id, { kind: "value", value: data });
+      } catch (error) {
+        this.completed.add(item.id);
+        this.results.set(item.id, { kind: "error", error });
+      }
+    }
+  }
+
+  getReady(ids: string[], cb: (results: { id: string; result: Result<unknown, any> }[]) => void): void {
+    const ready: { id: string; result: Result<unknown, any> }[] = [];
+
+    for (const id of ids) {
+      const result = this.results.get(id);
+      if (result !== undefined) {
+        ready.push({ id, result });
+        this.results.delete(id);
+      }
+    }
+
+    if (ready.length > 0) {
+      cb(ready);
     }
   }
 }
