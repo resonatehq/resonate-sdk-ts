@@ -2,7 +2,7 @@ import type { Codec } from "./codec.js";
 import type { Data } from "./computation.js";
 import exceptions from "./exceptions.js";
 import type { MessageSource, Network } from "./network/network.js";
-import { type ExecuteMsg, isSuccess, type PromiseRecord, type Response } from "./network/types.js";
+import { isResponse, isSuccess, type PromiseRecord } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
 import type { Effects } from "./types.js";
 
@@ -72,41 +72,6 @@ export function isMessageSource(v: unknown): v is MessageSource {
   return typeof v === "object" && v !== null && "recv" in v && typeof (v as any).recv === "function";
 }
 
-export function isValidExecuteMsg(msg: unknown): msg is ExecuteMsg {
-  if (msg === null || typeof msg !== "object") return false;
-  const m = msg as any;
-  return (
-    m.kind === "execute" &&
-    m.data !== null &&
-    typeof m.data === "object" &&
-    m.data.task !== null &&
-    typeof m.data.task === "object" &&
-    typeof m.data.task.id === "string" &&
-    typeof m.data.task.version === "number"
-  );
-}
-
-export function isValidResponse(res: unknown): res is Response {
-  if (res === null || typeof res !== "object") return false;
-  const r = res as any;
-  return (
-    typeof r.kind === "string" && r.head !== null && typeof r.head === "object" && typeof r.head.status === "number"
-  );
-}
-
-export function isValidPromiseRecord(p: unknown): p is PromiseRecord {
-  if (p === null || typeof p !== "object") return false;
-  const r = p as any;
-  return (
-    typeof r.id === "string" &&
-    typeof r.state === "string" &&
-    r.tags !== null &&
-    typeof r.tags === "object" &&
-    typeof r.timeoutAt === "number" &&
-    typeof r.createdAt === "number"
-  );
-}
-
 // helpers
 
 export function splitArgsAndOpts(args: any[], defaults: Options): [any[], Options] {
@@ -171,8 +136,7 @@ export function once<T extends () => any>(fn: T): T {
 // effects
 
 export function buildEffects(network: Network, codec: Codec, preload: PromiseRecord[] = []): Effects {
-  const safePreload = Array.isArray(preload) ? preload.filter(isValidPromiseRecord) : [];
-  const cache = new Map<string, PromiseRecord>(safePreload.map((p) => [p.id, codec.decodePromise(p)]));
+  const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
 
   return {
     promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
@@ -195,7 +159,7 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
       network.send(
         req,
         (res) => {
-          if (!isValidResponse(res)) {
+          if (!isResponse(res)) {
             return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
           }
           if (!isSuccess(res)) {
@@ -205,12 +169,6 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
                 code: res.head.status,
                 message: res.data,
               }),
-            });
-          }
-          if (!isValidPromiseRecord(res.data?.promise)) {
-            return done({
-              kind: "error",
-              error: exceptions.UNEXPECTED_MSG(`${res.kind} promise record`, res.data?.promise),
             });
           }
           try {
@@ -241,7 +199,7 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
       }
 
       network.send(req, (res) => {
-        if (!isValidResponse(res)) {
+        if (!isResponse(res)) {
           return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
         }
         if (!isSuccess(res)) {
@@ -251,12 +209,6 @@ export function buildEffects(network: Network, codec: Codec, preload: PromiseRec
               code: res.head.status,
               message: res.data,
             }),
-          });
-        }
-        if (!isValidPromiseRecord(res.data?.promise)) {
-          return done({
-            kind: "error",
-            error: exceptions.UNEXPECTED_MSG(`${req.kind} promise record`, res.data?.promise),
           });
         }
         try {

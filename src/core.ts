@@ -5,7 +5,9 @@ import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
 import type { MessageSource, Network } from "./network/network.js";
 import {
+  isMessage,
   isRedirect,
+  isResponse,
   isSuccess,
   type Message,
   type PromiseRecord,
@@ -178,7 +180,7 @@ export class Core {
         },
       },
       (res) => {
-        if (!util.isValidResponse(res)) {
+        if (!isResponse(res)) {
           const error = exceptions.UNEXPECTED_MSG(`${kind} response`, res);
           error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
@@ -233,7 +235,7 @@ export class Core {
   }
 
   public onMessage(msg: Message, cb: (res: Result<Status, undefined>) => void): void {
-    if (!util.isValidExecuteMsg(msg)) {
+    if (!isMessage(msg) || msg.kind !== "execute") {
       const error = exceptions.UNEXPECTED_MSG("execute message", msg);
       error.log(this.verbose);
       cb({ kind: "error", error: undefined });
@@ -249,7 +251,7 @@ export class Core {
         data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
       },
       (res) => {
-        if (!util.isValidResponse(res)) {
+        if (!isResponse(res)) {
           const error = exceptions.UNEXPECTED_MSG(`${kind} response`, res);
           error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
@@ -267,11 +269,6 @@ export class Core {
         try {
           promise = this.codec.decodePromise(res.data.promise);
         } catch (e) {
-          return cb({ kind: "error", error: undefined });
-        }
-        if (!util.isValidPromiseRecord(promise)) {
-          const error = exceptions.UNEXPECTED_MSG(`${kind} promise record`, promise);
-          error.log(this.verbose);
           return cb({ kind: "error", error: undefined });
         }
 
