@@ -78,7 +78,7 @@ export class HttpNetwork implements Network<string, string> {
 
       try {
         if (this.verbose) {
-          console.log(`[HttpNetwork] Sending ${req.kind}:`, JSON.stringify(req, null, 2));
+          console.log("[HttpNetwork] Sending:", JSON.stringify(req, null, 2));
         }
 
         const response = await fetch(`${this.url}/api`, {

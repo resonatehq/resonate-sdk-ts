@@ -40,7 +40,7 @@ class MockComputation {
 
 function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { mock: MockComputation } }): {
   core: Core;
-  network: DecoratedNetwork;
+  network: DecoratedNetwork<LocalNetwork>;
   codec: Codec;
   ctorSpy: jest.Spied<any>;
 } {
@@ -87,7 +87,7 @@ function wrapVoidCb(): { promise: Promise<void>; cb: () => void } {
 }
 
 function seedAcquiredTask(
-  network: DecoratedNetwork,
+  network: DecoratedNetwork<LocalNetwork>,
   codec: Codec,
   id: string,
   func: string,
@@ -128,7 +128,7 @@ function seedAcquiredTask(
 }
 
 async function seedPendingTask(
-  network: DecoratedNetwork,
+  network: DecoratedNetwork<LocalNetwork>,
   codec: Codec,
   id: string,
   func: string,
@@ -154,7 +154,7 @@ async function seedPendingTask(
   });
 }
 
-function interceptNetwork(network: DecoratedNetwork): { sent: Request[] } {
+function interceptNetwork(network: DecoratedNetwork<LocalNetwork>): { sent: Request[] } {
   const sent: Request[] = [];
   const origSend = network.send.bind(network);
   network.send = ((req: any, cb: any, ...rest: any[]) => {

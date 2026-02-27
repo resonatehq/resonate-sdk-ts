@@ -22,7 +22,7 @@ class TestHeartbeat implements Heartbeat {
 
 function buildComputation(registry: Registry): {
   computation: Computation;
-  network: DecoratedNetwork;
+  network: DecoratedNetwork<LocalNetwork>;
   effects: Effects;
 } {
   const network = new DecoratedNetwork(new LocalNetwork());

@@ -63,7 +63,7 @@ export class Resonate {
   private match: (target: string) => string;
 
   private core: Core;
-  private network: DecoratedNetwork;
+  private network: DecoratedNetwork<Network<string, string>>;
   private codec: Codec;
   private verbose: boolean;
   private messageSource: MessageSource;

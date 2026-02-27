@@ -8,7 +8,7 @@ import { buildEffects } from "../src/util.js";
 
 // A simple in-memory network that handles promise.create and promise.settle.
 class StubNetwork implements Network<string, string> {
-  private promises = new Map<string, PromiseRecord>();
+  readonly promises = new Map<string, PromiseRecord>();
   sendCount = 0;
 
   start(): void {}
@@ -111,7 +111,7 @@ describe("Effects", () => {
       );
 
       expect(res.kind).toBe("value");
-      expect(network.sendCount).toBe(0);
+      expect(network.inner.sendCount).toBe(0);
     });
 
     test("hits network when promise is not in preload", async () => {
@@ -130,7 +130,7 @@ describe("Effects", () => {
       );
 
       expect(res.kind).toBe("value");
-      expect(network.sendCount).toBe(1);
+      expect(network.inner.sendCount).toBe(1);
     });
 
     test("adds created promise to cache so second create is cached", async () => {
@@ -148,7 +148,7 @@ describe("Effects", () => {
           done,
         ),
       );
-      expect(network.sendCount).toBe(1);
+      expect(network.inner.sendCount).toBe(1);
 
       // second call should use cache
       const res = await collect((done) =>
@@ -159,7 +159,7 @@ describe("Effects", () => {
       );
 
       expect(res.kind).toBe("value");
-      expect(network.sendCount).toBe(1);
+      expect(network.inner.sendCount).toBe(1);
     });
   });
 
@@ -180,7 +180,7 @@ describe("Effects", () => {
       if (res.kind === "value") {
         expect(res.value.state).toBe("resolved");
       }
-      expect(network.sendCount).toBe(0);
+      expect(network.inner.sendCount).toBe(0);
     });
 
     test("hits network when preloaded promise is still pending", async () => {
@@ -197,7 +197,7 @@ describe("Effects", () => {
         } as any,
         () => {},
       );
-      const beforeCount = network.sendCount;
+      const beforeCount = network.inner.sendCount;
 
       const res = await collect((done) =>
         effects.promiseSettle(
@@ -207,7 +207,7 @@ describe("Effects", () => {
       );
 
       expect(res.kind).toBe("value");
-      expect(network.sendCount).toBe(beforeCount + 1);
+      expect(network.inner.sendCount).toBe(beforeCount + 1);
     });
 
     test("updates cache after settling so second settle is cached", async () => {
@@ -225,7 +225,7 @@ describe("Effects", () => {
           done,
         ),
       );
-      expect(network.sendCount).toBe(1);
+      expect(network.inner.sendCount).toBe(1);
 
       // first settle hits network
       await collect((done) =>
@@ -234,7 +234,7 @@ describe("Effects", () => {
           done,
         ),
       );
-      expect(network.sendCount).toBe(2);
+      expect(network.inner.sendCount).toBe(2);
 
       // second settle should use cache (now settled)
       const res = await collect((done) =>
@@ -245,7 +245,7 @@ describe("Effects", () => {
       );
 
       expect(res.kind).toBe("value");
-      expect(network.sendCount).toBe(2);
+      expect(network.inner.sendCount).toBe(2);
     });
 
     test("hits network when promise is not in cache at all", async () => {
@@ -261,7 +261,7 @@ describe("Effects", () => {
         } as any,
         () => {},
       );
-      const beforeCount = network.sendCount;
+      const beforeCount = network.inner.sendCount;
 
       const res = await collect((done) =>
         effects.promiseSettle(
@@ -271,7 +271,7 @@ describe("Effects", () => {
       );
 
       expect(res.kind).toBe("value");
-      expect(network.sendCount).toBe(beforeCount + 1);
+      expect(network.inner.sendCount).toBe(beforeCount + 1);
     });
   });
 
@@ -418,7 +418,7 @@ describe("Effects", () => {
         ),
       );
 
-      expect(network.sendCount).toBe(0);
+      expect(network.inner.sendCount).toBe(0);
 
       expect(res1.kind).toBe("value");
       if (res1.kind === "value") {

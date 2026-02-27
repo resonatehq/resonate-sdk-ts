@@ -191,7 +191,7 @@ class SimulatedNetwork implements Network<string, string> {
 
 export class WorkerProcess extends Process {
   private clock: StepClock;
-  private network: DecoratedNetwork;
+  private network: DecoratedNetwork<SimulatedNetwork>;
   private registry: Registry;
   private core: Core;
 
@@ -209,7 +209,7 @@ export class WorkerProcess extends Process {
       new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server")),
     );
     this.registry = registry;
-    const messageSource = this.network.getMessageSource();
+    const messageSource = this.network.inner.getMessageSource();
     this.core = new Core({
       pid: iaddr,
       ttl: 10000,
@@ -228,12 +228,12 @@ export class WorkerProcess extends Process {
   tick(tick: number, messages: Message<{ err?: any; res?: Response } | NetworkMessage>[]): Message<Request>[] {
     this.log(tick, "[recv]", messages);
 
-    this.network.time(this.clock.time);
+    this.network.inner.time(this.clock.time);
     for (const message of messages) {
-      this.network.process(message);
+      this.network.inner.process(message);
     }
 
-    const responses = this.network.flush();
+    const responses = this.network.inner.flush();
 
     this.log(tick, "[send]", responses);
 

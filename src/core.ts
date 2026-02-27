@@ -4,7 +4,7 @@ import { Computation, type Done, type Status } from "./computation.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
 import type { DecoratedNetwork } from "./network/decorator.js";
-import type { MessageSource } from "./network/network.js";
+import type { MessageSource, Network } from "./network/network.js";
 import {
   isMessage,
   isRedirect,
@@ -44,7 +44,7 @@ export class Core {
   private pid: string;
   private ttl: number;
   private clock: Clock;
-  private network: DecoratedNetwork;
+  private network: DecoratedNetwork<Network<string, string>>;
   private codec: Codec;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
@@ -69,7 +69,7 @@ export class Core {
     pid: string;
     ttl: number;
     clock: Clock;
-    network: DecoratedNetwork;
+    network: DecoratedNetwork<Network<string, string>>;
     codec: Codec;
     registry: Registry;
     heartbeat: Heartbeat;

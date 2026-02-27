@@ -84,7 +84,7 @@ class DummyNetwork implements Network<string, string> {
   subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Message) => void) {}
 }
 
-function buildEffects(network: DecoratedNetwork): Effects {
+function buildEffects(network: DecoratedNetwork<DummyNetwork>): Effects {
   const codec = new Codec();
   return util.buildEffects(network, codec);
 }

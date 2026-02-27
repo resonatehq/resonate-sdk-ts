@@ -1,20 +1,19 @@
 import type { MessageSource, Network } from "./network.js";
 import { isResponse, type Request, type Response } from "./types.js";
 
-export class DecoratedNetwork implements Network<Request, Response> {
-  private network: Network<string, string>;
-  readonly getMessageSource: (() => MessageSource) | undefined;
+export class DecoratedNetwork<T extends Network<string, string>> implements Network<Request, Response> {
+  readonly inner: T;
 
-  constructor(network: Network<string, string>) {
-    this.network = network;
+  constructor(network: T) {
+    this.inner = network;
   }
 
   start(): void {
-    this.network.start();
+    this.inner.start();
   }
 
   stop(): void {
-    this.network.stop();
+    this.inner.stop();
   }
 
   send<K extends Request["kind"]>(
@@ -23,7 +22,7 @@ export class DecoratedNetwork implements Network<Request, Response> {
     headers?: { [key: string]: string },
     retryForever?: boolean,
   ): void {
-    this.network.send(
+    this.inner.send(
       JSON.stringify(req),
       (resStr) => {
         const parsed: unknown = JSON.parse(resStr);
