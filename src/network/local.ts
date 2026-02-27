@@ -1325,7 +1325,7 @@ export class Server {
 // LOCAL NETWORK
 // =============================================================================
 
-export class LocalNetwork implements Network, MessageSource {
+export class LocalNetwork implements Network<string, string>, MessageSource {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -1377,23 +1377,24 @@ export class LocalNetwork implements Network, MessageSource {
     this.started = false;
   }
 
-  send<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
+  send(
+    req: string,
+    callback: (res: string) => void,
     _headers?: { [key: string]: string },
     _retryForever?: boolean,
   ): void {
-    const { corrId, version } = req.head;
+    const reqParsed = JSON.parse(req);
+    const { corrId, version } = reqParsed.head;
 
     const now = Date.now();
-    const result = this.server.apply(now, req);
+    const result = this.server.apply(now, reqParsed);
     const response = result.response;
 
-    const res = {
+    const res = JSON.stringify({
       kind: response.kind,
       head: { corrId, status: response.head.status, version },
       data: response.data,
-    } as Extract<Response, { kind: K }>;
+    });
 
     this.dispatchMessages(result);
 

@@ -1,10 +1,10 @@
+import { DecoratedNetwork } from "./network/decorator.js";
 import { LocalNetwork } from "./network/local.js";
-import type { Network } from "./network/network.js";
 import { isSuccess, type PromiseRecord, type TaskRecord } from "./network/types.js";
 
 export class Promises {
-  private network: Network;
-  constructor(network: Network = new LocalNetwork()) {
+  private network: DecoratedNetwork;
+  constructor(network: DecoratedNetwork = new DecoratedNetwork(new LocalNetwork())) {
     this.network = network;
   }
 

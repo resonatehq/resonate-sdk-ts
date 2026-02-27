@@ -2,34 +2,38 @@ import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
 import { Coroutine, type Done, type Suspended } from "../src/coroutine.js";
+import { DecoratedNetwork } from "../src/network/decorator.js";
 import type { Network } from "../src/network/network.js";
-import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
+import type { Message, PromiseRecord, Request } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
 import type { Effects, Result } from "../src/types.js";
 import * as util from "../src/util.js";
 
-class DummyNetwork implements Network {
+class DummyNetwork implements Network<string, string> {
   private promises = new Map<string, PromiseRecord>();
 
   start(): void {}
-  send<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
-    headers?: { [key: string]: string },
-    retryForever?: boolean,
+  send(
+    req: string,
+    callback: (res: string) => void,
+    _headers?: { [key: string]: string },
+    _retryForever?: boolean,
   ): void {
-    switch (req.kind) {
+    const reqParsed = JSON.parse(req);
+    switch (reqParsed.kind) {
       case "promise.create": {
-        const createReq = req as Extract<Request, { kind: "promise.create" }>;
+        const createReq = reqParsed as Extract<Request, { kind: "promise.create" }>;
         const existing = this.promises.get(createReq.data.id);
         if (existing) {
-          callback({
-            kind: req.kind,
-            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-            data: { promise: existing },
-          } as Extract<Response, { kind: K }>);
+          callback(
+            JSON.stringify({
+              kind: reqParsed.kind,
+              head: { corrId: reqParsed.head.corrId, status: 200, version: reqParsed.head.version },
+              data: { promise: existing },
+            }),
+          );
           return;
         }
         const p: PromiseRecord = {
@@ -42,25 +46,29 @@ class DummyNetwork implements Network {
           createdAt: Date.now(),
         };
         this.promises.set(p.id, p);
-        callback({
-          kind: req.kind,
-          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-          data: { promise: p },
-        } as Extract<Response, { kind: K }>);
+        callback(
+          JSON.stringify({
+            kind: reqParsed.kind,
+            head: { corrId: reqParsed.head.corrId, status: 200, version: reqParsed.head.version },
+            data: { promise: p },
+          }),
+        );
         return;
       }
 
       case "promise.settle": {
-        const settleReq = req as Extract<Request, { kind: "promise.settle" }>;
+        const settleReq = reqParsed as Extract<Request, { kind: "promise.settle" }>;
         const p = this.promises.get(settleReq.data.id)!;
         p.state = "resolved";
         p.value = settleReq.data.value;
         this.promises.set(p.id, p);
-        callback({
-          kind: req.kind,
-          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-          data: { promise: p },
-        } as Extract<Response, { kind: K }>);
+        callback(
+          JSON.stringify({
+            kind: reqParsed.kind,
+            head: { corrId: reqParsed.head.corrId, status: 200, version: reqParsed.head.version },
+            data: { promise: p },
+          }),
+        );
         break;
       }
       default:
@@ -76,7 +84,7 @@ class DummyNetwork implements Network {
   subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Message) => void) {}
 }
 
-function buildEffects(network: Network): Effects {
+function buildEffects(network: DecoratedNetwork): Effects {
   const codec = new Codec();
   return util.buildEffects(network, codec);
 }
@@ -84,16 +92,6 @@ function buildEffects(network: Network): Effects {
 describe("Coroutine", () => {
   // Helper functions to write test easily
   const exec = (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], effects: Effects) => {
-    const boundaryPromise: PromiseRecord = {
-      id: uuid,
-      state: "pending",
-      param: { headers: {}, data: undefined },
-      value: { headers: {}, data: undefined },
-      tags: {},
-      timeoutAt: 0,
-      createdAt: Date.now(),
-    };
-
     return new Promise<any>((resolve) => {
       Coroutine.exec(
         false,
@@ -156,7 +154,7 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const network = new DummyNetwork();
+    const network = new DecoratedNetwork(new DummyNetwork());
     const effects = buildEffects(network);
     const r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
@@ -177,7 +175,7 @@ describe("Coroutine", () => {
       const v2 = yield* p2;
       return v + v2;
     }
-    const network = new DummyNetwork();
+    const network = new DecoratedNetwork(new DummyNetwork());
     const effects = buildEffects(network);
 
     // First execution - should suspend
@@ -208,7 +206,7 @@ describe("Coroutine", () => {
       return v1;
     }
 
-    const network = new DummyNetwork();
+    const network = new DecoratedNetwork(new DummyNetwork());
     const effects = buildEffects(network);
 
     let r = await exec("foo.1", foo, [], effects);
@@ -232,7 +230,7 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const network = new DummyNetwork();
+    const network = new DecoratedNetwork(new DummyNetwork());
     const effects = buildEffects(network);
     let r = await exec("foo.1", foo, [], effects);
 
@@ -264,7 +262,7 @@ describe("Coroutine", () => {
       return 99;
     }
 
-    const network = new DummyNetwork();
+    const network = new DecoratedNetwork(new DummyNetwork());
     const effects = buildEffects(network);
     let r = await exec("foo.1", foo, [], effects);
 
@@ -290,7 +288,7 @@ describe("Coroutine", () => {
       return v;
     }
 
-    const network = new DummyNetwork();
+    const network = new DecoratedNetwork(new DummyNetwork());
     const effects = buildEffects(network);
     let r = await exec("foo.1", foo, [], effects);
 
@@ -322,7 +320,7 @@ describe("Coroutine", () => {
       return v1 + v2;
     }
 
-    const network = new DummyNetwork();
+    const network = new DecoratedNetwork(new DummyNetwork());
     const effects = buildEffects(network);
 
     let r = await exec("foo.1", foo, [], effects);
@@ -345,7 +343,7 @@ describe("Coroutine", () => {
       return 42;
     }
 
-    const network = new DummyNetwork();
+    const network = new DecoratedNetwork(new DummyNetwork());
     const effects = buildEffects(network);
 
     const boundaryPromise: PromiseRecord = {
@@ -392,7 +390,7 @@ describe("Coroutine", () => {
       return 42;
     }
 
-    const network = new DummyNetwork();
+    const network = new DecoratedNetwork(new DummyNetwork());
     const effects = buildEffects(network);
     const r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });

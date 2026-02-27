@@ -2,6 +2,7 @@ import type { StepClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
 import { Core } from "../../src/core.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
+import { DecoratedNetwork } from "../../src/network/decorator.js";
 import type { MessageSource, Network } from "../../src/network/network.js";
 import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
 import { OptionsBuilder } from "../../src/options.js";
@@ -54,18 +55,18 @@ class SimulatedMessageSource implements MessageSource {
   }
 }
 
-class SimulatedNetwork implements Network {
+class SimulatedNetwork implements Network<string, string> {
   private correlationId = 1;
   private currentTime = 0;
 
   private prng: Random;
   private deliveryOptions: Required<DeliveryOptions>;
-  private buffer: Message<Request>[] = [];
+  private buffer: Message<string>[] = [];
   private callbacks: Record<
     number,
     {
-      req: Request;
-      callback: (res: any) => void;
+      req: string;
+      callback: (res: string) => void;
       timeout: number;
       headers?: { [key: string]: string };
     }
@@ -90,17 +91,13 @@ class SimulatedNetwork implements Network {
     return this.messageSource;
   }
 
-  send<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
-    headers?: { [key: string]: string },
-  ): void {
-    const message = new Message<Request>(this.source, this.target, req, {
+  send(req: string, callback: (res: string) => void, headers?: { [key: string]: string }): void {
+    const message = new Message<string>(this.source, this.target, req, {
       requ: true,
       correlationId: this.correlationId++,
     });
 
-    const cb = (res: Extract<Response, { kind: K }>) => {
+    const cb = (res: string) => {
       callback(res);
     };
 
@@ -121,13 +118,16 @@ class SimulatedNetwork implements Network {
     // Then, check for timed-out callbacks
     for (const key in this.callbacks) {
       const cb = this.callbacks[key];
+      const req = JSON.parse(cb.req);
       const hasTimedOut = cb.timeout < this.currentTime;
       if (hasTimedOut) {
-        cb.callback({
-          kind: cb.req.kind,
-          head: { corrId: cb.req.head.corrId, version: cb.req.head.version, status: 500 },
-          data: "req timed out",
-        });
+        cb.callback(
+          JSON.stringify({
+            kind: req.kind,
+            head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
+            data: "req timed out",
+          }),
+        );
         delete this.callbacks[key];
       }
     }
@@ -191,7 +191,7 @@ class SimulatedNetwork implements Network {
 
 export class WorkerProcess extends Process {
   private clock: StepClock;
-  private network: SimulatedNetwork;
+  private network: DecoratedNetwork;
   private registry: Registry;
   private core: Core;
 
@@ -205,7 +205,9 @@ export class WorkerProcess extends Process {
   ) {
     super(iaddr, gaddr);
     this.clock = clock;
-    this.network = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server"));
+    this.network = new DecoratedNetwork(
+      new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server")),
+    );
     this.registry = registry;
     const messageSource = this.network.getMessageSource();
     this.core = new Core({
@@ -214,7 +216,7 @@ export class WorkerProcess extends Process {
       clock: this.clock,
       network: this.network,
       codec: new Codec(),
-      messageSource: this.network.getMessageSource(),
+      messageSource,
       registry: registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),

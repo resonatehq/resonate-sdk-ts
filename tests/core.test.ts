@@ -5,6 +5,7 @@ import type { Status } from "../src/computation.js";
 import type { ClaimedTask } from "../src/core.js";
 import { Core } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
+import { DecoratedNetwork } from "../src/network/decorator.js";
 import { LocalNetwork } from "../src/network/local.js";
 import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js";
 import { isSuccess } from "../src/network/types.js";
@@ -39,11 +40,11 @@ class MockComputation {
 
 function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { mock: MockComputation } }): {
   core: Core;
-  network: LocalNetwork;
+  network: DecoratedNetwork;
   codec: Codec;
   ctorSpy: jest.Spied<any>;
 } {
-  const network = new LocalNetwork();
+  const network = new DecoratedNetwork(new LocalNetwork());
   const codec = new Codec();
 
   const activeMock = new MockComputation(opts.responses);
@@ -86,7 +87,7 @@ function wrapVoidCb(): { promise: Promise<void>; cb: () => void } {
 }
 
 function seedAcquiredTask(
-  network: LocalNetwork,
+  network: DecoratedNetwork,
   codec: Codec,
   id: string,
   func: string,
@@ -127,7 +128,7 @@ function seedAcquiredTask(
 }
 
 async function seedPendingTask(
-  network: LocalNetwork,
+  network: DecoratedNetwork,
   codec: Codec,
   id: string,
   func: string,
@@ -153,7 +154,7 @@ async function seedPendingTask(
   });
 }
 
-function interceptNetwork(network: LocalNetwork): { sent: Request[] } {
+function interceptNetwork(network: DecoratedNetwork): { sent: Request[] } {
   const sent: Request[] = [];
   const origSend = network.send.bind(network);
   network.send = ((req: any, cb: any, ...rest: any[]) => {

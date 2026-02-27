@@ -1,15 +1,10 @@
-import type { Message, Request, Response } from "./types.js";
+import type { Message } from "./types.js";
 
-export interface Network {
+export interface Network<Req, Res> {
   start(): void;
   stop(): void;
 
-  send<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
-    headers?: { [key: string]: string },
-    retryForever?: boolean,
-  ): void;
+  send(req: Req, callback: (res: Res) => void, headers?: { [key: string]: string }, retryForever?: boolean): void;
   getMessageSource?: () => MessageSource;
 }
 

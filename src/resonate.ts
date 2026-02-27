@@ -4,6 +4,7 @@ import { Core } from "./core.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import exceptions from "./exceptions.js";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
+import { DecoratedNetwork } from "./network/decorator.js";
 import { HttpNetwork, PollMessageSource } from "./network/http.js";
 import { LocalNetwork } from "./network/local.js";
 import type { MessageSource, Network } from "./network/network.js";
@@ -62,7 +63,7 @@ export class Resonate {
   private match: (target: string) => string;
 
   private core: Core;
-  private network: Network;
+  private network: DecoratedNetwork;
   private codec: Codec;
   private verbose: boolean;
   private messageSource: MessageSource;
@@ -119,7 +120,7 @@ export class Resonate {
     token?: string;
     verbose?: boolean;
     encryptor?: Encryptor;
-    transport?: Network | (Network & MessageSource);
+    transport?: Network<string, string> | (Network<string, string> & MessageSource);
     prefix?: string;
   } = {}) {
     this.clock = new WallClock();
@@ -163,7 +164,7 @@ export class Resonate {
     }
 
     if (transport) {
-      this.network = transport;
+      this.network = new DecoratedNetwork(transport);
 
       if (util.isMessageSource(transport)) {
         this.messageSource = transport;
@@ -179,19 +180,21 @@ export class Resonate {
     } else {
       if (!resolvedUrl) {
         const localNetwork = new LocalNetwork({ pid, group });
-        this.network = localNetwork;
+        this.network = new DecoratedNetwork(localNetwork);
         this.messageSource = localNetwork.getMessageSource();
         this.pid = pid ?? this.messageSource.pid;
         this.heartbeat = new NoopHeartbeat();
       } else {
-        this.network = new HttpNetwork({
-          verbose: this.verbose,
-          url: resolvedUrl,
-          auth: resolvedAuth,
-          token: resolvedToken,
-          timeout: 1 * util.MIN,
-          headers: {},
-        });
+        this.network = new DecoratedNetwork(
+          new HttpNetwork({
+            verbose: this.verbose,
+            url: resolvedUrl,
+            auth: resolvedAuth,
+            token: resolvedToken,
+            timeout: 1 * util.MIN,
+            headers: {},
+          }),
+        );
         this.messageSource = new PollMessageSource({
           url: resolvedUrl,
           pid,

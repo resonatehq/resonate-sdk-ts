@@ -1,12 +1,13 @@
 import { Codec } from "../src/codec.js";
 import type { ResonateError } from "../src/exceptions.js";
+import { DecoratedNetwork } from "../src/network/decorator.js";
 import type { Network } from "../src/network/network.js";
-import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
+import type { Message, PromiseRecord, Request } from "../src/network/types.js";
 import type { Result } from "../src/types.js";
 import { buildEffects } from "../src/util.js";
 
 // A simple in-memory network that handles promise.create and promise.settle.
-class StubNetwork implements Network {
+class StubNetwork implements Network<string, string> {
   private promises = new Map<string, PromiseRecord>();
   sendCount = 0;
 
@@ -15,15 +16,13 @@ class StubNetwork implements Network {
   subscribe(_t: string, _c: (msg: Message) => void): void {}
   recv(_msg: Message): void {}
 
-  send<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
-  ): void {
+  send(req: string, callback: (res: string) => void): void {
     this.sendCount++;
+    const reqParsed = JSON.parse(req);
 
-    switch (req.kind) {
+    switch (reqParsed.kind) {
       case "promise.create": {
-        const createReq = req as Extract<Request, { kind: "promise.create" }>;
+        const createReq = reqParsed as Extract<Request, { kind: "promise.create" }>;
         const p: PromiseRecord = {
           id: createReq.data.id,
           state: "pending",
@@ -34,31 +33,35 @@ class StubNetwork implements Network {
           createdAt: Date.now(),
         };
         this.promises.set(p.id, p);
-        callback({
-          kind: req.kind,
-          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-          data: { promise: p },
-        } as Extract<Response, { kind: K }>);
+        callback(
+          JSON.stringify({
+            kind: reqParsed.kind,
+            head: { corrId: reqParsed.head.corrId, status: 200, version: reqParsed.head.version },
+            data: { promise: p },
+          }),
+        );
         return;
       }
 
       case "promise.settle": {
-        const settleReq = req as Extract<Request, { kind: "promise.settle" }>;
+        const settleReq = reqParsed as Extract<Request, { kind: "promise.settle" }>;
         const p = this.promises.get(settleReq.data.id)!;
         p.state = settleReq.data.state;
         p.value = settleReq.data.value;
         p.settledAt = Date.now();
         this.promises.set(p.id, p);
-        callback({
-          kind: req.kind,
-          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-          data: { promise: p },
-        } as Extract<Response, { kind: K }>);
+        callback(
+          JSON.stringify({
+            kind: reqParsed.kind,
+            head: { corrId: reqParsed.head.corrId, status: 200, version: reqParsed.head.version },
+            data: { promise: p },
+          }),
+        );
         return;
       }
 
       default:
-        throw new Error(`Unexpected request kind: ${req.kind}`);
+        throw new Error(`Unexpected request kind: ${reqParsed.kind}`);
     }
   }
 }
@@ -96,7 +99,7 @@ function collect(
 describe("Effects", () => {
   describe("promiseCreate", () => {
     test("returns cached promise from preload without hitting network", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const preloaded = pendingPromise("p1");
       const effects = buildEffects(network, codec, [preloaded]);
 
@@ -112,7 +115,7 @@ describe("Effects", () => {
     });
 
     test("hits network when promise is not in preload", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const effects = buildEffects(network, codec);
 
       const res = await collect((done) =>
@@ -131,7 +134,7 @@ describe("Effects", () => {
     });
 
     test("adds created promise to cache so second create is cached", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const effects = buildEffects(network, codec);
 
       // first call hits network
@@ -162,7 +165,7 @@ describe("Effects", () => {
 
   describe("promiseSettle", () => {
     test("returns cached promise when already settled in preload", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const preloaded = resolvedPromise("s1", 42);
       const effects = buildEffects(network, codec, [preloaded]);
 
@@ -181,7 +184,7 @@ describe("Effects", () => {
     });
 
     test("hits network when preloaded promise is still pending", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const preloaded = pendingPromise("s2");
       const effects = buildEffects(network, codec, [preloaded]);
 
@@ -208,7 +211,7 @@ describe("Effects", () => {
     });
 
     test("updates cache after settling so second settle is cached", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const effects = buildEffects(network, codec);
 
       // create via network
@@ -246,7 +249,7 @@ describe("Effects", () => {
     });
 
     test("hits network when promise is not in cache at all", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const effects = buildEffects(network, codec);
 
       // seed the promise directly in the stub so settle doesn't crash
@@ -274,7 +277,7 @@ describe("Effects", () => {
 
   describe("cached promise values", () => {
     test("preloaded pending promise has decoded param", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const preloaded = pendingPromise("v1");
       const effects = buildEffects(network, codec, [preloaded]);
 
@@ -294,7 +297,7 @@ describe("Effects", () => {
     });
 
     test("preloaded resolved promise has decoded value", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const preloaded = resolvedPromise("v2", { answer: 42 });
       const effects = buildEffects(network, codec, [preloaded]);
 
@@ -314,7 +317,7 @@ describe("Effects", () => {
     });
 
     test("promise created via network has correct decoded values in cache", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const effects = buildEffects(network, codec);
 
       const paramData = { func: "myFunc", args: [1, "two"] };
@@ -348,7 +351,7 @@ describe("Effects", () => {
     });
 
     test("promise settled via network has correct decoded values in cache", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const effects = buildEffects(network, codec);
 
       // create promise via network
@@ -390,7 +393,7 @@ describe("Effects", () => {
     });
 
     test("multiple preloaded promises each have correct values", async () => {
-      const network = new StubNetwork();
+      const network = new DecoratedNetwork(new StubNetwork());
       const p1 = pendingPromise("m1");
       const p2 = resolvedPromise("m2", "hello");
       const p3 = resolvedPromise("m3", [1, 2, 3]);

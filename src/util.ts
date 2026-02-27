@@ -1,7 +1,8 @@
 import type { Codec } from "./codec.js";
 import type { Data } from "./computation.js";
 import exceptions from "./exceptions.js";
-import type { MessageSource, Network } from "./network/network.js";
+import type { DecoratedNetwork } from "./network/decorator.js";
+import type { MessageSource } from "./network/network.js";
 import { isResponse, isSuccess, type PromiseRecord } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
 import type { Effects } from "./types.js";
@@ -135,7 +136,7 @@ export function once<T extends () => any>(fn: T): T {
 
 // effects
 
-export function buildEffects(network: Network, codec: Codec, preload: PromiseRecord[] = []): Effects {
+export function buildEffects(network: DecoratedNetwork, codec: Codec, preload: PromiseRecord[] = []): Effects {
   const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
 
   return {

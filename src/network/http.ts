@@ -3,7 +3,7 @@ import { EventSource } from "eventsource";
 import exceptions, { ResonateError } from "../exceptions.js";
 import * as util from "../util.js";
 import type { MessageSource, Network } from "./network.js";
-import type { Message, Request, Response } from "./types.js";
+import type { Message } from "./types.js";
 
 export interface HttpNetworkConfig {
   url?: string;
@@ -19,7 +19,7 @@ export type RetryPolicy = {
   delay?: number;
 };
 
-export class HttpNetwork implements Network {
+export class HttpNetwork implements Network<string, string> {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
@@ -48,9 +48,9 @@ export class HttpNetwork implements Network {
   start(): void {}
   stop(): void {}
 
-  send<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
+  send(
+    req: string,
+    callback: (res: string) => void,
     headers: { [key: string]: string } = {},
     retryForever = false,
   ): void {
@@ -58,7 +58,6 @@ export class HttpNetwork implements Network {
 
     this.doSend(req, headers, retryPolicy).then(
       (res) => {
-        util.assert(res.kind === req.kind, "res kind must match req kind");
         callback(res);
       },
       (err) => {
@@ -68,11 +67,11 @@ export class HttpNetwork implements Network {
     );
   }
 
-  private async doSend<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
+  private async doSend(
+    req: string,
     headers: { [key: string]: string },
     { retries = 0, delay = 1000 }: RetryPolicy = {},
-  ): Promise<Extract<Response, { kind: K }>> {
+  ): Promise<string> {
     for (let attempt = 0; attempt <= retries; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -101,7 +100,7 @@ export class HttpNetwork implements Network {
         }
 
         if (response.status === 200 || response.status === 300) {
-          return body as Extract<Response, { kind: K }>;
+          return body as string;
         } else {
           const err = body as any;
           throw exceptions.SERVER_ERROR(

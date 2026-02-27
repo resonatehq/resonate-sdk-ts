@@ -5,6 +5,7 @@ import { Computation, type Status } from "../src/computation.js";
 import type { Context } from "../src/context.js";
 import type { ClaimedTask } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
+import { DecoratedNetwork } from "../src/network/decorator.js";
 import { LocalNetwork } from "../src/network/local.js";
 import type { PromiseRecord } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
@@ -21,10 +22,10 @@ class TestHeartbeat implements Heartbeat {
 
 function buildComputation(registry: Registry): {
   computation: Computation;
-  network: LocalNetwork;
+  network: DecoratedNetwork;
   effects: Effects;
 } {
-  const network = new LocalNetwork();
+  const network = new DecoratedNetwork(new LocalNetwork());
   const codec = new Codec();
 
   const effects = util.buildEffects(network, codec);

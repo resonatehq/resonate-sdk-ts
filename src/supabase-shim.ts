@@ -5,6 +5,7 @@ import type { Context } from "./context.js";
 import { Core } from "./core.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import { NoopHeartbeat } from "./heartbeat.js";
+import { DecoratedNetwork } from "./network/decorator.js";
 import { HttpNetwork } from "./network/http.js";
 import type { ExecuteMsg } from "./network/types.js";
 import { OptionsBuilder } from "./options.js";
@@ -106,12 +107,14 @@ export class Resonate {
       }
 
       const clock = new WallClock();
-      const network = new HttpNetwork({
-        headers: {},
-        timeout: 60 * 1000, // 60s
-        url: body.head.serverUrl,
-        verbose: this.verbose,
-      });
+      const network = new DecoratedNetwork(
+        new HttpNetwork({
+          headers: {},
+          timeout: 60 * 1000, // 60s
+          url: body.head.serverUrl,
+          verbose: this.verbose,
+        }),
+      );
 
       const core = new Core({
         pid: `pid-${Math.random().toString(36).substring(7)}`,

@@ -1,4 +1,4 @@
-import type { Network } from "./network/network.js";
+import type { DecoratedNetwork } from "./network/decorator.js";
 
 export interface Heartbeat {
   start(): void;
@@ -6,13 +6,13 @@ export interface Heartbeat {
 }
 
 export class AsyncHeartbeat implements Heartbeat {
-  private network: Network;
+  private network: DecoratedNetwork;
   private intervalId: ReturnType<typeof setInterval> | undefined;
   private pid: string;
   private counter = 0;
   private delay: number;
 
-  constructor(pid: string, delay: number, network: Network) {
+  constructor(pid: string, delay: number, network: DecoratedNetwork) {
     this.pid = pid;
     this.delay = delay;
     this.network = network;
