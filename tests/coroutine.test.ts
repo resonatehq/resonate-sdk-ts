@@ -10,10 +10,18 @@ import { Never } from "../src/retries.js";
 import type { Effects, Result } from "../src/types.js";
 import * as util from "../src/util.js";
 
-class DummyNetwork implements Network<Request, Response> {
+class DummyNetwork implements Network<Request, Response, Message> {
+  readonly pid = "dummy";
+  readonly group = "default";
+  readonly unicast = "";
+  readonly anycast = "";
   private promises = new Map<string, PromiseRecord>();
 
   start(): void {}
+  subscribe(_t: "execute" | "notify", _c: (msg: Message) => void): void {}
+  match(_target: string): string {
+    return "";
+  }
   send(
     req: Request,
     callback: (res: Response) => void,
@@ -68,15 +76,10 @@ class DummyNetwork implements Network<Request, Response> {
     }
   }
 
-  recv(_msg: Message): void {
-    throw new Error("Method not implemented.");
-  }
-
   stop() {}
-  subscribe(_t: "invoke" | "resume" | "notify", _c: (msg: Message) => void) {}
 }
 
-function buildEffects(network: Network<Request, Response>): Effects {
+function buildEffects(network: Network<Request, Response, Message>): Effects {
   const codec = new Codec();
   return util.buildEffects(network, codec);
 }

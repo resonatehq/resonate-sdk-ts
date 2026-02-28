@@ -5,10 +5,9 @@ import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import exceptions from "./exceptions.js";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
 import { DecoratedNetwork } from "./network/decorator.js";
-import { HttpNetwork, PollMessageSource } from "./network/http.js";
+import { HttpNetwork } from "./network/http.js";
 import { LocalNetwork } from "./network/local.js";
-import type { MessageSource, Network } from "./network/network.js";
-import type { Request, Response } from "./network/types.js";
+import type { Network } from "./network/network.js";
 import {
   isConflict,
   isSuccess,
@@ -17,6 +16,8 @@ import {
   type PromiseGetReq,
   type PromiseRecord,
   type PromiseRegisterListenerReq,
+  type Request,
+  type Response,
   type TaskCreateReq,
   type TaskRecord,
 } from "./network/types.js";
@@ -59,15 +60,10 @@ export class Resonate {
   private ttl: number;
   private idPrefix;
 
-  private unicast: string;
-  private anycast: string;
-  private match: (target: string) => string;
-
   private core: Core;
-  private network: Network<Request, Response>;
+  private network: Network<Request, Response, Message>;
   private codec: Codec;
   private verbose: boolean;
-  private messageSource: MessageSource;
 
   private registry: Registry;
   private heartbeat: Heartbeat;
@@ -121,7 +117,7 @@ export class Resonate {
     token?: string;
     verbose?: boolean;
     encryptor?: Encryptor;
-    transport?: Network<string, string> | (Network<string, string> & MessageSource);
+    transport?: Network<string, string, string>;
     prefix?: string;
   } = {}) {
     this.clock = new WallClock();
@@ -166,44 +162,27 @@ export class Resonate {
 
     if (transport) {
       this.network = new DecoratedNetwork(transport);
-
-      if (util.isMessageSource(transport)) {
-        this.messageSource = transport;
-      } else if (transport.getMessageSource) {
-        this.messageSource = transport.getMessageSource();
-      } else {
-        // TODO: instantiate default message source instead
-        throw new Error("transport must implement both network and message source");
-      }
-
-      this.pid = pid ?? this.messageSource.pid;
+      this.pid = pid ?? this.network.pid;
       this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.network);
     } else {
       if (!resolvedUrl) {
         const localNetwork = new LocalNetwork({ pid, group });
         this.network = new DecoratedNetwork(localNetwork);
-        this.messageSource = localNetwork.getMessageSource();
-        this.pid = pid ?? this.messageSource.pid;
+        this.pid = pid ?? this.network.pid;
         this.heartbeat = new NoopHeartbeat();
       } else {
-        this.network = new DecoratedNetwork(
-          new HttpNetwork({
-            url: resolvedUrl,
-            auth: resolvedAuth,
-            token: resolvedToken,
-            timeout: 1 * util.MIN,
-            headers: {},
-          }),
-          this.verbose,
-        );
-        this.messageSource = new PollMessageSource({
+        const httpNetwork = new HttpNetwork({
           url: resolvedUrl,
-          pid,
-          group,
           auth: resolvedAuth,
           token: resolvedToken,
+          timeout: 1 * util.MIN,
+          headers: {},
+          pid,
+          group,
+          messageSource: "poll",
         });
-        this.pid = pid ?? this.messageSource.pid;
+        this.network = new DecoratedNetwork(httpNetwork, this.verbose);
+        this.pid = pid ?? this.network.pid;
         this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.network);
       }
     }
@@ -211,18 +190,13 @@ export class Resonate {
     this.registry = new Registry();
     this.dependencies = new Map();
 
-    this.unicast = this.messageSource.unicast;
-    this.anycast = this.messageSource.anycast;
-    this.match = this.messageSource.match;
-
-    this.optsBuilder = new OptionsBuilder({ match: this.match, idPrefix: this.idPrefix });
+    this.optsBuilder = new OptionsBuilder({ match: this.network.match.bind(this.network), idPrefix: this.idPrefix });
 
     this.core = new Core({
       pid: this.pid,
       ttl: this.ttl,
       clock: this.clock,
       network: this.network,
-      messageSource: this.messageSource,
       codec: this.codec,
       registry: this.registry,
       heartbeat: this.heartbeat,
@@ -235,7 +209,7 @@ export class Resonate {
     this.schedules = new Schedules(this.network);
 
     // subscribe to notify
-    this.messageSource.subscribe("notify", this.onMessage.bind(this));
+    this.network.subscribe("notify", this.onMessage.bind(this));
     this.network.start();
     // periodically refresh subscriptions
     this.intervalId = setInterval(async () => {
@@ -246,7 +220,7 @@ export class Resonate {
             head: { corrId: "", version: "" },
             data: {
               awaited: id,
-              address: this.unicast,
+              address: this.network.unicast,
             },
           };
 
@@ -547,7 +521,7 @@ export class Resonate {
                 "resonate:branch": id,
                 "resonate:parent": id,
                 "resonate:scope": "global",
-                "resonate:target": this.anycast,
+                "resonate:target": this.network.anycast,
               },
             },
           },
@@ -768,7 +742,6 @@ export class Resonate {
 
   public stop() {
     this.network.stop();
-    this.messageSource.stop();
     this.heartbeat.stop();
     clearInterval(this.intervalId);
   }
@@ -805,7 +778,7 @@ export class Resonate {
               head: { corrId: "", version: "" },
               data: {
                 awaited: req.data.action.data.id,
-                address: this.unicast,
+                address: this.network.unicast,
               },
             })
               .then((promise) => resolve({ promise, task: undefined }))
@@ -919,7 +892,7 @@ export class Resonate {
       head: { corrId: "", version: "" },
       data: {
         awaited: promise.id,
-        address: this.unicast,
+        address: this.network.unicast,
       },
     };
 

@@ -1,13 +1,13 @@
 import { DecoratedNetwork } from "./network/decorator.js";
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
-import { isSuccess, type Request, type Response, type ScheduleRecord } from "./network/types.js";
+import { isSuccess, type Message, type Request, type Response, type ScheduleRecord } from "./network/types.js";
 import { assert } from "./util.js";
 
 export class Schedules {
-  private network: Network<Request, Response>;
+  private network: Network<Request, Response, Message>;
 
-  constructor(network: Network<Request, Response> = new DecoratedNetwork(new LocalNetwork())) {
+  constructor(network: Network<Request, Response, Message> = new DecoratedNetwork(new LocalNetwork())) {
     this.network = network;
   }
 

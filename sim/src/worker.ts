@@ -3,7 +3,7 @@ import { Codec } from "../../src/codec.js";
 import { Core } from "../../src/core.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import { validateResponse } from "../../src/network/decorator.js";
-import type { MessageSource, Network } from "../../src/network/network.js";
+import type { Network } from "../../src/network/network.js";
 import {
   isMessage,
   isRequest,
@@ -12,6 +12,7 @@ import {
   type Request,
   type Response,
 } from "../../src/network/types.js";
+
 import { OptionsBuilder } from "../../src/options.js";
 import type { Registry } from "../../src/registry.js";
 import * as util from "../../src/util.js";
@@ -21,48 +22,13 @@ interface DeliveryOptions {
   charFlipProb?: number;
 }
 
-class SimulatedMessageSource implements MessageSource {
+class SimulatedNetwork implements Network<string, string, string> {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
   readonly anycast: string;
 
-  private subscriptions: {
-    execute: Array<(msg: NetworkMessage) => void>;
-    notify: Array<(msg: NetworkMessage) => void>;
-  } = { execute: [], notify: [] };
-
-  constructor(
-    iaddr: string,
-    gaddr: string,
-    private maybeCorruptData: (data: NetworkMessage) => any,
-  ) {
-    this.pid = iaddr;
-    this.group = gaddr;
-    this.unicast = `sim://uni@${gaddr}/${iaddr}`;
-    this.anycast = `sim://any@${gaddr}/${iaddr}`;
-  }
-
-  start(): void {}
-
-  recv(msg: NetworkMessage): void {
-    for (const callback of this.subscriptions[msg.kind]) {
-      callback(this.maybeCorruptData(msg));
-    }
-  }
-
-  subscribe(type: "execute" | "notify", callback: (msg: NetworkMessage) => void): void {
-    this.subscriptions[type].push(callback);
-  }
-
-  stop(): void {}
-
-  match(target: string): string {
-    return `sim://any@${target}`;
-  }
-}
-
-class SimulatedNetwork implements Network<string, string> {
+  private subscribers: Array<(msg: string) => void> = [];
   private correlationId = 1;
   private currentTime = 0;
 
@@ -78,7 +44,6 @@ class SimulatedNetwork implements Network<string, string> {
       headers?: { [key: string]: string };
     }
   > = {};
-  private messageSource: SimulatedMessageSource;
 
   constructor(
     iaddr: string,
@@ -88,14 +53,29 @@ class SimulatedNetwork implements Network<string, string> {
     public readonly source: Address,
     public readonly target: Address,
   ) {
+    this.pid = iaddr;
+    this.group = gaddr;
+    this.unicast = `sim://uni@${gaddr}/${iaddr}`;
+    this.anycast = `sim://any@${gaddr}/${iaddr}`;
     this.prng = prng;
     this.deliveryOptions = { charFlipProb };
-    this.messageSource = new SimulatedMessageSource(iaddr, gaddr, (data) => this.maybeCorruptData(data));
   }
 
   start(): void {}
-  getMessageSource(): MessageSource {
-    return this.messageSource;
+  stop(): void {}
+
+  subscribe(_type: "execute" | "notify", callback: (msg: string) => void): void {
+    this.subscribers.push(callback);
+  }
+
+  match(target: string): string {
+    return `sim://any@${target}`;
+  }
+
+  recv(msg: string): void {
+    for (const callback of this.subscribers) {
+      callback(this.maybeCorruptData(msg));
+    }
   }
 
   send(req: string, callback: (res: string) => void, headers?: { [key: string]: string }): void {
@@ -112,8 +92,6 @@ class SimulatedNetwork implements Network<string, string> {
     };
     this.buffer.push(message);
   }
-
-  stop(): void {}
 
   time(time: number): void {
     this.currentTime = time;
@@ -137,13 +115,12 @@ class SimulatedNetwork implements Network<string, string> {
     }
   }
 
-  process(message: Message<string | NetworkMessage>): void {
+  process(message: Message<string>): void {
     if (message.isResponse()) {
       util.assert(message.source === this.target);
       util.assert(message.target === this.source);
       const correlationId = message.head?.correlationId;
       const entry = correlationId && this.callbacks[correlationId];
-      util.assert(!isMessage(message.data));
       if (entry) {
         util.assertDefined(message.data);
         entry.callback(this.maybeCorruptData(message.data));
@@ -151,8 +128,7 @@ class SimulatedNetwork implements Network<string, string> {
       }
     } else {
       util.assert(message.source.kind === this.target.kind && message.source.iaddr === this.target.iaddr);
-      util.assert(isMessage(message.data));
-      this.messageSource.recv(message.data);
+      this.recv(message.data);
     }
   }
 
@@ -163,9 +139,7 @@ class SimulatedNetwork implements Network<string, string> {
     return flushed;
   }
 
-  private maybeCorruptData(data: string | NetworkMessage): string | NetworkMessage {
-    if (typeof data !== "string") return data;
-
+  private maybeCorruptData(data: string): string {
     // Randomly decide whether to corrupt
     const shouldCorrupt = this.prng.next() < this.deliveryOptions.charFlipProb;
     if (!shouldCorrupt) return data;
@@ -178,13 +152,29 @@ class SimulatedNetwork implements Network<string, string> {
   }
 }
 
-class SimulatedDecoratedNetwork implements Network<Request, Response> {
+class SimulatedDecoratedNetwork implements Network<Request, Response, NetworkMessage> {
   private inner: SimulatedNetwork;
   private retries: number;
 
   constructor(inner: SimulatedNetwork, retryForever: boolean = false) {
     this.inner = inner;
     this.retries = retryForever ? Number.MAX_SAFE_INTEGER : 0;
+  }
+
+  get pid(): string {
+    return this.inner.pid;
+  }
+
+  get group(): string {
+    return this.inner.group;
+  }
+
+  get unicast(): string {
+    return this.inner.unicast;
+  }
+
+  get anycast(): string {
+    return this.inner.anycast;
   }
 
   start(): void {
@@ -195,8 +185,26 @@ class SimulatedDecoratedNetwork implements Network<Request, Response> {
     this.inner.stop();
   }
 
-  getMessageSource(): MessageSource {
-    return this.inner.getMessageSource();
+  subscribe(type: "execute" | "notify", callback: (msg: NetworkMessage) => void): void {
+    this.inner.subscribe(type, (msgStr: string) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(msgStr);
+      } catch {
+        return;
+      }
+      if (!isMessage(parsed)) {
+        return;
+      }
+      if (parsed.kind !== type) {
+        return;
+      }
+      callback(parsed);
+    });
+  }
+
+  match(target: string): string {
+    return this.inner.match(target);
   }
 
   send<K extends Request["kind"]>(
@@ -246,23 +254,21 @@ export class WorkerProcess extends Process {
     this.clock = clock;
     this.network = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server"));
     this.decoratedNetwork = new SimulatedDecoratedNetwork(this.network);
-    const messageSource = this.network.getMessageSource();
     new Core({
       pid: iaddr,
       ttl: 10000,
       clock: this.clock,
       network: this.decoratedNetwork,
       codec: new Codec(),
-      messageSource,
       registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
-      optsBuilder: new OptionsBuilder({ match: messageSource.match, idPrefix: "" }),
+      optsBuilder: new OptionsBuilder({ match: this.decoratedNetwork.match.bind(this.decoratedNetwork), idPrefix: "" }),
       verbose: false,
     });
   }
 
-  tick(tick: number, messages: Message<string | NetworkMessage>[]): Message<string>[] {
+  tick(tick: number, messages: Message<string>[]): Message<string>[] {
     this.log(tick, "[recv]", messages.length);
 
     this.network.time(this.clock.time);

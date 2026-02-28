@@ -1,5 +1,5 @@
 import type { Network } from "./network/network.js";
-import type { Request, Response } from "./network/types.js";
+import type { Message, Request, Response } from "./network/types.js";
 
 export interface Heartbeat {
   start(): void;
@@ -7,13 +7,13 @@ export interface Heartbeat {
 }
 
 export class AsyncHeartbeat implements Heartbeat {
-  private network: Network<Request, Response>;
+  private network: Network<Request, Response, Message>;
   private intervalId: ReturnType<typeof setInterval> | undefined;
   private pid: string;
   private counter = 0;
   private delay: number;
 
-  constructor(pid: string, delay: number, network: Network<Request, Response>) {
+  constructor(pid: string, delay: number, network: Network<Request, Response, Message>) {
     this.pid = pid;
     this.delay = delay;
     this.network = network;

@@ -1,5 +1,5 @@
 import type { Network } from "./network.js";
-import { isError, isResponse, type Request, type Response } from "./types.js";
+import { isError, isMessage, isResponse, type Message, type Request, type Response } from "./types.js";
 
 export type ValidationResult = { valid: true; res: Response; error: boolean } | { valid: false };
 
@@ -18,13 +18,26 @@ export function validateResponse(resStr: string, kind: string, corrId: string): 
   return { valid: true, res, error: isError(res) };
 }
 
-export class DecoratedNetwork implements Network<Request, Response> {
-  private inner: Network<string, string>;
+export class DecoratedNetwork implements Network<Request, Response, Message> {
+  private inner: Network<string, string, string>;
   private verbose: boolean;
 
-  constructor(inner: Network<string, string>, verbose: boolean = false) {
+  constructor(inner: Network<string, string, string>, verbose: boolean = false) {
     this.inner = inner;
     this.verbose = verbose;
+  }
+
+  get pid(): string {
+    return this.inner.pid;
+  }
+  get group(): string {
+    return this.inner.group;
+  }
+  get unicast(): string {
+    return this.inner.unicast;
+  }
+  get anycast(): string {
+    return this.inner.anycast;
   }
 
   start(): void {
@@ -33,6 +46,30 @@ export class DecoratedNetwork implements Network<Request, Response> {
 
   stop(): void {
     this.inner.stop();
+  }
+
+  subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void {
+    this.inner.subscribe(type, (msgStr: string) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(msgStr);
+      } catch {
+        console.warn("[Network] Received invalid JSON message, discarding");
+        return;
+      }
+      if (!isMessage(parsed)) {
+        console.warn("[Network] Received invalid message, discarding");
+        return;
+      }
+      if (parsed.kind !== type) {
+        return;
+      }
+      callback(parsed);
+    });
+  }
+
+  match(target: string): string {
+    return this.inner.match(target);
   }
 
   send<K extends Request["kind"]>(

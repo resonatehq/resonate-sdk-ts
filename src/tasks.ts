@@ -5,6 +5,7 @@ import {
   isSuccess,
   isTaskAcquireRes,
   isTaskFulfillRes,
+  type Message,
   type PromiseRecord,
   type Request,
   type Response,
@@ -12,9 +13,9 @@ import {
 } from "./network/types.js";
 
 export class Tasks {
-  private network: Network<Request, Response>;
+  private network: Network<Request, Response, Message>;
 
-  constructor(network: Network<Request, Response> = new DecoratedNetwork(new LocalNetwork())) {
+  constructor(network: Network<Request, Response, Message> = new DecoratedNetwork(new LocalNetwork())) {
     this.network = network;
   }
 

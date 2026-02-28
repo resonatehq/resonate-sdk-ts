@@ -1,8 +1,8 @@
 import type { Codec } from "./codec.js";
 import type { Data } from "./computation.js";
 import exceptions from "./exceptions.js";
-import type { MessageSource, Network } from "./network/network.js";
-import { isSuccess, type PromiseRecord, type Request, type Response } from "./network/types.js";
+import type { Network } from "./network/network.js";
+import { isSuccess, type Message, type PromiseRecord, type Request, type Response } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
 import type { Effects } from "./types.js";
 
@@ -66,10 +66,6 @@ export function isValidData(data: unknown): data is Data {
 
 export function isOptions(obj: unknown): obj is Options {
   return typeof obj === "object" && obj !== null && RESONATE_OPTIONS in obj;
-}
-
-export function isMessageSource(v: unknown): v is MessageSource {
-  return typeof v === "object" && v !== null && "recv" in v && typeof (v as any).recv === "function";
 }
 
 // helpers
@@ -136,7 +132,7 @@ export function once<T extends () => any>(fn: T): T {
 // effects
 
 export function buildEffects(
-  network: Network<Request, Response>,
+  network: Network<Request, Response, Message>,
   codec: Codec,
   preload: PromiseRecord[] = [],
 ): Effects {

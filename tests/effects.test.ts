@@ -6,14 +6,20 @@ import type { Result } from "../src/types.js";
 import { buildEffects } from "../src/util.js";
 
 // A simple in-memory network that handles promise.create and promise.settle.
-class StubNetwork implements Network<Request, Response> {
+class StubNetwork implements Network<Request, Response, Message> {
+  readonly pid = "stub";
+  readonly group = "default";
+  readonly unicast = "";
+  readonly anycast = "";
   readonly promises = new Map<string, PromiseRecord>();
   sendCount = 0;
 
   start(): void {}
   stop(): void {}
-  subscribe(_t: string, _c: (msg: Message) => void): void {}
-  recv(_msg: Message): void {}
+  subscribe(_t: "execute" | "notify", _c: (msg: Message) => void): void {}
+  match(_target: string): string {
+    return "";
+  }
 
   send(req: Request, callback: (res: Response) => void): void {
     this.sendCount++;

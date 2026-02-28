@@ -3,8 +3,7 @@ import type { Codec } from "./codec.js";
 import { Computation, type Done, type Status } from "./computation.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
-import type { MessageSource, Network } from "./network/network.js";
-import type { Request, Response } from "./network/types.js";
+import type { Network } from "./network/network.js";
 import {
   isMessage,
   isRedirect,
@@ -12,6 +11,8 @@ import {
   isSuccess,
   type Message,
   type PromiseRecord,
+  type Request,
+  type Response,
   type TaskRecord,
   type Value,
 } from "./network/types.js";
@@ -44,7 +45,7 @@ export class Core {
   private pid: string;
   private ttl: number;
   private clock: Clock;
-  private network: Network<Request, Response>;
+  private network: Network<Request, Response, Message>;
   private codec: Codec;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
@@ -64,19 +65,17 @@ export class Core {
     dependencies,
     optsBuilder,
     verbose,
-    messageSource = undefined,
   }: {
     pid: string;
     ttl: number;
     clock: Clock;
-    network: Network<Request, Response>;
+    network: Network<Request, Response, Message>;
     codec: Codec;
     registry: Registry;
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
     optsBuilder: OptionsBuilder;
     verbose: boolean;
-    messageSource?: MessageSource;
   }) {
     this.pid = pid;
     this.ttl = ttl;
@@ -98,7 +97,7 @@ export class Core {
     ]);
 
     // subscribe to execute
-    messageSource?.subscribe("execute", (msg) => {
+    network.subscribe("execute", (msg) => {
       this.onMessage(msg, () => undefined);
     });
   }
