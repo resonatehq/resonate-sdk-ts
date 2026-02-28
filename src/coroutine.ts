@@ -1,5 +1,6 @@
 import type { Context, InnerContext } from "./context.js";
-import { Decorator, type Value } from "./decorator.js";
+import { Decorator, type PromiseCompleted, type Value } from "./decorator.js";
+import type { PromiseRecord } from "./network/types.js";
 import { Never } from "./retries.js";
 import type { Effects, Result, Yieldable } from "./types.js";
 import * as util from "./util.js";
@@ -39,23 +40,16 @@ export class Coroutine<T> {
   private verbose: boolean;
   private decorator: Decorator<T>;
   private effects: Effects;
-  private readonly depth: number;
-  private readonly queueMicrotaskEveryN: number = 1;
 
-  constructor(ctx: InnerContext, verbose: boolean, decorator: Decorator<T>, effects: Effects, depth = 1) {
+  constructor(ctx: InnerContext, verbose: boolean, decorator: Decorator<T>, effects: Effects) {
     this.ctx = ctx;
     this.verbose = verbose;
     this.decorator = decorator;
     this.effects = effects;
-    this.depth = depth;
 
     if (!(this.ctx.retryPolicy instanceof Never) && !logged.has(this.ctx.id)) {
       console.warn(`Options. Generator function '${this.ctx.func}' does not support retries. Will ignore.`);
       logged.set(this.ctx.id, true);
-    }
-
-    if (typeof process !== "undefined" && process.env.QUEUE_MICROTASK_EVERY_N) {
-      this.queueMicrotaskEveryN = Number.parseInt(process.env.QUEUE_MICROTASK_EVERY_N, 10);
     }
   }
 
@@ -127,7 +121,6 @@ export class Coroutine<T> {
             this.verbose,
             new Decorator(action.func(ctx, ...action.args)),
             this.effects,
-            this.depth + 1,
           );
 
           const statusRes = await coroutine.exec();
@@ -172,33 +165,11 @@ export class Coroutine<T> {
 
             util.assert(settleRes.value.state !== "pending", "promise must be completed");
 
-            input = {
-              type: "internal.promise",
-              state: "completed",
-              id: action.id,
-              value: {
-                type: "internal.literal",
-                value:
-                  settleRes.value.state === "resolved"
-                    ? { kind: "value", value: settleRes.value.value?.data }
-                    : { kind: "error", error: settleRes.value.value?.data },
-              },
-            };
+            input = this.completedPromise(action.id, settleRes.value);
           }
         } else {
           // durable promise is completed
-          input = {
-            type: "internal.promise",
-            state: "completed",
-            id: action.id,
-            value: {
-              type: "internal.literal",
-              value:
-                res.value.state === "resolved"
-                  ? { kind: "value", value: res.value.value?.data }
-                  : { kind: "error", error: res.value.value?.data },
-            },
-          };
+          input = this.completedPromise(action.id, res.value);
         }
         continue;
       }
@@ -222,33 +193,19 @@ export class Coroutine<T> {
             id: action.id,
           };
         } else {
-          input = {
-            type: "internal.promise",
-            state: "completed",
-            id: action.id,
-            value: {
-              type: "internal.literal",
-              value:
-                res.value.state === "resolved"
-                  ? { kind: "value", value: res.value.value?.data }
-                  : { kind: "error", error: res.value.value?.data },
-            },
-          };
+          input = this.completedPromise(action.id, res.value);
         }
         continue;
       }
 
       // Handle die
-      if (action.type === "internal.die" && !action.condition) {
-        input = {
-          type: "internal.nothing",
-        };
+      if (action.type === "internal.die") {
+        if (action.condition) {
+          action.error.log(this.verbose);
+          return { kind: "error", error: action.error };
+        }
+        input = { type: "internal.nothing" };
         continue;
-      }
-
-      if (action.type === "internal.die" && action.condition) {
-        action.error.log(this.verbose);
-        return { kind: "error", error: action.error };
       }
 
       // Handle await
@@ -280,5 +237,20 @@ export class Coroutine<T> {
         return { kind: "value", value: { type: "done", result: action.value.value } };
       }
     }
+  }
+
+  private completedPromise(id: string, record: PromiseRecord): PromiseCompleted<any> {
+    return {
+      type: "internal.promise",
+      state: "completed",
+      id,
+      value: {
+        type: "internal.literal",
+        value:
+          record.state === "resolved"
+            ? { kind: "value", value: record.value?.data }
+            : { kind: "error", error: record.value?.data },
+      },
+    };
   }
 }
