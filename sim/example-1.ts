@@ -1,7 +1,6 @@
 import { StepClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import type * as context from "../src/context.js";
-import type { Request } from "../src/network/types.js";
 import { Registry } from "../src/registry.js";
 import { ServerProcess } from "./src/server.js";
 import { Message, Random, Simulator, unicast } from "./src/simulator.js";
@@ -64,7 +63,7 @@ sim.repeat(1, () => {
 
 sim.repeat(1, () => {
   sim.send(
-    new Message<Request>(
+    new Message(
       unicast("environment"),
       unicast("server"),
       {

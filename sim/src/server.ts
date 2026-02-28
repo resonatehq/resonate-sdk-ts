@@ -37,10 +37,11 @@ export class ServerProcess extends Process {
 
     for (const message of messages) {
       util.assert(message.target.iaddr === this.iaddr);
+      util.assert(typeof message.data === "string");
       if (message.isRequest()) {
         let res: { err?: any; res?: string };
         try {
-          const data = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
+          const data = JSON.parse(message.data);
           const result = this.server.apply(this.clock.time, data);
           outgoing.push(...extractOutgoing(result.changes));
           const response = result.response;
