@@ -72,8 +72,8 @@ export class Process {
     throw new Error("not implemented");
   }
 
-  log(tick: number, ...args: any[]): void {
-    const message = `[tick: ${tick}] [proc: ${this.iaddr}] ${args.map(JSON.stringify as any)}`;
+  log(tick: number, op: "[send]" | "[recv]", n: number): void {
+    const message = `[tick: ${tick}] [proc: ${this.iaddr}] ${op} ${n} messages`;
 
     // Always log to console
     console.log(message);

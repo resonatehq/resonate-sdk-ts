@@ -2,9 +2,16 @@ import type { StepClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
 import { Core } from "../../src/core.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
-import { DecoratedNetwork } from "../../src/network/decorator.js";
+import { validateResponse } from "../../src/network/decorator.js";
 import type { MessageSource, Network } from "../../src/network/network.js";
-import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
+import {
+  isMessage,
+  isRequest,
+  isResponse,
+  type Message as NetworkMessage,
+  type Request,
+  type Response,
+} from "../../src/network/types.js";
 import { OptionsBuilder } from "../../src/options.js";
 import type { Registry } from "../../src/registry.js";
 import * as util from "../../src/util.js";
@@ -97,13 +104,9 @@ class SimulatedNetwork implements Network<string, string> {
       correlationId: this.correlationId++,
     });
 
-    const cb = (res: string) => {
-      callback(res);
-    };
-
     this.callbacks[message.head!.correlationId] = {
       req,
-      callback: cb,
+      callback,
       timeout: this.currentTime + 2000,
       headers,
     };
@@ -118,45 +121,53 @@ class SimulatedNetwork implements Network<string, string> {
     // Then, check for timed-out callbacks
     for (const key in this.callbacks) {
       const cb = this.callbacks[key];
-      const req = JSON.parse(cb.req);
       const hasTimedOut = cb.timeout < this.currentTime;
       if (hasTimedOut) {
-        cb.callback(
-          JSON.stringify({
-            kind: req.kind,
-            head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
-            data: "req timed out",
-          }),
-        );
+        const req = JSON.parse(cb.req);
+        util.assert(isRequest(req));
+        const res = {
+          kind: req.kind,
+          head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
+          data: "req timed out",
+        };
+        util.assert(isResponse(res));
+        cb.callback(JSON.stringify(res));
         delete this.callbacks[key];
       }
     }
   }
 
-  process(message: Message<{ err?: any; res?: Response } | NetworkMessage>): void {
+  process(message: Message<{ err?: any; res?: string } | NetworkMessage>): void {
     if (message.isResponse()) {
       util.assert(message.source === this.target);
       util.assert(message.target === this.source);
       const correlationId = message.head?.correlationId;
       const entry = correlationId && this.callbacks[correlationId];
+      util.assert(!isMessage(message.data));
       if (entry) {
-        const msg = message as Message<{ err?: any; res?: Response }>;
-        if (msg.data.err) {
-          util.assert(msg.data.res === undefined);
-          entry.callback({
-            kind: entry.req.kind,
-            head: { corrId: entry.req.head.corrId, version: entry.req.head.version, status: 500 },
-            data: typeof msg.data.err === "string" ? msg.data.err : msg.data.err?.message || "unknown error",
-          });
+        if (message.data.err) {
+          util.assert(message.data.res === undefined);
+          const req = JSON.parse(entry.req);
+          util.assert(isRequest(req));
+          entry.callback(
+            JSON.stringify({
+              kind: req.kind,
+              head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
+              data:
+                typeof message.data.err === "string" ? message.data.err : message.data.err?.message || "unknown error",
+            }),
+          );
         } else {
-          util.assertDefined(msg.data.res);
-          entry.callback(this.maybeCorruptData(msg.data.res));
+          util.assertDefined(message.data.res);
+          const parsed = JSON.parse(message.data.res);
+          entry.callback(JSON.stringify(this.maybeCorruptData(parsed)));
         }
         delete this.callbacks[correlationId];
       }
     } else {
       util.assert(message.source.kind === this.target.kind && message.source.iaddr === this.target.iaddr);
-      this.messageSource.recv((message as Message<NetworkMessage>).data);
+      util.assert(isMessage(message.data));
+      this.messageSource.recv(message.data);
     }
   }
 
@@ -167,7 +178,7 @@ class SimulatedNetwork implements Network<string, string> {
     return flushed;
   }
 
-  private maybeCorruptData(data: Response | NetworkMessage): any {
+  private maybeCorruptData(data: string | NetworkMessage): any {
     // Serialize the data to a string
     let jsonStr = JSON.stringify(data);
 
@@ -189,12 +200,61 @@ class SimulatedNetwork implements Network<string, string> {
   }
 }
 
+class SimulatedDecoratedNetwork implements Network<Request, Response> {
+  private inner: SimulatedNetwork;
+  private retries: number;
+
+  constructor(inner: SimulatedNetwork, retryForever: boolean = false) {
+    this.inner = inner;
+    this.retries = retryForever ? Number.MAX_SAFE_INTEGER : 0;
+  }
+
+  start(): void {
+    this.inner.start();
+  }
+
+  stop(): void {
+    this.inner.stop();
+  }
+
+  getMessageSource(): MessageSource {
+    return this.inner.getMessageSource();
+  }
+
+  send<K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+    callback: (res: Extract<Response, { kind: K }>) => void,
+  ): void {
+    let attempt = 0;
+
+    const doSend = () => {
+      this.inner.send(JSON.stringify(req), (resStr) => {
+        const result = validateResponse(resStr, req.kind, req.head.corrId);
+
+        if (!result.valid) {
+          attempt++;
+          doSend();
+          return;
+        }
+
+        if (result.error && attempt < this.retries) {
+          attempt++;
+          doSend();
+          return;
+        }
+
+        callback(result.res as Extract<Response, { kind: K }>);
+      });
+    };
+
+    doSend();
+  }
+}
+
 export class WorkerProcess extends Process {
   private clock: StepClock;
-  private inner: SimulatedNetwork;
-  private network: Network<Request, Response>;
-  private registry: Registry;
-  private core: Core;
+  private network: SimulatedNetwork;
+  private decoratedNetwork: SimulatedDecoratedNetwork;
 
   constructor(
     prng: Random,
@@ -206,18 +266,17 @@ export class WorkerProcess extends Process {
   ) {
     super(iaddr, gaddr);
     this.clock = clock;
-    this.inner = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server"));
-    this.network = new DecoratedNetwork(this.inner);
-    this.registry = registry;
-    const messageSource = this.inner.getMessageSource();
-    this.core = new Core({
+    this.network = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server"));
+    this.decoratedNetwork = new SimulatedDecoratedNetwork(this.network);
+    const messageSource = this.network.getMessageSource();
+    new Core({
       pid: iaddr,
       ttl: 10000,
       clock: this.clock,
-      network: this.network,
+      network: this.decoratedNetwork,
       codec: new Codec(),
       messageSource,
-      registry: registry,
+      registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
       optsBuilder: new OptionsBuilder({ match: messageSource.match, idPrefix: "" }),
@@ -225,17 +284,17 @@ export class WorkerProcess extends Process {
     });
   }
 
-  tick(tick: number, messages: Message<{ err?: any; res?: Response } | NetworkMessage>[]): Message<Request>[] {
-    this.log(tick, "[recv]", messages);
+  tick(tick: number, messages: Message<{ err?: any; res?: string } | NetworkMessage>[]): Message<string>[] {
+    this.log(tick, "[recv]", messages.length);
 
-    this.inner.time(this.clock.time);
+    this.network.time(this.clock.time);
     for (const message of messages) {
-      this.inner.process(message);
+      this.network.process(message);
     }
 
-    const responses = this.inner.flush();
+    const responses = this.network.flush();
 
-    this.log(tick, "[send]", responses);
+    this.log(tick, "[send]", responses.length);
 
     return responses;
   }

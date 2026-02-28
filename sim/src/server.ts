@@ -1,6 +1,6 @@
 import type { StepClock } from "../../src/clock.js";
 import { type Change, Server } from "../../src/network/local.js";
-import type { Message as NetworkMessage, Request, Response } from "../../src/network/types.js";
+import type { Message as NetworkMessage } from "../../src/network/types.js";
 import * as util from "../../src/util.js";
 import { type Address, anycast, Message, Process, unicast } from "./simulator.js";
 
@@ -26,24 +26,30 @@ export class ServerProcess extends Process {
     this.clock = clock;
   }
 
-  tick(tick: number, messages: Message<Request>[]): Message<{ err?: any; res?: Response } | NetworkMessage>[] {
-    this.log(tick, "[recv]", messages);
+  tick(tick: number, messages: Message<any>[]): Message<{ err?: any; res?: string } | NetworkMessage>[] {
+    this.log(tick, "[recv]", messages.length);
 
     // Advance the clock so that server-side timeouts (e.g. PENDING_RETRY_TTL = 30000) can fire.
     this.clock.time += 100;
 
-    const responses: Message<{ err?: any; res?: Response } | NetworkMessage>[] = [];
+    const responses: Message<{ err?: any; res?: string } | NetworkMessage>[] = [];
     const outgoing: Array<{ address: string; message: NetworkMessage }> = [];
 
     for (const message of messages) {
       util.assert(message.target.iaddr === this.iaddr);
       if (message.isRequest()) {
-        let res: { err?: any; res?: Response };
+        let res: { err?: any; res?: string };
         try {
-          const result = this.server.apply(this.clock.time, message.data);
+          const data = typeof message.data === "string" ? JSON.parse(message.data) : message.data;
+          const result = this.server.apply(this.clock.time, data);
           outgoing.push(...extractOutgoing(result.changes));
+          const response = result.response;
           res = {
-            res: result.response,
+            res: JSON.stringify({
+              kind: response.kind,
+              head: { corrId: data.head.corrId, status: response.head.status, version: data.head.version },
+              data: response.data,
+            }),
           };
         } catch (err: any) {
           res = { err };
@@ -67,7 +73,7 @@ export class ServerProcess extends Process {
       responses.push(new Message<NetworkMessage>(unicast(this.iaddr), target, msg.message, { requ: true }));
     }
 
-    this.log(tick, "[send]", responses);
+    this.log(tick, "[send]", responses.length);
     return responses;
   }
 }
