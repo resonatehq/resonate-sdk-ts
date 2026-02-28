@@ -160,7 +160,7 @@ class SimulatedNetwork implements Network<string, string> {
         } else {
           util.assertDefined(message.data.res);
           const parsed = JSON.parse(message.data.res);
-          entry.callback(JSON.stringify(this.maybeCorruptData(parsed)));
+          entry.callback(this.maybeCorruptData(JSON.stringify(parsed)));
         }
         delete this.callbacks[correlationId];
       }
@@ -178,25 +178,19 @@ class SimulatedNetwork implements Network<string, string> {
     return flushed;
   }
 
-  private maybeCorruptData(data: string | NetworkMessage): any {
-    // Serialize the data to a string
-    let jsonStr = JSON.stringify(data);
+  private maybeCorruptData(data: string | NetworkMessage): string | NetworkMessage {
+    if (typeof data !== "string") return data;
 
     // Randomly decide whether to corrupt
     const shouldCorrupt = this.prng.next() < this.deliveryOptions.charFlipProb;
     if (!shouldCorrupt) return data;
 
     // Pick a random index to corrupt
-    const idx = Math.floor(this.prng.next() * jsonStr.length);
+    const idx = Math.floor(this.prng.next() * data.length);
 
     // Corrupt that character
-    jsonStr = `${jsonStr.slice(0, idx)}X${jsonStr.slice(idx + 1)}`;
+    return `${data.slice(0, idx)}X${data.slice(idx + 1)}`;
     // Parse back to an object, return original if invalid JSON
-    try {
-      return JSON.parse(jsonStr);
-    } catch {
-      return data;
-    }
   }
 }
 

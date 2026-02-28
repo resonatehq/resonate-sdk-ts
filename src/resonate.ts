@@ -181,7 +181,7 @@ export class Resonate {
     } else {
       if (!resolvedUrl) {
         const localNetwork = new LocalNetwork({ pid, group });
-        this.network = localNetwork;
+        this.network = new DecoratedNetwork(localNetwork);
         this.messageSource = localNetwork.getMessageSource();
         this.pid = pid ?? this.messageSource.pid;
         this.heartbeat = new NoopHeartbeat();

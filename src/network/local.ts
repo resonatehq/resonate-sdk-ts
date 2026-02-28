@@ -1326,7 +1326,7 @@ export class Server {
 // LOCAL NETWORK
 // =============================================================================
 
-export class LocalNetwork implements Network<Request, Response>, MessageSource {
+export class LocalNetwork implements Network<string, string>, MessageSource {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -1381,15 +1381,16 @@ export class LocalNetwork implements Network<Request, Response>, MessageSource {
   }
 
   send(
-    req: Request,
-    callback: (res: Response) => void,
+    req: string,
+    callback: (res: string) => void,
     _headers?: { [key: string]: string },
     _retryForever?: boolean,
   ): void {
-    const { corrId, version } = req.head;
+    const reqData = JSON.parse(req);
+    const { corrId, version } = reqData.head;
 
     const now = Date.now();
-    const result = this.server.apply(now, req);
+    const result = this.server.apply(now, reqData);
     const response = result.response;
 
     const res = {
@@ -1400,7 +1401,7 @@ export class LocalNetwork implements Network<Request, Response>, MessageSource {
 
     setTimeout(() => this.dispatchMessages(result), 0);
 
-    callback(res);
+    callback(JSON.stringify(res));
   }
 
   getMessageSource(): MessageSource {

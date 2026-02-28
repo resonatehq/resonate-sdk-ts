@@ -1,3 +1,4 @@
+import { DecoratedNetwork } from "./network/decorator.js";
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
 import {
@@ -13,7 +14,7 @@ import {
 export class Tasks {
   private network: Network<Request, Response>;
 
-  constructor(network: Network<Request, Response> = new LocalNetwork()) {
+  constructor(network: Network<Request, Response> = new DecoratedNetwork(new LocalNetwork())) {
     this.network = network;
   }
 

@@ -5,6 +5,7 @@ import type { Status } from "../src/computation.js";
 import type { ClaimedTask } from "../src/core.js";
 import { Core } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
+import { DecoratedNetwork } from "../src/network/decorator.js";
 import { LocalNetwork } from "../src/network/local.js";
 import type { Network } from "../src/network/network.js";
 import type { PromiseRecord, Request, Response, TaskRecord } from "../src/network/types.js";
@@ -45,7 +46,7 @@ function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { m
   codec: Codec;
   ctorSpy: jest.Spied<any>;
 } {
-  const network = new LocalNetwork();
+  const network = new DecoratedNetwork(new LocalNetwork());
   const codec = new Codec();
 
   const activeMock = new MockComputation(opts.responses);
