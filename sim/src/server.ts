@@ -26,37 +26,32 @@ export class ServerProcess extends Process {
     this.clock = clock;
   }
 
-  tick(tick: number, messages: Message<string>[]): Message<{ err?: any; res?: string } | NetworkMessage>[] {
+  tick(tick: number, messages: Message<string>[]): Message<string | NetworkMessage>[] {
     this.log(tick, "[recv]", messages.length);
 
     // Advance the clock so that server-side timeouts (e.g. PENDING_RETRY_TTL = 30000) can fire.
     this.clock.time += 100;
 
-    const responses: Message<{ err?: any; res?: string } | NetworkMessage>[] = [];
+    const responses: Message<string | NetworkMessage>[] = [];
     const outgoing: Array<{ address: string; message: NetworkMessage }> = [];
 
     for (const message of messages) {
       util.assert(message.target.iaddr === this.iaddr);
       util.assert(typeof message.data === "string");
       if (message.isRequest()) {
-        let res: { err?: any; res?: string };
-        try {
-          const data = JSON.parse(message.data);
-          const result = this.server.apply(this.clock.time, data);
-          outgoing.push(...extractOutgoing(result.changes));
-          const response = result.response;
-          res = {
-            res: JSON.stringify({
+        const data = JSON.parse(message.data);
+        const result = this.server.apply(this.clock.time, data);
+        outgoing.push(...extractOutgoing(result.changes));
+        const response = result.response;
+        responses.push(
+          message.resp(
+            JSON.stringify({
               kind: response.kind,
               head: { corrId: data.head.corrId, status: response.head.status, version: data.head.version },
               data: response.data,
             }),
-          };
-        } catch (err: any) {
-          res = { err };
-        }
-
-        responses.push(message.resp(res));
+          ),
+        );
       }
     }
 

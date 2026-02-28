@@ -137,7 +137,7 @@ class SimulatedNetwork implements Network<string, string> {
     }
   }
 
-  process(message: Message<{ err?: any; res?: string } | NetworkMessage>): void {
+  process(message: Message<string | NetworkMessage>): void {
     if (message.isResponse()) {
       util.assert(message.source === this.target);
       util.assert(message.target === this.source);
@@ -145,23 +145,8 @@ class SimulatedNetwork implements Network<string, string> {
       const entry = correlationId && this.callbacks[correlationId];
       util.assert(!isMessage(message.data));
       if (entry) {
-        if (message.data.err) {
-          util.assert(message.data.res === undefined);
-          const req = JSON.parse(entry.req);
-          util.assert(isRequest(req));
-          entry.callback(
-            JSON.stringify({
-              kind: req.kind,
-              head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
-              data:
-                typeof message.data.err === "string" ? message.data.err : message.data.err?.message || "unknown error",
-            }),
-          );
-        } else {
-          util.assertDefined(message.data.res);
-          const parsed = JSON.parse(message.data.res);
-          entry.callback(this.maybeCorruptData(JSON.stringify(parsed)));
-        }
+        util.assertDefined(message.data);
+        entry.callback(this.maybeCorruptData(message.data));
         delete this.callbacks[correlationId];
       }
     } else {
@@ -190,7 +175,6 @@ class SimulatedNetwork implements Network<string, string> {
 
     // Corrupt that character
     return `${data.slice(0, idx)}X${data.slice(idx + 1)}`;
-    // Parse back to an object, return original if invalid JSON
   }
 }
 
@@ -278,7 +262,7 @@ export class WorkerProcess extends Process {
     });
   }
 
-  tick(tick: number, messages: Message<{ err?: any; res?: string } | NetworkMessage>[]): Message<string>[] {
+  tick(tick: number, messages: Message<string | NetworkMessage>[]): Message<string>[] {
     this.log(tick, "[recv]", messages.length);
 
     this.network.time(this.clock.time);
