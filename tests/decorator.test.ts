@@ -191,7 +191,7 @@ describe("Decorator", () => {
     });
   });
 
-  it("awaits if there are pending invokes - Structured Concurrency", () => {
+  it("returns even if there are pending invokes (structured concurrency is enforced by coroutine)", () => {
     function* foo(ctx: Context): Generator<Yieldable, any, number> {
       yield new Future("future-1", "completed", { kind: "value", value: 10 }); // A
       yield* ctx.beginRun((_ctx: Context) => 20); // B
@@ -234,12 +234,12 @@ describe("Decorator", () => {
       },
     }); // C -> yield an invoke, get a completed promise back
 
-    // D -> Must not return, instead tell the caller to await given that there is a pending invoke
+    // D -> Decorator returns the value; structured concurrency is enforced by the coroutine
     expect(r).toMatchObject({
-      type: "internal.await",
-      promise: {
-        type: "internal.promise",
-        state: "pending",
+      type: "internal.return",
+      value: {
+        type: "internal.literal",
+        value: { kind: "value", value: 30 },
       },
     });
   });

@@ -223,6 +223,99 @@ describe("Coroutine", () => {
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
   });
 
+  test("Structured concurrency with local non-generator fire-and-forget", async () => {
+    function bar() {
+      return 10;
+    }
+    function baz() {
+      return 20;
+    }
+
+    function* foo(ctx: Context) {
+      // Spawn two local (non-generator) tasks without awaiting the returned futures
+      yield* ctx.beginRun(bar);
+      yield* ctx.beginRun(baz);
+      return 99;
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+
+    // First execution: generator reaches `return 99` with two pending local todos
+    let r = await exec("foo.1", foo, [], effects);
+    expect(r.type).toBe("suspended");
+    const suspended = r as Suspended;
+    expect(suspended.todo.local).toHaveLength(2);
+    expect(suspended.todo.remote).toHaveLength(0);
+
+    // Settle both local promises
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 10 });
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 20 });
+
+    // Second execution: no pending todos at return → done
+    r = await exec("foo.1", foo, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
+  });
+
+  test("Structured concurrency with mixed local and remote fire-and-forget", async () => {
+    function bar() {
+      return 10;
+    }
+
+    function* foo(ctx: Context) {
+      // Spawn one local (non-generator) task and one remote task without awaiting
+      yield* ctx.beginRun(bar);
+      yield* ctx.beginRpc("someRemote");
+      return 77;
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+
+    // First execution: both local and remote todos are pending at return
+    let r = await exec("foo.1", foo, [], effects);
+    expect(r.type).toBe("suspended");
+    const suspended = r as Suspended;
+    expect(suspended.todo.local).toHaveLength(1);
+    expect(suspended.todo.remote).toHaveLength(1);
+
+    // Settle the remote promise only
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    r = await exec("foo.1", foo, [], effects);
+    // Still suspended because the local todo is pending
+    expect(r.type).toBe("suspended");
+    expect((r as Suspended).todo.local).toHaveLength(1);
+    expect((r as Suspended).todo.remote).toHaveLength(0);
+
+    // Settle the local promise
+    await completePromise(effects, "foo.1.0", { kind: "value", value: 10 });
+    r = await exec("foo.1", foo, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 77 } });
+  });
+
+  test("Structured concurrency not triggered when inner generator completes inline", async () => {
+    // When beginRun is used with a generator function and that generator
+    // resolves without any pending RPCs, the coroutine settles it inline
+    // so there are no pending todos at the time the parent returns.
+    function* child() {
+      return 55;
+    }
+
+    function* foo(ctx: Context) {
+      // Spawn a generator that completes entirely inline (no RPCs inside)
+      yield* ctx.beginRun(child);
+      return 88;
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+
+    // The child generator completes inline, so no pending todos exist when
+    // foo returns → should complete in a single execution without suspending.
+    const r = await exec("foo.1", foo, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 88 } });
+  });
+
   test("Detached concurrency", async () => {
     function* bar() {
       return 42;

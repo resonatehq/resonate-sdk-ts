@@ -10,6 +10,11 @@ export type Suspended = {
   todo: { local: LocalTodo[]; remote: RemoteTodo[] };
 };
 
+export type Done = {
+  type: "done";
+  result: Result<any, any>;
+};
+
 export interface LocalTodo {
   id: string;
   ctx: InnerContext;
@@ -20,16 +25,6 @@ export interface LocalTodo {
 export interface RemoteTodo {
   id: string;
 }
-
-type More = {
-  type: "more";
-  todo: { local: LocalTodo[]; remote: RemoteTodo[] };
-};
-
-export type Done = {
-  type: "done";
-  result: Result<any, any>;
-};
 
 // a simple map to suppress duplicate warnings, necessary due to
 // micro retries
@@ -61,17 +56,10 @@ export class Coroutine<T> {
     effects: Effects,
   ): Promise<Result<Suspended | Done, any>> {
     const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), effects);
-    const res = await coroutine.exec();
-    if (res.kind === "error") {
-      return res;
-    }
-    if (res.value.type === "more") {
-      return { kind: "value", value: { type: "suspended", todo: res.value.todo } };
-    }
-    return { kind: "value", value: res.value };
+    return await coroutine.exec();
   }
 
-  private async exec(): Promise<Result<More | Done, any>> {
+  private async exec(): Promise<Result<Suspended | Done, any>> {
     const local: LocalTodo[] = [];
     const remote: RemoteTodo[] = [];
 
@@ -116,14 +104,12 @@ export class Coroutine<T> {
             continue;
           }
 
-          const coroutine = new Coroutine(
-            ctx,
-            this.verbose,
-            new Decorator(action.func(ctx, ...action.args)),
-            this.effects,
-          );
-
-          const statusRes = await coroutine.exec();
+          // TODO: to support executing async functions inline, we need to not always await this call, just call
+          // and put the promise in the local promises.
+          // Later in the await case we will find the promise and we will get the right result
+          // Might need to put genereator and functions under a single "run" function to match their return types
+          // and be able to writ emore generic code.
+          const statusRes = await Coroutine.exec(this.verbose, ctx, action.func, action.args, this.effects);
 
           if (statusRes.kind === "error") {
             statusRes.error.log(this.verbose);
@@ -132,7 +118,7 @@ export class Coroutine<T> {
 
           const status = statusRes.value;
 
-          if (status.type === "more") {
+          if (status.type === "suspended") {
             local.push(...status.todo.local);
             remote.push(...status.todo.remote);
             input = {
@@ -164,7 +150,6 @@ export class Coroutine<T> {
             }
 
             util.assert(settleRes.value.state !== "pending", "promise must be completed");
-
             input = this.completedPromise(action.id, settleRes.value);
           }
         } else {
@@ -227,13 +212,18 @@ export class Coroutine<T> {
           // All detached are remotes.
           remote.push({ id: action.id });
         }
-        return { kind: "value", value: { type: "more", todo: { local, remote } } };
+        return { kind: "value", value: { type: "suspended", todo: { local, remote } } };
       }
 
       // Handle return
       if (action.type === "internal.return") {
         util.assert(action.value.type === "internal.literal", "promise value must be an 'internal.literal' type");
         util.assertDefined(action.value);
+        // Structured concurrency: if there are pending todos, suspend
+        // instead of completing so all children finish first.
+        if (local.length > 0 || remote.length > 0) {
+          return { kind: "value", value: { type: "suspended", todo: { local, remote } } };
+        }
         return { kind: "value", value: { type: "done", result: action.value.value } };
       }
     }
