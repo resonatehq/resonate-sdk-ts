@@ -5,7 +5,6 @@ import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
 import type { RetryPolicy } from "../src/retries.js";
 import { Constant, Never } from "../src/retries.js";
-import type { Result } from "../src/types.js";
 
 type WorkItem = {
   id: string;
@@ -36,21 +35,12 @@ function createWorkWithRetry(id: string, func: () => Promise<unknown>, retryPoli
   return { id, ctx: buildCtx(id, retryPolicy), func, verbose: false };
 }
 
-function waitForReady(
-  processor: AsyncProcessor,
-  ids: string[],
-): Promise<{ id: string; result: Result<unknown, any> }[]> {
-  return new Promise((resolve) => {
-    processor.getReady(ids, resolve);
-  });
-}
-
 describe("AsyncProcessor", () => {
   test("single work item - getReady returns its result", async () => {
     const processor = new AsyncProcessor();
     processor.process([createWork("a", async () => 42)]);
 
-    const results = await waitForReady(processor, ["a"]);
+    const results = await processor.getReady(["a"]);
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({ id: "a", result: { kind: "value", value: 42 } });
   });
@@ -69,7 +59,7 @@ describe("AsyncProcessor", () => {
       }),
     ]);
 
-    const results = await waitForReady(processor, ["a", "b", "c"]);
+    const results = await processor.getReady(["a", "b", "c"]);
     expect(results.length).toBeGreaterThanOrEqual(1);
     for (const r of results) {
       expect(r.result.kind).toBe("value");
@@ -82,7 +72,7 @@ describe("AsyncProcessor", () => {
 
     await new Promise((r) => setTimeout(r, 50));
 
-    const results = await waitForReady(processor, ["a", "b"]);
+    const results = await processor.getReady(["a", "b"]);
     expect(results).toHaveLength(2);
   });
 
@@ -95,7 +85,7 @@ describe("AsyncProcessor", () => {
       }),
     ]);
 
-    const results = await waitForReady(processor, ["a"]);
+    const results = await processor.getReady(["a"]);
     expect(results.length).toBeGreaterThanOrEqual(1);
     expect(results[0]).toEqual({ id: "a", result: { kind: "value", value: "delayed" } });
   });
@@ -112,7 +102,7 @@ describe("AsyncProcessor", () => {
 
     processor.process([createWork("a", async () => "second")]);
 
-    const results = await waitForReady(processor, ["a"]);
+    const results = await processor.getReady(["a"]);
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({ id: "a", result: { kind: "value", value: "first" } });
   });
@@ -121,7 +111,7 @@ describe("AsyncProcessor", () => {
     const processor = new AsyncProcessor();
     processor.process([createWork("a", async () => "first")]);
 
-    const results1 = await waitForReady(processor, ["a"]);
+    const results1 = await processor.getReady(["a"]);
     expect(results1[0]).toEqual({ id: "a", result: { kind: "value", value: "first" } });
 
     let secondFuncCalled = false;
@@ -145,7 +135,7 @@ describe("AsyncProcessor", () => {
       }),
     ]);
 
-    const results = await waitForReady(processor, ["a"]);
+    const results = await processor.getReady(["a"]);
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({ id: "a", result: { kind: "error", error: err } });
   });
@@ -160,7 +150,7 @@ describe("AsyncProcessor", () => {
       }),
     ]);
 
-    const results = await waitForReady(processor, ["a", "b"]);
+    const results = await processor.getReady(["a", "b"]);
     expect(results.length).toBeGreaterThanOrEqual(1);
 
     const map = new Map(results.map((r) => [r.id, r.result]));
@@ -188,7 +178,7 @@ describe("AsyncProcessor", () => {
 
     processor.process([work]);
 
-    const results = await waitForReady(processor, ["a"]);
+    const results = await processor.getReady(["a"]);
     expect(results).toHaveLength(1);
     expect(results[0].result.kind).toBe("error");
     expect(attempts).toBeGreaterThan(1);

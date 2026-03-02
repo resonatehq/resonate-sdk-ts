@@ -98,28 +98,34 @@ export class Core {
       util.buildEffects(this.send, this.codec, claimed.preload),
     );
 
-    computation.executeUntilBlocked(claimed, (compRes) => {
-      if (compRes.kind === "error") {
-        return this.releaseTask(claimed.task, () => done(compRes));
-      }
-      if (compRes.kind === "value") {
-        const status = compRes.value;
-        if (status.kind === "suspended") {
-          return this.suspendTask(claimed, status, (res: Result<{ continue: boolean }, undefined>) => {
-            if (res.kind === "error") {
-              return done(res);
-            }
-            if (res.value.continue) {
-              return this.executeUntilBlocked(claimed, done);
-            }
-            return done(compRes);
-          });
+    computation
+      .executeUntilBlocked(claimed)
+      .then((compRes) => {
+        if (compRes.kind === "error") {
+          return this.releaseTask(claimed.task, () => done(compRes));
         }
-        if (status.kind === "done") {
-          return this.fulfillTask(claimed.task, status, () => done(compRes));
+        if (compRes.kind === "value") {
+          const status = compRes.value;
+          if (status.kind === "suspended") {
+            return this.suspendTask(claimed, status, (res: Result<{ continue: boolean }, undefined>) => {
+              if (res.kind === "error") {
+                return done(res);
+              }
+              if (res.value.continue) {
+                return this.executeUntilBlocked(claimed, done);
+              }
+              return done(compRes);
+            });
+          }
+          if (status.kind === "done") {
+            return this.fulfillTask(claimed.task, status, () => done(compRes));
+          }
         }
-      }
-    });
+      })
+      .catch((err) => {
+        console.warn("executeUntilBlocked failed unexpectedly", err);
+        this.releaseTask(claimed.task, () => done({ kind: "error", error: undefined }));
+      });
   }
 
   // Extracted to allow tests to spy on computation creation.

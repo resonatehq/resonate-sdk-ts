@@ -8,15 +8,17 @@ type WorkItem = { id: string; ctx: context.InnerContext; func: F; verbose: boole
 
 export interface Processor {
   process(work: WorkItem[]): void;
-  getReady(ids: string[], cb: (results: { id: string; result: Result<unknown, any> }[]) => void): void;
+  getReady(ids: string[]): Promise<{ id: string; result: Result<unknown, any> }[]>;
 }
 
 export class AsyncProcessor implements Processor {
   private results: Map<string, Result<unknown, any>> = new Map();
   private pending: Set<string> = new Set();
   private completed: Set<string> = new Set();
-  private waiter: { ids: Set<string>; cb: (results: { id: string; result: Result<unknown, any> }[]) => void } | null =
-    null;
+  private waiter: {
+    ids: Set<string>;
+    resolve: (results: { id: string; result: Result<unknown, any> }[]) => void;
+  } | null = null;
 
   process(work: WorkItem[]): void {
     for (const item of work) {
@@ -32,17 +34,18 @@ export class AsyncProcessor implements Processor {
     }
   }
 
-  getReady(ids: string[], cb: (results: { id: string; result: Result<unknown, any> }[]) => void): void {
+  getReady(ids: string[]): Promise<{ id: string; result: Result<unknown, any> }[]> {
     util.assert(!this.waiter, "AsyncProcessor already has a pending getReady call");
 
     const ready = this.drain(ids);
 
     if (ready.length > 0) {
-      cb(ready);
-      return;
+      return Promise.resolve(ready);
     }
 
-    this.waiter = { ids: new Set(ids), cb };
+    return new Promise((resolve) => {
+      this.waiter = { ids: new Set(ids), resolve };
+    });
   }
 
   private complete(id: string, result: Result<unknown, any>): void {
@@ -58,11 +61,11 @@ export class AsyncProcessor implements Processor {
     }
 
     const ready = this.drain([...this.waiter.ids]);
-    const cb = this.waiter.cb;
+    const resolve = this.waiter.resolve;
     this.waiter = null;
 
     if (ready.length > 0) {
-      cb(ready);
+      resolve(ready);
     }
   }
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "@jest/globals";
 import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
-import { Computation, type Status } from "../src/computation.js";
+import { Computation } from "../src/computation.js";
 import type { Context } from "../src/context.js";
 import type { ClaimedTask } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
@@ -12,7 +12,7 @@ import { OptionsBuilder } from "../src/options.js";
 import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
 import { Exponential, Never } from "../src/retries.js";
-import type { Effects, Result } from "../src/types.js";
+import type { Effects } from "../src/types.js";
 import * as util from "../src/util.js";
 
 class TestHeartbeat implements Heartbeat {
@@ -48,12 +48,6 @@ function buildComputation(registry: Registry): {
   );
 
   return { computation, network, effects };
-}
-
-function runUntilBlocked(computation: Computation, task: ClaimedTask): Promise<Result<Status, undefined>> {
-  return new Promise((resolve) => {
-    computation.executeUntilBlocked(task, resolve);
-  });
 }
 
 function createClaimedTask(
@@ -109,7 +103,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("local-single", "main", []);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -143,7 +137,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("local-multi", "main", []);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -168,7 +162,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("remote-single", "main", []);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -191,7 +185,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("remote-multi", "main", []);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -221,7 +215,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("mixed", "main", []);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -251,7 +245,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("mixed-parallel", "main", []);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -274,7 +268,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("func-resolve", "add", [3, 4]);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -296,7 +290,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("func-reject", "fail", [], { version: 1, retry: { type: "never", data: {} } });
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -317,7 +311,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("func-void", "noop", []);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -339,7 +333,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("func-args", "concat", ["x", "y", "z"]);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -369,7 +363,7 @@ describe("Computation", () => {
 
       const { computation } = buildComputation(registry);
       const task = createClaimedTask("error-local", "main", []);
-      const res = await runUntilBlocked(computation, task);
+      const res = await computation.executeUntilBlocked(task);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {

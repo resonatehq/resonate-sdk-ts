@@ -27,14 +27,11 @@ class MockComputation {
     this.responses = responses;
   }
 
-  executeUntilBlocked(
-    task: ClaimedTask | { kind: "unclaimed"; task: TaskRecord },
-    done: (res: Result<Status, undefined>) => void,
-  ) {
+  executeUntilBlocked(task: ClaimedTask | { kind: "unclaimed"; task: TaskRecord }): Promise<Result<Status, undefined>> {
     this.calls.push(task as ClaimedTask);
     const res = this.responses[this.callIndex] ?? this.responses[this.responses.length - 1];
     this.callIndex++;
-    done(res);
+    return Promise.resolve(res);
   }
 }
 
