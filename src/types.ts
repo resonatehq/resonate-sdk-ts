@@ -29,8 +29,6 @@ export type Effects = {
     req: PromiseCreateReq,
     done: (res: Result<PromiseRecord, ResonateError>) => void,
     func?: string,
-    headers?: Record<string, string>,
-    retryForever?: boolean,
   ) => void;
 
   promiseSettle: (

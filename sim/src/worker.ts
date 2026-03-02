@@ -2,16 +2,9 @@ import type { StepClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
 import { Core } from "../../src/core.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
-import { validateResponse } from "../../src/network/decorator.js";
+import { DecoratedNetwork } from "../../src/network/decorator.js";
 import type { Network } from "../../src/network/network.js";
-import {
-  isMessage,
-  isRequest,
-  isResponse,
-  type Message as NetworkMessage,
-  type Request,
-  type Response,
-} from "../../src/network/types.js";
+import { isRequest, isResponse } from "../../src/network/types.js";
 
 import { OptionsBuilder } from "../../src/options.js";
 import type { Registry } from "../../src/registry.js";
@@ -41,7 +34,6 @@ class SimulatedNetwork implements Network<string, string, string> {
       req: string;
       callback: (res: string) => void;
       timeout: number;
-      headers?: { [key: string]: string };
     }
   > = {};
 
@@ -78,7 +70,7 @@ class SimulatedNetwork implements Network<string, string, string> {
     }
   }
 
-  send(req: string, callback: (res: string) => void, headers?: { [key: string]: string }): void {
+  send(req: string, callback: (res: string) => void): void {
     const message = new Message<string>(this.source, this.target, req, {
       requ: true,
       correlationId: this.correlationId++,
@@ -88,7 +80,6 @@ class SimulatedNetwork implements Network<string, string, string> {
       req,
       callback,
       timeout: this.currentTime + 2000,
-      headers,
     };
     this.buffer.push(message);
   }
@@ -152,95 +143,10 @@ class SimulatedNetwork implements Network<string, string, string> {
   }
 }
 
-class SimulatedDecoratedNetwork implements Network<Request, Response, NetworkMessage> {
-  private inner: SimulatedNetwork;
-  private retries: number;
-
-  constructor(inner: SimulatedNetwork, retryForever: boolean = false) {
-    this.inner = inner;
-    this.retries = retryForever ? Number.MAX_SAFE_INTEGER : 0;
-  }
-
-  get pid(): string {
-    return this.inner.pid;
-  }
-
-  get group(): string {
-    return this.inner.group;
-  }
-
-  get unicast(): string {
-    return this.inner.unicast;
-  }
-
-  get anycast(): string {
-    return this.inner.anycast;
-  }
-
-  start(): void {
-    this.inner.start();
-  }
-
-  stop(): void {
-    this.inner.stop();
-  }
-
-  subscribe(type: "execute" | "notify", callback: (msg: NetworkMessage) => void): void {
-    this.inner.subscribe(type, (msgStr: string) => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(msgStr);
-      } catch {
-        return;
-      }
-      if (!isMessage(parsed)) {
-        return;
-      }
-      if (parsed.kind !== type) {
-        return;
-      }
-      callback(parsed);
-    });
-  }
-
-  match(target: string): string {
-    return this.inner.match(target);
-  }
-
-  send<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
-  ): void {
-    let attempt = 0;
-
-    const doSend = () => {
-      this.inner.send(JSON.stringify(req), (resStr) => {
-        const result = validateResponse(resStr, req.kind, req.head.corrId);
-
-        if (!result.valid) {
-          attempt++;
-          doSend();
-          return;
-        }
-
-        if (result.error && attempt < this.retries) {
-          attempt++;
-          doSend();
-          return;
-        }
-
-        callback(result.res as Extract<Response, { kind: K }>);
-      });
-    };
-
-    doSend();
-  }
-}
-
 export class WorkerProcess extends Process {
   private clock: StepClock;
   private network: SimulatedNetwork;
-  private decoratedNetwork: SimulatedDecoratedNetwork;
+  private decoratedNetwork: DecoratedNetwork;
 
   constructor(
     prng: Random,
@@ -253,7 +159,7 @@ export class WorkerProcess extends Process {
     super(iaddr, gaddr);
     this.clock = clock;
     this.network = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server"));
-    this.decoratedNetwork = new SimulatedDecoratedNetwork(this.network);
+    this.decoratedNetwork = new DecoratedNetwork(this.network);
     new Core({
       pid: iaddr,
       ttl: 10000,

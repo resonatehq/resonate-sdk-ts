@@ -22,12 +22,7 @@ class DummyNetwork implements Network<Request, Response, Message> {
   match(_target: string): string {
     return "";
   }
-  send(
-    req: Request,
-    callback: (res: Response) => void,
-    _headers?: { [key: string]: string },
-    _retryForever?: boolean,
-  ): void {
+  send(req: Request, callback: (res: Response) => void): void {
     switch (req.kind) {
       case "promise.create": {
         const createReq = req as Extract<Request, { kind: "promise.create" }>;

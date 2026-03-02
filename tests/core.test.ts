@@ -161,9 +161,9 @@ async function seedPendingTask(
 function interceptNetwork(network: Network<Request, Response, Message>): { sent: Request[] } {
   const sent: Request[] = [];
   const origSend = network.send.bind(network);
-  network.send = ((req: any, cb: any, ...rest: any[]) => {
+  network.send = ((req: any, cb: any) => {
     sent.push(req);
-    return origSend(req, cb, ...rest);
+    return origSend(req, cb);
   }) as typeof network.send;
   return { sent };
 }
@@ -278,7 +278,7 @@ describe("Core", () => {
       await seedAcquiredTask(network, codec, "dep-x", "depFunc", []);
 
       const origSend = network.send.bind(network);
-      network.send = ((req: any, cb: any, ...rest: any[]) => {
+      network.send = ((req: any, cb: any) => {
         if (req.kind === "task.suspend") {
           cb({
             kind: "task.suspend",
@@ -287,7 +287,7 @@ describe("Core", () => {
           });
           return;
         }
-        return origSend(req, cb, ...rest);
+        return origSend(req, cb);
       }) as typeof network.send;
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };

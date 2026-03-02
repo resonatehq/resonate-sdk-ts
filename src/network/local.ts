@@ -1378,12 +1378,7 @@ export class LocalNetwork implements Network<string, string, string> {
     this.started = false;
   }
 
-  send(
-    req: string,
-    callback: (res: string) => void,
-    _headers?: { [key: string]: string },
-    _retryForever?: boolean,
-  ): void {
+  send(req: string, callback: (res: string) => void): void {
     const reqData = JSON.parse(req);
     assert(isRequest(reqData));
     const { corrId, version } = reqData.head;

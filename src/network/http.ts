@@ -101,8 +101,8 @@ export class HttpNetwork implements Network<string, string, string> {
     return this._messageSource.match(target);
   }
 
-  send(req: string, callback: (res: string) => void, headers: { [key: string]: string } = {}): void {
-    this.doSend(req, headers).then(
+  send(req: string, callback: (res: string) => void): void {
+    this.doSend(req).then(
       (res) => callback(res),
       (err) => {
         console.error(err);
@@ -111,14 +111,14 @@ export class HttpNetwork implements Network<string, string, string> {
     );
   }
 
-  private async doSend(req: string, headers: { [key: string]: string }): Promise<string> {
+  private async doSend(req: string): Promise<string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
       const response = await fetch(`${this.url}/api`, {
         method: "POST",
-        headers: { ...this.headers, ...headers },
+        headers: this.headers,
         body: req,
         signal: controller.signal,
       });

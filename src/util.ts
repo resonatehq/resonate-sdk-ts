@@ -139,7 +139,7 @@ export function buildEffects(
   const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
 
   return {
-    promiseCreate: (req, done, func = "unknown", headers = {}, retryForever = false) => {
+    promiseCreate: (req, done, func = "unknown") => {
       const cached = cache.get(req.data.id);
       if (cached) {
         done({ kind: "value", value: cached });
@@ -156,31 +156,26 @@ export function buildEffects(
         return;
       }
 
-      network.send(
-        req,
-        (res) => {
-          assert(res.kind === "promise.create");
+      network.send(req, (res) => {
+        assert(res.kind === "promise.create");
 
-          if (!isSuccess(res)) {
-            return done({
-              kind: "error",
-              error: exceptions.SERVER_ERROR(res.data, true, {
-                code: res.head.status,
-                message: res.data,
-              }),
-            });
-          }
-          try {
-            const promise = codec.decodePromise(res.data.promise);
-            cache.set(promise.id, promise);
-            done({ kind: "value", value: promise });
-          } catch (e) {
-            return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
-          }
-        },
-        headers,
-        retryForever,
-      );
+        if (!isSuccess(res)) {
+          return done({
+            kind: "error",
+            error: exceptions.SERVER_ERROR(res.data, true, {
+              code: res.head.status,
+              message: res.data,
+            }),
+          });
+        }
+        try {
+          const promise = codec.decodePromise(res.data.promise);
+          cache.set(promise.id, promise);
+          done({ kind: "value", value: promise });
+        } catch (e) {
+          return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
+        }
+      });
     },
 
     promiseSettle: (req, done, func = "unknown") => {

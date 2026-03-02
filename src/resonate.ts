@@ -493,42 +493,39 @@ export class Resonate {
     id = `${this.idPrefix}${id}`;
 
     util.assert(registered.version > 0, "function version must be greater than zero");
-    const { promise, task } = await this.taskCreate(
-      {
-        kind: "task.create",
-        head: { corrId: "", version: "" },
-        data: {
-          pid: this.pid,
-          ttl: this.ttl,
-          action: {
-            kind: "promise.create",
-            head: { corrId: "", version: "" },
-            data: {
-              id: id,
-              timeoutAt: Date.now() + opts.timeout,
-              param: {
-                data: {
-                  func: registered.name,
-                  args: args,
-                  retry: opts.retryPolicy?.encode(),
-                  version: registered.version,
-                },
-                headers: {},
+    const { promise, task } = await this.taskCreate({
+      kind: "task.create",
+      head: { corrId: "", version: "" },
+      data: {
+        pid: this.pid,
+        ttl: this.ttl,
+        action: {
+          kind: "promise.create",
+          head: { corrId: "", version: "" },
+          data: {
+            id: id,
+            timeoutAt: Date.now() + opts.timeout,
+            param: {
+              data: {
+                func: registered.name,
+                args: args,
+                retry: opts.retryPolicy?.encode(),
+                version: registered.version,
               },
-              tags: {
-                ...opts.tags,
-                "resonate:origin": id,
-                "resonate:branch": id,
-                "resonate:parent": id,
-                "resonate:scope": "global",
-                "resonate:target": this.network.anycast,
-              },
+              headers: {},
+            },
+            tags: {
+              ...opts.tags,
+              "resonate:origin": id,
+              "resonate:branch": id,
+              "resonate:parent": id,
+              "resonate:scope": "global",
+              "resonate:target": this.network.anycast,
             },
           },
         },
       },
-      {},
-    );
+    });
 
     if (task) {
       this.core.executeUntilBlocked({ kind: "claimed", task: task, rootPromise: promise }, () => {});
@@ -624,34 +621,31 @@ export class Resonate {
 
     const func = registered ? registered.name : (funcOrName as string);
     const version = registered ? registered.version : opts.version || 1;
-    const promise = await this.promiseCreate(
-      {
-        kind: "promise.create",
-        head: { corrId: "", version: "" },
-        data: {
-          id: id,
-          timeoutAt: Date.now() + opts.timeout,
-          param: {
-            data: {
-              func: func,
-              args: args,
-              retry: opts.retryPolicy?.encode(),
-              version: version,
-            },
-            headers: {},
+    const promise = await this.promiseCreate({
+      kind: "promise.create",
+      head: { corrId: "", version: "" },
+      data: {
+        id: id,
+        timeoutAt: Date.now() + opts.timeout,
+        param: {
+          data: {
+            func: func,
+            args: args,
+            retry: opts.retryPolicy?.encode(),
+            version: version,
           },
-          tags: {
-            ...opts.tags,
-            "resonate:origin": id,
-            "resonate:branch": id,
-            "resonate:parent": id,
-            "resonate:scope": "global",
-            "resonate:target": opts.target,
-          },
+          headers: {},
+        },
+        tags: {
+          ...opts.tags,
+          "resonate:origin": id,
+          "resonate:branch": id,
+          "resonate:parent": id,
+          "resonate:scope": "global",
+          "resonate:target": opts.target,
         },
       },
-      {},
-    );
+    });
 
     return this.createHandle(promise);
   }
@@ -746,10 +740,7 @@ export class Resonate {
     clearInterval(this.intervalId);
   }
 
-  private taskCreate(
-    req: TaskCreateReq,
-    headers: { [key: string]: string },
-  ): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
+  private taskCreate(req: TaskCreateReq): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
     return new Promise((resolve, reject) => {
       try {
         req.data.action.data.param = this.codec.encode(req.data.action.data.param.data);
@@ -758,48 +749,43 @@ export class Resonate {
         return;
       }
 
-      this.network.send(
-        req,
-        (res) => {
-          util.assert(res.kind === "task.create");
-          if (!isSuccess(res) && !isConflict(res)) {
-            reject(
-              exceptions.SERVER_ERROR(res.data, true, {
-                code: res.head.status,
-                message: res.data,
-              }),
-            );
-            return;
-          }
+      this.network.send(req, (res) => {
+        util.assert(res.kind === "task.create");
+        if (!isSuccess(res) && !isConflict(res)) {
+          reject(
+            exceptions.SERVER_ERROR(res.data, true, {
+              code: res.head.status,
+              message: res.data,
+            }),
+          );
+          return;
+        }
 
-          if (isConflict(res)) {
-            this.promiseRegisterListener({
-              kind: "promise.register_listener",
-              head: { corrId: "", version: "" },
-              data: {
-                awaited: req.data.action.data.id,
-                address: this.network.unicast,
-              },
-            })
-              .then((promise) => resolve({ promise, task: undefined }))
-              .catch(reject);
-            return;
-          }
+        if (isConflict(res)) {
+          this.promiseRegisterListener({
+            kind: "promise.register_listener",
+            head: { corrId: "", version: "" },
+            data: {
+              awaited: req.data.action.data.id,
+              address: this.network.unicast,
+            },
+          })
+            .then((promise) => resolve({ promise, task: undefined }))
+            .catch(reject);
+          return;
+        }
 
-          try {
-            const promise = this.codec.decodePromise(res.data.promise);
-            resolve({ promise, task: res.data.task });
-          } catch (e) {
-            reject(e);
-          }
-        },
-        headers,
-        true,
-      );
+        try {
+          const promise = this.codec.decodePromise(res.data.promise);
+          resolve({ promise, task: res.data.task });
+        } catch (e) {
+          reject(e);
+        }
+      });
     });
   }
 
-  private promiseCreate(req: PromiseCreateReq, headers: { [key: string]: string }): Promise<PromiseRecord> {
+  private promiseCreate(req: PromiseCreateReq): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       try {
         req.data.param = this.codec.encode(req.data.param.data);
@@ -808,58 +794,55 @@ export class Resonate {
         return;
       }
 
-      this.network.send(
-        req,
-        (res) => {
-          util.assert(res.kind === "promise.create");
-          if (!isSuccess(res)) {
-            reject(
-              exceptions.SERVER_ERROR(res.data, true, {
-                code: res.head.status,
-                message: res.data,
-              }),
-            );
-            return;
-          }
-          try {
-            const promise = this.codec.decodePromise(res.data.promise);
-            resolve(promise);
-          } catch (e) {
-            reject(e);
-          }
-        },
-        headers,
-        true,
-      );
+      this.network.send(req, (res) => {
+        util.assert(res.kind === "promise.create");
+        if (!isSuccess(res)) {
+          reject(
+            exceptions.SERVER_ERROR(res.data, true, {
+              code: res.head.status,
+              message: res.data,
+            }),
+          );
+          return;
+        }
+        try {
+          const promise = this.codec.decodePromise(res.data.promise);
+          resolve(promise);
+        } catch (e) {
+          reject(e);
+        }
+      });
     });
   }
 
   private promiseRegisterListener(req: PromiseRegisterListenerReq): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send(
-        req,
-        (res) => {
-          util.assert(res.kind === "promise.register_listener");
+      const attempt = () => {
+        try {
+          this.network.send(req, (res) => {
+            util.assert(res.kind === "promise.register_listener");
 
-          if (!isSuccess(res)) {
-            reject(
-              exceptions.SERVER_ERROR(res.data, true, {
-                code: res.head.status,
-                message: res.data,
-              }),
-            );
-            return;
-          }
-          try {
-            const promise = this.codec.decodePromise(res.data.promise);
-            resolve(promise);
-          } catch (e) {
-            reject(e);
-          }
-        },
-        {},
-        true,
-      );
+            if (!isSuccess(res)) {
+              reject(
+                exceptions.SERVER_ERROR(res.data, true, {
+                  code: res.head.status,
+                  message: res.data,
+                }),
+              );
+              return;
+            }
+            try {
+              const promise = this.codec.decodePromise(res.data.promise);
+              resolve(promise);
+            } catch (e) {
+              reject(e);
+            }
+          });
+        } catch {
+          setTimeout(attempt, 5000);
+        }
+      };
+      attempt();
     });
   }
 

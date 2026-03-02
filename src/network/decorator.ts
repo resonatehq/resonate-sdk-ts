@@ -75,53 +75,33 @@ export class DecoratedNetwork implements Network<Request, Response, Message> {
   send<K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
     callback: (res: Extract<Response, { kind: K }>) => void,
-    headers: { [key: string]: string } = {},
-    retryForever: boolean = false,
   ): void {
-    const retries = retryForever ? Number.MAX_SAFE_INTEGER : 0;
-    const delay = 10000;
-    let attempt = 0;
+    if (this.verbose) {
+      console.log("[Network] Sending:", req);
+    }
 
-    const doSend = () => {
-      if (this.verbose) {
-        console.log("[Network] Sending:", req);
+    this.inner.send(JSON.stringify(req), (resStr) => {
+      const result = validateResponse(resStr, req.kind, req.head.corrId);
+
+      if (!result.valid) {
+        callback({
+          kind: req.kind,
+          head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
+          data: "invalid response",
+        } as Extract<Response, { kind: K }>);
+        return;
       }
 
-      this.inner.send(
-        JSON.stringify(req),
-        (resStr) => {
-          const result = validateResponse(resStr, req.kind, req.head.corrId);
+      if (this.verbose) {
+        console.log(
+          `[Network] Received ${result.res.head.status}:`,
+          `for request:`,
+          req,
+          `response:${result.res.data}`,
+        );
+      }
 
-          if (!result.valid) {
-            attempt++;
-            console.warn(`Server error (500) for ${req.kind}. Retrying in ${delay / 1000}s.`);
-            setTimeout(doSend, delay);
-            return;
-          }
-
-          if (result.error && attempt < retries) {
-            attempt++;
-            console.warn(`Server error (500) for ${req.kind}. Retrying in ${delay / 1000}s.`);
-            setTimeout(doSend, delay);
-            return;
-          }
-
-          if (this.verbose) {
-            console.log(
-              `[Network] Received ${result.res.head.status}:`,
-              `for request:`,
-              req,
-              `response:${result.res.data}`,
-            );
-          }
-
-          callback(result.res as Extract<Response, { kind: K }>);
-        },
-        headers,
-        retryForever,
-      );
-    };
-
-    doSend();
+      callback(result.res as Extract<Response, { kind: K }>);
+    });
   }
 }
