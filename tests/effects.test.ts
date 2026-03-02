@@ -6,7 +6,7 @@ import { buildEffects } from "../src/util.js";
 
 // A simple in-memory stub that handles promise.create and promise.settle.
 class StubNetwork {
-  readonly promises = new Map<string, PromiseRecord>();
+  private promises = new Map<string, PromiseRecord>();
   sendCount = 0;
 
   send: Send = <K extends Request["kind"]>(

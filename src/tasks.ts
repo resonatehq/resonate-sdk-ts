@@ -1,11 +1,5 @@
 import { LocalNetwork } from "./network/local.js";
-import {
-  isSuccess,
-  isTaskAcquireRes,
-  isTaskFulfillRes,
-  type PromiseRecord,
-  type TaskAcquireRes,
-} from "./network/types.js";
+import { isSuccess, type PromiseRecord, type TaskAcquireRes } from "./network/types.js";
 import type { Send } from "./types.js";
 import { buildTransport } from "./util.js";
 
@@ -35,7 +29,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (!isSuccess(res) || !isTaskAcquireRes(res)) {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;
@@ -63,7 +57,7 @@ export class Tasks {
           },
         },
         (res) => {
-          if (!isSuccess(res) || !isTaskFulfillRes(res)) {
+          if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
             return;

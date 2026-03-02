@@ -117,7 +117,7 @@ export class Resonate {
         pid: `pid-${Math.random().toString(36).substring(7)}`,
         ttl: 30 * 1000,
         clock,
-        send: buildTransport(network).send,
+        send: buildTransport(network, this.verbose).send,
         codec: this.codec,
         registry: this.registry,
         heartbeat: new NoopHeartbeat(),
