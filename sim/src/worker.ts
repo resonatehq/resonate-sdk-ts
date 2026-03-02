@@ -181,7 +181,7 @@ export class WorkerProcess extends Process {
 
     const responses = this.network.flush();
 
-    this.log(tick, "[send]", responses.length);
+    this.log(tick, "[send]", responses);
 
     return responses;
   }

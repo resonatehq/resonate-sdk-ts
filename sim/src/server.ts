@@ -68,7 +68,7 @@ export class ServerProcess extends Process {
       responses.push(new Message<string>(unicast(this.iaddr), target, msg.message, { requ: true }));
     }
 
-    this.log(tick, "[send]", responses.length);
+    this.log(tick, "[send]", responses);
     return responses;
   }
 }
