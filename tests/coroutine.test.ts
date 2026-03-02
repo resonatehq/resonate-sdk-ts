@@ -2,27 +2,20 @@ import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
 import { Coroutine, type Done, type Suspended } from "../src/coroutine.js";
-import type { Network } from "../src/network/network.js";
-import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
+import type { PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
-import type { Effects, Result } from "../src/types.js";
+import type { Effects, Result, Send } from "../src/types.js";
 import * as util from "../src/util.js";
 
-class DummyNetwork implements Network<Request, Response, Message> {
-  readonly pid = "dummy";
-  readonly group = "default";
-  readonly unicast = "";
-  readonly anycast = "";
+class DummyNetwork {
   private promises = new Map<string, PromiseRecord>();
 
-  start(): void {}
-  subscribe(_t: "execute" | "notify", _c: (msg: Message) => void): void {}
-  match(_target: string): string {
-    return "";
-  }
-  send(req: Request, callback: (res: Response) => void): void {
+  send: Send = <K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+    callback: (res: Extract<Response, { kind: K }>) => void,
+  ): void => {
     switch (req.kind) {
       case "promise.create": {
         const createReq = req as Extract<Request, { kind: "promise.create" }>;
@@ -32,7 +25,7 @@ class DummyNetwork implements Network<Request, Response, Message> {
             kind: req.kind,
             head: { corrId: req.head.corrId, status: 200, version: req.head.version },
             data: { promise: existing },
-          });
+          } as Extract<Response, { kind: K }>);
           return;
         }
         const p: PromiseRecord = {
@@ -49,7 +42,7 @@ class DummyNetwork implements Network<Request, Response, Message> {
           kind: req.kind,
           head: { corrId: req.head.corrId, status: 200, version: req.head.version },
           data: { promise: p },
-        });
+        } as Extract<Response, { kind: K }>);
         return;
       }
 
@@ -63,20 +56,18 @@ class DummyNetwork implements Network<Request, Response, Message> {
           kind: req.kind,
           head: { corrId: req.head.corrId, status: 200, version: req.head.version },
           data: { promise: p },
-        });
+        } as Extract<Response, { kind: K }>);
         break;
       }
       default:
         throw new Error("All other kind will not be implemented");
     }
-  }
-
-  stop() {}
+  };
 }
 
-function buildEffects(network: Network<Request, Response, Message>): Effects {
+function buildEffects(network: DummyNetwork): Effects {
   const codec = new Codec();
-  return util.buildEffects(network, codec);
+  return util.buildEffects(network.send, codec);
 }
 
 describe("Coroutine", () => {

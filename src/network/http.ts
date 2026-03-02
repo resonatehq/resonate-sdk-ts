@@ -25,7 +25,7 @@ interface InternalMessageSource {
   match(target: string): string;
 }
 
-export class HttpNetwork implements Network<string, string, string> {
+export class HttpNetwork implements Network {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
@@ -92,7 +92,7 @@ export class HttpNetwork implements Network<string, string, string> {
     this._messageSource.stop();
   }
 
-  subscribe(_type: "execute" | "notify", callback: (msg: string) => void): void {
+  recv(callback: (msg: string) => void): void {
     this._messageSource?.subscribe(callback);
   }
 

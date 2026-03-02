@@ -3,7 +3,6 @@ import type { Codec } from "./codec.js";
 import { Computation, type Done, type Status } from "./computation.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
-import type { Network } from "./network/network.js";
 import {
   isMessage,
   isRedirect,
@@ -11,15 +10,13 @@ import {
   isSuccess,
   type Message,
   type PromiseRecord,
-  type Request,
-  type Response,
   type TaskRecord,
   type Value,
 } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
-import type { Effects, Result } from "./types.js";
+import type { Effects, Result, Send } from "./types.js";
 import * as util from "./util.js";
 
 export type PromiseHandler = {
@@ -45,7 +42,7 @@ export class Core {
   private pid: string;
   private ttl: number;
   private clock: Clock;
-  private network: Network<Request, Response, Message>;
+  private send: Send;
   private codec: Codec;
   private retries: Map<string, RetryPolicyConstructor>;
   private registry: Registry;
@@ -58,7 +55,7 @@ export class Core {
     pid,
     ttl,
     clock,
-    network,
+    send,
     codec,
     registry,
     heartbeat,
@@ -69,7 +66,7 @@ export class Core {
     pid: string;
     ttl: number;
     clock: Clock;
-    network: Network<Request, Response, Message>;
+    send: Send;
     codec: Codec;
     registry: Registry;
     heartbeat: Heartbeat;
@@ -80,7 +77,7 @@ export class Core {
     this.pid = pid;
     this.ttl = ttl;
     this.clock = clock;
-    this.network = network;
+    this.send = send;
     this.codec = codec;
     this.registry = registry;
     this.heartbeat = heartbeat;
@@ -95,17 +92,12 @@ export class Core {
       [Linear.type, Linear],
       [Never.type, Never],
     ]);
-
-    // subscribe to execute
-    network.subscribe("execute", (msg) => {
-      this.onMessage(msg, () => undefined);
-    });
   }
 
   public executeUntilBlocked(claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
     const computation = this.createComputation(
       claimed.rootPromise.id,
-      util.buildEffects(this.network, this.codec, claimed.preload),
+      util.buildEffects(this.send, this.codec, claimed.preload),
     );
 
     computation.executeUntilBlocked(claimed, (compRes) => {
@@ -148,7 +140,7 @@ export class Core {
   }
 
   private releaseTask(task: TaskRecord, callback: () => void): void {
-    this.network.send(
+    this.send(
       {
         kind: "task.release",
         head: { corrId: "", version: "" },
@@ -165,7 +157,7 @@ export class Core {
   ): void {
     const task = claimed.task;
     const kind = "task.suspend" as const;
-    this.network.send(
+    this.send(
       {
         kind,
         head: { corrId: "", version: "" },
@@ -212,7 +204,7 @@ export class Core {
       return;
     }
 
-    this.network.send(
+    this.send(
       {
         kind: "task.fulfill",
         head: { corrId: "", version: "" },
@@ -243,7 +235,7 @@ export class Core {
     }
 
     const task = msg.data.task;
-    this.network.send(
+    this.send(
       {
         kind: "task.acquire",
         head: { corrId: "", version: "" },

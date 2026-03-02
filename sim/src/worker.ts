@@ -2,7 +2,6 @@ import type { StepClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
 import { Core } from "../../src/core.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
-import { DecoratedNetwork } from "../../src/network/decorator.js";
 import type { Network } from "../../src/network/network.js";
 import { isRequest, isResponse } from "../../src/network/types.js";
 
@@ -15,7 +14,7 @@ interface DeliveryOptions {
   charFlipProb?: number;
 }
 
-class SimulatedNetwork implements Network<string, string, string> {
+class SimulatedNetwork implements Network {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -56,18 +55,12 @@ class SimulatedNetwork implements Network<string, string, string> {
   start(): void {}
   stop(): void {}
 
-  subscribe(_type: "execute" | "notify", callback: (msg: string) => void): void {
+  recv(callback: (msg: string) => void): void {
     this.subscribers.push(callback);
   }
 
   match(target: string): string {
     return `sim://any@${target}`;
-  }
-
-  recv(msg: string): void {
-    for (const callback of this.subscribers) {
-      callback(this.maybeCorruptData(msg));
-    }
   }
 
   send(req: string, callback: (res: string) => void): void {
@@ -119,7 +112,9 @@ class SimulatedNetwork implements Network<string, string, string> {
       }
     } else {
       util.assert(message.source.kind === this.target.kind && message.source.iaddr === this.target.iaddr);
-      this.recv(message.data);
+      for (const callback of this.subscribers) {
+        callback(this.maybeCorruptData(message.data));
+      }
     }
   }
 
@@ -146,7 +141,6 @@ class SimulatedNetwork implements Network<string, string, string> {
 export class WorkerProcess extends Process {
   private clock: StepClock;
   private network: SimulatedNetwork;
-  private decoratedNetwork: DecoratedNetwork;
 
   constructor(
     prng: Random,
@@ -159,18 +153,21 @@ export class WorkerProcess extends Process {
     super(iaddr, gaddr);
     this.clock = clock;
     this.network = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server"));
-    this.decoratedNetwork = new DecoratedNetwork(this.network);
-    new Core({
+    const { send, recv } = util.buildTransport(this.network);
+    const core = new Core({
       pid: iaddr,
       ttl: 10000,
       clock: this.clock,
-      network: this.decoratedNetwork,
+      send,
       codec: new Codec(),
       registry,
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
-      optsBuilder: new OptionsBuilder({ match: this.decoratedNetwork.match.bind(this.decoratedNetwork), idPrefix: "" }),
+      optsBuilder: new OptionsBuilder({ match: this.network.match.bind(this.network), idPrefix: "" }),
       verbose: false,
+    });
+    recv((msg) => {
+      core.onMessage(msg, () => undefined);
     });
   }
 

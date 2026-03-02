@@ -1,4 +1,4 @@
-export interface Network<Req, Res, Msg> {
+export interface Network {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -7,7 +7,7 @@ export interface Network<Req, Res, Msg> {
   start(): void;
   stop(): void;
 
-  send(req: Req, callback: (res: Res) => void): void;
-  subscribe(type: "execute" | "notify", callback: (msg: Msg) => void): void;
+  send(req: string, callback: (res: string) => void): void;
+  recv(callback: (msg: string) => void): void;
   match(target: string): string;
 }

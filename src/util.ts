@@ -2,9 +2,18 @@ import type { Codec } from "./codec.js";
 import type { Data } from "./computation.js";
 import exceptions from "./exceptions.js";
 import type { Network } from "./network/network.js";
-import { isSuccess, type Message, type PromiseRecord, type Request, type Response } from "./network/types.js";
+import {
+  isError,
+  isMessage,
+  isResponse,
+  isSuccess,
+  type Message,
+  type PromiseRecord,
+  type Request,
+  type Response,
+} from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
-import type { Effects } from "./types.js";
+import type { Effects, Send, Transport } from "./types.js";
 
 // time
 
@@ -129,13 +138,77 @@ export function once<T extends () => any>(fn: T): T {
   }) as T;
 }
 
+export type ValidationResult = { valid: true; res: Response; error: boolean } | { valid: false };
+
+export function validateResponse(resStr: string, kind: string, corrId: string): ValidationResult {
+  let res: unknown;
+  try {
+    res = JSON.parse(resStr);
+  } catch {
+    return { valid: false };
+  }
+
+  if (!isResponse(res)) return { valid: false };
+  if (res.kind !== kind) return { valid: false };
+  if (res.head.corrId !== corrId) return { valid: false };
+
+  return { valid: true, res, error: isError(res) };
+}
+
+export function buildTransport(network: Network, verbose: boolean = false): Transport {
+  return {
+    send: <K extends Request["kind"]>(
+      req: Extract<Request, { kind: K }>,
+      done: (res: Extract<Response, { kind: K }>) => void,
+    ) => {
+      if (verbose) {
+        console.log("[Network] Sending:", req);
+      }
+      network.send(JSON.stringify(req), (resStr) => {
+        const result = validateResponse(resStr, req.kind, req.head.corrId);
+
+        if (!result.valid) {
+          done({
+            kind: req.kind,
+            head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
+            data: "invalid response",
+          } as Extract<Response, { kind: K }>);
+          return;
+        }
+
+        if (verbose) {
+          console.log(
+            `[Network] Received ${result.res.head.status}:`,
+            `for request:`,
+            req,
+            `response:${result.res.data}`,
+          );
+        }
+
+        done(result.res as Extract<Response, { kind: K }>);
+      });
+    },
+    recv: (callback: (msg: Message) => void) => {
+      network.recv((msgStr: string) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(msgStr);
+        } catch {
+          console.warn("[Network] Received invalid JSON message, discarding");
+          return;
+        }
+        if (!isMessage(parsed)) {
+          console.warn("[Network] Received invalid message, discarding");
+          return;
+        }
+        callback(parsed);
+      });
+    },
+  };
+}
 // effects
 
-export function buildEffects(
-  network: Network<Request, Response, Message>,
-  codec: Codec,
-  preload: PromiseRecord[] = [],
-): Effects {
+export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] = []): Effects {
   const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
 
   return {
@@ -156,7 +229,7 @@ export function buildEffects(
         return;
       }
 
-      network.send(req, (res) => {
+      send(req, (res) => {
         assert(res.kind === "promise.create");
 
         if (!isSuccess(res)) {
@@ -192,7 +265,7 @@ export function buildEffects(
         return;
       }
 
-      network.send(req, (res) => {
+      send(req, (res) => {
         assert(res.kind === "promise.settle");
 
         if (!isSuccess(res)) {

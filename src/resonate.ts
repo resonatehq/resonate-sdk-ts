@@ -4,7 +4,6 @@ import { Core } from "./core.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import exceptions from "./exceptions.js";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
-import { DecoratedNetwork } from "./network/decorator.js";
 import { HttpNetwork } from "./network/http.js";
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
@@ -16,8 +15,6 @@ import {
   type PromiseGetReq,
   type PromiseRecord,
   type PromiseRegisterListenerReq,
-  type Request,
-  type Response,
   type TaskCreateReq,
   type TaskRecord,
 } from "./network/types.js";
@@ -25,7 +22,7 @@ import { type Options, OptionsBuilder } from "./options.js";
 import { Promises } from "./promises.js";
 import { Registry } from "./registry.js";
 import { Schedules } from "./schedules.js";
-import type { Func, ParamsWithOptions, Return } from "./types.js";
+import type { Func, ParamsWithOptions, Return, Transport } from "./types.js";
 import * as util from "./util.js";
 
 export interface ResonateHandle<T> {
@@ -61,8 +58,9 @@ export class Resonate {
   private idPrefix;
 
   private core: Core;
-  private network: Network<Request, Response, Message>;
   private codec: Codec;
+  private network: Network;
+  private transport: Transport;
   private verbose: boolean;
 
   private registry: Registry;
@@ -106,7 +104,7 @@ export class Resonate {
     token = undefined,
     verbose = false,
     encryptor = undefined,
-    transport = undefined,
+    network = undefined,
     prefix = undefined,
   }: {
     url?: string;
@@ -117,7 +115,7 @@ export class Resonate {
     token?: string;
     verbose?: boolean;
     encryptor?: Encryptor;
-    transport?: Network<string, string, string>;
+    network?: Network;
     prefix?: string;
   } = {}) {
     this.clock = new WallClock();
@@ -160,18 +158,19 @@ export class Resonate {
       }
     }
 
-    if (transport) {
-      this.network = new DecoratedNetwork(transport);
-      this.pid = pid ?? this.network.pid;
-      this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.network);
+    let hearbeat: boolean;
+    if (network) {
+      this.network = network;
+      this.transport = util.buildTransport(network, this.verbose);
+      this.pid = pid ?? network.pid;
+      hearbeat = true;
     } else {
       if (!resolvedUrl) {
-        const localNetwork = new LocalNetwork({ pid, group });
-        this.network = new DecoratedNetwork(localNetwork);
+        this.network = new LocalNetwork({ pid, group });
         this.pid = pid ?? this.network.pid;
-        this.heartbeat = new NoopHeartbeat();
+        hearbeat = false;
       } else {
-        const httpNetwork = new HttpNetwork({
+        this.network = new HttpNetwork({
           url: resolvedUrl,
           auth: resolvedAuth,
           token: resolvedToken,
@@ -181,10 +180,16 @@ export class Resonate {
           group,
           messageSource: "poll",
         });
-        this.network = new DecoratedNetwork(httpNetwork, this.verbose);
+
         this.pid = pid ?? this.network.pid;
-        this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.network);
+        hearbeat = true;
       }
+    }
+    this.transport = util.buildTransport(this.network, this.verbose);
+    if (hearbeat) {
+      this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.transport.send);
+    } else {
+      this.heartbeat = new NoopHeartbeat();
     }
 
     this.registry = new Registry();
@@ -196,7 +201,7 @@ export class Resonate {
       pid: this.pid,
       ttl: this.ttl,
       clock: this.clock,
-      network: this.network,
+      send: this.transport.send,
       codec: this.codec,
       registry: this.registry,
       heartbeat: this.heartbeat,
@@ -205,11 +210,11 @@ export class Resonate {
       verbose: this.verbose,
     });
 
-    this.promises = new Promises(this.network);
-    this.schedules = new Schedules(this.network);
+    this.promises = new Promises(this.transport.send);
+    this.schedules = new Schedules(this.transport.send);
 
     // subscribe to notify
-    this.network.subscribe("notify", this.onMessage.bind(this));
+    this.transport.recv(this.onMessage.bind(this));
     this.network.start();
     // periodically refresh subscriptions
     this.intervalId = setInterval(async () => {
@@ -749,7 +754,7 @@ export class Resonate {
         return;
       }
 
-      this.network.send(req, (res) => {
+      this.transport.send(req, (res) => {
         util.assert(res.kind === "task.create");
         if (!isSuccess(res) && !isConflict(res)) {
           reject(
@@ -794,7 +799,7 @@ export class Resonate {
         return;
       }
 
-      this.network.send(req, (res) => {
+      this.transport.send(req, (res) => {
         util.assert(res.kind === "promise.create");
         if (!isSuccess(res)) {
           reject(
@@ -816,31 +821,22 @@ export class Resonate {
   }
 
   private promiseRegisterListener(req: PromiseRegisterListenerReq): Promise<PromiseRecord> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const attempt = () => {
-        try {
-          this.network.send(req, (res) => {
-            util.assert(res.kind === "promise.register_listener");
+        this.transport.send(req, (res) => {
+          util.assert(res.kind === "promise.register_listener");
 
-            if (!isSuccess(res)) {
-              reject(
-                exceptions.SERVER_ERROR(res.data, true, {
-                  code: res.head.status,
-                  message: res.data,
-                }),
-              );
-              return;
-            }
-            try {
-              const promise = this.codec.decodePromise(res.data.promise);
-              resolve(promise);
-            } catch (e) {
-              reject(e);
-            }
-          });
-        } catch {
-          setTimeout(attempt, 5000);
-        }
+          if (!isSuccess(res)) {
+            setTimeout(attempt, 5000);
+            return;
+          }
+          try {
+            const promise = this.codec.decodePromise(res.data.promise);
+            resolve(promise);
+          } catch (e) {
+            setTimeout(attempt, 5000);
+          }
+        });
       };
       attempt();
     });
@@ -848,7 +844,7 @@ export class Resonate {
 
   private promiseGet(req: PromiseGetReq): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send(req, (res) => {
+      this.transport.send(req, (res) => {
         util.assert(res.kind === "promise.get");
         if (!isSuccess(res)) {
           reject(
@@ -887,6 +883,10 @@ export class Resonate {
   }
 
   private onMessage(msg: Message): void {
+    if (msg.kind === "execute") {
+      this.core.onMessage(msg, () => undefined);
+      return;
+    }
     util.assert(msg.kind === "notify");
 
     try {

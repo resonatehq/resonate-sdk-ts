@@ -1328,7 +1328,7 @@ export class Server {
 // LOCAL NETWORK
 // =============================================================================
 
-export class LocalNetwork implements Network<string, string, string> {
+export class LocalNetwork implements Network {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -1399,13 +1399,7 @@ export class LocalNetwork implements Network<string, string, string> {
     callback(JSON.stringify(res));
   }
 
-  recv(msgStr: string): void {
-    for (const cb of this.subscribers) {
-      cb(msgStr);
-    }
-  }
-
-  subscribe(_type: "execute" | "notify", callback: (msg: string) => void): void {
+  recv(callback: (msg: string) => void): void {
     this.subscribers.push(callback);
   }
 
@@ -1419,7 +1413,9 @@ export class LocalNetwork implements Network<string, string, string> {
   private dispatchMessages(result: { response: Response; changes: Change[] }): void {
     for (const change of result.changes) {
       if (change.kind !== "message.send") continue;
-      this.recv(JSON.stringify(change.message));
+      for (const cb of this.subscribers) {
+        cb(JSON.stringify(change.message));
+      }
     }
   }
 }

@@ -1,25 +1,17 @@
-import { DecoratedNetwork } from "./network/decorator.js";
 import { LocalNetwork } from "./network/local.js";
-import type { Network } from "./network/network.js";
-import {
-  isSuccess,
-  type Message,
-  type PromiseRecord,
-  type Request,
-  type Response,
-  type TaskRecord,
-} from "./network/types.js";
-import { assert } from "./util.js";
+import { isSuccess, type PromiseRecord, type TaskRecord } from "./network/types.js";
+import type { Send } from "./types.js";
+import { assert, buildTransport } from "./util.js";
 
 export class Promises {
-  private network: Network<Request, Response, Message>;
-  constructor(network: Network<Request, Response, Message> = new DecoratedNetwork(new LocalNetwork())) {
-    this.network = network;
+  private send: Send;
+  constructor(send: Send = buildTransport(new LocalNetwork()).send) {
+    this.send = send;
   }
 
   get(id: string): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } }, (res) => {
+      this.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } }, (res) => {
         assert(res.kind === "promise.get");
         if (!isSuccess(res)) {
           reject(res.data);
@@ -44,7 +36,7 @@ export class Promises {
     } = {},
   ): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "promise.create",
           head: { corrId: "", version: "" },
@@ -83,7 +75,7 @@ export class Promises {
     } = {},
   ): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "task.create",
           head: { corrId: "", version: "" },
@@ -122,7 +114,7 @@ export class Promises {
     } = {},
   ): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "promise.settle",
           head: { corrId: "", version: "" },
@@ -150,7 +142,7 @@ export class Promises {
     promise: PromiseRecord;
   }> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "promise.register_callback",
           head: { corrId: "", version: "" },
@@ -175,7 +167,7 @@ export class Promises {
     promise: PromiseRecord;
   }> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         { kind: "promise.register_listener", head: { corrId: "", version: "" }, data: { awaited, address } },
         (res) => {
           assert(res.kind === "promise.register_listener");
