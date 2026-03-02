@@ -1,7 +1,7 @@
 import { LocalNetwork } from "./network/local.js";
 import { isSuccess, type ScheduleRecord } from "./network/types.js";
 import type { Send } from "./types.js";
-import { assert, buildTransport } from "./util.js";
+import { buildTransport } from "./util.js";
 
 export class Schedules {
   private send: Send;
@@ -21,8 +21,6 @@ export class Schedules {
           },
         },
         (res) => {
-          assert(res.kind === "schedule.get");
-
           if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
@@ -66,8 +64,6 @@ export class Schedules {
           },
         },
         (res) => {
-          assert(res.kind === "schedule.create");
-
           if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));
@@ -90,8 +86,6 @@ export class Schedules {
           },
         },
         (res) => {
-          assert(res.kind === "schedule.delete");
-
           if (!isSuccess(res)) {
             // TODO: reject with more information
             reject(Error("not implemented"));

@@ -230,8 +230,6 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
       }
 
       send(req, (res) => {
-        assert(res.kind === "promise.create");
-
         if (!isSuccess(res)) {
           return done({
             kind: "error",
@@ -266,8 +264,6 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
       }
 
       send(req, (res) => {
-        assert(res.kind === "promise.settle");
-
         if (!isSuccess(res)) {
           return done({
             kind: "error",

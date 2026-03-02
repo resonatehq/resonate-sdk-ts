@@ -1,7 +1,7 @@
 import { LocalNetwork } from "./network/local.js";
 import { isSuccess, type PromiseRecord, type TaskRecord } from "./network/types.js";
 import type { Send } from "./types.js";
-import { assert, buildTransport } from "./util.js";
+import { buildTransport } from "./util.js";
 
 export class Promises {
   private send: Send;
@@ -12,7 +12,6 @@ export class Promises {
   get(id: string): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       this.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } }, (res) => {
-        assert(res.kind === "promise.get");
         if (!isSuccess(res)) {
           reject(res.data);
           return;
@@ -48,7 +47,6 @@ export class Promises {
           },
         },
         (res) => {
-          assert(res.kind === "promise.create");
           if (!isSuccess(res)) {
             reject(res.data);
             return;
@@ -90,8 +88,6 @@ export class Promises {
           },
         },
         (res) => {
-          assert(res.kind === "task.create");
-
           if (!isSuccess(res)) {
             reject(res.data);
             return;
@@ -125,7 +121,6 @@ export class Promises {
           },
         },
         (res) => {
-          assert(res.kind === "promise.settle");
           if (!isSuccess(res)) {
             reject(res.data);
             return;
@@ -149,7 +144,6 @@ export class Promises {
           data: { awaited, awaiter },
         },
         (res) => {
-          assert(res.kind === "promise.register_callback");
           if (!isSuccess(res)) {
             reject(res.data);
             return;
@@ -170,7 +164,6 @@ export class Promises {
       this.send(
         { kind: "promise.register_listener", head: { corrId: "", version: "" }, data: { awaited, address } },
         (res) => {
-          assert(res.kind === "promise.register_listener");
           if (!isSuccess(res)) {
             reject(res.data);
             return;

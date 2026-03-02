@@ -242,8 +242,6 @@ export class Core {
         data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
       },
       (res) => {
-        util.assert(res.kind === "task.acquire");
-
         if (!isSuccess(res)) {
           const error = exceptions.SERVER_ERROR(res.data, true, {
             code: res.head.status,

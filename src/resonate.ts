@@ -755,7 +755,6 @@ export class Resonate {
       }
 
       this.transport.send(req, (res) => {
-        util.assert(res.kind === "task.create");
         if (!isSuccess(res) && !isConflict(res)) {
           reject(
             exceptions.SERVER_ERROR(res.data, true, {
@@ -800,7 +799,6 @@ export class Resonate {
       }
 
       this.transport.send(req, (res) => {
-        util.assert(res.kind === "promise.create");
         if (!isSuccess(res)) {
           reject(
             exceptions.SERVER_ERROR(res.data, true, {
@@ -824,8 +822,6 @@ export class Resonate {
     return new Promise((resolve) => {
       const attempt = () => {
         this.transport.send(req, (res) => {
-          util.assert(res.kind === "promise.register_listener");
-
           if (!isSuccess(res)) {
             setTimeout(attempt, 5000);
             return;
@@ -845,7 +841,6 @@ export class Resonate {
   private promiseGet(req: PromiseGetReq): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
       this.transport.send(req, (res) => {
-        util.assert(res.kind === "promise.get");
         if (!isSuccess(res)) {
           reject(
             exceptions.SERVER_ERROR(res.data, true, {
