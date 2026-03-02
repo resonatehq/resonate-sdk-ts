@@ -1,21 +1,37 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { EventSource } from "eventsource";
 import * as util from "../util.js";
-import type { MessageSource, Network } from "./network.js";
-import { isMessage, type Message } from "./types.js";
+import type { Network } from "./network.js";
 
 export interface HttpNetworkConfig {
   url?: string;
   timeout?: number;
   headers?: { [key: string]: string };
+  pid?: string;
+  group?: string;
+  messageSource?: "poll" | "push";
   auth?: { username: string; password: string };
   token?: string;
 }
 
-export class HttpNetwork implements Network<string, string> {
+interface InternalMessageSource {
+  readonly pid: string;
+  readonly group: string;
+  readonly unicast: string;
+  readonly anycast: string;
+  start(): void;
+  stop(): void;
+  subscribe(callback: (msg: string) => void): void;
+  match(target: string): string;
+}
+
+export class HttpNetwork implements Network {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
+  private _messageSource?: InternalMessageSource;
+  private _pid: string;
+  private _group: string;
 
   constructor({
     url = "http://localhost:8001",
@@ -23,6 +39,9 @@ export class HttpNetwork implements Network<string, string> {
     headers = {},
     auth = undefined,
     token = undefined,
+    pid = undefined,
+    group = "default",
+    messageSource = undefined,
   }: HttpNetworkConfig) {
     this.url = url;
     this.timeout = timeout;
@@ -33,13 +52,57 @@ export class HttpNetwork implements Network<string, string> {
     } else if (auth) {
       this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
     }
+
+    this._pid = pid ?? crypto.randomUUID().replace(/-/g, "");
+    this._group = group;
+
+    if (messageSource === "poll") {
+      this._messageSource = new PollMessageSource({ url, pid, group, auth, token });
+    } else if (messageSource === "push") {
+      this._messageSource = new PushMessageSource({ pid, group });
+    }
   }
 
-  start(): void {}
-  stop(): void {}
+  get pid(): string {
+    util.assert(this._messageSource !== undefined);
+    return this._pid;
+  }
 
-  send(req: string, callback: (res: string) => void, headers: { [key: string]: string } = {}): void {
-    this.doSend(req, headers).then(
+  get group(): string {
+    return this._group;
+  }
+
+  get unicast(): string {
+    util.assert(this._messageSource !== undefined);
+    return this._messageSource.unicast;
+  }
+
+  get anycast(): string {
+    util.assert(this._messageSource !== undefined);
+    return this._messageSource.anycast;
+  }
+
+  start(): void {
+    util.assert(this._messageSource !== undefined);
+    this._messageSource.start();
+  }
+
+  stop(): void {
+    util.assert(this._messageSource !== undefined);
+    this._messageSource.stop();
+  }
+
+  recv(callback: (msg: string) => void): void {
+    this._messageSource?.subscribe(callback);
+  }
+
+  match(target: string): string {
+    util.assert(this._messageSource !== undefined);
+    return this._messageSource.match(target);
+  }
+
+  send(req: string, callback: (res: string) => void): void {
+    this.doSend(req).then(
       (res) => callback(res),
       (err) => {
         console.error(err);
@@ -48,14 +111,14 @@ export class HttpNetwork implements Network<string, string> {
     );
   }
 
-  private async doSend(req: string, headers: { [key: string]: string }): Promise<string> {
+  private async doSend(req: string): Promise<string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
       const response = await fetch(`${this.url}/api`, {
         method: "POST",
-        headers: { ...this.headers, ...headers },
+        headers: this.headers,
         body: req,
         signal: controller.signal,
       });
@@ -67,7 +130,7 @@ export class HttpNetwork implements Network<string, string> {
   }
 }
 
-export class PollMessageSource implements MessageSource {
+class PollMessageSource {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -76,10 +139,7 @@ export class PollMessageSource implements MessageSource {
   private url: string;
   private headers: { [key: string]: string };
   private eventSource: EventSource;
-  private subscriptions: {
-    execute: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
-  } = { execute: [], notify: [] };
+  private subscribers: Array<(msg: string) => void> = [];
 
   constructor({
     url = "http://localhost:8001",
@@ -124,20 +184,7 @@ export class PollMessageSource implements MessageSource {
     });
 
     this.eventSource.addEventListener("message", (event) => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(event.data);
-      } catch {
-        console.warn("[PollMessageSource] Received invalid JSON, discarding:", event.data);
-        return;
-      }
-
-      if (!isMessage(parsed)) {
-        console.warn("[PollMessageSource] Received invalid message, discarding:", parsed);
-        return;
-      }
-
-      this.recv(parsed);
+      this.recv(event.data);
     });
 
     this.eventSource.addEventListener("error", () => {
@@ -150,8 +197,8 @@ export class PollMessageSource implements MessageSource {
     return this.eventSource;
   }
 
-  recv(msg: Message): void {
-    for (const callback of this.subscriptions[msg.kind]) {
+  recv(msg: string): void {
+    for (const callback of this.subscribers) {
       callback(msg);
     }
   }
@@ -162,8 +209,8 @@ export class PollMessageSource implements MessageSource {
     this.eventSource.close();
   }
 
-  public subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void {
-    this.subscriptions[type].push(callback);
+  public subscribe(callback: (msg: string) => void): void {
+    this.subscribers.push(callback);
   }
 
   match(target: string): string {
@@ -171,7 +218,7 @@ export class PollMessageSource implements MessageSource {
   }
 }
 
-export class PushMessageSource implements MessageSource {
+class PushMessageSource {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -180,10 +227,7 @@ export class PushMessageSource implements MessageSource {
   private host: string;
   private port: number;
   private server: Server;
-  private subscriptions: {
-    execute: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
-  } = { execute: [], notify: [] };
+  private subscribers: Array<(msg: string) => void> = [];
 
   constructor({
     host = "0.0.0.0",
@@ -248,36 +292,20 @@ export class PushMessageSource implements MessageSource {
     });
 
     req.on("end", () => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(body);
-      } catch {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid JSON" }));
-        return;
-      }
-
-      if (!isMessage(parsed)) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid message" }));
-        return;
-      }
-
-      this.recv(parsed);
-
+      this.recv(body);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
     });
   }
 
-  recv(msg: Message): void {
-    for (const callback of this.subscriptions[msg.kind]) {
+  recv(msg: string): void {
+    for (const callback of this.subscribers) {
       callback(msg);
     }
   }
 
-  public subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void {
-    this.subscriptions[type].push(callback);
+  public subscribe(callback: (msg: string) => void): void {
+    this.subscribers.push(callback);
   }
 
   match(target: string): string {

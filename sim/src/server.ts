@@ -1,14 +1,13 @@
 import type { StepClock } from "../../src/clock.js";
 import { type Change, Server } from "../../src/network/local.js";
-import type { Message as NetworkMessage } from "../../src/network/types.js";
 import * as util from "../../src/util.js";
 import { type Address, anycast, Message, Process, unicast } from "./simulator.js";
 
-function extractOutgoing(changes: Change[]): Array<{ address: string; message: NetworkMessage }> {
-  const out: Array<{ address: string; message: NetworkMessage }> = [];
+function extractOutgoing(changes: Change[]): Array<{ address: string; message: string }> {
+  const out: Array<{ address: string; message: string }> = [];
   for (const c of changes) {
     if (c.kind === "message.send") {
-      out.push({ address: c.address, message: c.message });
+      out.push({ address: c.address, message: JSON.stringify(c.message) });
     }
   }
   return out;
@@ -26,14 +25,14 @@ export class ServerProcess extends Process {
     this.clock = clock;
   }
 
-  tick(tick: number, messages: Message<string>[]): Message<string | NetworkMessage>[] {
+  tick(tick: number, messages: Message<string>[]): Message<string>[] {
     this.log(tick, "[recv]", messages.length);
 
     // Advance the clock so that server-side timeouts (e.g. PENDING_RETRY_TTL = 30000) can fire.
     this.clock.time += 100;
 
-    const responses: Message<string | NetworkMessage>[] = [];
-    const outgoing: Array<{ address: string; message: NetworkMessage }> = [];
+    const responses: Message<string>[] = [];
+    const outgoing: Array<{ address: string; message: string }> = [];
 
     for (const message of messages) {
       util.assert(message.target.iaddr === this.iaddr);
@@ -66,7 +65,7 @@ export class ServerProcess extends Process {
         throw new Error(`not handled ${url}`);
       }
 
-      responses.push(new Message<NetworkMessage>(unicast(this.iaddr), target, msg.message, { requ: true }));
+      responses.push(new Message<string>(unicast(this.iaddr), target, msg.message, { requ: true }));
     }
 
     this.log(tick, "[send]", responses.length);

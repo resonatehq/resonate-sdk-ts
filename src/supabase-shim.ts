@@ -5,12 +5,12 @@ import type { Context } from "./context.js";
 import { Core } from "./core.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import { NoopHeartbeat } from "./heartbeat.js";
-import { DecoratedNetwork } from "./network/decorator.js";
 import { HttpNetwork } from "./network/http.js";
 import type { ExecuteMsg } from "./network/types.js";
 import { OptionsBuilder } from "./options.js";
 import { Registry } from "./registry.js";
 import type { Func } from "./types.js";
+import { buildTransport } from "./util.js";
 
 declare const Deno: { serve(handler: (req: Request) => Promise<Response>): any } | undefined;
 
@@ -107,20 +107,17 @@ export class Resonate {
       }
 
       const clock = new WallClock();
-      const network = new DecoratedNetwork(
-        new HttpNetwork({
-          headers: {},
-          timeout: 60 * 1000, // 60s
-          url: body.head.serverUrl,
-        }),
-        this.verbose,
-      );
+      const network = new HttpNetwork({
+        headers: {},
+        timeout: 60 * 1000, // 60s
+        url: body.head.serverUrl,
+      });
 
       const core = new Core({
         pid: `pid-${Math.random().toString(36).substring(7)}`,
         ttl: 30 * 1000,
         clock,
-        network,
+        send: buildTransport(network).send,
         codec: this.codec,
         registry: this.registry,
         heartbeat: new NoopHeartbeat(),

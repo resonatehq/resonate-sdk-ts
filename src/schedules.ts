@@ -1,19 +1,18 @@
-import { DecoratedNetwork } from "./network/decorator.js";
 import { LocalNetwork } from "./network/local.js";
-import type { Network } from "./network/network.js";
-import { isSuccess, type Request, type Response, type ScheduleRecord } from "./network/types.js";
-import { assert } from "./util.js";
+import { isSuccess, type ScheduleRecord } from "./network/types.js";
+import type { Send } from "./types.js";
+import { assert, buildTransport } from "./util.js";
 
 export class Schedules {
-  private network: Network<Request, Response>;
+  private send: Send;
 
-  constructor(network: Network<Request, Response> = new DecoratedNetwork(new LocalNetwork())) {
-    this.network = network;
+  constructor(send: Send = buildTransport(new LocalNetwork()).send) {
+    this.send = send;
   }
 
   get(id: string): Promise<ScheduleRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "schedule.get",
           head: { corrId: "", version: "" },
@@ -53,7 +52,7 @@ export class Schedules {
     } = {},
   ): Promise<ScheduleRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "schedule.create",
           head: { corrId: "", version: "" },
@@ -82,7 +81,7 @@ export class Schedules {
 
   delete(id: string): Promise<undefined> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "schedule.delete",
           head: { corrId: "", version: "" },

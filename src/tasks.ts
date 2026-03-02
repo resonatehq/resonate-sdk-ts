@@ -1,21 +1,19 @@
-import { DecoratedNetwork } from "./network/decorator.js";
 import { LocalNetwork } from "./network/local.js";
-import type { Network } from "./network/network.js";
 import {
   isSuccess,
   isTaskAcquireRes,
   isTaskFulfillRes,
   type PromiseRecord,
-  type Request,
-  type Response,
   type TaskAcquireRes,
 } from "./network/types.js";
+import type { Send } from "./types.js";
+import { buildTransport } from "./util.js";
 
 export class Tasks {
-  private network: Network<Request, Response>;
+  private send: Send;
 
-  constructor(network: Network<Request, Response> = new DecoratedNetwork(new LocalNetwork())) {
-    this.network = network;
+  constructor(send: Send = buildTransport(new LocalNetwork()).send) {
+    this.send = send;
   }
 
   acquire(
@@ -25,7 +23,7 @@ export class Tasks {
     ttl: number,
   ): Promise<Extract<TaskAcquireRes, { head: { status: 200 } }>["data"]> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "task.acquire",
           head: { corrId: "", version: "" },
@@ -50,7 +48,7 @@ export class Tasks {
 
   fulfill(id: string, version: number): Promise<PromiseRecord> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "task.fulfill",
           head: { corrId: "", version: "" },
@@ -78,7 +76,7 @@ export class Tasks {
 
   heartbeat(pid: string): Promise<undefined> {
     return new Promise((resolve, reject) => {
-      this.network.send(
+      this.send(
         {
           kind: "task.heartbeat",
           head: { corrId: "", version: "" },

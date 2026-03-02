@@ -1,14 +1,4 @@
-import type { Message } from "./types.js";
-
-export interface Network<Req, Res> {
-  start(): void;
-  stop(): void;
-
-  send(req: Req, callback: (res: Res) => void, headers?: { [key: string]: string }, retryForever?: boolean): void;
-  getMessageSource?: () => MessageSource;
-}
-
-export interface MessageSource {
+export interface Network {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -17,7 +7,7 @@ export interface MessageSource {
   start(): void;
   stop(): void;
 
-  recv(msg: Message): void;
-  subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void;
+  send(req: string, callback: (res: string) => void): void;
+  recv(callback: (msg: string) => void): void;
   match(target: string): string;
 }
