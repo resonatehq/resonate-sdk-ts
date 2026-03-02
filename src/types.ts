@@ -27,11 +27,13 @@ export type Send = <K extends Request["kind"]>(
   req: Extract<Request, { kind: K }>,
   done: (res: Extract<Response, { kind: K }>) => void,
 ) => void;
+// Recv
+export type Recv = (callback: (msg: Message) => void) => void;
 // Transport
 
 export type Transport = {
   send: Send;
-  recv(callback: (msg: Message) => void): void;
+  recv: Recv;
 };
 
 // Effects
