@@ -161,7 +161,6 @@ export class Resonate {
     let hearbeat: boolean;
     if (network) {
       this.network = network;
-      this.transport = util.buildTransport(network, this.verbose);
       this.pid = pid ?? network.pid;
       hearbeat = true;
     } else {
