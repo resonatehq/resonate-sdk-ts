@@ -1,5 +1,4 @@
 import type { Codec } from "./codec.js";
-import type { Data } from "./computation.js";
 import exceptions from "./exceptions.js";
 import type { Network } from "./network/network.js";
 import {
@@ -46,32 +45,6 @@ export function isGeneratorFunction(func: Function): boolean {
 }
 
 // guards
-
-export function isValidData(data: unknown): data is Data {
-  if (data === null || typeof data !== "object") return false;
-
-  const d = data as any;
-
-  // func must be a string
-  if (typeof d.func !== "string") return false;
-
-  // args must be an array
-  if (!Array.isArray(d.args)) return false;
-
-  // retry (if present) must be an object with string `type` and any `data`
-  if (d.retry !== undefined) {
-    if (d.retry === null || typeof d.retry !== "object" || typeof d.retry.type !== "string" || !("data" in d.retry)) {
-      return false;
-    }
-  }
-
-  // version (if present) must be a number
-  if (d.version !== undefined && typeof d.version !== "number") {
-    return false;
-  }
-
-  return true;
-}
 
 export function isOptions(obj: unknown): obj is Options {
   return typeof obj === "object" && obj !== null && RESONATE_OPTIONS in obj;
