@@ -172,7 +172,7 @@ export class WorkerProcess extends Process {
   }
 
   tick(tick: number, messages: Message<string>[]): Message<string>[] {
-    this.log(tick, "[recv]", messages.length);
+    this.log(tick, "[recv]", messages);
 
     this.network.time(this.clock.time);
     for (const message of messages) {

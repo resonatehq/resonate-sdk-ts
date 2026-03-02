@@ -26,7 +26,7 @@ export class ServerProcess extends Process {
   }
 
   tick(tick: number, messages: Message<string>[]): Message<string>[] {
-    this.log(tick, "[recv]", messages.length);
+    this.log(tick, "[recv]", messages);
 
     // Advance the clock so that server-side timeouts (e.g. PENDING_RETRY_TTL = 30000) can fire.
     this.clock.time += 100;
