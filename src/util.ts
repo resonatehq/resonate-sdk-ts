@@ -110,21 +110,6 @@ export function once<T extends () => any>(fn: T): T {
   }) as T;
 }
 
-export function validateResponse(resStr: string, kind: string, corrId: string): Response | null {
-  let res: unknown;
-  try {
-    res = JSON.parse(resStr);
-  } catch {
-    return null;
-  }
-
-  if (!isResponse(res)) return null;
-  if (res.kind !== kind) return null;
-  if (res.head.corrId !== corrId) return null;
-
-  return res;
-}
-
 export function buildTransport(network: Network, verbose: boolean = false): Transport {
   return {
     send: <K extends Request["kind"]>(
@@ -134,16 +119,22 @@ export function buildTransport(network: Network, verbose: boolean = false): Tran
       if (verbose) {
         console.log("[Network] Sending:", req);
       }
-      network.send(JSON.stringify(req), (resStr) => {
-        const res = validateResponse(resStr, req.kind, req.head.corrId);
+      const errorRes = {
+        kind: req.kind,
+        head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
+        data: "invalid response",
+      } as Extract<Response, { kind: K }>;
 
-        if (!res) {
-          done({
-            kind: req.kind,
-            head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
-            data: "invalid response",
-          } as Extract<Response, { kind: K }>);
-          return;
+      network.send(JSON.stringify(req), (resStr) => {
+        let res: unknown;
+        try {
+          res = JSON.parse(resStr);
+        } catch {
+          return done(errorRes);
+        }
+
+        if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
+          return done(errorRes);
         }
 
         if (verbose) {
