@@ -1,5 +1,7 @@
 import { CronExpressionParser } from "cron-parser";
-import type { MessageSource, Network } from "./network.js";
+import { assert } from "../util.js";
+import type { Network } from "./network.js";
+import { isRequest, isResponse } from "./types.js";
 import type {
   DebugResetRes,
   DebugSnapRes,
@@ -14,12 +16,12 @@ import type {
   PromiseGetReq,
   PromiseGetRes,
   PromiseRecord,
-  PromiseRegisterReq,
-  PromiseRegisterRes,
+  PromiseRegisterCallbackReq,
+  PromiseRegisterCallbackRes,
+  PromiseRegisterListenerReq,
+  PromiseRegisterListenerRes,
   PromiseSettleReq,
   PromiseSettleRes,
-  PromiseSubscribeReq,
-  PromiseSubscribeRes,
   Request,
   Response,
   ScheduleCreateReq,
@@ -164,15 +166,15 @@ export class Server {
         result = this.promiseSettle(now, req);
         break;
       }
-      case "promise.register": {
+      case "promise.register_callback": {
         changes.push(...this.tryAutoTimeout(now, req.data.awaited));
         changes.push(...this.tryAutoTimeout(now, req.data.awaiter));
-        result = this.promiseRegister(now, req);
+        result = this.promiseRegisterCallback(now, req);
         break;
       }
-      case "promise.subscribe": {
+      case "promise.register_listener": {
         changes.push(...this.tryAutoTimeout(now, req.data.awaited));
-        result = this.promiseSubscribe(now, req);
+        result = this.promiseRegisterListener(now, req);
         break;
       }
       case "task.get": {
@@ -250,6 +252,18 @@ export class Server {
         result = this.scheduleDelete(req);
         break;
       }
+      case "promise.search": {
+        result = { response: this.response(req.kind, 501, "not implemented"), changes: [] };
+        break;
+      }
+      case "schedule.search": {
+        result = { response: this.response(req.kind, 501, "not implemented"), changes: [] };
+        break;
+      }
+      case "task.search": {
+        result = { response: this.response(req.kind, 501, "not implemented"), changes: [] };
+        break;
+      }
     }
 
     changes.push(...result.changes);
@@ -258,7 +272,7 @@ export class Server {
 
   private validate(req: Request): string | null {
     switch (req.kind) {
-      case "promise.register":
+      case "promise.register_callback":
         if (req.data.awaited === req.data.awaiter) {
           return "Awaited and awaiter must be different";
         }
@@ -404,20 +418,23 @@ export class Server {
     return { response: this.response("promise.settle", 200, { promise: this.toPromiseRecord(settled) }), changes };
   }
 
-  private promiseRegister(now: number, req: PromiseRegisterReq): { response: PromiseRegisterRes; changes: Change[] } {
+  private promiseRegisterCallback(
+    now: number,
+    req: PromiseRegisterCallbackReq,
+  ): { response: PromiseRegisterCallbackRes; changes: Change[] } {
     const awaitedPromise = this.promises.get(req.data.awaited);
     if (!awaitedPromise) {
-      return { response: this.response("promise.register", 404, "Awaited promise not found"), changes: [] };
+      return { response: this.response("promise.register_callback", 404, "Awaited promise not found"), changes: [] };
     }
 
     const awaiterPromise = this.promises.get(req.data.awaiter);
     if (!awaiterPromise) {
-      return { response: this.response("promise.register", 422, "Awaiter promise not found"), changes: [] };
+      return { response: this.response("promise.register_callback", 422, "Awaiter promise not found"), changes: [] };
     }
 
     // HasAddress check: awaiter must have a resonate:target tag
     if (!awaiterPromise.tags["resonate:target"]) {
-      return { response: this.response("promise.register", 422, "Awaiter has no address"), changes: [] };
+      return { response: this.response("promise.register_callback", 422, "Awaiter has no address"), changes: [] };
     }
 
     const changes: Change[] = [];
@@ -429,18 +446,18 @@ export class Server {
     }
 
     return {
-      response: this.response("promise.register", 200, { promise: this.toPromiseRecord(awaitedPromise) }),
+      response: this.response("promise.register_callback", 200, { promise: this.toPromiseRecord(awaitedPromise) }),
       changes,
     };
   }
 
-  private promiseSubscribe(
+  private promiseRegisterListener(
     now: number,
-    req: PromiseSubscribeReq,
-  ): { response: PromiseSubscribeRes; changes: Change[] } {
+    req: PromiseRegisterListenerReq,
+  ): { response: PromiseRegisterListenerRes; changes: Change[] } {
     const promise = this.promises.get(req.data.awaited);
     if (!promise) {
-      return { response: this.response("promise.subscribe", 404, "Promise not found"), changes: [] };
+      return { response: this.response("promise.register_listener", 404, "Promise not found"), changes: [] };
     }
 
     const changes: Change[] = [];
@@ -451,7 +468,10 @@ export class Server {
       changes.push(this.setPromise(promise));
     }
 
-    return { response: this.response("promise.subscribe", 200, { promise: this.toPromiseRecord(promise) }), changes };
+    return {
+      response: this.response("promise.register_listener", 200, { promise: this.toPromiseRecord(promise) }),
+      changes,
+    };
   }
 
   // ===========================================================================
@@ -536,6 +556,7 @@ export class Server {
       response: this.response("task.create", 200, {
         task: this.toTaskRecord(task),
         promise: this.toPromiseRecord(promise),
+        preload: [],
       }),
       changes,
     };
@@ -657,7 +678,7 @@ export class Server {
       const [next] = task.pending;
       task.pending.delete(next);
       changes.push(this.setTask({ ...task, current: next }));
-      return { response: this.response("task.suspend", 300, {}), changes };
+      return { response: this.response("task.suspend", 300, { preload: [] }), changes };
     }
 
     // Register this task as an awaiter on each awaited promise.
@@ -680,7 +701,7 @@ export class Server {
     }
 
     if (triggers.length > 0) {
-      return { response: this.response("task.suspend", 300, {}), changes };
+      return { response: this.response("task.suspend", 300, { preload: [] }), changes };
     }
 
     // Actually suspend
@@ -1307,7 +1328,7 @@ export class Server {
 // LOCAL NETWORK
 // =============================================================================
 
-export class LocalNetwork implements Network, MessageSource {
+export class LocalNetwork implements Network {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -1315,10 +1336,7 @@ export class LocalNetwork implements Network, MessageSource {
 
   private started: boolean;
   private server: Server;
-  private subscriptions: {
-    execute: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
-  } = { execute: [], notify: [] };
+  private subscribers: Array<(msg: string) => void> = [];
   private tickInterval?: ReturnType<typeof setInterval>;
 
   constructor({
@@ -1356,46 +1374,33 @@ export class LocalNetwork implements Network, MessageSource {
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
     }
+    this.subscribers = [];
     this.started = false;
   }
 
-  send<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
-    _headers?: { [key: string]: string },
-    _retryForever?: boolean,
-  ): void {
-    const { corrId, version } = req.head;
+  send(req: string, callback: (res: string) => void): void {
+    const reqData = JSON.parse(req);
+    assert(isRequest(reqData));
+    const { corrId, version } = reqData.head;
 
     const now = Date.now();
-    const result = this.server.apply(now, req);
+    const result = this.server.apply(now, reqData);
     const response = result.response;
 
     const res = {
       kind: response.kind,
       head: { corrId, status: response.head.status, version },
       data: response.data,
-    } as Extract<Response, { kind: K }>;
+    };
+    assert(isResponse(res));
 
-    this.dispatchMessages(result);
+    setTimeout(() => this.dispatchMessages(result), 0);
 
-    callback(res);
+    callback(JSON.stringify(res));
   }
 
-  getMessageSource(): MessageSource {
-    return this;
-  }
-
-  // -- MessageSource ---------------------------------------------------------
-
-  recv(msg: Message): void {
-    for (const cb of this.subscriptions[msg.kind]) {
-      cb(msg);
-    }
-  }
-
-  subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void {
-    this.subscriptions[type].push(callback);
+  recv(callback: (msg: string) => void): void {
+    this.subscribers.push(callback);
   }
 
   // Arrow function to preserve `this` when extracted as a bare reference.
@@ -1406,9 +1411,11 @@ export class LocalNetwork implements Network, MessageSource {
   // -- internal: message dispatch --------------------------------------------
 
   private dispatchMessages(result: { response: Response; changes: Change[] }): void {
-    for (const msg of result.changes) {
-      if (msg.kind !== "message.send") continue;
-      this.recv(msg.message);
+    for (const change of result.changes) {
+      if (change.kind !== "message.send") continue;
+      for (const cb of this.subscribers) {
+        cb(JSON.stringify(change.message));
+      }
     }
   }
 }

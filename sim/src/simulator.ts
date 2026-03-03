@@ -1,3 +1,5 @@
+import type { Request } from "../../src/network/types.js";
+
 declare const document: any;
 
 export class Random {
@@ -73,7 +75,7 @@ export class Process {
   }
 
   log(tick: number, ...args: any[]): void {
-    const message = `[tick: ${tick}] [proc: ${this.iaddr}] ${args.map(JSON.stringify as any)}`;
+    const message = `[tick: ${tick}] [proc: ${this.iaddr}] ${args.map((a) => JSON.stringify(a))}`;
 
     // Always log to console
     console.log(message);
@@ -100,8 +102,8 @@ export class Simulator {
   public step = 0;
   private init = false;
   private process: Process[] = [];
-  private network: Message<any>[] = [];
-  public outbox: Message<any>[] = [];
+  private network: Message<string>[] = [];
+  public outbox: Message<string>[] = [];
   public deliveryOptions: Required<DeliveryOptions>;
   private scheduledRepeat: { interval: number; fn: () => void }[] = [];
   private scheduledDelay: { runAt: number; fn: () => void }[] = [];
@@ -113,10 +115,6 @@ export class Simulator {
     process.env.QUEUE_MICROTASK_EVERY_N = Number.MAX_SAFE_INTEGER.toString();
     this.prng = prng;
     this.deliveryOptions = { dropProb, randomDelay, duplProb, deactivateProb, activateProb };
-  }
-
-  addMessage(message: Message<any>): void {
-    this.network.push(message);
   }
 
   assertAlways(cond: boolean, msg: string): void {
@@ -139,8 +137,8 @@ export class Simulator {
     return !this.init || this.network.length > 0;
   }
 
-  send(message: Message<any>): void {
-    this.network.push(message);
+  send(message: Message<Request>): void {
+    this.network.push(new Message(message.source, message.target, JSON.stringify(message.data), message.head));
   }
 
   tick(): void {
@@ -165,8 +163,8 @@ export class Simulator {
       }
     }
 
-    const retained: Message<any>[] = [];
-    const consumed: Message<any>[] = [];
+    const retained: Message<string>[] = [];
+    const consumed: Message<string>[] = [];
 
     for (const message of this.network) {
       // Drop?
@@ -186,7 +184,7 @@ export class Simulator {
       }
     }
 
-    const inboxes: Record<string, Message<any>[]> = {};
+    const inboxes: Record<string, Message<string>[]> = {};
     for (const process of this.process) {
       inboxes[process.iaddr] = [];
     }
@@ -210,7 +208,7 @@ export class Simulator {
         throw new Error("unknown target.kind");
       }
     }
-    const newMessages: Message<any>[] = [];
+    const newMessages: Message<string>[] = [];
     for (const process of this.process) {
       if (!process.active) {
         continue;

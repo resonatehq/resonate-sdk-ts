@@ -10,6 +10,7 @@ import type { ExecuteMsg } from "./network/types.js";
 import { OptionsBuilder } from "./options.js";
 import { Registry } from "./registry.js";
 import type { Func } from "./types.js";
+import { buildTransport } from "./util.js";
 
 declare const Deno: { serve(handler: (req: Request) => Promise<Response>): any } | undefined;
 
@@ -110,14 +111,13 @@ export class Resonate {
         headers: {},
         timeout: 60 * 1000, // 60s
         url: body.head.serverUrl,
-        verbose: this.verbose,
       });
 
       const core = new Core({
         pid: `pid-${Math.random().toString(36).substring(7)}`,
         ttl: 30 * 1000,
         clock,
-        network,
+        send: buildTransport(network, this.verbose).send,
         codec: this.codec,
         registry: this.registry,
         heartbeat: new NoopHeartbeat(),

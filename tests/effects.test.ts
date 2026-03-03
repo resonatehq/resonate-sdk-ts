@@ -1,24 +1,18 @@
 import { Codec } from "../src/codec.js";
 import type { ResonateError } from "../src/exceptions.js";
-import type { Network } from "../src/network/network.js";
-import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
-import type { Result } from "../src/types.js";
+import type { PromiseRecord, Request, Response } from "../src/network/types.js";
+import type { Result, Send } from "../src/types.js";
 import { buildEffects } from "../src/util.js";
 
-// A simple in-memory network that handles promise.create and promise.settle.
-class StubNetwork implements Network {
+// A simple in-memory stub that handles promise.create and promise.settle.
+class StubNetwork {
   private promises = new Map<string, PromiseRecord>();
   sendCount = 0;
 
-  start(): void {}
-  stop(): void {}
-  subscribe(_t: string, _c: (msg: Message) => void): void {}
-  recv(_msg: Message): void {}
-
-  send<K extends Request["kind"]>(
+  send: Send = <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
     callback: (res: Extract<Response, { kind: K }>) => void,
-  ): void {
+  ): void => {
     this.sendCount++;
 
     switch (req.kind) {
@@ -60,7 +54,7 @@ class StubNetwork implements Network {
       default:
         throw new Error(`Unexpected request kind: ${req.kind}`);
     }
-  }
+  };
 }
 
 const codec = new Codec();
@@ -98,7 +92,7 @@ describe("Effects", () => {
     test("returns cached promise from preload without hitting network", async () => {
       const network = new StubNetwork();
       const preloaded = pendingPromise("p1");
-      const effects = buildEffects(network, codec, [preloaded]);
+      const effects = buildEffects(network.send, codec, [preloaded]);
 
       const res = await collect((done) =>
         effects.promiseCreate(
@@ -113,7 +107,7 @@ describe("Effects", () => {
 
     test("hits network when promise is not in preload", async () => {
       const network = new StubNetwork();
-      const effects = buildEffects(network, codec);
+      const effects = buildEffects(network.send, codec);
 
       const res = await collect((done) =>
         effects.promiseCreate(
@@ -132,7 +126,7 @@ describe("Effects", () => {
 
     test("adds created promise to cache so second create is cached", async () => {
       const network = new StubNetwork();
-      const effects = buildEffects(network, codec);
+      const effects = buildEffects(network.send, codec);
 
       // first call hits network
       await collect((done) =>
@@ -164,7 +158,7 @@ describe("Effects", () => {
     test("returns cached promise when already settled in preload", async () => {
       const network = new StubNetwork();
       const preloaded = resolvedPromise("s1", 42);
-      const effects = buildEffects(network, codec, [preloaded]);
+      const effects = buildEffects(network.send, codec, [preloaded]);
 
       const res = await collect((done) =>
         effects.promiseSettle(
@@ -183,7 +177,7 @@ describe("Effects", () => {
     test("hits network when preloaded promise is still pending", async () => {
       const network = new StubNetwork();
       const preloaded = pendingPromise("s2");
-      const effects = buildEffects(network, codec, [preloaded]);
+      const effects = buildEffects(network.send, codec, [preloaded]);
 
       // seed the stub network so settle can find the promise
       network.send(
@@ -209,7 +203,7 @@ describe("Effects", () => {
 
     test("updates cache after settling so second settle is cached", async () => {
       const network = new StubNetwork();
-      const effects = buildEffects(network, codec);
+      const effects = buildEffects(network.send, codec);
 
       // create via network
       await collect((done) =>
@@ -247,7 +241,7 @@ describe("Effects", () => {
 
     test("hits network when promise is not in cache at all", async () => {
       const network = new StubNetwork();
-      const effects = buildEffects(network, codec);
+      const effects = buildEffects(network.send, codec);
 
       // seed the promise directly in the stub so settle doesn't crash
       network.send(
@@ -276,7 +270,7 @@ describe("Effects", () => {
     test("preloaded pending promise has decoded param", async () => {
       const network = new StubNetwork();
       const preloaded = pendingPromise("v1");
-      const effects = buildEffects(network, codec, [preloaded]);
+      const effects = buildEffects(network.send, codec, [preloaded]);
 
       const res = await collect((done) =>
         effects.promiseCreate(
@@ -296,7 +290,7 @@ describe("Effects", () => {
     test("preloaded resolved promise has decoded value", async () => {
       const network = new StubNetwork();
       const preloaded = resolvedPromise("v2", { answer: 42 });
-      const effects = buildEffects(network, codec, [preloaded]);
+      const effects = buildEffects(network.send, codec, [preloaded]);
 
       const res = await collect((done) =>
         effects.promiseSettle(
@@ -315,7 +309,7 @@ describe("Effects", () => {
 
     test("promise created via network has correct decoded values in cache", async () => {
       const network = new StubNetwork();
-      const effects = buildEffects(network, codec);
+      const effects = buildEffects(network.send, codec);
 
       const paramData = { func: "myFunc", args: [1, "two"] };
 
@@ -349,7 +343,7 @@ describe("Effects", () => {
 
     test("promise settled via network has correct decoded values in cache", async () => {
       const network = new StubNetwork();
-      const effects = buildEffects(network, codec);
+      const effects = buildEffects(network.send, codec);
 
       // create promise via network
       await collect((done) =>
@@ -394,7 +388,7 @@ describe("Effects", () => {
       const p1 = pendingPromise("m1");
       const p2 = resolvedPromise("m2", "hello");
       const p3 = resolvedPromise("m3", [1, 2, 3]);
-      const effects = buildEffects(network, codec, [p1, p2, p3]);
+      const effects = buildEffects(network.send, codec, [p1, p2, p3]);
 
       const res1 = await collect((done) =>
         effects.promiseCreate(

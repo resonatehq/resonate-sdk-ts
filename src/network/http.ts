@@ -1,29 +1,26 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { EventSource } from "eventsource";
-import exceptions, { ResonateError } from "../exceptions.js";
 import * as util from "../util.js";
-import type { MessageSource, Network } from "./network.js";
-import type { Message, Request, Response } from "./types.js";
+import type { Network } from "./network.js";
 
 export interface HttpNetworkConfig {
   url?: string;
   timeout?: number;
   headers?: { [key: string]: string };
+  pid?: string;
+  group?: string;
+  messageSource?: "poll" | "push";
   auth?: { username: string; password: string };
   token?: string;
-  verbose?: boolean;
 }
-
-export type RetryPolicy = {
-  retries?: number;
-  delay?: number;
-};
 
 export class HttpNetwork implements Network {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
-  private verbose: boolean;
+  private _messageSource?: PollMessageSource | PushMessageSource;
+  private _pid: string;
+  private _group: string;
 
   constructor({
     url = "http://localhost:8001",
@@ -31,11 +28,12 @@ export class HttpNetwork implements Network {
     headers = {},
     auth = undefined,
     token = undefined,
-    verbose = true,
+    pid = undefined,
+    group = "default",
+    messageSource = undefined,
   }: HttpNetworkConfig) {
     this.url = url;
     this.timeout = timeout;
-    this.verbose = verbose;
 
     this.headers = { "Content-Type": "application/json", ...headers };
     if (token) {
@@ -43,24 +41,58 @@ export class HttpNetwork implements Network {
     } else if (auth) {
       this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
     }
+
+    this._pid = pid ?? crypto.randomUUID().replace(/-/g, "");
+    this._group = group;
+
+    if (messageSource === "poll") {
+      this._messageSource = new PollMessageSource({ url, pid, group, auth, token });
+    } else if (messageSource === "push") {
+      this._messageSource = new PushMessageSource({ pid, group });
+    }
   }
 
-  start(): void {}
-  stop(): void {}
+  get pid(): string {
+    util.assert(this._messageSource !== undefined);
+    return this._pid;
+  }
 
-  send<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
-    headers: { [key: string]: string } = {},
-    retryForever = false,
-  ): void {
-    const retryPolicy = retryForever ? { retries: Number.MAX_SAFE_INTEGER, delay: 10000 } : { retries: 0 };
+  get group(): string {
+    return this._group;
+  }
 
-    this.doSend(req, headers, retryPolicy).then(
-      (res) => {
-        util.assert(res.kind === req.kind, "res kind must match req kind");
-        callback(res);
-      },
+  get unicast(): string {
+    util.assert(this._messageSource !== undefined);
+    return this._messageSource.unicast;
+  }
+
+  get anycast(): string {
+    util.assert(this._messageSource !== undefined);
+    return this._messageSource.anycast;
+  }
+
+  start(): void {
+    util.assert(this._messageSource !== undefined);
+    this._messageSource.start();
+  }
+
+  stop(): void {
+    util.assert(this._messageSource !== undefined);
+    this._messageSource.stop();
+  }
+
+  recv(callback: (msg: string) => void): void {
+    this._messageSource?.subscribe(callback);
+  }
+
+  match(target: string): string {
+    util.assert(this._messageSource !== undefined);
+    return this._messageSource.match(target);
+  }
+
+  send(req: string, callback: (res: string) => void): void {
+    this.doSend(req).then(
+      (res) => callback(res),
       (err) => {
         console.error(err);
         util.assert(false, "something went wrong");
@@ -68,76 +100,26 @@ export class HttpNetwork implements Network {
     );
   }
 
-  private async doSend<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    headers: { [key: string]: string },
-    { retries = 0, delay = 1000 }: RetryPolicy = {},
-  ): Promise<Extract<Response, { kind: K }>> {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+  private async doSend(req: string): Promise<string> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      try {
-        if (this.verbose) {
-          console.log(`[HttpNetwork] Sending ${req.kind}:`, JSON.stringify(req, null, 2));
-        }
+    try {
+      const response = await fetch(`${this.url}/api`, {
+        method: "POST",
+        headers: this.headers,
+        body: req,
+        signal: controller.signal,
+      });
 
-        const response = await fetch(`${this.url}/api`, {
-          method: "POST",
-          headers: { ...this.headers, ...headers },
-          body: JSON.stringify(req),
-          signal: controller.signal,
-        });
-
-        const body = await response.json();
-        if (this.verbose) {
-          console.log(
-            `[HttpNetwork] Received ${response.status}:`,
-            `for request:`,
-            req,
-            `response.ok:${response.ok}`,
-            body,
-          );
-        }
-
-        if (response.status === 200 || response.status === 300) {
-          return body as Extract<Response, { kind: K }>;
-        } else {
-          const err = body as any;
-          throw exceptions.SERVER_ERROR(
-            err?.message ?? response.statusText,
-            response.status >= 500 && response.status < 600,
-            err,
-          );
-        }
-      } catch (err) {
-        console.log(err);
-        if (err instanceof ResonateError && !err.retriable) {
-          throw err;
-        }
-        if (attempt >= retries) {
-          if (err instanceof ResonateError) {
-            throw err;
-          }
-          throw exceptions.SERVER_ERROR(String(err));
-        }
-
-        console.warn(`Networking. Cannot connect to [${this.url}]. Retrying in ${delay / 1000}s.`);
-        if (this.verbose) {
-          console.warn(err);
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      } finally {
-        clearTimeout(timeoutId);
-      }
+      return await response.text();
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    throw new Error("Fetch error");
   }
 }
 
-export class PollMessageSource implements MessageSource {
+class PollMessageSource {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -146,10 +128,7 @@ export class PollMessageSource implements MessageSource {
   private url: string;
   private headers: { [key: string]: string };
   private eventSource: EventSource;
-  private subscriptions: {
-    execute: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
-  } = { execute: [], notify: [] };
+  private subscribers: Array<(msg: string) => void> = [];
 
   constructor({
     url = "http://localhost:8001",
@@ -194,16 +173,7 @@ export class PollMessageSource implements MessageSource {
     });
 
     this.eventSource.addEventListener("message", (event) => {
-      let msg: Message;
-
-      try {
-        msg = JSON.parse(event.data);
-      } catch (e) {
-        console.warn("Networking. Received invalid message. Will continue.");
-        return;
-      }
-
-      this.recv(msg);
+      this.recv(event.data);
     });
 
     this.eventSource.addEventListener("error", () => {
@@ -216,8 +186,8 @@ export class PollMessageSource implements MessageSource {
     return this.eventSource;
   }
 
-  recv(msg: Message): void {
-    for (const callback of this.subscriptions[msg.kind]) {
+  recv(msg: string): void {
+    for (const callback of this.subscribers) {
       callback(msg);
     }
   }
@@ -228,8 +198,8 @@ export class PollMessageSource implements MessageSource {
     this.eventSource.close();
   }
 
-  public subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void {
-    this.subscriptions[type].push(callback);
+  public subscribe(callback: (msg: string) => void): void {
+    this.subscribers.push(callback);
   }
 
   match(target: string): string {
@@ -237,7 +207,7 @@ export class PollMessageSource implements MessageSource {
   }
 }
 
-export class PushMessageSource implements MessageSource {
+class PushMessageSource {
   readonly pid: string;
   readonly group: string;
   readonly unicast: string;
@@ -246,10 +216,7 @@ export class PushMessageSource implements MessageSource {
   private host: string;
   private port: number;
   private server: Server;
-  private subscriptions: {
-    execute: Array<(msg: Message) => void>;
-    notify: Array<(msg: Message) => void>;
-  } = { execute: [], notify: [] };
+  private subscribers: Array<(msg: string) => void> = [];
 
   constructor({
     host = "0.0.0.0",
@@ -314,36 +281,20 @@ export class PushMessageSource implements MessageSource {
     });
 
     req.on("end", () => {
-      let msg: Message;
-      try {
-        msg = JSON.parse(body);
-      } catch {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid JSON" }));
-        return;
-      }
-
-      if (!msg.kind || !this.subscriptions[msg.kind]) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid message kind" }));
-        return;
-      }
-
-      this.recv(msg);
-
+      this.recv(body);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
     });
   }
 
-  recv(msg: Message): void {
-    for (const callback of this.subscriptions[msg.kind]) {
+  recv(msg: string): void {
+    for (const callback of this.subscribers) {
       callback(msg);
     }
   }
 
-  public subscribe(type: "execute" | "notify", callback: (msg: Message) => void): void {
-    this.subscriptions[type].push(callback);
+  public subscribe(callback: (msg: string) => void): void {
+    this.subscribers.push(callback);
   }
 
   match(target: string): string {
