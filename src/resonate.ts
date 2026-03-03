@@ -212,7 +212,7 @@ export class Resonate {
     this.promises = new Promises(this.transport.send);
     this.schedules = new Schedules(this.transport.send);
 
-    // subscribe to notify
+    // subscribe to network
     this.transport.recv(this.onMessage.bind(this));
     this.network.start();
     // periodically refresh subscriptions

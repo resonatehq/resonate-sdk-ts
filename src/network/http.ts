@@ -14,22 +14,11 @@ export interface HttpNetworkConfig {
   token?: string;
 }
 
-interface InternalMessageSource {
-  readonly pid: string;
-  readonly group: string;
-  readonly unicast: string;
-  readonly anycast: string;
-  start(): void;
-  stop(): void;
-  subscribe(callback: (msg: string) => void): void;
-  match(target: string): string;
-}
-
 export class HttpNetwork implements Network {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
-  private _messageSource?: InternalMessageSource;
+  private _messageSource?: PollMessageSource | PushMessageSource;
   private _pid: string;
   private _group: string;
 

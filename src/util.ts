@@ -2,7 +2,6 @@ import type { Codec } from "./codec.js";
 import exceptions from "./exceptions.js";
 import type { Network } from "./network/network.js";
 import {
-  isError,
   isMessage,
   isResponse,
   isSuccess,
@@ -111,21 +110,19 @@ export function once<T extends () => any>(fn: T): T {
   }) as T;
 }
 
-export type ValidationResult = { valid: true; res: Response; error: boolean } | { valid: false };
-
-export function validateResponse(resStr: string, kind: string, corrId: string): ValidationResult {
+export function validateResponse(resStr: string, kind: string, corrId: string): Response | null {
   let res: unknown;
   try {
     res = JSON.parse(resStr);
   } catch {
-    return { valid: false };
+    return null;
   }
 
-  if (!isResponse(res)) return { valid: false };
-  if (res.kind !== kind) return { valid: false };
-  if (res.head.corrId !== corrId) return { valid: false };
+  if (!isResponse(res)) return null;
+  if (res.kind !== kind) return null;
+  if (res.head.corrId !== corrId) return null;
 
-  return { valid: true, res, error: isError(res) };
+  return res;
 }
 
 export function buildTransport(network: Network, verbose: boolean = false): Transport {
@@ -138,9 +135,9 @@ export function buildTransport(network: Network, verbose: boolean = false): Tran
         console.log("[Network] Sending:", req);
       }
       network.send(JSON.stringify(req), (resStr) => {
-        const result = validateResponse(resStr, req.kind, req.head.corrId);
+        const res = validateResponse(resStr, req.kind, req.head.corrId);
 
-        if (!result.valid) {
+        if (!res) {
           done({
             kind: req.kind,
             head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
@@ -150,15 +147,10 @@ export function buildTransport(network: Network, verbose: boolean = false): Tran
         }
 
         if (verbose) {
-          console.log(
-            `[Network] Received ${result.res.head.status}:`,
-            `for request:`,
-            req,
-            `response:${result.res.data}`,
-          );
+          console.log(`[Network] Received ${res.head.status}:`, `for request:`, req, `response:${res.data}`);
         }
 
-        done(result.res as Extract<Response, { kind: K }>);
+        done(res as Extract<Response, { kind: K }>);
       });
     },
     recv: (callback: (msg: Message) => void) => {

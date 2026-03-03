@@ -4,7 +4,6 @@ import { Computation, type Done, type Status } from "./computation.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
 import {
-  isMessage,
   isRedirect,
   isSuccess,
   type Message,
@@ -220,12 +219,7 @@ export class Core {
   }
 
   public onMessage(msg: Message, cb: (res: Result<Status, undefined>) => void): void {
-    if (!isMessage(msg) || msg.kind !== "execute") {
-      const error = exceptions.UNEXPECTED_MSG("execute message", msg);
-      error.log(this.verbose);
-      cb({ kind: "error", error: undefined });
-      return;
-    }
+    util.assert(msg.kind === "execute");
 
     const task = msg.data.task;
     this.send(
