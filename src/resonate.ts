@@ -392,8 +392,19 @@ export class Resonate {
     } = {},
   ): ResonateFunc<F> {
     const { version = 1 } = (typeof funcOrOptions === "object" ? funcOrOptions : maybeOptions) ?? {};
-    const func = typeof nameOrFunc === "function" ? nameOrFunc : (funcOrOptions as F);
-    const name = typeof nameOrFunc === "string" ? nameOrFunc : func.name;
+
+    let func: F;
+    let name: string;
+    if (typeof nameOrFunc === "function") {
+      func = nameOrFunc;
+      name = func.name;
+    } else {
+      if (typeof funcOrOptions !== "function") {
+        throw exceptions.REGISTRY_FUNCTION_REQUIRED(nameOrFunc);
+      }
+      func = funcOrOptions;
+      name = nameOrFunc;
+    }
 
     this.registry.add(func, name, version);
 
@@ -616,14 +627,15 @@ export class Resonate {
     const [args, opts] = this.getArgsAndOpts(argsWithOpts);
     const registered = this.registry.get(funcOrName, opts.version);
 
-    // function must be registered if function pointer is provided
-    if (typeof funcOrName === "function" && !registered) {
-      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
+    if (!registered) {
+      if (typeof funcOrName === "function") {
+        throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
+      }
     }
 
     id = `${this.idPrefix}${id}`;
 
-    const func = registered ? registered.name : (funcOrName as string);
+    const func = registered ? registered.name : funcOrName;
     const version = registered ? registered.version : opts.version || 1;
     const promise = await this.promiseCreate({
       kind: "promise.create",
@@ -670,14 +682,15 @@ export class Resonate {
     const [args, opts] = this.getArgsAndOpts(argsWithOpts);
     const registered = this.registry.get(funcOrName, opts.version);
 
-    // function must be registered if function pointer is provided
-    if (typeof funcOrName === "function" && !registered) {
-      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
+    if (!registered) {
+      if (typeof funcOrName === "function") {
+        throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
+      }
     }
 
     // TODO: move this into the handler?
     const { headers, data } = this.codec.encode({
-      func: registered ? registered.name : (funcOrName as string),
+      func: registered ? registered.name : funcOrName,
       args: args,
       version: registered ? registered.version : opts.version || 1,
     });
