@@ -6,7 +6,6 @@ import type { Heartbeat } from "./heartbeat.js";
 import {
   isMessage,
   isRedirect,
-  isResponse,
   isSuccess,
   type Message,
   type PromiseRecord,
@@ -156,27 +155,21 @@ export class Core {
     cb: (res: Result<{ continue: boolean }, undefined>) => void,
   ): void {
     const task = claimed.task;
-    const kind = "task.suspend" as const;
     this.send(
       {
-        kind,
+        kind: "task.suspend",
         head: { corrId: "", version: "" },
         data: {
           id: task.id,
           version: task.version,
           actions: status.awaited.map((a) => ({
-            kind: "promise.register_callback" as const,
+            kind: "promise.register_callback",
             head: { corrId: "", version: "" },
             data: { awaiter: claimed.rootPromise.id, awaited: a },
           })),
         },
       },
       (res) => {
-        if (!isResponse(res)) {
-          const error = exceptions.UNEXPECTED_MSG(`${kind} response`, res);
-          error.log(this.verbose);
-          return cb({ kind: "error", error: undefined });
-        }
         if (isSuccess(res)) {
           return cb({ kind: "value", value: { continue: false } });
         }

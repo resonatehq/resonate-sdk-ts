@@ -75,7 +75,7 @@ export class Process {
   }
 
   log(tick: number, ...args: any[]): void {
-    const message = `[tick: ${tick}] [proc: ${this.iaddr}] ${args.map(JSON.stringify as any)}`;
+    const message = `[tick: ${tick}] [proc: ${this.iaddr}] ${args.map((a) => JSON.stringify(a))}`;
 
     // Always log to console
     console.log(message);
