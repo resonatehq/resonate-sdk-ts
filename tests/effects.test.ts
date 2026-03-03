@@ -185,7 +185,7 @@ describe("Effects", () => {
           kind: "promise.create",
           head,
           data: { id: "s2", timeoutAt: Date.now() + 60_000, param: { data: "" }, tags: {} },
-        } as any,
+        },
         () => {},
       );
       const beforeCount = network.sendCount;
@@ -249,7 +249,7 @@ describe("Effects", () => {
           kind: "promise.create",
           head,
           data: { id: "s4", timeoutAt: Date.now() + 60_000, param: { data: "" }, tags: {} },
-        } as any,
+        },
         () => {},
       );
       const beforeCount = network.sendCount;

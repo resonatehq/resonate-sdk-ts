@@ -2,7 +2,7 @@ import type { Clock } from "./clock.js";
 import exceptions, { type ResonateError } from "./exceptions.js";
 import type { PromiseCreateReq } from "./network/types.js";
 import type { Options, OptionsBuilder } from "./options.js";
-import type { Registry } from "./registry.js";
+import type { Registry, RegistryItem } from "./registry.js";
 import { Exponential, Never, type RetryPolicy } from "./retries.js";
 import type { Func, ParamsWithOptions, Result, Return } from "./types.js";
 import * as util from "./util.js";
@@ -347,28 +347,52 @@ export class InnerContext implements Context {
     });
   }
 
+  private resolveLocalFunc(
+    funcOrName: Func | string,
+    version: number,
+  ): { func: Func; registered?: RegistryItem } | DIE {
+    const registered = this.registry.get(funcOrName, version);
+    let func: Func;
+    if (typeof funcOrName === "string") {
+      if (!registered) {
+        return new DIE(true, exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, version));
+      }
+      func = registered.func;
+    } else {
+      func = funcOrName;
+    }
+    return { func, registered };
+  }
+
+  private resolveRemoteFunc(
+    funcOrName: Func | string,
+    version: number,
+  ): { func: string; registered?: RegistryItem } | DIE {
+    const registered = this.registry.get(funcOrName, version);
+    let func: string;
+    if (typeof funcOrName === "function") {
+      if (!registered) {
+        return new DIE(true, exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, version));
+      }
+      func = registered.name;
+    } else {
+      func = funcOrName;
+    }
+    return { func, registered };
+  }
+
   lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>>;
   lfi<T>(func: string, ...args: any[]): LFI<T>;
   lfi(funcOrName: Func | string, ...args: any[]): LFI<any> {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
-    const registered = this.registry.get(funcOrName, opts.version);
+    const resolved = this.resolveLocalFunc(funcOrName, opts.version);
+    if (resolved instanceof DIE) return resolved as unknown as LFI<any>;
 
-    if (typeof funcOrName === "string" && !registered) {
-      // This results in a dropped task and a value will never be
-      // yielded back to the users coroutine. However, the type
-      // system indicates the value is void. Casting to LFI "tricks"
-      // the type system to indicate the correct type.
-      return new DIE(
-        true,
-        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version),
-      ) as unknown as LFI<any>;
-    }
-
+    const { func, registered } = resolved;
     const idChanged = opts.id !== undefined;
     const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
-    const func = registered ? registered.func : (funcOrName as Func);
     const version = registered ? registered.version : 1;
 
     return new LFI(
@@ -385,24 +409,14 @@ export class InnerContext implements Context {
   lfc<T>(func: string, ...args: any[]): LFC<T>;
   lfc(funcOrName: Func | string, ...args: any[]): LFC<any> {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
-    const registered = this.registry.get(funcOrName, opts.version);
+    const resolved = this.resolveLocalFunc(funcOrName, opts.version);
+    if (resolved instanceof DIE) return resolved as unknown as LFC<any>;
 
-    if (typeof funcOrName === "string" && !registered) {
-      // This results in a dropped task and a value will never be
-      // yielded back to the users coroutine. However, the type
-      // system indicates the value is void. Casting to LFC "tricks"
-      // the type system to indicate the correct type.
-      return new DIE(
-        true,
-        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version),
-      ) as unknown as LFC<any>;
-    }
-
+    const { func, registered } = resolved;
     const idChanged = opts.id !== undefined;
     const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
-    const func = registered ? registered.func : (funcOrName as Func);
     const version = registered ? registered.version : 1;
 
     return new LFC(
@@ -419,28 +433,17 @@ export class InnerContext implements Context {
   rfi<T>(func: string, ...args: any[]): RFI<T>;
   rfi(funcOrName: Func | string, ...args: any[]): RFI<any> {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
-    const registered = this.registry.get(funcOrName, opts.version);
+    const resolved = this.resolveRemoteFunc(funcOrName, opts.version);
+    if (resolved instanceof DIE) return resolved as unknown as RFI<any>;
 
-    if (typeof funcOrName === "function" && !registered) {
-      // This results in a dropped task and a value will never be
-      // yielded back to the users coroutine. However, the type
-      // system indicates the value is void. Casting to RFI "tricks"
-      // the type system to indicate the correct type.
-      return new DIE(
-        true,
-        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
-      ) as unknown as RFI<any>;
-    }
-
+    const { func, registered } = resolved;
     const idChanged = opts.id !== undefined;
     const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
-    const func = registered ? registered.name : (funcOrName as string);
     const version = registered ? registered.version : 1;
-
     const data = {
-      func: func,
+      func,
       args: argu,
       retry: opts.retryPolicy?.encode(),
       version: registered ? registered.version : opts.version || 1,
@@ -453,28 +456,17 @@ export class InnerContext implements Context {
   rfc<T>(func: string, ...args: any[]): RFC<T>;
   rfc(funcOrName: Func | string, ...args: any[]): RFC<any> {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
-    const registered = this.registry.get(funcOrName, opts.version);
+    const resolved = this.resolveRemoteFunc(funcOrName, opts.version);
+    if (resolved instanceof DIE) return resolved as unknown as RFC<any>;
 
-    if (typeof funcOrName === "function" && !registered) {
-      // This results in a dropped task and a value will never be
-      // yielded back to the users coroutine. However, the type
-      // system indicates the value is void. Casting to RFC "tricks"
-      // the type system to indicate the correct type.
-      return new DIE(
-        true,
-        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
-      ) as unknown as RFC<any>;
-    }
-
+    const { func, registered } = resolved;
     const idChanged = opts.id !== undefined;
     const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
-    const func = registered ? registered.name : (funcOrName as string);
     const version = registered ? registered.version : 1;
-
     const data = {
-      func: func,
+      func,
       args: argu,
       retry: opts.retryPolicy?.encode(),
       version: registered ? registered.version : opts.version || 1,
@@ -487,28 +479,17 @@ export class InnerContext implements Context {
   detached<T>(func: string, ...args: any[]): RFI<T>;
   detached(funcOrName: Func | string, ...args: any[]): RFI<any> {
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
-    const registered = this.registry.get(funcOrName, opts.version);
+    const resolved = this.resolveRemoteFunc(funcOrName, opts.version);
+    if (resolved instanceof DIE) return resolved as unknown as RFI<any>;
 
-    if (typeof funcOrName === "function" && !registered) {
-      // This results in a dropped task and a value will never be
-      // yielded back to the users coroutine. However, the type
-      // system indicates the value is void. Casting to RFI "tricks"
-      // the type system to indicate the correct type.
-      return new DIE(
-        true,
-        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
-      ) as unknown as RFI<any>;
-    }
-
+    const { func, registered } = resolved;
     const idChanged = opts.id !== undefined;
     const id = idChanged ? opts.id : this.seqid();
     this.seq++;
 
-    const func = registered ? registered.name : (funcOrName as string);
     const version = registered ? registered.version : 1;
-
     const data = {
-      func: func,
+      func,
       args: argu,
       retry: opts.retryPolicy?.encode(),
       version: registered ? registered.version : opts.version || 1,
