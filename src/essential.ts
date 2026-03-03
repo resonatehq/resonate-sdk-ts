@@ -6,8 +6,6 @@ export { Network } from "./network/network.js";
 export * from "./network/types.js";
 // options
 export { Options } from "./options.js";
-// processor
-export { AsyncProcessor, Processor } from "./processor/processor.js";
 // promises
 export { Promises } from "./promises.js";
 // registry

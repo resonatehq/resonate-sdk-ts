@@ -99,7 +99,7 @@ export class Decorator<TRet> {
     if (value.type === "internal.promise" && this.pendingCall !== null) {
       const callId = this.pendingCall;
       this.pendingCall = null;
-      this.nextState = value.state === "completed" ? "internal.literal" : "over";
+      this.nextState = "internal.literal";
       return { type: "internal.await", id: callId, promise: value };
     }
 
@@ -187,7 +187,7 @@ export class Decorator<TRet> {
           },
         };
       }
-      this.nextState = "over";
+      this.nextState = "internal.literal";
       return {
         type: "internal.await",
         id: event.id,

@@ -134,8 +134,8 @@ export class DIE implements Iterable<DIE> {
 }
 
 export class Future<T> implements Iterable<Future<T>> {
-  private readonly value?: Result<T, any>;
-  public readonly state: "pending" | "completed";
+  private _value?: Result<T, any>;
+  private _state: "pending" | "completed";
   private mode: "attached" | "detached";
 
   constructor(
@@ -144,27 +144,41 @@ export class Future<T> implements Iterable<Future<T>> {
     value?: Result<T, any>,
     mode: "attached" | "detached" = "attached",
   ) {
-    this.value = value;
-    this.state = state;
+    this._value = value;
+    this._state = state;
     this.mode = mode;
   }
 
+  get state(): "pending" | "completed" {
+    return this._state;
+  }
+
+  get value(): Result<T, any> | undefined {
+    return this._value;
+  }
+
   getValue() {
-    if (!this.value) {
+    if (!this._value) {
       throw new Error("Future is not ready");
     }
 
-    if (this.value.kind === "value") {
-      return this.value.value;
+    if (this._value.kind === "value") {
+      return this._value.value;
     }
-    throw this.value.error; // Should be unreachble
+    throw this._value.error; // Should be unreachable
   }
 
-  *[Symbol.iterator](): Generator<Future<T>, T, undefined> {
-    yield this;
-    util.assertDefined(this.value);
-    util.assert(this.value.kind === "value", "The value must be and ok result at this point.");
-    return this.getValue();
+  *[Symbol.iterator](): Generator<Future<T>, T, any> {
+    try {
+      const received = yield this;
+      this._value = { kind: "value", value: received };
+      this._state = "completed";
+      return received as T;
+    } catch (e) {
+      this._value = { kind: "error", error: e };
+      this._state = "completed";
+      throw e;
+    }
   }
 }
 

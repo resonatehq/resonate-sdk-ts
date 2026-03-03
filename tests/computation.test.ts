@@ -9,7 +9,6 @@ import { LocalNetwork } from "../src/network/local.js";
 import type { Network } from "../src/network/network.js";
 import type { PromiseRecord } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
-import { AsyncProcessor } from "../src/processor/processor.js";
 import { Registry } from "../src/registry.js";
 import { Exponential, Never } from "../src/retries.js";
 import type { Effects } from "../src/types.js";
@@ -44,7 +43,6 @@ function buildComputation(registry: Registry): {
     new Map(),
     new OptionsBuilder({ match: (target: string) => target, idPrefix: "test-" }),
     false,
-    new AsyncProcessor(),
   );
 
   return { computation, network, effects };
@@ -372,6 +370,41 @@ describe("Computation", () => {
           expect(res.value.state).toBe("rejected");
         }
       }
+    });
+  });
+
+  describe("no re-execution for local work", () => {
+    test("local function executes exactly once (no re-execution)", async () => {
+      let callCount = 0;
+
+      function counter(_ctx: Context) {
+        callCount++;
+        return callCount;
+      }
+
+      function* main(ctx: Context) {
+        const result: number = yield* ctx.run(counter);
+        return result;
+      }
+
+      const registry = new Registry();
+      registry.add(main, "main");
+      registry.add(counter, "counter");
+
+      const { computation } = buildComputation(registry);
+      const task = createClaimedTask("no-reexec", "main", []);
+      const res = await computation.executeUntilBlocked(task);
+
+      expect(res.kind).toBe("value");
+      if (res.kind === "value") {
+        expect(res.value.kind).toBe("done");
+        if (res.value.kind === "done") {
+          expect(res.value.state).toBe("resolved");
+          expect(res.value.value).toBe(1);
+        }
+      }
+      // Function called exactly once — no re-execution overhead
+      expect(callCount).toBe(1);
     });
   });
 });

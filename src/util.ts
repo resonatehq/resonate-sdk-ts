@@ -1,4 +1,5 @@
 import type { Codec } from "./codec.js";
+import type { InnerContext } from "./context.js";
 import exceptions, { type ResonateError } from "./exceptions.js";
 import type { Network } from "./network/network.js";
 import {
@@ -11,7 +12,7 @@ import {
   type Response,
 } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
-import type { Effects, Send, Transport } from "./types.js";
+import type { Effects, Func, Result, Send, Transport } from "./types.js";
 
 // time
 
@@ -162,8 +163,36 @@ export function buildTransport(network: Network, verbose: boolean = false): Tran
     },
   };
 }
-// effects
 
+// retry
+export async function executeWithRetry(
+  ctx: InnerContext,
+  func: Func,
+  args: any[],
+  verbose: boolean,
+): Promise<Result<any, any>> {
+  while (true) {
+    try {
+      const data = await func(ctx, ...args);
+      return { kind: "value", value: data };
+    } catch (error) {
+      const retryIn = ctx.retryPolicy.next(ctx.info.attempt);
+      if (retryIn === null || ctx.clock.now() + retryIn >= ctx.info.timeout) {
+        return { kind: "error", error };
+      }
+      console.warn(
+        `Runtime. Function '${ctx.func}' failed with '${String(error)}' (retrying in ${retryIn / 1000} secs)`,
+      );
+      if (verbose) {
+        console.warn(error);
+      }
+      ctx.info.attempt++;
+      await new Promise((resolve) => setTimeout(resolve, retryIn));
+    }
+  }
+}
+
+// effects
 export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] = []): Effects {
   const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
 

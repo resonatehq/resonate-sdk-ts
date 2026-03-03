@@ -132,7 +132,9 @@ describe("Coroutine", () => {
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 
-  test("basic coroutine with function suspends after first await", async () => {
+  // Local non-generator functions are now started eagerly and awaited inline.
+  // The generator completes in a single execution — no suspension for locals.
+  test("basic coroutine with functions completes in single execution", async () => {
     function bar() {
       return 42;
     }
@@ -150,17 +152,8 @@ describe("Coroutine", () => {
     const network = new DummyNetwork();
     const effects = buildEffects(network);
 
-    // First execution - should suspend
-    let r = await exec("foo.1", foo, [], effects);
-    expect(r).toMatchObject({ type: "suspended" });
-    const suspended = r as Suspended;
-    expect(suspended.todo.local).toHaveLength(2);
-
-    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
-    await completePromise(effects, "foo.1.1", { kind: "value", value: 31416 });
-
-    // Second execution - should complete
-    r = await exec("foo.1", foo, [], effects);
+    // Completes in one execution — no suspension for locals
+    const r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 31458 } });
   });
 
@@ -192,10 +185,6 @@ describe("Coroutine", () => {
   });
 
   test("Structured concurrency", async () => {
-    function* bar() {
-      return 42;
-    }
-
     function* foo(ctx: Context) {
       yield* ctx.beginRpc("bar");
       yield* ctx.beginRpc("bar");
@@ -223,6 +212,8 @@ describe("Coroutine", () => {
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
   });
 
+  // Fire-and-forget local functions are flushed at return (structured concurrency).
+  // They are settled inline — no external settlement needed, single execution.
   test("Structured concurrency with local non-generator fire-and-forget", async () => {
     function bar() {
       return 10;
@@ -241,22 +232,13 @@ describe("Coroutine", () => {
     const network = new DummyNetwork();
     const effects = buildEffects(network);
 
-    // First execution: generator reaches `return 99` with two pending local todos
-    let r = await exec("foo.1", foo, [], effects);
-    expect(r.type).toBe("suspended");
-    const suspended = r as Suspended;
-    expect(suspended.todo.local).toHaveLength(2);
-    expect(suspended.todo.remote).toHaveLength(0);
-
-    // Settle both local promises
-    await completePromise(effects, "foo.1.0", { kind: "value", value: 10 });
-    await completePromise(effects, "foo.1.1", { kind: "value", value: 20 });
-
-    // Second execution: no pending todos at return → done
-    r = await exec("foo.1", foo, [], effects);
+    // Locals are flushed at return → completes in single execution
+    const r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
   });
 
+  // Local fire-and-forget is flushed and settled inline at return time.
+  // Only the remote causes suspension — two executions instead of three.
   test("Structured concurrency with mixed local and remote fire-and-forget", async () => {
     function bar() {
       return 10;
@@ -272,23 +254,17 @@ describe("Coroutine", () => {
     const network = new DummyNetwork();
     const effects = buildEffects(network);
 
-    // First execution: both local and remote todos are pending at return
+    // First execution: local is flushed and settled inline at return,
+    // but remote is still pending → suspended with 1 remote todo
     let r = await exec("foo.1", foo, [], effects);
     expect(r.type).toBe("suspended");
     const suspended = r as Suspended;
-    expect(suspended.todo.local).toHaveLength(1);
     expect(suspended.todo.remote).toHaveLength(1);
 
-    // Settle the remote promise only
+    // Settle the remote promise
     await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
-    r = await exec("foo.1", foo, [], effects);
-    // Still suspended because the local todo is pending
-    expect(r.type).toBe("suspended");
-    expect((r as Suspended).todo.local).toHaveLength(1);
-    expect((r as Suspended).todo.remote).toHaveLength(0);
 
-    // Settle the local promise
-    await completePromise(effects, "foo.1.0", { kind: "value", value: 10 });
+    // Second execution: everything resolved → done
     r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 77 } });
   });
@@ -317,10 +293,6 @@ describe("Coroutine", () => {
   });
 
   test("Detached concurrency", async () => {
-    function* bar() {
-      return 42;
-    }
-
     function* foo(ctx: Context) {
       yield* ctx.beginRpc("bar");
       yield* ctx.detached("bar");
@@ -342,10 +314,6 @@ describe("Coroutine", () => {
   });
 
   test("Return the detached todo if explicitly awaited", async () => {
-    function* bar() {
-      return 42;
-    }
-
     function* foo(ctx: Context) {
       yield* ctx.beginRpc("bar");
       const df = yield* ctx.detached("bar");
@@ -438,6 +406,137 @@ describe("Coroutine", () => {
     function* foo(ctx: Context) {
       yield* ctx.panic(false, "Should not abort");
       return 42;
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    const r = await exec("foo.1", foo, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
+  });
+
+  // --- New tests ---
+
+  test("local function error surfaces at await time", async () => {
+    function failing(_ctx: Context) {
+      throw new Error("boom");
+    }
+
+    function* foo(ctx: Context) {
+      const f = yield* ctx.beginRun(failing, ctx.options({ retryPolicy: new Never() }));
+      try {
+        yield* f;
+        return "should not reach";
+      } catch (e) {
+        return `caught: ${(e as Error).message}`;
+      }
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    const r = await exec("foo.1", foo, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: "caught: boom" } });
+  });
+
+  test("multiple local functions run concurrently", async () => {
+    const log: string[] = [];
+
+    async function slow(_ctx: Context) {
+      log.push("slow-start");
+      await new Promise((r) => setTimeout(r, 50));
+      log.push("slow-end");
+      return 1;
+    }
+
+    async function fast(_ctx: Context) {
+      log.push("fast-start");
+      log.push("fast-end");
+      return 2;
+    }
+
+    function* foo(ctx: Context) {
+      const f1 = yield* ctx.beginRun(slow, ctx.options({ retryPolicy: new Never() }));
+      const f2 = yield* ctx.beginRun(fast, ctx.options({ retryPolicy: new Never() }));
+      const v1 = yield* f1;
+      const v2 = yield* f2;
+      return v1 + v2;
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+    const r = await exec("foo.1", foo, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 3 } });
+
+    // Both started before either completes (true concurrency)
+    expect(log[0]).toBe("slow-start");
+    expect(log[1]).toBe("fast-start");
+  });
+
+  test("child generator suspends on remote, parent suspends too", async () => {
+    function* child(ctx: Context) {
+      const v: number = yield* ctx.rpc<number>("remoteFunc");
+      return v * 2;
+    }
+
+    function* parent(ctx: Context) {
+      const f = yield* ctx.beginRun(child);
+      const v = yield* f;
+      return v + 1;
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+
+    // First execution: child suspends on remote → parent suspends too
+    let r = await exec("foo.1", parent, [], effects);
+    expect(r.type).toBe("suspended");
+    const suspended = r as Suspended;
+    expect(suspended.todo.remote).toHaveLength(1);
+
+    // Settle the remote promise that the child was waiting on
+    await completePromise(effects, "foo.1.0.0", { kind: "value", value: 21 });
+
+    // Second execution: child completes → parent completes
+    r = await exec("foo.1", parent, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 43 } });
+  });
+
+  test("flush at return settles durable promises for fire-and-forget locals", async () => {
+    function bar() {
+      return 10;
+    }
+
+    function* foo(ctx: Context) {
+      yield* ctx.beginRun(bar);
+      yield* ctx.beginRpc("someRemote");
+      return 77;
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+
+    // First execution: local flushed + settled inline, remote still pending
+    let r = await exec("foo.1", foo, [], effects);
+    expect(r.type).toBe("suspended");
+
+    // Settle remote
+    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+
+    // Re-execution: local promise already settled (fast-forward), completes
+    r = await exec("foo.1", foo, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 77 } });
+  });
+
+  test("Future state and value update after inline resolution (double-yield)", async () => {
+    function bar(_ctx: Context) {
+      return 42;
+    }
+
+    function* foo(ctx: Context) {
+      const f = yield* ctx.beginRun(bar, ctx.options({ retryPolicy: new Never() }));
+      const v = yield* f;
+      // Double-yield: f is now completed, should fast-path through
+      yield* f;
+      return v;
     }
 
     const network = new DummyNetwork();
