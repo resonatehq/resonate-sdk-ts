@@ -200,7 +200,7 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
           cache.set(promise.id, promise);
           done({ kind: "value", value: promise });
         } catch (e) {
-          return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
+          return done({ kind: "error", error: exceptions.SERVER_ERROR(`Unexpected ${req.kind} response`) });
         }
       });
     },
@@ -234,7 +234,7 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
           cache.set(promise.id, promise);
           done({ kind: "value", value: promise });
         } catch (e) {
-          return done({ kind: "error", error: exceptions.UNEXPECTED_MSG(`${req.kind} response`, res) });
+          return done({ kind: "error", error: exceptions.SERVER_ERROR(`Unexpected ${req.kind} response`) });
         }
       });
     },
