@@ -89,7 +89,7 @@ function f(n: number, memo: Record<number, number> = {}): number {
   return memo[n];
 }
 
-const settled = sim.execUntil(options.steps, () => {
+const settled = await sim.execUntil(options.steps, () => {
   const promise = server.server.promises.get(id);
   return promise !== undefined && promise.state !== "pending";
 });
