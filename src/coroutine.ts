@@ -210,8 +210,17 @@ export class Coroutine<T> {
           return { kind: "value", value: { type: "suspended", todo: { remote: allRemote } } };
         }
 
-        // Not in localWork — it's a remote pending promise, suspend
-        return { kind: "value", value: { type: "suspended", todo: { remote } } };
+        // Not in localWork — it's a remote pending promise.
+        // Flush any in-flight local work so their remote dependencies are surfaced
+        // and their completed durable promises are settled. Without this, eagerly
+        // started local tasks would be silently abandoned, causing a deadlock when
+        // the parent resumes and finds their durable promises still pending with no
+        // task record to drive them.
+        const flushResult = await this.flushLocalWork(localWork);
+        if (flushResult.kind === "error") return flushResult;
+
+        const allRemote = [...remote, ...flushResult.value.remote];
+        return { kind: "value", value: { type: "suspended", todo: { remote: allRemote } } };
       }
 
       // Handle return

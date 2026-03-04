@@ -526,6 +526,78 @@ describe("Coroutine", () => {
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 77 } });
   });
 
+  test("local work is flushed when suspending on remote await (no deadlock)", async () => {
+    // Reproduces the deadlock scenario from the fibonacci example:
+    // beginRpc creates a remote pending promise (v1), beginRun starts local work (v2).
+    // When the generator awaits v1 first, the coroutine must flush v2's local work
+    // before suspending. Otherwise v2's durable promise stays pending forever with
+    // no task record to drive it → deadlock on resume.
+    function* child(ctx: Context) {
+      // child itself has a remote dependency
+      const v: number = yield* ctx.rpc<number>("remoteChild");
+      return v * 10;
+    }
+
+    function* parent(ctx: Context) {
+      const v1 = yield* ctx.beginRpc<number>("remoteParent");
+      const v2 = yield* ctx.beginRun(child);
+      // Await the remote first — this is where the deadlock used to occur
+      const r1 = yield* v1;
+      const r2 = yield* v2;
+      return r1 + r2;
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+
+    // First execution: parent suspends on remoteParent.
+    // The child's local work must be flushed, surfacing its remote dep.
+    let r = await exec("p.1", parent, [], effects);
+    expect(r.type).toBe("suspended");
+    const suspended = r as Suspended;
+    // Must include BOTH remoteParent AND the child's remoteChild
+    expect(suspended.todo.remote.length).toBeGreaterThanOrEqual(2);
+
+    // Settle both remote promises
+    await completePromise(effects, "p.1.0", { kind: "value", value: 5 });
+    await completePromise(effects, "p.1.1.0", { kind: "value", value: 3 });
+
+    // Second execution: everything settled → done
+    r = await exec("p.1", parent, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 35 } });
+  });
+
+  test("local non-generator work is flushed and settled when suspending on remote await", async () => {
+    function bar() {
+      return 42;
+    }
+
+    function* parent(ctx: Context) {
+      const v1 = yield* ctx.beginRpc<number>("remoteParent");
+      const v2 = yield* ctx.beginRun(bar);
+      // Await remote first
+      const r1 = yield* v1;
+      const r2 = yield* v2;
+      return r1 + r2;
+    }
+
+    const network = new DummyNetwork();
+    const effects = buildEffects(network);
+
+    // First execution: suspends on remote, but local bar() must be flushed and settled
+    let r = await exec("p.1", parent, [], effects);
+    expect(r.type).toBe("suspended");
+    const suspended = r as Suspended;
+    expect(suspended.todo.remote).toHaveLength(1); // only remoteParent
+
+    // Settle the remote
+    await completePromise(effects, "p.1.0", { kind: "value", value: 8 });
+
+    // Second execution: bar's durable promise was settled on first run → replay fast-path
+    r = await exec("p.1", parent, [], effects);
+    expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 50 } });
+  });
+
   test("Future state and value update after inline resolution (double-yield)", async () => {
     function bar(_ctx: Context) {
       return 42;

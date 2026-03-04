@@ -107,15 +107,20 @@ export class Core {
         if (compRes.kind === "value") {
           const status = compRes.value;
           if (status.kind === "suspended") {
-            return this.suspendTask(claimed, status, (res: Result<{ continue: boolean }, undefined>) => {
-              if (res.kind === "error") {
-                return done(res);
-              }
-              if (res.value.continue) {
-                return this.executeUntilBlocked(claimed, done);
-              }
-              return done(compRes);
-            });
+            return this.suspendTask(
+              claimed,
+              status,
+              (res: Result<{ continue: true; preload: PromiseRecord[] } | { continue: false }, undefined>) => {
+                if (res.kind === "error") {
+                  return done(res);
+                }
+                if (res.value.continue) {
+                  claimed.preload = res.value.preload;
+                  return this.executeUntilBlocked(claimed, done);
+                }
+                return done(compRes);
+              },
+            );
           }
           if (status.kind === "done") {
             return this.fulfillTask(claimed.task, status, () => done(compRes));
@@ -157,7 +162,7 @@ export class Core {
   private suspendTask(
     claimed: ClaimedTask,
     status: { kind: "suspended"; awaited: string[] },
-    cb: (res: Result<{ continue: boolean }, undefined>) => void,
+    cb: (res: Result<{ continue: true; preload: PromiseRecord[] } | { continue: false }, undefined>) => void,
   ): void {
     const task = claimed.task;
     this.send(
@@ -179,7 +184,7 @@ export class Core {
           return cb({ kind: "value", value: { continue: false } });
         }
         if (isRedirect(res)) {
-          return cb({ kind: "value", value: { continue: true } });
+          return cb({ kind: "value", value: { continue: true, preload: res.data.preload } });
         }
         const error = exceptions.SERVER_ERROR(res.data, true, {
           code: res.head.status,
