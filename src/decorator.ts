@@ -170,23 +170,10 @@ export class Decorator<TRet> {
       };
     }
     if (event instanceof Future) {
-      if (event.state === "completed") {
-        this.nextState = "internal.literal";
-        return {
-          type: "internal.await",
-          id: event.id,
-          promise: {
-            type: "internal.promise",
-            state: "completed",
-            id: event.id,
-            value: {
-              type: "internal.literal",
-              // biome-ignore lint/complexity/useLiteralKeys: We need to access this private member, it is only private to the user
-              value: event["value"]!,
-            },
-          },
-        };
-      }
+      // A completed Future must short-circuit in its own iterator
+      // and never reach the decorator. If we see one here, it's a bug.
+      util.assert(event.state !== "completed", "completed Future must not reach the decorator");
+
       this.nextState = "internal.literal";
       return {
         type: "internal.await",

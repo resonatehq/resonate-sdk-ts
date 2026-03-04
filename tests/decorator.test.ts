@@ -148,8 +148,8 @@ describe("Decorator", () => {
 
   it("returns final value after multiple yields", () => {
     function* foo(ctx: Context): Generator<LFI<any> | Future<any>, any, number> {
-      yield new Future("future-1", "completed", { kind: "value", value: 10 });
       yield* ctx.beginRun(() => 42);
+      yield* ctx.beginRun(() => 10);
       return 30;
     }
 
@@ -170,17 +170,26 @@ describe("Decorator", () => {
       ),
     );
 
-    d.next({ type: "internal.nothing" }); // First yield
-    d.next({ type: "internal.literal", value: { kind: "value", value: 10 } }); // yield a future, get a literal back
-    const r = d.next({
+    let r = d.next({ type: "internal.nothing" }); // First LFI
+    expect(r).toMatchObject({ type: "internal.async.l" });
+
+    r = d.next({
+      type: "internal.promise",
+      state: "pending",
+      mode: "attached",
+      id: "foo.0",
+    }); // pending promise → generator gets Future(pending), advances to second LFI
+    expect(r).toMatchObject({ type: "internal.async.l" });
+
+    r = d.next({
       type: "internal.promise",
       state: "completed",
-      id: "abc.2",
+      id: "foo.1",
       value: {
         type: "internal.literal",
-        value: { kind: "value", value: 42 },
+        value: { kind: "value", value: 10 },
       },
-    }); // yield an invoke, get a completed promise back
+    }); // second LFI completed → generator gets Future(completed), which short-circuits → return 30
 
     expect(r).toMatchObject({
       type: "internal.return",
@@ -193,7 +202,7 @@ describe("Decorator", () => {
 
   it("returns even if there are pending invokes (structured concurrency is enforced by coroutine)", () => {
     function* foo(ctx: Context): Generator<Yieldable, any, number> {
-      yield new Future("future-1", "completed", { kind: "value", value: 10 }); // A
+      yield* ctx.beginRun((_ctx: Context) => 10); // A
       yield* ctx.beginRun((_ctx: Context) => 20); // B
       yield* ctx.beginRun((_ctx: Context) => 30); // C
       return 30; // D
@@ -216,23 +225,37 @@ describe("Decorator", () => {
       ),
     );
 
-    d.next({ type: "internal.nothing" }); // First yield
-    d.next({ type: "internal.literal", value: { kind: "value", value: 10 } }); // A -> yield a future, get a literal back
-    d.next({
+    let r = d.next({ type: "internal.nothing" }); // A -> LFI
+    expect(r).toMatchObject({ type: "internal.async.l" });
+
+    r = d.next({
+      type: "internal.promise",
+      state: "completed",
+      id: "foo.0",
+      value: {
+        type: "internal.literal",
+        value: { kind: "value", value: 10 },
+      },
+    }); // A -> completed, short-circuits → B -> LFI
+    expect(r).toMatchObject({ type: "internal.async.l" });
+
+    r = d.next({
       type: "internal.promise",
       state: "pending",
       mode: "attached",
-      id: "abc.1",
-    }); // B -> yield an invoke, get a pending promise back
-    const r = d.next({
+      id: "foo.1",
+    }); // B -> pending promise → generator gets Future(pending), advances to C -> LFI
+    expect(r).toMatchObject({ type: "internal.async.l" });
+
+    r = d.next({
       type: "internal.promise",
       state: "completed",
-      id: "abc.2",
+      id: "foo.2",
       value: {
         type: "internal.literal",
         value: { kind: "value", value: 30 },
       },
-    }); // C -> yield an invoke, get a completed promise back
+    }); // C -> completed, short-circuits → return 30
 
     // D -> Decorator returns the value; structured concurrency is enforced by the coroutine
     expect(r).toMatchObject({
@@ -244,9 +267,9 @@ describe("Decorator", () => {
     });
   });
 
-  it("returns if there are no pending invokes even if not explecityly awaited", () => {
+  it("returns if there are no pending invokes even if not explicitly awaited", () => {
     function* foo(ctx: Context): Generator<Yieldable, any, number> {
-      yield new Future("future-1", "completed", { kind: "value", value: 10 }); // A
+      yield* ctx.beginRun((_ctx: Context) => 10); // A
       yield* ctx.beginRun((_ctx: Context) => 20); // B
       yield* ctx.beginRun((_ctx: Context) => 30); // C
       return 42; // D
@@ -269,26 +292,40 @@ describe("Decorator", () => {
       ),
     );
 
-    d.next({ type: "internal.nothing" }); // First yield
-    d.next({ type: "internal.literal", value: { kind: "value", value: 10 } }); // A -> yield a future, get a literal back
-    d.next({
+    let r = d.next({ type: "internal.nothing" }); // A -> LFI
+    expect(r).toMatchObject({ type: "internal.async.l" });
+
+    r = d.next({
       type: "internal.promise",
       state: "completed",
-      id: "abc.1",
+      id: "foo.0",
+      value: {
+        type: "internal.literal",
+        value: { kind: "value", value: 10 },
+      },
+    }); // A -> completed, short-circuits → B -> LFI
+    expect(r).toMatchObject({ type: "internal.async.l" });
+
+    r = d.next({
+      type: "internal.promise",
+      state: "completed",
+      id: "foo.1",
       value: {
         type: "internal.literal",
         value: { kind: "value", value: 20 },
       },
-    }); // B -> yield an invoke, get a completed promise back
-    const r = d.next({
+    }); // B -> completed, short-circuits → C -> LFI
+    expect(r).toMatchObject({ type: "internal.async.l" });
+
+    r = d.next({
       type: "internal.promise",
       state: "completed",
-      id: "abc.2",
+      id: "foo.2",
       value: {
         type: "internal.literal",
         value: { kind: "value", value: 30 },
       },
-    }); // C -> yield an invoke, get a completed promise back
+    }); // C -> completed, short-circuits → return 42
 
     // D -> Must return given that the previous invokes were completed
     // even if they were not explicitly awaited.
