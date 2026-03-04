@@ -1,25 +1,28 @@
 import { Future } from "../src/context.js";
 
 describe("Future", () => {
-  describe("Symbol.iterator short-circuit", () => {
-    it("returns value immediately when completed with value", () => {
+  describe("Symbol.iterator", () => {
+    it("yields itself when completed with value", () => {
       const future = new Future<number>("f1", "completed", { kind: "value", value: 42 });
 
       const iter = future[Symbol.iterator]();
       const result = iter.next();
 
-      // Should be done immediately — no yield
-      expect(result.done).toBe(true);
-      expect(result.value).toBe(42);
+      // Should yield the future — not done
+      expect(result.done).toBe(false);
+      expect(result.value).toBe(future);
     });
 
-    it("throws error immediately when completed with error", () => {
+    it("yields itself when completed with error", () => {
       const error = new Error("boom");
       const future = new Future<number>("f1", "completed", { kind: "error", error });
 
       const iter = future[Symbol.iterator]();
+      const result = iter.next();
 
-      expect(() => iter.next()).toThrow("boom");
+      // Should yield the future — not done
+      expect(result.done).toBe(false);
+      expect(result.value).toBe(future);
     });
 
     it("yields itself when pending", () => {
@@ -72,7 +75,7 @@ describe("Future", () => {
       expect(future.value).toEqual({ kind: "error", error });
     });
 
-    it("double-yield on completed future short-circuits the second time", () => {
+    it("double-yield on completed future yields the second time", () => {
       const future = new Future<number>("f1", "pending");
 
       // First yield* — pending, goes through yield path
@@ -87,14 +90,14 @@ describe("Future", () => {
       // Future is now completed
       expect(future.state).toBe("completed");
 
-      // Second yield* — completed, should short-circuit
+      // Second yield* — completed, should still yield
       const iter2 = future[Symbol.iterator]();
       const r2 = iter2.next();
-      expect(r2.done).toBe(true);
-      expect(r2.value).toBe(42);
+      expect(r2.done).toBe(false);
+      expect(r2.value).toBe(future);
     });
 
-    it("double-yield on completed-with-error future throws the second time", () => {
+    it("double-yield on completed-with-error future yields the second time", () => {
       const future = new Future<number>("f1", "pending");
 
       // First yield* — pending, error fed back
@@ -106,9 +109,11 @@ describe("Future", () => {
       // Future is now completed with error
       expect(future.state).toBe("completed");
 
-      // Second yield* — completed with error, should throw immediately
+      // Second yield* — completed with error, should still yield
       const iter2 = future[Symbol.iterator]();
-      expect(() => iter2.next()).toThrow("oops");
+      const r2 = iter2.next();
+      expect(r2.done).toBe(false);
+      expect(r2.value).toBe(future);
     });
   });
 });

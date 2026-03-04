@@ -170,11 +170,22 @@ export class Decorator<TRet> {
       };
     }
     if (event instanceof Future) {
-      // A completed Future must short-circuit in its own iterator
-      // and never reach the decorator. If we see one here, it's a bug.
-      util.assert(event.state !== "completed", `completed Future  ${event.id} must not reach the decorator`);
-
       this.nextState = "internal.literal";
+
+      if (event.state === "completed") {
+        util.assertDefined(event.value);
+        return {
+          type: "internal.await",
+          id: event.id,
+          promise: {
+            type: "internal.promise",
+            state: "completed",
+            id: event.id,
+            value: { type: "internal.literal", value: event.value },
+          },
+        };
+      }
+
       return {
         type: "internal.await",
         id: event.id,

@@ -169,16 +169,6 @@ export class Future<T> implements Iterable<Future<T>> {
   }
 
   *[Symbol.iterator](): Generator<Future<T>, T, any> {
-    // Short-circuit: if already completed, return/throw directly
-    // without yielding to the decorator -> coroutine pipeline
-    if (this._state === "completed") {
-      util.assertDefined(this._value);
-      if (this._value.kind === "error") {
-        throw this._value.error;
-      }
-      return this._value.value;
-    }
-
     try {
       const received = yield this;
       this._value = { kind: "value", value: received };
