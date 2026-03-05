@@ -9,19 +9,15 @@ export class Promises {
     this.send = send;
   }
 
-  get(id: string): Promise<PromiseRecord> {
-    return new Promise((resolve, reject) => {
-      this.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } }, (res) => {
-        if (!isSuccess(res)) {
-          reject(res.data);
-          return;
-        }
-        resolve(res.data.promise);
-      });
-    });
+  async get(id: string): Promise<PromiseRecord> {
+    const res = await this.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } });
+    if (!isSuccess(res)) {
+      throw res.data;
+    }
+    return res.data.promise;
   }
 
-  create(
+  async create(
     id: string,
     timeoutAt: number,
     {
@@ -34,30 +30,23 @@ export class Promises {
       tags?: { [key: string]: string };
     } = {},
   ): Promise<PromiseRecord> {
-    return new Promise((resolve, reject) => {
-      this.send(
-        {
-          kind: "promise.create",
-          head: { corrId: "", version: "" },
-          data: {
-            id,
-            timeoutAt,
-            param: { headers, data },
-            tags,
-          },
-        },
-        (res) => {
-          if (!isSuccess(res)) {
-            reject(res.data);
-            return;
-          }
-          resolve(res.data.promise);
-        },
-      );
+    const res = await this.send({
+      kind: "promise.create",
+      head: { corrId: "", version: "" },
+      data: {
+        id,
+        timeoutAt,
+        param: { headers, data },
+        tags,
+      },
     });
+    if (!isSuccess(res)) {
+      throw res.data;
+    }
+    return res.data.promise;
   }
 
-  createWithTask(
+  async createWithTask(
     id: string,
     timeoutAt: number,
     pid: string,
@@ -72,33 +61,26 @@ export class Promises {
       tags?: { [key: string]: string };
     } = {},
   ): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
-    return new Promise((resolve, reject) => {
-      this.send(
-        {
-          kind: "task.create",
+    const res = await this.send({
+      kind: "task.create",
+      head: { corrId: "", version: "" },
+      data: {
+        pid,
+        ttl,
+        action: {
+          kind: "promise.create",
           head: { corrId: "", version: "" },
-          data: {
-            pid,
-            ttl,
-            action: {
-              kind: "promise.create",
-              head: { corrId: "", version: "" },
-              data: { id, timeoutAt, param: { headers, data }, tags },
-            },
-          },
+          data: { id, timeoutAt, param: { headers, data }, tags },
         },
-        (res) => {
-          if (!isSuccess(res)) {
-            reject(res.data);
-            return;
-          }
-          resolve({ promise: res.data.promise, task: res.data.task });
-        },
-      );
+      },
     });
+    if (!isSuccess(res)) {
+      throw res.data;
+    }
+    return { promise: res.data.promise, task: res.data.task };
   }
 
-  settle(
+  async settle(
     id: string,
     state: "resolved" | "rejected" | "rejected_canceled",
     {
@@ -109,68 +91,52 @@ export class Promises {
       data?: string;
     } = {},
   ): Promise<PromiseRecord> {
-    return new Promise((resolve, reject) => {
-      this.send(
-        {
-          kind: "promise.settle",
-          head: { corrId: "", version: "" },
-          data: {
-            id,
-            state,
-            value: { headers, data },
-          },
-        },
-        (res) => {
-          if (!isSuccess(res)) {
-            reject(res.data);
-            return;
-          }
-          resolve(res.data.promise);
-        },
-      );
+    const res = await this.send({
+      kind: "promise.settle",
+      head: { corrId: "", version: "" },
+      data: {
+        id,
+        state,
+        value: { headers, data },
+      },
     });
+    if (!isSuccess(res)) {
+      throw res.data;
+    }
+    return res.data.promise;
   }
-  registerCallback(
+
+  async registerCallback(
     awaited: string,
     awaiter: string,
   ): Promise<{
     promise: PromiseRecord;
   }> {
-    return new Promise((resolve, reject) => {
-      this.send(
-        {
-          kind: "promise.register_callback",
-          head: { corrId: "", version: "" },
-          data: { awaited, awaiter },
-        },
-        (res) => {
-          if (!isSuccess(res)) {
-            reject(res.data);
-            return;
-          }
-          resolve({ promise: res.data.promise });
-        },
-      );
+    const res = await this.send({
+      kind: "promise.register_callback",
+      head: { corrId: "", version: "" },
+      data: { awaited, awaiter },
     });
+    if (!isSuccess(res)) {
+      throw res.data;
+    }
+    return { promise: res.data.promise };
   }
 
-  registerListener(
+  async registerListener(
     awaited: string,
     address: string,
   ): Promise<{
     promise: PromiseRecord;
   }> {
-    return new Promise((resolve, reject) => {
-      this.send(
-        { kind: "promise.register_listener", head: { corrId: "", version: "" }, data: { awaited, address } },
-        (res) => {
-          if (!isSuccess(res)) {
-            reject(res.data);
-            return;
-          }
-          resolve({ promise: res.data.promise });
-        },
-      );
+    const res = await this.send({
+      kind: "promise.register_listener",
+      head: { corrId: "", version: "" },
+      data: { awaited, address },
     });
+    if (!isSuccess(res)) {
+      throw res.data;
+    }
+    return { promise: res.data.promise };
   }
 }

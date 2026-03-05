@@ -10,8 +10,7 @@ class StubNetwork {
 
   send: Send = <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
-    callback: (res: Extract<Response, { kind: K }>) => void,
-  ): void => {
+  ): Promise<Extract<Response, { kind: K }>> => {
     this.sendCount++;
 
     switch (req.kind) {
@@ -27,12 +26,11 @@ class StubNetwork {
           createdAt: Date.now(),
         };
         this.promises.set(p.id, p);
-        callback({
+        return Promise.resolve({
           kind: req.kind,
           head: { corrId: req.head.corrId, status: 200, version: req.head.version },
           data: { promise: p },
         } as Extract<Response, { kind: K }>);
-        return;
       }
 
       case "promise.settle": {
@@ -42,12 +40,11 @@ class StubNetwork {
         p.value = settleReq.data.value;
         p.settledAt = Date.now();
         this.promises.set(p.id, p);
-        callback({
+        return Promise.resolve({
           kind: req.kind,
           head: { corrId: req.head.corrId, status: 200, version: req.head.version },
           data: { promise: p },
         } as Extract<Response, { kind: K }>);
-        return;
       }
 
       default:
@@ -160,14 +157,11 @@ describe("Effects", () => {
       const effects = buildEffects(network.send, codec, [preloaded]);
 
       // seed the stub network so settle can find the promise
-      network.send(
-        {
-          kind: "promise.create",
-          head,
-          data: { id: "s2", timeoutAt: Date.now() + 60_000, param: { data: "" }, tags: {} },
-        } as any,
-        () => {},
-      );
+      await network.send({
+        kind: "promise.create",
+        head,
+        data: { id: "s2", timeoutAt: Date.now() + 60_000, param: { data: "" }, tags: {} },
+      } as any);
       const beforeCount = network.sendCount;
 
       const res = await effects.promiseSettle({
@@ -216,14 +210,11 @@ describe("Effects", () => {
       const effects = buildEffects(network.send, codec);
 
       // seed the promise directly in the stub so settle doesn't crash
-      network.send(
-        {
-          kind: "promise.create",
-          head,
-          data: { id: "s4", timeoutAt: Date.now() + 60_000, param: { data: "" }, tags: {} },
-        } as any,
-        () => {},
-      );
+      await network.send({
+        kind: "promise.create",
+        head,
+        data: { id: "s4", timeoutAt: Date.now() + 60_000, param: { data: "" }, tags: {} },
+      } as any);
       const beforeCount = network.sendCount;
 
       const res = await effects.promiseSettle({

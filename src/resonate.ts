@@ -214,7 +214,9 @@ export class Resonate {
 
     // subscribe to network
     this.transport.recv(this.onMessage.bind(this));
-    this.network.start();
+    this.network.start().catch((err) => {
+      console.error("Failed to start network", err);
+    });
     // periodically refresh subscriptions
     this.intervalId = setInterval(async () => {
       for (const [id, sub] of this.subscriptions.entries()) {
@@ -532,7 +534,9 @@ export class Resonate {
     });
 
     if (task) {
-      this.core.executeUntilBlocked({ kind: "claimed", task: task, rootPromise: promise }, () => {});
+      this.core
+        .executeUntilBlocked({ kind: "claimed", task: task, rootPromise: promise })
+        .catch((err) => console.warn("executeUntilBlocked failed", err));
     }
 
     return this.createHandle(promise);
@@ -738,125 +742,84 @@ export class Resonate {
     this.dependencies.set(name, obj);
   }
 
-  public stop() {
-    this.network.stop();
+  public async stop(): Promise<void> {
+    await this.network.stop();
     this.heartbeat.stop();
     clearInterval(this.intervalId);
   }
 
-  private taskCreate(req: TaskCreateReq): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
-    return new Promise((resolve, reject) => {
-      try {
-        req.data.action.data.param = this.codec.encode(req.data.action.data.param.data);
-      } catch (e) {
-        reject(exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.action.data.param.data?.func ?? "unknown", e));
-        return;
+  private async taskCreate(req: TaskCreateReq): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
+    try {
+      req.data.action.data.param = this.codec.encode(req.data.action.data.param.data);
+    } catch (e) {
+      throw exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.action.data.param.data?.func ?? "unknown", e);
+    }
+
+    const res = await this.transport.send(req);
+    if (!isSuccess(res) && !isConflict(res)) {
+      throw exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
+      });
+    }
+
+    if (isConflict(res)) {
+      const promise = await this.promiseRegisterListener({
+        kind: "promise.register_listener",
+        head: { corrId: "", version: "" },
+        data: {
+          awaited: req.data.action.data.id,
+          address: this.network.unicast,
+        },
+      });
+      return { promise, task: undefined };
+    }
+
+    const promise = this.codec.decodePromise(res.data.promise);
+    return { promise, task: res.data.task };
+  }
+
+  private async promiseCreate(req: PromiseCreateReq): Promise<PromiseRecord> {
+    try {
+      req.data.param = this.codec.encode(req.data.param.data);
+    } catch (e) {
+      throw exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? "unknown", e);
+    }
+
+    const res = await this.transport.send(req);
+    if (!isSuccess(res)) {
+      throw exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
+      });
+    }
+    return this.codec.decodePromise(res.data.promise);
+  }
+
+  private async promiseRegisterListener(req: PromiseRegisterListenerReq): Promise<PromiseRecord> {
+    while (true) {
+      const res = await this.transport.send(req);
+      if (!isSuccess(res)) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        continue;
       }
-
-      this.transport.send(req, (res) => {
-        if (!isSuccess(res) && !isConflict(res)) {
-          reject(
-            exceptions.SERVER_ERROR(res.data, true, {
-              code: res.head.status,
-              message: res.data,
-            }),
-          );
-          return;
-        }
-
-        if (isConflict(res)) {
-          this.promiseRegisterListener({
-            kind: "promise.register_listener",
-            head: { corrId: "", version: "" },
-            data: {
-              awaited: req.data.action.data.id,
-              address: this.network.unicast,
-            },
-          })
-            .then((promise) => resolve({ promise, task: undefined }))
-            .catch(reject);
-          return;
-        }
-
-        try {
-          const promise = this.codec.decodePromise(res.data.promise);
-          resolve({ promise, task: res.data.task });
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-  }
-
-  private promiseCreate(req: PromiseCreateReq): Promise<PromiseRecord> {
-    return new Promise((resolve, reject) => {
       try {
-        req.data.param = this.codec.encode(req.data.param.data);
+        return this.codec.decodePromise(res.data.promise);
       } catch (e) {
-        reject(exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? "unknown", e));
-        return;
+        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
-
-      this.transport.send(req, (res) => {
-        if (!isSuccess(res)) {
-          reject(
-            exceptions.SERVER_ERROR(res.data, true, {
-              code: res.head.status,
-              message: res.data,
-            }),
-          );
-          return;
-        }
-        try {
-          const promise = this.codec.decodePromise(res.data.promise);
-          resolve(promise);
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
+    }
   }
 
-  private promiseRegisterListener(req: PromiseRegisterListenerReq): Promise<PromiseRecord> {
-    return new Promise((resolve) => {
-      const attempt = () => {
-        this.transport.send(req, (res) => {
-          if (!isSuccess(res)) {
-            setTimeout(attempt, 5000);
-            return;
-          }
-          try {
-            const promise = this.codec.decodePromise(res.data.promise);
-            resolve(promise);
-          } catch (e) {
-            setTimeout(attempt, 5000);
-          }
-        });
-      };
-      attempt();
-    });
-  }
-
-  private promiseGet(req: PromiseGetReq): Promise<PromiseRecord> {
-    return new Promise((resolve, reject) => {
-      this.transport.send(req, (res) => {
-        if (!isSuccess(res)) {
-          reject(
-            exceptions.SERVER_ERROR(res.data, true, {
-              code: res.head.status,
-              message: res.data,
-            }),
-          );
-          return;
-        }
-        try {
-          const promise = this.codec.decodePromise(res.data.promise);
-          resolve(promise);
-        } catch (e) {
-          reject(e);
-        }
+  private async promiseGet(req: PromiseGetReq): Promise<PromiseRecord> {
+    const res = await this.transport.send(req);
+    if (!isSuccess(res)) {
+      throw exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
       });
-    });
+    }
+    return this.codec.decodePromise(res.data.promise);
   }
 
   private createHandle(promise: PromiseRecord): ResonateHandle<any> {
@@ -878,7 +841,7 @@ export class Resonate {
 
   private onMessage(msg: Message): void {
     if (msg.kind === "execute") {
-      this.core.onMessage(msg, () => undefined);
+      this.core.onMessage(msg).catch((err) => console.warn("onMessage failed", err));
       return;
     }
     util.assert(msg.kind === "notify");

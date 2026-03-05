@@ -266,7 +266,7 @@ describe("Resonate usage tests", () => {
     await expect(h.result()).rejects.toBe("this is an error");
     expect(tries).toBe(4); // 1 initial try + 3 retries
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("function is executed on schedule", async () => {
@@ -296,7 +296,7 @@ describe("Resonate usage tests", () => {
     expect(true).toBe(true);
 
     await schedule.delete();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("concurrent execution must be concurrent", async () => {
@@ -326,7 +326,7 @@ describe("Resonate usage tests", () => {
     expect(executionTime).toBeGreaterThan(400);
 
     expect(r).toStrictEqual(["a", "b"]);
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("sequential execution must be sequential", async () => {
@@ -354,7 +354,7 @@ describe("Resonate usage tests", () => {
     expect(executionTime).toBeGreaterThan(475);
 
     expect(r).toStrictEqual(["a", "b"]);
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Correctly rejects a top level function using ctx.beginRun", async () => {
@@ -371,7 +371,7 @@ describe("Resonate usage tests", () => {
 
     const h = await f.beginRun("f");
     await expect(h.result()).rejects.toBe("this is an error");
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Correctly rejects a top level function using ctx.run", async () => {
@@ -387,7 +387,7 @@ describe("Resonate usage tests", () => {
 
     const h = await f.beginRun("f");
     await expect(h.result()).rejects.toBe("this is an error");
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Correctly sets options on inner functions", async () => {
@@ -408,7 +408,7 @@ describe("Resonate usage tests", () => {
     const durable = await resonate.promises.get("altId");
     expect(durable.id).toBe("altId");
     expect(durable.tags).toMatchObject({ myTag: "value", "resonate:scope": "local" });
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Correctly matches target", async () => {
@@ -447,7 +447,7 @@ describe("Resonate usage tests", () => {
       expect(p1.tags["resonate:target"]).toBe(target);
       expect(p2.tags["resonate:target"]).toBe(target);
     }
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Correctly sets options on inner functions without defined opts", async () => {
@@ -473,7 +473,7 @@ describe("Resonate usage tests", () => {
       "resonate:parent": "f",
       "resonate:origin": "f",
     });
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Basic human in the loop", async () => {
@@ -492,7 +492,7 @@ describe("Resonate usage tests", () => {
     await resonate.promises.settle("myId", "resolved", { data: codec.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
-    resonate.stop();
+    await resonate.stop();
     expect((await resonate.promises.get("myId")).tags).toEqual({
       "resonate:branch": "myId",
       "resonate:origin": "myId",
@@ -516,7 +516,7 @@ describe("Resonate usage tests", () => {
     await resonate.promises.settle("f.0", "resolved", { data: codec.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
-    resonate.stop();
+    await resonate.stop();
     expect((await resonate.promises.get("f.0")).tags).toEqual({
       "resonate:branch": "f.0",
       "resonate:origin": "f",
@@ -552,7 +552,7 @@ describe("Resonate usage tests", () => {
     await resonate.promises.settle("myId", "resolved", { data: codec.encode("myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Basic Durable sleep", async () => {
@@ -579,7 +579,7 @@ describe("Resonate usage tests", () => {
 
     const v = await p.result();
     expect(v).toBe("myValue");
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Basic Detached", async () => {
@@ -600,7 +600,7 @@ describe("Resonate usage tests", () => {
     const durable = await resonate.promises.get("f.0");
     expect(durable).toMatchObject({ state: "pending" });
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Basic use of dependencies", async () => {
@@ -620,7 +620,7 @@ describe("Resonate usage tests", () => {
     const v = await f.run("f");
     expect(v).toBe("Hello World!");
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Basic get", async () => {
@@ -636,7 +636,7 @@ describe("Resonate usage tests", () => {
 
     const handle = await resonate.get("foo");
     expect(await handle.result()).toBe("foo");
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Date", async () => {
@@ -662,7 +662,7 @@ describe("Resonate usage tests", () => {
       expect(n).toBe(0);
     }
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Math", async () => {
@@ -688,7 +688,7 @@ describe("Resonate usage tests", () => {
       const n = await f.run(`g${i}`);
       expect(n).toBe(1);
     }
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Basic auth", async () => {
@@ -725,7 +725,7 @@ describe("Resonate usage tests", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Target is set to anycast without preference by default", async () => {
@@ -750,7 +750,7 @@ describe("Resonate usage tests", () => {
       "resonate:origin": "f",
       "resonate:target": "local://any@default",
     });
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Target is set to the target option", async () => {
@@ -775,7 +775,7 @@ describe("Resonate usage tests", () => {
       "resonate:origin": "f",
       "resonate:target": "local://any@remoteTarget",
     });
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Target is set to the target option when it is a url", async () => {
@@ -800,7 +800,7 @@ describe("Resonate usage tests", () => {
       "resonate:origin": "f",
       "resonate:target": "http://faasurl.com",
     });
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Target is set when using options in resonate class", async () => {
@@ -825,7 +825,7 @@ describe("Resonate usage tests", () => {
       "resonate:origin": "fid",
       "resonate:target": "http://faasurl.com",
     });
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Target is set in root promise to the unicast without preference address by default", async () => {
@@ -850,7 +850,7 @@ describe("Resonate usage tests", () => {
       "resonate:origin": "fid",
       "resonate:target": "local://any@default",
     });
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Target is set in root promise to the the poller and group when only group defined in opts", async () => {
@@ -875,7 +875,7 @@ describe("Resonate usage tests", () => {
       "resonate:origin": "fid",
       "resonate:target": "local://any@anotherNode",
     });
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("run/rpc with function pointer and string are equivalent", async () => {
@@ -913,7 +913,7 @@ describe("Resonate usage tests", () => {
     expect(r1.every((r) => r === "foo")).toBe(true);
     expect(r2.every((r) => r === "bar")).toBe(true);
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("run/rpc with version specified", async () => {
@@ -1001,7 +1001,7 @@ describe("Resonate usage tests", () => {
     expect([...rf2, ...rb2].every((r) => r === 2)).toBe(true);
     expect([...rf3, ...rb3].every((r) => r === 3)).toBe(true);
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test.each([Constant, Linear, Exponential, Never])("run/rpc with %p retry policy", async (policyCtor) => {
@@ -1024,7 +1024,7 @@ describe("Resonate usage tests", () => {
       expect(JSON.parse(util.base64Decode(p.param.data!)).retry).toEqual(retryPolicy.encode());
     }
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Using prefix at Resonate class prefixes all the promises", async () => {
@@ -1060,7 +1060,7 @@ describe("Resonate usage tests", () => {
     const f = resonate.register("foo", foo);
     await f.run("fooId");
 
-    resonate.stop();
+    await resonate.stop();
   });
 });
 
@@ -1087,7 +1087,7 @@ describe("Context usage tests", () => {
     // Promise is dropped, but execution after panic should not run
     expect(completed).toBe(false);
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("ctx.panic continues execution when condition is false", async () => {
@@ -1101,7 +1101,7 @@ describe("Context usage tests", () => {
     const result = await f.run("test");
     expect(result).toBe("success");
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("ctx.assert aborts execution when condition is false", async () => {
@@ -1122,7 +1122,7 @@ describe("Context usage tests", () => {
     // Promise is dropped, but execution after assert should not run
     expect(completed).toBe(false);
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("ctx.assert continues execution when condition is true", async () => {
@@ -1136,7 +1136,7 @@ describe("Context usage tests", () => {
     const result = await f.run("test");
     expect(result).toBe("success");
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("lfi/lfc/rfi/rfc/detached with function pointer and string are equivalent", async () => {
@@ -1191,7 +1191,7 @@ describe("Context usage tests", () => {
     expect(r1.every((r) => r === "bar")).toBe(true);
     expect(r2.every((r) => r === "baz")).toBe(true);
 
-    resonate.stop();
+    await resonate.stop();
   });
 
   test.each([Constant])("lfi/lfc/rfi/rfc/detached with %p retry policy", async (policyCtor) => {
@@ -1230,7 +1230,7 @@ describe("Context usage tests", () => {
       }
     }
 
-    resonate.stop();
+    await resonate.stop();
   });
 });
 
@@ -1279,7 +1279,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_HOST + RESONATE_PORT used when url arg not set", async () => {
@@ -1307,7 +1307,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_URL used when url arg not set", async () => {
@@ -1334,7 +1334,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("LocalNetwork used when no url sources are set", async () => {
@@ -1352,7 +1352,7 @@ describe("Resonate environment variable initialization", () => {
     // Verify fetch was never called
     expect(mockFetch).not.toHaveBeenCalled();
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_URL takes priority over HOST and PORT", async () => {
@@ -1381,7 +1381,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_URL empty fallbacks to HOST and PORT", async () => {
@@ -1410,7 +1410,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Empty RESONATE_URL and no url arg falls back to LocalNetwork", async () => {
@@ -1427,7 +1427,7 @@ describe("Resonate environment variable initialization", () => {
     expect(result).toBe("result");
     expect(mockFetch).not.toHaveBeenCalled();
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("auth arg takes priority over env vars", async () => {
@@ -1464,7 +1464,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_USERNAME and RESONATE_PASSWORD used when auth arg not set", async () => {
@@ -1500,7 +1500,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("auth is defined when only RESONATE_USERNAME is set", async () => {
@@ -1535,7 +1535,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("auth is undefined when only RESONATE_PASSWORD is set", async () => {
@@ -1570,7 +1570,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("auth is undefined when no env vars or arg are set", async () => {
@@ -1603,7 +1603,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_SCHEME defaults to http when not set", async () => {
@@ -1631,7 +1631,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_SCHEME can be set to https", async () => {
@@ -1660,7 +1660,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_PORT defaults to 8001 when not set", async () => {
@@ -1687,7 +1687,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_SCHEME and RESONATE_PORT both use defaults", async () => {
@@ -1714,7 +1714,7 @@ describe("Resonate environment variable initialization", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 });
 
@@ -1766,7 +1766,7 @@ describe("Bearer token authentication", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("Bearer token takes priority over basic auth", async () => {
@@ -1802,7 +1802,7 @@ describe("Bearer token authentication", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_TOKEN used when token arg not set", async () => {
@@ -1838,7 +1838,7 @@ describe("Bearer token authentication", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 
   test("RESONATE_TOKEN takes priority over RESONATE_USERNAME and RESONATE_PASSWORD", async () => {
@@ -1876,6 +1876,6 @@ describe("Bearer token authentication", () => {
     await p1.promise;
     await p2.promise;
     mockFetch.mockReset();
-    resonate.stop();
+    await resonate.stop();
   });
 });
