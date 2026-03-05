@@ -1,6 +1,6 @@
 import type { Codec } from "./codec.js";
 import type { InnerContext } from "./context.js";
-import exceptions, { type ResonateError } from "./exceptions.js";
+import exceptions from "./exceptions.js";
 import type { Network } from "./network/network.js";
 import {
   isMessage,
@@ -228,7 +228,7 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
             cache.set(promise.id, promise);
             resolve({ kind: "value", value: promise });
           } catch (e) {
-            return resolve({ kind: "error", error: e as ResonateError });
+            return resolve({ kind: "error", error: exceptions.SERVER_ERROR(e) });
           }
         });
       });
@@ -265,7 +265,7 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
             cache.set(promise.id, promise);
             resolve({ kind: "value", value: promise });
           } catch (e) {
-            return resolve({ kind: "error", error: e as ResonateError });
+            return resolve({ kind: "error", error: exceptions.SERVER_ERROR(e) });
           }
         });
       });
