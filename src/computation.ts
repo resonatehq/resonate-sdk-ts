@@ -1,14 +1,14 @@
 import type { Clock } from "./clock.js";
 import { InnerContext } from "./context.js";
 import type { ClaimedTask } from "./core.js";
-import { Coroutine, type LocalTodo } from "./coroutine.js";
+import { Coroutine } from "./coroutine.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
-import type { PromiseRecord, TaskRecord } from "./network/types.js";
+import type { PromiseRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
-import { AsyncProcessor, type Processor } from "./processor/processor.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
+
 import type { Effects, Func, Result } from "./types.js";
 import * as util from "./util.js";
 
@@ -43,7 +43,6 @@ export class Computation {
   private optsBuilder: OptionsBuilder;
   private verbose: boolean;
   private heartbeat: Heartbeat;
-  private processor: Processor;
   private processing = false;
 
   constructor(
@@ -56,7 +55,6 @@ export class Computation {
     dependencies: Map<string, any>,
     optsBuilder: OptionsBuilder,
     verbose: boolean,
-    processor?: Processor,
   ) {
     this.id = id;
     this.clock = clock;
@@ -67,24 +65,22 @@ export class Computation {
     this.dependencies = dependencies;
     this.optsBuilder = optsBuilder;
     this.verbose = verbose;
-    this.processor = processor ?? new AsyncProcessor();
   }
 
-  public executeUntilBlocked(task: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
+  public async executeUntilBlocked(task: ClaimedTask): Promise<Result<Status, undefined>> {
     // If we are already processing there is nothing to do, the
     // caller will be notified via the promise handler
-    if (this.processing) return done({ kind: "error", error: undefined });
+    if (this.processing) return { kind: "error", error: undefined };
 
     this.processing = true;
-    this.processAcquired(task, (res: Result<Status, undefined>) => {
-      this.processing = false;
-      done(res);
-    });
+    const result = await this.processAcquired(task);
+    this.processing = false;
+    return result;
   }
 
-  private processAcquired({ task, rootPromise }: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
+  private async processAcquired({ rootPromise }: ClaimedTask): Promise<Result<Status, undefined>> {
     if (!isValidData(rootPromise.param?.data)) {
-      return done({ kind: "error", error: undefined });
+      return { kind: "error", error: undefined };
     }
 
     const { func, args, retry, version = 1 } = rootPromise.param.data;
@@ -93,7 +89,7 @@ export class Computation {
     // function must be registered
     if (!registered) {
       exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(func, version).log(this.verbose);
-      return done({ kind: "error", error: undefined });
+      return { kind: "error", error: undefined };
     }
 
     if (version !== 0) util.assert(version === registered.version, "versions must match");
@@ -127,37 +123,21 @@ export class Computation {
     };
 
     if (util.isGeneratorFunction(registered.func)) {
-      this.processGenerator(ctxConfig, registered.func, args, task, rootPromise, done);
-    } else {
-      this.processFunction(this.id, new InnerContext(ctxConfig), registered.func, args, (res) => {
-        if (res.kind === "error") return done({ kind: "error", error: undefined });
-
-        const result = res.value;
-        util.assert(result.kind === "done", "Status must be done after finishing function execution");
-        done({
-          kind: "value",
-          value: {
-            kind: "done",
-            id: this.id,
-            state: result.state,
-            value: result.value,
-          },
-        });
-      });
+      return this.processGenerator(registered.func, ctxConfig, args, rootPromise);
     }
+
+    return this.processFunction(this.id, registered.func, new InnerContext(ctxConfig), args);
   }
 
-  private processGenerator(
-    ctxConfig: ConstructorParameters<typeof InnerContext>[0],
+  private async processGenerator(
     func: Func,
+    ctxConfig: ConstructorParameters<typeof InnerContext>[0],
     args: any[],
-    task: TaskRecord,
     rootPromise: PromiseRecord,
-    done: (res: Result<Status, undefined>) => void,
-  ) {
+  ): Promise<Result<Status, undefined>> {
     // If boundary promise is done, short-circuit
     if (rootPromise.state !== "pending") {
-      done({
+      return {
         kind: "value",
         value: {
           kind: "done",
@@ -165,124 +145,51 @@ export class Computation {
           state: rootPromise.state === "resolved" ? "resolved" : "rejected",
           value: rootPromise.value,
         },
-      });
+      };
     }
 
     const ctx = new InnerContext(ctxConfig);
+    const res = await Coroutine.exec(this.verbose, ctx, func, args, this.effects);
 
-    Coroutine.exec(this.verbose, ctx, func, args, this.effects, (res) => {
-      if (res.kind === "error") {
-        return done(res);
-      }
-      const status = res.value;
+    if (res.kind === "error") {
+      return { kind: "error", error: undefined };
+    }
 
-      switch (status.type) {
-        case "done":
-          done({
-            kind: "value",
-            value: {
-              kind: "done",
-              id: this.id,
-              state: status.result.kind === "value" ? "resolved" : "rejected",
-              value: status.result.kind === "value" ? status.result.value : status.result.error,
-            },
-          });
-          break;
+    const status = res.value;
 
-        case "suspended":
-          util.assert(status.todo.local.length > 0 || status.todo.remote.length > 0, "must be at least one todo");
-          if (status.todo.local.length > 0) {
-            return this.processLocalTodo(
-              status.todo.local,
-              util.once(() => this.processGenerator(ctxConfig, func, args, task, rootPromise, done)),
-              (err) => done({ kind: "error", error: undefined }),
-            );
-          } else if (status.todo.remote.length > 0) {
-            done({ kind: "value", value: { kind: "suspended", awaited: status.todo.remote.map((t) => t.id) } });
-          }
-          break;
-      }
-    });
-  }
-
-  private processFunction(
-    id: string,
-    ctx: InnerContext,
-    func: Func,
-    args: any[],
-    done: (res: Result<Status, undefined>) => void,
-  ) {
-    this.processor.process([
-      {
-        id,
-        ctx,
-        func: async () => await func(ctx, ...args),
-        verbose: this.verbose,
-      },
-    ]);
-
-    this.processor.getReady([id], (results) => {
-      util.assert(results.length === 1, "getReady must return one result");
-      const result = results[0];
-      const { result: res } = result;
-
-      done({
+    if (status.type === "done") {
+      return {
         kind: "value",
         value: {
           kind: "done",
           id: this.id,
-          state: res.kind === "value" ? "resolved" : "rejected",
-          value: res.kind === "value" ? res.value : res.error,
+          state: status.result.kind === "value" ? "resolved" : "rejected",
+          value: status.result.kind === "value" ? status.result.value : status.result.error,
         },
-      });
-    });
+      };
+    }
+
+    // Only remote todos remain — locals are handled inline by the coroutine
+    return { kind: "value", value: { kind: "suspended", awaited: status.todo.remote.map((t) => t.id) } };
   }
 
-  private processLocalTodo(todo: LocalTodo[], cb: () => void, onErr: (err: any) => void) {
-    const work = todo.map((t) => ({
-      id: t.id,
-      ctx: t.ctx,
-      func: async () => await t.func(t.ctx, ...t.args),
-      verbose: this.verbose,
-    }));
+  private async processFunction(
+    id: string,
+    func: Func,
+    ctx: InnerContext,
+    args: any[],
+  ): Promise<Result<Status, undefined>> {
+    const result = await util.executeWithRetry(ctx, func, args, this.verbose);
 
-    this.processor.process(work);
-
-    // Get at least the first result that is ready and settle promises
-    const ids = todo.map((t) => t.id);
-    this.processor.getReady(ids, (results) => {
-      util.assert(results.length > 0, "getReady must return results");
-      let settledCount = 0;
-      for (const result of results) {
-        const { id, result: res } = result;
-        this.effects.promiseSettle(
-          {
-            kind: "promise.settle",
-            head: { corrId: "", version: "" },
-            data: {
-              id: id,
-              state: res.kind === "value" ? "resolved" : "rejected",
-              value: {
-                data: res.kind === "value" ? res.value : res.error,
-                headers: {},
-              },
-            },
-          },
-          (settleRes) => {
-            if (settleRes.kind === "error") {
-              settleRes.error.log(this.verbose);
-              onErr(settleRes.error);
-            }
-
-            settledCount++;
-            if (settledCount === results.length) {
-              cb();
-            }
-          },
-          id,
-        );
-      }
-    });
+    return {
+      kind: "value",
+      value: {
+        kind: "done",
+        id,
+        state: result.kind === "value" ? "resolved" : "rejected",
+        value: result.kind === "value" ? result.value : result.error,
+      },
+    };
   }
 }
 

@@ -92,34 +92,40 @@ export class Core {
     ]);
   }
 
-  public executeUntilBlocked(claimed: ClaimedTask, done: (res: Result<Status, undefined>) => void) {
+  public async executeUntilBlocked(claimed: ClaimedTask): Promise<Result<Status, undefined>> {
     const computation = this.createComputation(
       claimed.rootPromise.id,
       util.buildEffects(this.send, this.codec, claimed.preload),
     );
 
-    computation.executeUntilBlocked(claimed, (compRes) => {
+    try {
+      const compRes = await computation.executeUntilBlocked(claimed);
       if (compRes.kind === "error") {
-        return this.releaseTask(claimed.task, () => done(compRes));
+        await this.releaseTask(claimed.task);
+        return compRes;
       }
-      if (compRes.kind === "value") {
-        const status = compRes.value;
-        if (status.kind === "suspended") {
-          return this.suspendTask(claimed, status, (res: Result<{ continue: boolean }, undefined>) => {
-            if (res.kind === "error") {
-              return done(res);
-            }
-            if (res.value.continue) {
-              return this.executeUntilBlocked(claimed, done);
-            }
-            return done(compRes);
-          });
+      const status = compRes.value;
+      if (status.kind === "suspended") {
+        const suspendRes = await this.suspendTask(claimed, status);
+        if (suspendRes.kind === "error") {
+          return suspendRes;
         }
-        if (status.kind === "done") {
-          return this.fulfillTask(claimed.task, status, () => done(compRes));
+        if (suspendRes.value.continue) {
+          claimed.preload = suspendRes.value.preload;
+          return this.executeUntilBlocked(claimed);
         }
+        return compRes;
       }
-    });
+      if (status.kind === "done") {
+        await this.fulfillTask(claimed.task, status);
+        return compRes;
+      }
+      return compRes;
+    } catch (err) {
+      console.warn("executeUntilBlocked failed unexpectedly", err);
+      await this.releaseTask(claimed.task).catch(() => {});
+      return { kind: "error", error: undefined };
+    }
   }
 
   // Extracted to allow tests to spy on computation creation.
@@ -137,122 +143,107 @@ export class Core {
     );
   }
 
-  private releaseTask(task: TaskRecord, callback: () => void): void {
-    this.send(
-      {
-        kind: "task.release",
-        head: { corrId: "", version: "" },
-        data: { id: task.id, version: task.version },
-      },
-      callback,
-    );
+  private async releaseTask(task: TaskRecord): Promise<void> {
+    await this.send({
+      kind: "task.release",
+      head: { corrId: "", version: "" },
+      data: { id: task.id, version: task.version },
+    });
   }
 
-  private suspendTask(
+  private async suspendTask(
     claimed: ClaimedTask,
     status: { kind: "suspended"; awaited: string[] },
-    cb: (res: Result<{ continue: boolean }, undefined>) => void,
-  ): void {
+  ): Promise<Result<{ continue: true; preload: PromiseRecord[] } | { continue: false }, undefined>> {
     const task = claimed.task;
-    this.send(
-      {
-        kind: "task.suspend",
-        head: { corrId: "", version: "" },
-        data: {
-          id: task.id,
-          version: task.version,
-          actions: status.awaited.map((a) => ({
-            kind: "promise.register_callback",
-            head: { corrId: "", version: "" },
-            data: { awaiter: claimed.rootPromise.id, awaited: a },
-          })),
-        },
+    const res = await this.send({
+      kind: "task.suspend",
+      head: { corrId: "", version: "" },
+      data: {
+        id: task.id,
+        version: task.version,
+        actions: status.awaited.map((a) => ({
+          kind: "promise.register_callback",
+          head: { corrId: "", version: "" },
+          data: { awaiter: claimed.rootPromise.id, awaited: a },
+        })),
       },
-      (res) => {
-        if (isSuccess(res)) {
-          return cb({ kind: "value", value: { continue: false } });
-        }
-        if (isRedirect(res)) {
-          return cb({ kind: "value", value: { continue: true } });
-        }
-        const error = exceptions.SERVER_ERROR(res.data, true, {
-          code: res.head.status,
-          message: res.data,
-        });
-        error.log(this.verbose);
-        return cb({ kind: "error", error: undefined });
-      },
-    );
+    });
+    if (isSuccess(res)) {
+      return { kind: "value", value: { continue: false } };
+    }
+    if (isRedirect(res)) {
+      return { kind: "value", value: { continue: true, preload: res.data.preload } };
+    }
+    const error = exceptions.SERVER_ERROR(res.data, true, {
+      code: res.head.status,
+      message: res.data,
+    });
+    error.log(this.verbose);
+    return { kind: "error", error: undefined };
   }
 
-  private fulfillTask(task: TaskRecord, doneValue: Done, callback: () => void): void {
+  private async fulfillTask(task: TaskRecord, doneValue: Done): Promise<void> {
     let encoded: Value;
     try {
       encoded = this.codec.encode(doneValue.value);
     } catch (e) {
       const error = exceptions.ENCODING_RETV_UNENCODEABLE(doneValue.id, e);
       error.log(this.verbose);
-      callback();
       return;
     }
 
-    this.send(
-      {
-        kind: "task.fulfill",
-        head: { corrId: "", version: "" },
-        data: {
-          id: task.id,
-          version: task.version,
-          action: {
-            kind: "promise.settle",
-            head: { corrId: "", version: "" },
-            data: {
-              id: doneValue.id,
-              state: doneValue.state,
-              value: encoded,
-            },
+    await this.send({
+      kind: "task.fulfill",
+      head: { corrId: "", version: "" },
+      data: {
+        id: task.id,
+        version: task.version,
+        action: {
+          kind: "promise.settle",
+          head: { corrId: "", version: "" },
+          data: {
+            id: doneValue.id,
+            state: doneValue.state,
+            value: encoded,
           },
         },
       },
-      callback,
-    );
+    });
   }
 
-  public onMessage(msg: Message, cb: (res: Result<Status, undefined>) => void): void {
+  public async onMessage(msg: Message): Promise<Result<Status, undefined>> {
     util.assert(msg.kind === "execute");
 
     const task = msg.data.task;
-    this.send(
-      {
-        kind: "task.acquire",
-        head: { corrId: "", version: "" },
-        data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
-      },
-      (res) => {
-        if (!isSuccess(res)) {
-          const error = exceptions.SERVER_ERROR(res.data, true, {
-            code: res.head.status,
-            message: res.data,
-          });
-          error.log(this.verbose);
-          return cb({ kind: "error", error: undefined });
-        }
+    const res = await this.send({
+      kind: "task.acquire",
+      head: { corrId: "", version: "" },
+      data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
+    });
 
-        let promise: PromiseRecord;
-        try {
-          promise = this.codec.decodePromise(res.data.promise);
-        } catch (e) {
-          return cb({ kind: "error", error: undefined });
-        }
+    if (!isSuccess(res)) {
+      const error = exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
+      });
+      error.log(this.verbose);
+      return { kind: "error", error: undefined };
+    }
 
-        const acquiredTask: TaskRecord = { id: task.id, state: "acquired", version: task.version };
-        this.executeUntilBlocked(
-          { kind: "claimed", task: acquiredTask, rootPromise: promise, preload: res.data.preload },
-          (execRes) => {
-            cb(execRes);
-          },
-        );
-      },
-    );
+    let promise: PromiseRecord;
+    try {
+      promise = this.codec.decodePromise(res.data.promise);
+    } catch (e) {
+      return { kind: "error", error: undefined };
+    }
+
+    const acquiredTask: TaskRecord = { id: task.id, state: "acquired", version: task.version };
+    return this.executeUntilBlocked({
+      kind: "claimed",
+      task: acquiredTask,
+      rootPromise: promise,
+      preload: res.data.preload,
+    });
   }
 }

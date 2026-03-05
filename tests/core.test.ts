@@ -27,14 +27,11 @@ class MockComputation {
     this.responses = responses;
   }
 
-  executeUntilBlocked(
-    task: ClaimedTask | { kind: "unclaimed"; task: TaskRecord },
-    done: (res: Result<Status, undefined>) => void,
-  ) {
+  executeUntilBlocked(task: ClaimedTask | { kind: "unclaimed"; task: TaskRecord }): Promise<Result<Status, undefined>> {
     this.calls.push(task as ClaimedTask);
     const res = this.responses[this.callIndex] ?? this.responses[this.responses.length - 1];
     this.callIndex++;
-    done(res);
+    return Promise.resolve(res);
   }
 }
 
@@ -51,7 +48,7 @@ function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { m
 
   // Mutable holder so interceptSend can swap the inner function
   const sendHolder = { fn: transport.send };
-  const proxiedSend: Send = (req: any, cb: any) => sendHolder.fn(req, cb);
+  const proxiedSend: Send = (req: any) => sendHolder.fn(req);
 
   const activeMock = new MockComputation(opts.responses);
   if (opts.mockRef) {
@@ -76,61 +73,38 @@ function buildCore(opts: { responses: Result<Status, undefined>[]; mockRef?: { m
   return { core, network, sendHolder, codec, ctorSpy };
 }
 
-function wrapCb<T>(): { promise: Promise<T>; cb: (val: T) => void } {
-  let resolve: (val: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
-  });
-  return { promise, cb: (val: T) => resolve(val) };
-}
-
-function wrapVoidCb(): { promise: Promise<void>; cb: () => void } {
-  let resolve: () => void;
-  const promise = new Promise<void>((r) => {
-    resolve = r;
-  });
-  return { promise, cb: () => resolve() };
-}
-
-function seedAcquiredTask(
+async function seedAcquiredTask(
   send: Send,
   codec: Codec,
   id: string,
   func: string,
   args: any[],
 ): Promise<{ task: TaskRecord; rootPromise: PromiseRecord }> {
-  return new Promise((resolve, reject) => {
-    const param = codec.encode({ func, args, version: 1 });
+  const param = codec.encode({ func, args, version: 1 });
 
-    send(
-      {
-        kind: "task.create",
+  const res = await send({
+    kind: "task.create",
+    head: { corrId: "", version: "" },
+    data: {
+      pid: "test-pid",
+      ttl: 60_000,
+      action: {
+        kind: "promise.create",
         head: { corrId: "", version: "" },
         data: {
-          pid: "test-pid",
-          ttl: 60_000,
-          action: {
-            kind: "promise.create",
-            head: { corrId: "", version: "" },
-            data: {
-              id,
-              param,
-              tags: { "resonate:target": "default" },
-              timeoutAt: Date.now() + 60_000,
-            },
-          },
+          id,
+          param,
+          tags: { "resonate:target": "default" },
+          timeoutAt: Date.now() + 60_000,
         },
       },
-      (res) => {
-        if (isSuccess(res)) {
-          const rootPromise = codec.decodePromise(res.data.promise);
-          resolve({ task: res.data.task, rootPromise });
-        } else {
-          reject(new Error(`Failed to create task: ${res.head.status}`));
-        }
-      },
-    );
+    },
   });
+  if (!isSuccess(res)) {
+    throw new Error(`Failed to create task: ${res.head.status}`);
+  }
+  const rootPromise = codec.decodePromise(res.data.promise);
+  return { task: res.data.task, rootPromise };
 }
 
 async function seedPendingTask(
@@ -142,31 +116,24 @@ async function seedPendingTask(
   network: LocalNetwork,
 ): Promise<TaskRecord> {
   const { task } = await seedAcquiredTask(send, codec, id, func, args);
-  return new Promise((resolve, reject) => {
-    send(
-      {
-        kind: "task.release",
-        head: { corrId: "", version: "" },
-        data: { id: task.id, version: task.version },
-      },
-      (res) => {
-        if (res.head.status === 200) {
-          const serverTask = (network as any).server?.tasks?.get(task.id);
-          resolve({ id: task.id, state: "pending", version: serverTask?.version ?? task.version + 1 });
-        } else {
-          reject(new Error(`Failed to release task: ${res.head.status}`));
-        }
-      },
-    );
+  const res = await send({
+    kind: "task.release",
+    head: { corrId: "", version: "" },
+    data: { id: task.id, version: task.version },
   });
+  if (res.head.status !== 200) {
+    throw new Error(`Failed to release task: ${res.head.status}`);
+  }
+  const serverTask = (network as any).server?.tasks?.get(task.id);
+  return { id: task.id, state: "pending", version: serverTask?.version ?? task.version + 1 };
 }
 
 function interceptSend(sendHolder: { fn: Send }): { sent: Request[] } {
   const sent: Request[] = [];
   const origSend = sendHolder.fn;
-  sendHolder.fn = ((req: any, cb: any) => {
+  sendHolder.fn = ((req: any) => {
     sent.push(req);
-    return origSend(req, cb);
+    return origSend(req);
   }) as Send;
   return { sent };
 }
@@ -182,9 +149,7 @@ describe("Core", () => {
       const { sent } = interceptSend(sendHolder);
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(claimed, cb);
-      const res = await promise;
+      const res = await core.executeUntilBlocked(claimed);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -207,9 +172,7 @@ describe("Core", () => {
       const { sent } = interceptSend(sendHolder);
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(claimed, cb);
-      const res = await promise;
+      const res = await core.executeUntilBlocked(claimed);
 
       expect(res.kind).toBe("value");
       const fulfill = sent.find((r) => r.kind === "task.fulfill");
@@ -228,9 +191,7 @@ describe("Core", () => {
       const { sent } = interceptSend(sendHolder);
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(claimed, cb);
-      const res = await promise;
+      const res = await core.executeUntilBlocked(claimed);
 
       expect(res.kind).toBe("error");
       const release = sent.find((r) => r.kind === "task.release");
@@ -249,9 +210,7 @@ describe("Core", () => {
       const { sent } = interceptSend(sendHolder);
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(claimed, cb);
-      const res = await promise;
+      const res = await core.executeUntilBlocked(claimed);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -281,22 +240,19 @@ describe("Core", () => {
       await seedAcquiredTask(sendHolder.fn, codec, "dep-x", "depFunc", []);
 
       const origFn = sendHolder.fn;
-      sendHolder.fn = ((req: any, cb: any) => {
+      sendHolder.fn = ((req: any) => {
         if (req.kind === "task.suspend") {
-          cb({
+          return Promise.resolve({
             kind: "task.suspend",
             head: { corrId: "", status: 300, version: "" },
             data: { preload: [] },
           });
-          return;
         }
-        return origFn(req, cb);
+        return origFn(req);
       }) as Send;
 
       const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      const { promise, cb } = wrapCb<Result<Status, undefined>>();
-      core.executeUntilBlocked(claimed, cb);
-      const res = await promise;
+      const res = await core.executeUntilBlocked(claimed);
 
       expect(res.kind).toBe("value");
       if (res.kind === "value") {
@@ -316,9 +272,7 @@ describe("Core", () => {
 
       const task = await seedPendingTask(sendHolder.fn, codec, "on-msg-1", "main", [], network);
 
-      const { promise, cb } = wrapVoidCb();
-      core.onMessage({ kind: "execute", head: {}, data: { task } }, cb);
-      await promise;
+      await core.onMessage({ kind: "execute", head: {}, data: { task } });
 
       expect(mockRef.mock.calls.length).toBe(1);
       expect(mockRef.mock.calls[0].kind).toBe("claimed");
@@ -333,9 +287,7 @@ describe("Core", () => {
 
       const { task } = await seedAcquiredTask(sendHolder.fn, codec, "fail-acq", "main", []);
 
-      const { promise, cb } = wrapVoidCb();
-      core.onMessage({ kind: "execute", head: {}, data: { task: { id: task.id, version: task.version } } }, cb);
-      await promise;
+      await core.onMessage({ kind: "execute", head: {}, data: { task: { id: task.id, version: task.version } } });
 
       expect(mockRef.mock.calls.length).toBe(0);
     });
@@ -353,9 +305,7 @@ describe("Core", () => {
       const task = await seedPendingTask(sendHolder.fn, codec, "encode-test", "main", [], network);
       const { sent } = interceptSend(sendHolder);
 
-      const { promise, cb } = wrapVoidCb();
-      core.onMessage({ kind: "execute", head: {}, data: { task } }, cb);
-      await promise;
+      await core.onMessage({ kind: "execute", head: {}, data: { task } });
 
       const fulfill = sent.find((r) => r.kind === "task.fulfill");
       expect(fulfill).toBeDefined();

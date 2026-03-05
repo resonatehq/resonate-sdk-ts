@@ -225,20 +225,22 @@ export class Simulator {
     this.network = retained.concat(newMessages);
   }
 
-  exec(steps: number): void {
+  async exec(steps: number): Promise<void> {
     let i = 0;
     while (i < steps) {
       this.runScheduled();
       this.tick();
+      await Promise.resolve();
       i++;
     }
   }
 
-  execUntil(steps: number, condition: () => boolean): boolean {
+  async execUntil(steps: number, condition: () => boolean): Promise<boolean> {
     let i = 0;
     while (i < steps) {
       this.runScheduled();
       this.tick();
+      await Promise.resolve();
       if (condition()) {
         return true;
       }

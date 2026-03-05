@@ -25,8 +25,7 @@ export type Result<V, E> = { kind: "value"; value: V } | { kind: "error"; error:
 // Send
 export type Send = <K extends Request["kind"]>(
   req: Extract<Request, { kind: K }>,
-  done: (res: Extract<Response, { kind: K }>) => void,
-) => void;
+) => Promise<Extract<Response, { kind: K }>>;
 // Recv
 export type Recv = (callback: (msg: Message) => void) => void;
 // Transport
@@ -39,15 +38,6 @@ export type Transport = {
 // Effects
 
 export type Effects = {
-  promiseCreate: (
-    req: PromiseCreateReq,
-    done: (res: Result<PromiseRecord, ResonateError>) => void,
-    func?: string,
-  ) => void;
-
-  promiseSettle: (
-    req: PromiseSettleReq,
-    done: (res: Result<PromiseRecord, ResonateError>) => void,
-    func?: string,
-  ) => void;
+  promiseCreate: (req: PromiseCreateReq, func?: string) => Promise<Result<PromiseRecord, ResonateError>>;
+  promiseSettle: (req: PromiseSettleReq, func?: string) => Promise<Result<PromiseRecord, ResonateError>>;
 };

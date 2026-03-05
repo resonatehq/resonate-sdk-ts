@@ -1,5 +1,6 @@
 import type { Codec } from "./codec.js";
-import exceptions from "./exceptions.js";
+import type { InnerContext } from "./context.js";
+import exceptions, { type ResonateError } from "./exceptions.js";
 import type { Network } from "./network/network.js";
 import {
   isMessage,
@@ -11,7 +12,7 @@ import {
   type Response,
 } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
-import type { Effects, Send, Transport } from "./types.js";
+import type { Effects, Func, Result, Send, Transport } from "./types.js";
 
 // time
 
@@ -112,10 +113,9 @@ export function once<T extends () => any>(fn: T): T {
 
 export function buildTransport(network: Network, verbose: boolean = false): Transport {
   return {
-    send: <K extends Request["kind"]>(
+    send: async <K extends Request["kind"]>(
       req: Extract<Request, { kind: K }>,
-      done: (res: Extract<Response, { kind: K }>) => void,
-    ) => {
+    ): Promise<Extract<Response, { kind: K }>> => {
       if (verbose) {
         console.log("[Network] Sending:", req);
       }
@@ -125,24 +125,23 @@ export function buildTransport(network: Network, verbose: boolean = false): Tran
         data: "invalid response",
       } as Extract<Response, { kind: K }>;
 
-      network.send(JSON.stringify(req), (resStr) => {
-        let res: unknown;
-        try {
-          res = JSON.parse(resStr);
-        } catch {
-          return done(errorRes);
-        }
+      const resStr = await network.send(JSON.stringify(req));
+      let res: unknown;
+      try {
+        res = JSON.parse(resStr);
+      } catch {
+        return errorRes;
+      }
 
-        if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
-          return done(errorRes);
-        }
+      if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
+        return errorRes;
+      }
 
-        if (verbose) {
-          console.log(`[Network] Received ${res.head.status}:`, `for request:`, req, `response:${res.data}`);
-        }
+      if (verbose) {
+        console.log(`[Network] Received ${res.head.status}:`, `for request:`, req, `response:${res.data}`);
+      }
 
-        done(res as Extract<Response, { kind: K }>);
-      });
+      return res as Extract<Response, { kind: K }>;
     },
     recv: (callback: (msg: Message) => void) => {
       network.recv((msgStr: string) => {
@@ -162,81 +161,106 @@ export function buildTransport(network: Network, verbose: boolean = false): Tran
     },
   };
 }
-// effects
 
+// retry
+export async function executeWithRetry(
+  ctx: InnerContext,
+  func: Func,
+  args: any[],
+  verbose: boolean,
+): Promise<Result<any, any>> {
+  while (true) {
+    try {
+      const data = await func(ctx, ...args);
+      return { kind: "value", value: data };
+    } catch (error) {
+      const retryIn = ctx.retryPolicy.next(ctx.info.attempt);
+      if (retryIn === null || ctx.clock.now() + retryIn >= ctx.info.timeout) {
+        return { kind: "error", error };
+      }
+      console.warn(
+        `Runtime. Function '${ctx.func}' failed with '${String(error)}' (retrying in ${retryIn / 1000} secs)`,
+      );
+      if (verbose) {
+        console.warn(error);
+      }
+      ctx.info.attempt++;
+      await new Promise((resolve) => setTimeout(resolve, retryIn));
+    }
+  }
+}
+
+// effects
 export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] = []): Effects {
   const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
 
   return {
-    promiseCreate: (req, done, func = "unknown") => {
+    promiseCreate: async (req, func = "unknown") => {
       const cached = cache.get(req.data.id);
       if (cached) {
-        done({ kind: "value", value: cached });
-        return;
+        return { kind: "value" as const, value: cached };
       }
 
       try {
         req.data.param = codec.encode(req.data.param.data);
       } catch (e) {
-        done({
-          kind: "error",
+        return {
+          kind: "error" as const,
           error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e),
-        });
-        return;
+        };
       }
 
-      send(req, (res) => {
-        if (!isSuccess(res)) {
-          return done({
-            kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, {
-              code: res.head.status,
-              message: res.data,
-            }),
-          });
-        }
-        try {
-          const promise = codec.decodePromise(res.data.promise);
-          cache.set(promise.id, promise);
-          done({ kind: "value", value: promise });
-        } catch (e) {
-          return done({ kind: "error", error: exceptions.SERVER_ERROR(`Unexpected ${req.kind} response`) });
-        }
-      });
+      const res = await send(req);
+      if (!isSuccess(res)) {
+        return {
+          kind: "error",
+          error: exceptions.SERVER_ERROR(res.data, true, {
+            code: res.head.status,
+            message: res.data,
+          }),
+        };
+      }
+      try {
+        const promise = codec.decodePromise(res.data.promise);
+        cache.set(promise.id, promise);
+        return { kind: "value", value: promise };
+      } catch (e) {
+        return { kind: "error", error: e as ResonateError };
+      }
     },
 
-    promiseSettle: (req, done, func = "unknown") => {
+    promiseSettle: async (req, func = "unknown") => {
       const cached = cache.get(req.data.id);
       if (cached && cached.state !== "pending") {
-        done({ kind: "value", value: cached });
-        return;
+        return { kind: "value" as const, value: cached };
       }
 
       try {
         req.data.value = codec.encode(req.data.value.data);
       } catch (e) {
-        done({ kind: "error", error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e) });
-        return;
+        return {
+          kind: "error" as const,
+          error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e),
+        };
       }
 
-      send(req, (res) => {
-        if (!isSuccess(res)) {
-          return done({
-            kind: "error",
-            error: exceptions.SERVER_ERROR(res.data, true, {
-              code: res.head.status,
-              message: res.data,
-            }),
-          });
-        }
-        try {
-          const promise = codec.decodePromise(res.data.promise);
-          cache.set(promise.id, promise);
-          done({ kind: "value", value: promise });
-        } catch (e) {
-          return done({ kind: "error", error: exceptions.SERVER_ERROR(`Unexpected ${req.kind} response`) });
-        }
-      });
+      const res = await send(req);
+      if (!isSuccess(res)) {
+        return {
+          kind: "error",
+          error: exceptions.SERVER_ERROR(res.data, true, {
+            code: res.head.status,
+            message: res.data,
+          }),
+        };
+      }
+      try {
+        const promise = codec.decodePromise(res.data.promise);
+        cache.set(promise.id, promise);
+        return { kind: "value", value: promise };
+      } catch (e) {
+        return { kind: "error", error: e as ResonateError };
+      }
     },
   };
 }

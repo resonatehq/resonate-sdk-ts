@@ -1,6 +1,5 @@
 import { WallClock } from "./clock.js";
 import { Codec } from "./codec.js";
-import type { Status } from "./computation.js";
 import type { Context } from "./context.js";
 import { Core } from "./core.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
@@ -129,16 +128,9 @@ export class Resonate {
         verbose: this.verbose,
       });
 
-      // Process the message with async wrapper
-      const result = await new Promise<Status>((resolve, reject) => {
-        core.onMessage(body, (res) => {
-          if (res.kind === "error") {
-            reject(res.error);
-          } else {
-            resolve(res.value);
-          }
-        });
-      });
+      const res = await core.onMessage(body);
+      if (res.kind === "error") throw res.error;
+      const result = res.value;
 
       return new Response(JSON.stringify(result), {
         status: 200,

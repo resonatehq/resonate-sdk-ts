@@ -174,7 +174,7 @@ type Options = {
 
 const options = program.opts<Options>();
 
-export function run(options: Options) {
+export async function run(options: Options) {
   // effectively disable queueMicrotask
 
   const rnd = new Random(options.seed);
@@ -289,8 +289,11 @@ export function run(options: Options) {
     }
   });
 
-  sim.exec(options.steps);
+  await sim.exec(options.steps);
   console.log("[outbox]: ", sim.outbox);
 }
 
-run(options);
+run(options).catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
