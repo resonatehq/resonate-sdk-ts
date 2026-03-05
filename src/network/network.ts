@@ -4,10 +4,10 @@ export interface Network {
   readonly unicast: string;
   readonly anycast: string;
 
-  start(): void;
-  stop(): void;
+  start(): Promise<void>;
+  stop(): Promise<void>;
 
-  send(req: string, callback: (res: string) => void): void;
+  send(req: string): Promise<string>;
   recv(callback: (msg: string) => void): void;
   match(target: string): string;
 }

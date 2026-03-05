@@ -10,29 +10,21 @@ export class Schedules {
     this.send = send;
   }
 
-  get(id: string): Promise<ScheduleRecord> {
-    return new Promise((resolve, reject) => {
-      this.send(
-        {
-          kind: "schedule.get",
-          head: { corrId: "", version: "" },
-          data: {
-            id,
-          },
-        },
-        (res) => {
-          if (!isSuccess(res)) {
-            // TODO: reject with more information
-            reject(Error("not implemented"));
-            return;
-          }
-          resolve(res.data.schedule);
-        },
-      );
+  async get(id: string): Promise<ScheduleRecord> {
+    const res = await this.send({
+      kind: "schedule.get",
+      head: { corrId: "", version: "" },
+      data: {
+        id,
+      },
     });
+    if (!isSuccess(res)) {
+      throw Error("not implemented");
+    }
+    return res.data.schedule;
   }
 
-  create(
+  async create(
     id: string,
     cron: string,
     promiseId: string,
@@ -49,51 +41,35 @@ export class Schedules {
       promiseTags?: { [key: string]: string };
     } = {},
   ): Promise<ScheduleRecord> {
-    return new Promise((resolve, reject) => {
-      this.send(
-        {
-          kind: "schedule.create",
-          head: { corrId: "", version: "" },
-          data: {
-            id: id,
-            cron: cron,
-            promiseId: promiseId,
-            promiseTimeout: promiseTimeout,
-            promiseParam: { headers: promiseHeaders, data: promiseData },
-            promiseTags: promiseTags,
-          },
-        },
-        (res) => {
-          if (!isSuccess(res)) {
-            // TODO: reject with more information
-            reject(Error("not implemented"));
-            return;
-          }
-          resolve(res.data.schedule);
-        },
-      );
+    const res = await this.send({
+      kind: "schedule.create",
+      head: { corrId: "", version: "" },
+      data: {
+        id: id,
+        cron: cron,
+        promiseId: promiseId,
+        promiseTimeout: promiseTimeout,
+        promiseParam: { headers: promiseHeaders, data: promiseData },
+        promiseTags: promiseTags,
+      },
     });
+    if (!isSuccess(res)) {
+      throw Error("not implemented");
+    }
+    return res.data.schedule;
   }
 
-  delete(id: string): Promise<undefined> {
-    return new Promise((resolve, reject) => {
-      this.send(
-        {
-          kind: "schedule.delete",
-          head: { corrId: "", version: "" },
-          data: {
-            id,
-          },
-        },
-        (res) => {
-          if (!isSuccess(res)) {
-            // TODO: reject with more information
-            reject(Error("not implemented"));
-            return;
-          }
-          resolve(undefined);
-        },
-      );
+  async delete(id: string): Promise<undefined> {
+    const res = await this.send({
+      kind: "schedule.delete",
+      head: { corrId: "", version: "" },
+      data: {
+        id,
+      },
     });
+    if (!isSuccess(res)) {
+      throw Error("not implemented");
+    }
+    return undefined;
   }
 }

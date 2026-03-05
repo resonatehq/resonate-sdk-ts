@@ -31,7 +31,7 @@ class SimulatedNetwork implements Network {
     number,
     {
       req: string;
-      callback: (res: string) => void;
+      resolve: (res: string) => void;
       timeout: number;
     }
   > = {};
@@ -52,8 +52,8 @@ class SimulatedNetwork implements Network {
     this.deliveryOptions = { charFlipProb };
   }
 
-  start(): void {}
-  stop(): void {}
+  async start(): Promise<void> {}
+  async stop(): Promise<void> {}
 
   recv(callback: (msg: string) => void): void {
     this.subscribers.push(callback);
@@ -63,18 +63,20 @@ class SimulatedNetwork implements Network {
     return `sim://any@${target}`;
   }
 
-  send(req: string, callback: (res: string) => void): void {
+  send(req: string): Promise<string> {
     const message = new Message<string>(this.source, this.target, req, {
       requ: true,
       correlationId: this.correlationId++,
     });
 
-    this.callbacks[message.head!.correlationId] = {
-      req,
-      callback,
-      timeout: this.currentTime + 2000,
-    };
-    this.buffer.push(message);
+    return new Promise<string>((resolve) => {
+      this.callbacks[message.head!.correlationId] = {
+        req,
+        resolve,
+        timeout: this.currentTime + 2000,
+      };
+      this.buffer.push(message);
+    });
   }
 
   time(time: number): void {
@@ -93,7 +95,7 @@ class SimulatedNetwork implements Network {
           data: "req timed out",
         };
         util.assert(isResponse(res));
-        cb.callback(JSON.stringify(res));
+        cb.resolve(JSON.stringify(res));
         delete this.callbacks[key];
       }
     }
@@ -107,7 +109,7 @@ class SimulatedNetwork implements Network {
       const entry = correlationId && this.callbacks[correlationId];
       if (entry) {
         util.assertDefined(message.data);
-        entry.callback(this.maybeCorruptData(message.data));
+        entry.resolve(this.maybeCorruptData(message.data));
         delete this.callbacks[correlationId];
       }
     } else {
@@ -167,7 +169,7 @@ export class WorkerProcess extends Process {
       verbose: false,
     });
     recv((msg) => {
-      core.onMessage(msg, () => undefined);
+      core.onMessage(msg).catch(() => {});
     });
   }
 

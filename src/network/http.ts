@@ -71,14 +71,14 @@ export class HttpNetwork implements Network {
     return this._messageSource.anycast;
   }
 
-  start(): void {
+  async start(): Promise<void> {
     util.assert(this._messageSource !== undefined);
-    this._messageSource.start();
+    await this._messageSource.start();
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     util.assert(this._messageSource !== undefined);
-    this._messageSource.stop();
+    await this._messageSource.stop();
   }
 
   recv(callback: (msg: string) => void): void {
@@ -90,17 +90,7 @@ export class HttpNetwork implements Network {
     return this._messageSource.match(target);
   }
 
-  send(req: string, callback: (res: string) => void): void {
-    this.doSend(req).then(
-      (res) => callback(res),
-      (err) => {
-        console.error(err);
-        util.assert(false, "something went wrong");
-      },
-    );
-  }
-
-  private async doSend(req: string): Promise<string> {
+  async send(req: string): Promise<string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
@@ -192,9 +182,9 @@ class PollMessageSource {
     }
   }
 
-  public start(): void {}
+  public async start(): Promise<void> {}
 
-  public stop(): void {
+  public async stop(): Promise<void> {
     this.eventSource.close();
   }
 
@@ -241,21 +231,27 @@ class PushMessageSource {
     this.server = createServer((req, res) => this.handleRequest(req, res));
   }
 
-  public start(): void {
-    this.server.listen(this.port, this.host, () => {
-      const addr = this.server.address();
-      if (addr && typeof addr === "object") {
-        this.port = addr.port;
-      }
+  public start(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.server.listen(this.port, this.host, () => {
+        const addr = this.server.address();
+        if (addr && typeof addr === "object") {
+          this.port = addr.port;
+        }
 
-      // set addresses now that we know the port
-      (this as any).unicast = `http://${this.host}:${this.port}`;
-      (this as any).anycast = `http://${this.host}:${this.port}`;
+        // set addresses now that the server is listening and port is known
+        (this as any).unicast = `http://${this.host}:${this.port}`;
+        (this as any).anycast = `http://${this.host}:${this.port}`;
+        resolve();
+      });
+      this.server.once("error", reject);
     });
   }
 
-  public stop(): void {
-    this.server.close();
+  public stop(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.server.close((err) => (err ? reject(err) : resolve()));
+    });
   }
 
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
