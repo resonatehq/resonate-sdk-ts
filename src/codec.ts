@@ -1,70 +1,84 @@
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
+import exceptions, { type ResonateError } from "./exceptions.js";
 import type { PromiseRecord, Value } from "./network/types.js";
+import type { Result } from "./types.js";
 import * as util from "./util.js";
 
 class JsonEncoder {
   private inf = "__INF__";
   private negInf = "__NEG_INF__";
 
-  encode(value: any): Value {
+  encode(value: any): Result<Value, ResonateError> {
     if (value === undefined) {
-      return { data: "", headers: {} };
+      return { kind: "value", value: { data: "", headers: {} } };
     }
 
-    const json = JSON.stringify(value, (_, v) => {
-      if (v === Number.POSITIVE_INFINITY) return this.inf;
-      if (v === Number.NEGATIVE_INFINITY) return this.negInf;
+    let json: string;
+    try {
+      json = JSON.stringify(value, (_, v) => {
+        if (v === Number.POSITIVE_INFINITY) return this.inf;
+        if (v === Number.NEGATIVE_INFINITY) return this.negInf;
 
-      if (v instanceof AggregateError) {
-        return {
-          __type: "aggregate_error",
-          message: v.message,
-          stack: v.stack,
-          name: v.name,
-          errors: v.errors,
-        };
-      }
+        if (v instanceof AggregateError) {
+          return {
+            __type: "aggregate_error",
+            message: v.message,
+            stack: v.stack,
+            name: v.name,
+            errors: v.errors,
+          };
+        }
 
-      if (v instanceof Error) {
-        return {
-          __type: "error",
-          message: v.message,
-          stack: v.stack,
-          name: v.name,
-        };
-      }
+        if (v instanceof Error) {
+          return {
+            __type: "error",
+            message: v.message,
+            stack: v.stack,
+            name: v.name,
+          };
+        }
 
-      return v;
-    });
-
-    return {
-      headers: {},
-      data: util.base64Encode(json),
-    };
+        return v;
+      });
+      return {
+        kind: "value",
+        value: {
+          headers: {},
+          data: util.base64Encode(json),
+        },
+      };
+    } catch (e) {
+      return { kind: "error", error: exceptions.ENCODING_ARGS_UNENCODEABLE("unknown", e) };
+    }
   }
 
-  decode(value: Value | undefined): any | undefined {
+  decode(value: Value | undefined): Result<any | undefined, ResonateError> {
     if (!value?.data) {
-      return undefined;
+      return { kind: "value", value: undefined };
     }
 
-    return JSON.parse(util.base64Decode(value.data), (_, v) => {
-      if (v === this.inf) return Number.POSITIVE_INFINITY;
-      if (v === this.negInf) return Number.NEGATIVE_INFINITY;
+    try {
+      const decoded = JSON.parse(util.base64Decode(value.data), (_, v) => {
+        if (v === this.inf) return Number.POSITIVE_INFINITY;
+        if (v === this.negInf) return Number.NEGATIVE_INFINITY;
 
-      if (v?.__type === "aggregate_error") {
-        return Object.assign(new AggregateError(v.errors, v.message), v);
-      }
+        if (v?.__type === "aggregate_error") {
+          return Object.assign(new AggregateError(v.errors, v.message), v);
+        }
 
-      if (v?.__type === "error") {
-        const err = new Error(v.message || "Unknown error");
-        if (v.name) err.name = v.name;
-        if (v.stack) err.stack = v.stack;
-        return err;
-      }
+        if (v?.__type === "error") {
+          const err = new Error(v.message || "Unknown error");
+          if (v.name) err.name = v.name;
+          if (v.stack) err.stack = v.stack;
+          return err;
+        }
 
-      return v;
-    });
+        return v;
+      });
+      return { kind: "value", value: decoded };
+    } catch (e) {
+      return { kind: "error", error: exceptions.ENCODING_ARGS_UNDECODEABLE("unknown", e) };
+    }
   }
 }
 
@@ -77,28 +91,51 @@ export class Codec {
     this.encryptor = encryptor;
   }
 
-  encode(value: any): Value {
+  encode(value: any): Result<Value, ResonateError> {
     const encoded = this.encoder.encode(value);
-    return this.encryptor.encrypt(encoded);
-  }
-
-  decode(value: Value | undefined): any | undefined {
-    if (!value?.data) {
-      return undefined;
+    if (encoded.kind === "error") {
+      return encoded;
     }
 
-    const decrypted = this.encryptor.decrypt(value);
-    return this.encoder.decode(decrypted);
+    try {
+      const encrypted = this.encryptor.encrypt(encoded.value);
+      return { kind: "value", value: encrypted };
+    } catch (e) {
+      return { kind: "error", error: exceptions.ENCODING_ARGS_UNENCODEABLE("unknown", e) };
+    }
   }
 
-  decodePromise(promise: PromiseRecord): PromiseRecord {
-    const paramData = this.decode(promise.param);
-    const valueData = this.decode(promise.value);
+  decode(value: Value | undefined): Result<any | undefined, ResonateError> {
+    if (!value?.data) {
+      return { kind: "value", value: undefined };
+    }
+
+    try {
+      const decrypted = this.encryptor.decrypt(value);
+      return this.encoder.decode(decrypted);
+    } catch (e) {
+      return { kind: "error", error: exceptions.ENCODING_ARGS_UNDECODEABLE("unknown", e) };
+    }
+  }
+
+  decodePromise(promise: PromiseRecord): Result<PromiseRecord, ResonateError> {
+    const paramResult = this.decode(promise.param);
+    if (paramResult.kind === "error") {
+      return paramResult;
+    }
+
+    const valueResult = this.decode(promise.value);
+    if (valueResult.kind === "error") {
+      return valueResult;
+    }
 
     return {
-      ...promise,
-      param: { headers: promise.param?.headers, data: paramData },
-      value: { headers: promise.value?.headers, data: valueData },
+      kind: "value",
+      value: {
+        ...promise,
+        param: { headers: promise.param?.headers, data: paramResult.value },
+        value: { headers: promise.value?.headers, data: valueResult.value },
+      },
     };
   }
 }

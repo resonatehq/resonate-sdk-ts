@@ -4,6 +4,7 @@ import { Codec } from "../src/codec.js";
 import type { Context } from "../src/context.js";
 import type { Request } from "../src/network/types.js";
 import { Registry } from "../src/registry.js";
+import * as util from "../src/util.js";
 import { ServerProcess } from "./src/server.js";
 import { Message, Random, Simulator, unicast } from "./src/simulator.js";
 import { WorkerProcess } from "./src/worker.js";
@@ -254,7 +255,11 @@ export async function run(options: Options) {
                 id,
                 timeoutAt,
                 tags: { "resonate:target": "sim://any@default" },
-                param: codec.encode({ func: funcName, args: [rnd.randint(0, 20)], version: 1 }),
+                param: (() => {
+                  const r = codec.encode({ func: funcName, args: [rnd.randint(0, 20)], version: 1 });
+                  util.assert(r.kind !== "error", "encode should never return error");
+                  return r.value;
+                })(),
               },
             },
             { requ: true },
@@ -274,7 +279,11 @@ export async function run(options: Options) {
                 id,
                 timeoutAt,
                 tags: { "resonate:target": "sim://any@default" },
-                param: codec.encode({ func: funcName, args: [], version: 1 }),
+                param: (() => {
+                  const r = codec.encode({ func: funcName, args: [], version: 1 });
+                  util.assert(r.kind !== "error", "encode should never return error");
+                  return r.value;
+                })(),
               },
             },
             { requ: true },

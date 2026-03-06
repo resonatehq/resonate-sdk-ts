@@ -1,9 +1,16 @@
 import { setTimeout } from "node:timers/promises";
 import { Codec } from "../src/codec.js";
 import type { Context, InnerContext } from "../src/context.js";
+import type { Value } from "../src/network/types.js";
 import { Resonate } from "../src/resonate.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/retries.js";
 import * as util from "../src/util.js";
+
+function encodeValue(codec: Codec, value: any): Value {
+  const result = codec.encode(value);
+  if (result.kind === "error") throw result.error;
+  return result.value;
+}
 
 describe("Resonate usage tests", () => {
   test("only rpc", async () => {
@@ -489,7 +496,7 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    await resonate.promises.settle("myId", "resolved", { data: codec.encode("myValue").data });
+    await resonate.promises.settle("myId", "resolved", { data: encodeValue(codec, "myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     await resonate.stop();
@@ -513,7 +520,7 @@ describe("Resonate usage tests", () => {
     const p = await f.beginRun("f");
     await setTimeout(100); // Ensure myId promise is created
 
-    await resonate.promises.settle("f.0", "resolved", { data: codec.encode("myValue").data });
+    await resonate.promises.settle("f.0", "resolved", { data: encodeValue(codec, "myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     await resonate.stop();
@@ -549,7 +556,7 @@ describe("Resonate usage tests", () => {
       "resonate:parent": "f",
       "resonate:scope": "global",
     });
-    await resonate.promises.settle("myId", "resolved", { data: codec.encode("myValue").data });
+    await resonate.promises.settle("myId", "resolved", { data: encodeValue(codec, "myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     await resonate.stop();
@@ -632,7 +639,7 @@ describe("Resonate usage tests", () => {
 
     // get returns the promise value
     await resonate.promises.create("foo", Number.MAX_SAFE_INTEGER);
-    await resonate.promises.settle("foo", "resolved", { data: codec.encode("foo").data });
+    await resonate.promises.settle("foo", "resolved", { data: encodeValue(codec, "foo").data });
 
     const handle = await resonate.get("foo");
     expect(await handle.result()).toBe("foo");

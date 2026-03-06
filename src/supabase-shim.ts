@@ -155,9 +155,10 @@ export class Resonate {
   ): { status: "completed"; result?: any } | { status: "suspended"; waitingOn: string[] } {
     if (res.status !== "completed") return res;
 
+    const decodeResult = this.codec.decode(res.result);
     return {
       ...res,
-      result: this.codec.decode(res.result),
+      result: decodeResult.kind === "value" ? decodeResult.value : undefined,
     };
   }
 

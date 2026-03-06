@@ -1,6 +1,8 @@
 import { Codec } from "../src/codec.js";
+import type { ResonateError } from "../src/exceptions.js";
 import type { PromiseRecord, Request, Response } from "../src/network/types.js";
-import type { Send } from "../src/types.js";
+import type { Result, Send } from "../src/types.js";
+import * as util from "../src/util.js";
 import { buildEffects } from "../src/util.js";
 
 // A simple in-memory stub that handles promise.create and promise.settle.
@@ -10,7 +12,7 @@ class StubNetwork {
 
   send: Send = <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
-  ): Promise<Extract<Response, { kind: K }>> => {
+  ): Promise<Result<Extract<Response, { kind: K }>, ResonateError>> => {
     this.sendCount++;
 
     switch (req.kind) {
@@ -27,10 +29,13 @@ class StubNetwork {
         };
         this.promises.set(p.id, p);
         return Promise.resolve({
-          kind: req.kind,
-          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-          data: { promise: p },
-        } as Extract<Response, { kind: K }>);
+          kind: "value",
+          value: {
+            kind: req.kind,
+            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+            data: { promise: p },
+          } as Extract<Response, { kind: K }>,
+        });
       }
 
       case "promise.settle": {
@@ -41,10 +46,13 @@ class StubNetwork {
         p.settledAt = Date.now();
         this.promises.set(p.id, p);
         return Promise.resolve({
-          kind: req.kind,
-          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-          data: { promise: p },
-        } as Extract<Response, { kind: K }>);
+          kind: "value",
+          value: {
+            kind: req.kind,
+            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+            data: { promise: p },
+          } as Extract<Response, { kind: K }>,
+        });
       }
 
       default:
@@ -56,11 +64,17 @@ class StubNetwork {
 const codec = new Codec();
 const head = { corrId: "", version: "" };
 
+function encodeOrThrow(value: any) {
+  const result = codec.encode(value);
+  util.assert(result.kind === "value", "encode failed in test helper");
+  return result.value;
+}
+
 function pendingPromise(id: string): PromiseRecord {
   return {
     id,
     state: "pending",
-    param: codec.encode({ func: "f", args: [] }),
+    param: encodeOrThrow({ func: "f", args: [] }),
     value: { headers: {}, data: "" },
     tags: {},
     timeoutAt: Date.now() + 60_000,
@@ -72,7 +86,7 @@ function resolvedPromise(id: string, value: any): PromiseRecord {
   return {
     ...pendingPromise(id),
     state: "resolved",
-    value: codec.encode(value),
+    value: encodeOrThrow(value),
     settledAt: Date.now(),
   };
 }

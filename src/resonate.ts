@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { WallClock } from "./clock.js";
 import { Codec } from "./codec.js";
 import { Core } from "./core.js";
@@ -680,11 +681,18 @@ export class Resonate {
     }
 
     // TODO: move this into the handler?
-    const { headers, data } = this.codec.encode({
+    const encodeResult = this.codec.encode({
       func: registered ? registered.name : (funcOrName as string),
       args: args,
       version: registered ? registered.version : opts.version || 1,
     });
+    if (encodeResult.kind === "error") {
+      throw exceptions.ENCODING_ARGS_UNENCODEABLE(
+        registered ? registered.name : (funcOrName as string),
+        encodeResult.error,
+      );
+    }
+    const { headers, data } = encodeResult.value;
 
     await this.schedules.create(name, cron, `${this.idPrefix}{{.id}}.{{.timestamp}}`, opts.timeout, {
       promiseHeaders: headers,
@@ -749,13 +757,21 @@ export class Resonate {
   }
 
   private async taskCreate(req: TaskCreateReq): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
-    try {
-      req.data.action.data.param = this.codec.encode(req.data.action.data.param.data);
-    } catch (e) {
-      throw exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.action.data.param.data?.func ?? "unknown", e);
+    const encodeResult = this.codec.encode(req.data.action.data.param.data);
+    if (encodeResult.kind === "error") {
+      throw exceptions.ENCODING_ARGS_UNENCODEABLE(
+        req.data.action.data.param.data?.func ?? "unknown",
+        encodeResult.error,
+      );
     }
+    req.data.action.data.param = encodeResult.value;
 
-    const res = await this.transport.send(req);
+    const sendResult = await this.transport.send(req);
+    if (sendResult.kind === "error") {
+      throw sendResult.error;
+    }
+    const res = sendResult.value;
+
     if (!isSuccess(res) && !isConflict(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -775,51 +791,81 @@ export class Resonate {
       return { promise, task: undefined };
     }
 
-    const promise = this.codec.decodePromise(res.data.promise);
-    return { promise, task: res.data.task };
+    const promiseResult = this.codec.decodePromise(res.data.promise);
+    if (promiseResult.kind === "error") {
+      throw promiseResult.error;
+    }
+    return { promise: promiseResult.value, task: res.data.task };
   }
 
   private async promiseCreate(req: PromiseCreateReq): Promise<PromiseRecord> {
-    try {
-      req.data.param = this.codec.encode(req.data.param.data);
-    } catch (e) {
-      throw exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? "unknown", e);
+    const encodeResult = this.codec.encode(req.data.param.data);
+    if (encodeResult.kind === "error") {
+      throw exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? "unknown", encodeResult.error);
     }
+    req.data.param = encodeResult.value;
 
-    const res = await this.transport.send(req);
+    const sendResult = await this.transport.send(req);
+    if (sendResult.kind === "error") {
+      throw sendResult.error;
+    }
+    const res = sendResult.value;
+
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
         message: res.data,
       });
     }
-    return this.codec.decodePromise(res.data.promise);
+
+    const decodeResult = this.codec.decodePromise(res.data.promise);
+    if (decodeResult.kind === "error") {
+      throw decodeResult.error;
+    }
+    return decodeResult.value;
   }
 
   private async promiseRegisterListener(req: PromiseRegisterListenerReq): Promise<PromiseRecord> {
+    const retryDelay = 5000;
     while (true) {
-      const res = await this.transport.send(req);
-      if (!isSuccess(res)) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+      const sendResult = await this.transport.send(req);
+      if (sendResult.kind === "error") {
+        await delay(retryDelay);
         continue;
       }
-      try {
-        return this.codec.decodePromise(res.data.promise);
-      } catch (e) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+      const res = sendResult.value;
+      if (!isSuccess(res)) {
+        await delay(retryDelay);
+        continue;
       }
+      const decodeResult = this.codec.decodePromise(res.data.promise);
+      if (decodeResult.kind === "error") {
+        await delay(retryDelay);
+        continue;
+      }
+      return decodeResult.value;
     }
   }
 
   private async promiseGet(req: PromiseGetReq): Promise<PromiseRecord> {
-    const res = await this.transport.send(req);
+    const sendResult = await this.transport.send(req);
+    if (sendResult.kind === "error") {
+      throw sendResult.error;
+    }
+    const res = sendResult.value;
+
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
         message: res.data,
       });
     }
-    return this.codec.decodePromise(res.data.promise);
+
+    const decodeResult = this.codec.decodePromise(res.data.promise);
+    if (decodeResult.kind === "error") {
+      throw decodeResult.error;
+    }
+    return decodeResult.value;
   }
 
   private createHandle(promise: PromiseRecord): ResonateHandle<any> {
@@ -846,11 +892,11 @@ export class Resonate {
     }
     util.assert(msg.kind === "notify");
 
-    try {
-      const decoded = this.codec.decodePromise(msg.data.promise);
-      this.notify(msg.data.promise.id, undefined, decoded);
-    } catch (e) {
+    const decodeResult = this.codec.decodePromise(msg.data.promise);
+    if (decodeResult.kind === "error") {
       this.notify(msg.data.promise.id, new Error("Failed to decode promise"));
+    } else {
+      this.notify(msg.data.promise.id, undefined, decodeResult.value);
     }
   }
 

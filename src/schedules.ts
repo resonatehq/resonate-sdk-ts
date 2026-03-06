@@ -1,3 +1,4 @@
+import exceptions from "./exceptions.js";
 import { LocalNetwork } from "./network/local.js";
 import { isSuccess, type ScheduleRecord } from "./network/types.js";
 import type { Send } from "./types.js";
@@ -11,15 +12,22 @@ export class Schedules {
   }
 
   async get(id: string): Promise<ScheduleRecord> {
-    const res = await this.send({
+    const sendResult = await this.send({
       kind: "schedule.get",
       head: { corrId: "", version: "" },
       data: {
         id,
       },
     });
+    if (sendResult.kind === "error") {
+      throw sendResult.error;
+    }
+    const res = sendResult.value;
     if (!isSuccess(res)) {
-      throw Error("not implemented");
+      throw exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
+      });
     }
     return res.data.schedule;
   }
@@ -41,7 +49,7 @@ export class Schedules {
       promiseTags?: { [key: string]: string };
     } = {},
   ): Promise<ScheduleRecord> {
-    const res = await this.send({
+    const sendResult = await this.send({
       kind: "schedule.create",
       head: { corrId: "", version: "" },
       data: {
@@ -53,22 +61,36 @@ export class Schedules {
         promiseTags: promiseTags,
       },
     });
+    if (sendResult.kind === "error") {
+      throw sendResult.error;
+    }
+    const res = sendResult.value;
     if (!isSuccess(res)) {
-      throw Error("not implemented");
+      throw exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
+      });
     }
     return res.data.schedule;
   }
 
   async delete(id: string): Promise<undefined> {
-    const res = await this.send({
+    const sendResult = await this.send({
       kind: "schedule.delete",
       head: { corrId: "", version: "" },
       data: {
         id,
       },
     });
+    if (sendResult.kind === "error") {
+      throw sendResult.error;
+    }
+    const res = sendResult.value;
     if (!isSuccess(res)) {
-      throw Error("not implemented");
+      throw exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
+      });
     }
     return undefined;
   }

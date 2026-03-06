@@ -1,3 +1,4 @@
+import exceptions from "./exceptions.js";
 import { LocalNetwork } from "./network/local.js";
 import { isSuccess, type PromiseRecord, type TaskAcquireRes } from "./network/types.js";
 import type { Send } from "./types.js";
@@ -16,7 +17,7 @@ export class Tasks {
     pid: string,
     ttl: number,
   ): Promise<Extract<TaskAcquireRes, { head: { status: 200 } }>["data"]> {
-    const res = await this.send({
+    const sendResult = await this.send({
       kind: "task.acquire",
       head: { corrId: "", version: "" },
       data: {
@@ -26,14 +27,21 @@ export class Tasks {
         ttl,
       },
     });
+    if (sendResult.kind === "error") {
+      throw sendResult.error;
+    }
+    const res = sendResult.value;
     if (!isSuccess(res)) {
-      throw Error("not implemented");
+      throw exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
+      });
     }
     return res.data;
   }
 
   async fulfill(id: string, version: number): Promise<PromiseRecord> {
-    const res = await this.send({
+    const sendResult = await this.send({
       kind: "task.fulfill",
       head: { corrId: "", version: "" },
       data: {
@@ -46,14 +54,21 @@ export class Tasks {
         },
       },
     });
+    if (sendResult.kind === "error") {
+      throw sendResult.error;
+    }
+    const res = sendResult.value;
     if (!isSuccess(res)) {
-      throw Error("not implemented");
+      throw exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
+      });
     }
     return res.data.promise;
   }
 
   async heartbeat(pid: string): Promise<undefined> {
-    const res = await this.send({
+    const sendResult = await this.send({
       kind: "task.heartbeat",
       head: { corrId: "", version: "" },
       data: {
@@ -61,8 +76,15 @@ export class Tasks {
         tasks: [],
       },
     });
+    if (sendResult.kind === "error") {
+      throw sendResult.error;
+    }
+    const res = sendResult.value;
     if (!isSuccess(res)) {
-      throw Error("not implemented");
+      throw exceptions.SERVER_ERROR(res.data, true, {
+        code: res.head.status,
+        message: res.data,
+      });
     }
     return undefined;
   }
