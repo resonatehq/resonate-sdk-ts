@@ -7,9 +7,7 @@ import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/r
 import * as util from "../src/util.js";
 
 function encodeValue(codec: Codec, value: any): Value {
-  const result = codec.encode(value);
-  if (result.kind === "error") throw result.error;
-  return result.value;
+  return codec.encode(value);
 }
 
 describe("Resonate usage tests", () => {

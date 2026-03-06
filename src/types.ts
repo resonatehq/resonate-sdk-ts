@@ -1,5 +1,4 @@
 import type { Context, DIE, Future, LFC, LFI, RFC, RFI } from "./context.js";
-import type { ResonateError } from "./exceptions.js";
 import type { Message, PromiseCreateReq, PromiseRecord, PromiseSettleReq, Request, Response } from "./network/types.js";
 import type { Options } from "./options.js";
 
@@ -25,7 +24,7 @@ export type Result<V, E> = { kind: "value"; value: V } | { kind: "error"; error:
 // Send
 export type Send = <K extends Request["kind"]>(
   req: Extract<Request, { kind: K }>,
-) => Promise<Result<Extract<Response, { kind: K }>, ResonateError>>;
+) => Promise<Extract<Response, { kind: K }>>;
 // Recv
 export type Recv = (callback: (msg: Message) => void) => void;
 // Transport
@@ -38,6 +37,6 @@ export type Transport = {
 // Effects
 
 export type Effects = {
-  promiseCreate: (req: PromiseCreateReq, func?: string) => Promise<Result<PromiseRecord, ResonateError>>;
-  promiseSettle: (req: PromiseSettleReq, func?: string) => Promise<Result<PromiseRecord, ResonateError>>;
+  promiseCreate: (req: PromiseCreateReq, func?: string) => Promise<PromiseRecord>;
+  promiseSettle: (req: PromiseSettleReq, func?: string) => Promise<PromiseRecord>;
 };

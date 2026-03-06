@@ -17,7 +17,7 @@ export class Tasks {
     pid: string,
     ttl: number,
   ): Promise<Extract<TaskAcquireRes, { head: { status: 200 } }>["data"]> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "task.acquire",
       head: { corrId: "", version: "" },
       data: {
@@ -27,10 +27,6 @@ export class Tasks {
         ttl,
       },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -41,7 +37,7 @@ export class Tasks {
   }
 
   async fulfill(id: string, version: number): Promise<PromiseRecord> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "task.fulfill",
       head: { corrId: "", version: "" },
       data: {
@@ -54,10 +50,6 @@ export class Tasks {
         },
       },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -68,7 +60,7 @@ export class Tasks {
   }
 
   async heartbeat(pid: string): Promise<undefined> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "task.heartbeat",
       head: { corrId: "", version: "" },
       data: {
@@ -76,10 +68,6 @@ export class Tasks {
         tasks: [],
       },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,

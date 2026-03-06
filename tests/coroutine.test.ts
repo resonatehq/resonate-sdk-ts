@@ -14,20 +14,17 @@ class DummyNetwork {
 
   send: Send = <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
-  ): Promise<Result<Extract<Response, { kind: K }>, any>> => {
+  ): Promise<Extract<Response, { kind: K }>> => {
     switch (req.kind) {
       case "promise.create": {
         const createReq = req as Extract<Request, { kind: "promise.create" }>;
         const existing = this.promises.get(createReq.data.id);
         if (existing) {
           return Promise.resolve({
-            kind: "value",
-            value: {
-              kind: req.kind,
-              head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-              data: { promise: existing },
-            } as Extract<Response, { kind: K }>,
-          });
+            kind: req.kind,
+            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+            data: { promise: existing },
+          } as Extract<Response, { kind: K }>);
         }
         const p: PromiseRecord = {
           id: createReq.data.id,
@@ -40,13 +37,10 @@ class DummyNetwork {
         };
         this.promises.set(p.id, p);
         return Promise.resolve({
-          kind: "value",
-          value: {
-            kind: req.kind,
-            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-            data: { promise: p },
-          } as Extract<Response, { kind: K }>,
-        });
+          kind: req.kind,
+          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+          data: { promise: p },
+        } as Extract<Response, { kind: K }>);
       }
 
       case "promise.settle": {
@@ -56,13 +50,10 @@ class DummyNetwork {
         p.value = settleReq.data.value;
         this.promises.set(p.id, p);
         return Promise.resolve({
-          kind: "value",
-          value: {
-            kind: req.kind,
-            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-            data: { promise: p },
-          } as Extract<Response, { kind: K }>,
-        });
+          kind: req.kind,
+          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+          data: { promise: p },
+        } as Extract<Response, { kind: K }>);
       }
       default:
         throw new Error("All other kind will not be implemented");
@@ -96,28 +87,25 @@ describe("Coroutine", () => {
       effects,
     );
 
-    expect(res.kind).toBe("value");
-    util.assert(res.kind === "value");
-    return res.value;
+    return res;
   };
 
   const completePromise = async (effects: Effects, id: string, result: Result<any, any>) => {
-    const res = await effects.promiseSettle({
-      kind: "promise.settle",
-      head: { corrId: "", version: "" },
-      data: {
-        id: id,
-        state: result.kind === "value" ? "resolved" : "rejected",
-        value: {
-          headers: {},
-          data: result.kind === "value" ? result.value : result.error,
+    return await effects.promiseSettle(
+      {
+        kind: "promise.settle",
+        head: { corrId: "", version: "" },
+        data: {
+          id: id,
+          state: result.kind === "value" ? "resolved" : "rejected",
+          value: {
+            headers: {},
+            data: result.kind === "value" ? result.value : result.error,
+          },
         },
       },
-    });
-
-    expect(res.kind).toBe("value");
-    util.assert(res.kind === "value");
-    return res.value;
+      "test",
+    );
   };
 
   test("basic coroutine completes with done", async () => {
@@ -384,25 +372,25 @@ describe("Coroutine", () => {
     const network = new DummyNetwork();
     const effects = buildEffects(network);
 
-    const result = await Coroutine.exec(
-      false,
-      new InnerContext({
-        id: "foo.1",
-        func: foo.name,
-        clock: new WallClock(),
-        registry: new Registry(),
-        dependencies: new Map(),
-        timeout: 0,
-        version: 1,
-        retryPolicy: new Never(),
-        optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
-      }),
-      foo,
-      [],
-      effects,
-    );
-
-    expect(result.kind).toBe("error");
+    await expect(
+      Coroutine.exec(
+        false,
+        new InnerContext({
+          id: "foo.1",
+          func: foo.name,
+          clock: new WallClock(),
+          registry: new Registry(),
+          dependencies: new Map(),
+          timeout: 0,
+          version: 1,
+          retryPolicy: new Never(),
+          optsBuilder: new OptionsBuilder({ match: (t) => t, idPrefix: "" }),
+        }),
+        foo,
+        [],
+        effects,
+      ),
+    ).rejects.toThrow();
 
     console.error = originalError;
   });

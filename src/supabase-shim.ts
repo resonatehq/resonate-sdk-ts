@@ -128,9 +128,7 @@ export class Resonate {
         verbose: this.verbose,
       });
 
-      const res = await core.onMessage(body);
-      if (res.kind === "error") throw res.error;
-      const result = res.value;
+      const result = await core.onMessage(body);
 
       return new Response(JSON.stringify(result), {
         status: 200,
@@ -155,11 +153,11 @@ export class Resonate {
   ): { status: "completed"; result?: any } | { status: "suspended"; waitingOn: string[] } {
     if (res.status !== "completed") return res;
 
-    const decodeResult = this.codec.decode(res.result);
-    return {
-      ...res,
-      result: decodeResult.kind === "value" ? decodeResult.value : undefined,
-    };
+    try {
+      return { ...res, result: this.codec.decode(res.result) };
+    } catch {
+      return { ...res, result: undefined };
+    }
   }
 
   public httpHandler(): unknown {

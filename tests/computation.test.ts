@@ -103,13 +103,10 @@ describe("Computation", () => {
       const task = createClaimedTask("local-single", "main", []);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("done");
-        if (res.value.kind === "done") {
-          expect(res.value.state).toBe("resolved");
-          expect(res.value.value).toBe(7);
-        }
+      expect(res.kind).toBe("done");
+      if (res.kind === "done") {
+        expect(res.state).toBe("resolved");
+        expect(res.value).toBe(7);
       }
     });
 
@@ -137,13 +134,10 @@ describe("Computation", () => {
       const task = createClaimedTask("local-multi", "main", []);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("done");
-        if (res.value.kind === "done") {
-          expect(res.value.state).toBe("resolved");
-          expect(res.value.value).toBe(19);
-        }
+      expect(res.kind).toBe("done");
+      if (res.kind === "done") {
+        expect(res.state).toBe("resolved");
+        expect(res.value).toBe(19);
       }
     });
   });
@@ -162,12 +156,9 @@ describe("Computation", () => {
       const task = createClaimedTask("remote-single", "main", []);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("suspended");
-        if (res.value.kind === "suspended") {
-          expect(res.value.awaited).toHaveLength(1);
-        }
+      expect(res.kind).toBe("suspended");
+      if (res.kind === "suspended") {
+        expect(res.awaited).toHaveLength(1);
       }
     });
 
@@ -185,12 +176,9 @@ describe("Computation", () => {
       const task = createClaimedTask("remote-multi", "main", []);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("suspended");
-        if (res.value.kind === "suspended") {
-          expect(res.value.awaited).toHaveLength(2);
-        }
+      expect(res.kind).toBe("suspended");
+      if (res.kind === "suspended") {
+        expect(res.awaited).toHaveLength(2);
       }
     });
   });
@@ -215,12 +203,9 @@ describe("Computation", () => {
       const task = createClaimedTask("mixed", "main", []);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("suspended");
-        if (res.value.kind === "suspended") {
-          expect(res.value.awaited).toHaveLength(1);
-        }
+      expect(res.kind).toBe("suspended");
+      if (res.kind === "suspended") {
+        expect(res.awaited).toHaveLength(1);
       }
     });
 
@@ -245,12 +230,9 @@ describe("Computation", () => {
       const task = createClaimedTask("mixed-parallel", "main", []);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("suspended");
-        if (res.value.kind === "suspended") {
-          expect(res.value.awaited).toHaveLength(1);
-        }
+      expect(res.kind).toBe("suspended");
+      if (res.kind === "suspended") {
+        expect(res.awaited).toHaveLength(1);
       }
     });
   });
@@ -268,13 +250,10 @@ describe("Computation", () => {
       const task = createClaimedTask("func-resolve", "add", [3, 4]);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("done");
-        if (res.value.kind === "done") {
-          expect(res.value.state).toBe("resolved");
-          expect(res.value.value).toBe(7);
-        }
+      expect(res.kind).toBe("done");
+      if (res.kind === "done") {
+        expect(res.state).toBe("resolved");
+        expect(res.value).toBe(7);
       }
     });
 
@@ -290,14 +269,11 @@ describe("Computation", () => {
       const task = createClaimedTask("func-reject", "fail", [], { version: 1, retry: { type: "never", data: {} } });
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("done");
-        if (res.value.kind === "done") {
-          expect(res.value.state).toBe("rejected");
-          expect(res.value.value).toBeInstanceOf(Error);
-          expect((res.value.value as Error).message).toBe("boom");
-        }
+      expect(res.kind).toBe("done");
+      if (res.kind === "done") {
+        expect(res.state).toBe("rejected");
+        expect(res.value).toBeInstanceOf(Error);
+        expect((res.value as Error).message).toBe("boom");
       }
     });
 
@@ -311,13 +287,10 @@ describe("Computation", () => {
       const task = createClaimedTask("func-void", "noop", []);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("done");
-        if (res.value.kind === "done") {
-          expect(res.value.state).toBe("resolved");
-          expect(res.value.value).toBeUndefined();
-        }
+      expect(res.kind).toBe("done");
+      if (res.kind === "done") {
+        expect(res.state).toBe("resolved");
+        expect(res.value).toBeUndefined();
       }
     });
 
@@ -333,13 +306,10 @@ describe("Computation", () => {
       const task = createClaimedTask("func-args", "concat", ["x", "y", "z"]);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("done");
-        if (res.value.kind === "done") {
-          expect(res.value.state).toBe("resolved");
-          expect(res.value.value).toBe("x-y-z");
-        }
+      expect(res.kind).toBe("done");
+      if (res.kind === "done") {
+        expect(res.state).toBe("resolved");
+        expect(res.value).toBe("x-y-z");
       }
     });
   });
@@ -363,12 +333,9 @@ describe("Computation", () => {
       const task = createClaimedTask("error-local", "main", []);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("done");
-        if (res.value.kind === "done") {
-          expect(res.value.state).toBe("rejected");
-        }
+      expect(res.kind).toBe("done");
+      if (res.kind === "done") {
+        expect(res.state).toBe("rejected");
       }
     });
   });
@@ -395,13 +362,10 @@ describe("Computation", () => {
       const task = createClaimedTask("no-reexec", "main", []);
       const res = await computation.executeUntilBlocked(task);
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.kind).toBe("done");
-        if (res.value.kind === "done") {
-          expect(res.value.state).toBe("resolved");
-          expect(res.value.value).toBe(1);
-        }
+      expect(res.kind).toBe("done");
+      if (res.kind === "done") {
+        expect(res.state).toBe("resolved");
+        expect(res.value).toBe(1);
       }
       // Function called exactly once — no re-execution overhead
       expect(callCount).toBe(1);

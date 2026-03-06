@@ -2,7 +2,6 @@ import { StepClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import type * as context from "../src/context.js";
 import { Registry } from "../src/registry.js";
-import * as util from "../src/util.js";
 import { ServerProcess } from "./src/server.js";
 import { Message, Random, Simulator, unicast } from "./src/simulator.js";
 import { WorkerProcess } from "./src/worker.js";
@@ -74,11 +73,7 @@ sim.repeat(1, () => {
           id,
           timeoutAt: Number.MAX_SAFE_INTEGER,
           tags: { "resonate:target": "sim://any@default" },
-          param: (() => {
-            const r = codec.encode({ func: "fibonacci", args: [n], version: 1 });
-            util.assert(r.kind !== "error", "encode should never return error");
-            return r.value;
-          })(),
+          param: codec.encode({ func: "fibonacci", args: [n], version: 1 }),
         },
       },
       { requ: true },
@@ -106,9 +101,7 @@ if (!settled) {
 }
 
 const promise = server.server.promises.get(id)!;
-const decodeResult = codec.decode({ headers: promise.value.headers || {}, data: promise.value.data || "" });
-util.assert(decodeResult.kind !== "error", "decode should never return error");
-const decoded = decodeResult.value;
+const decoded = codec.decode({ headers: promise.value.headers || {}, data: promise.value.data || "" });
 if (decoded !== f(n)) {
   console.error(`fibonacci(${n}) expected ${f(n)} but got ${decoded} with seed=${seed}`);
   process.exit(1);

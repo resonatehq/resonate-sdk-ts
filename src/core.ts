@@ -1,13 +1,13 @@
 import type { Clock } from "./clock.js";
 import type { Codec } from "./codec.js";
 import { Computation, type Done, type Status } from "./computation.js";
-import exceptions, { type ResonateError } from "./exceptions.js";
+import exceptions, { ResonateError } from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
 import { isRedirect, isSuccess, type Message, type PromiseRecord, type TaskRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
-import type { Effects, Result, Send } from "./types.js";
+import type { Effects, Send } from "./types.js";
 import * as util from "./util.js";
 
 export type PromiseHandler = {
@@ -85,39 +85,33 @@ export class Core {
     ]);
   }
 
-  public async executeUntilBlocked(claimed: ClaimedTask): Promise<Result<Status, ResonateError | undefined>> {
+  public async executeUntilBlocked(claimed: ClaimedTask): Promise<Status> {
     const computation = this.createComputation(
       claimed.rootPromise.id,
       util.buildEffects(this.send, this.codec, claimed.preload),
     );
 
     try {
-      const compRes = await computation.executeUntilBlocked(claimed);
-      if (compRes.kind === "error") {
-        await this.releaseTask(claimed.task);
-        return compRes;
-      }
-      const status = compRes.value;
+      const status = await computation.executeUntilBlocked(claimed);
       if (status.kind === "suspended") {
-        const suspendRes = await this.suspendTask(claimed, status);
-        if (suspendRes.kind === "error") {
-          return suspendRes;
-        }
-        if (suspendRes.value.continue) {
-          claimed.preload = suspendRes.value.preload;
+        const suspendResult = await this.suspendTask(claimed, status);
+        if (suspendResult.continue) {
+          claimed.preload = suspendResult.preload;
           return this.executeUntilBlocked(claimed);
         }
-        return compRes;
       }
       if (status.kind === "done") {
         await this.fulfillTask(claimed.task, status);
-        return compRes;
       }
-      return compRes;
+      return status;
     } catch (err) {
-      console.warn("executeUntilBlocked failed unexpectedly", err);
+      if (err instanceof ResonateError) {
+        err.log(this.verbose);
+      } else {
+        console.warn("executeUntilBlocked failed unexpectedly", err);
+      }
       await this.releaseTask(claimed.task).catch(() => {});
-      return { kind: "error", error: undefined };
+      throw err;
     }
   }
 
@@ -137,22 +131,19 @@ export class Core {
   }
 
   private async releaseTask(task: TaskRecord): Promise<void> {
-    const result = await this.send({
+    await this.send({
       kind: "task.release",
       head: { corrId: "", version: "" },
       data: { id: task.id, version: task.version },
     });
-    if (result.kind === "error") {
-      result.error.log(this.verbose);
-    }
   }
 
   private async suspendTask(
     claimed: ClaimedTask,
     status: { kind: "suspended"; awaited: string[] },
-  ): Promise<Result<{ continue: true; preload: PromiseRecord[] } | { continue: false }, ResonateError>> {
+  ): Promise<{ continue: true; preload: PromiseRecord[] } | { continue: false }> {
     const task = claimed.task;
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "task.suspend",
       head: { corrId: "", version: "" },
       data: {
@@ -165,34 +156,22 @@ export class Core {
         })),
       },
     });
-    if (sendResult.kind === "error") {
-      sendResult.error.log(this.verbose);
-      return { kind: "error", error: sendResult.error };
-    }
-    const res = sendResult.value;
     if (isSuccess(res)) {
-      return { kind: "value", value: { continue: false } };
+      return { continue: false };
     }
     if (isRedirect(res)) {
-      return { kind: "value", value: { continue: true, preload: res.data.preload } };
+      return { continue: true, preload: res.data.preload };
     }
-    const error = exceptions.SERVER_ERROR(res.data, true, {
+    throw exceptions.SERVER_ERROR(res.data, true, {
       code: res.head.status,
       message: res.data,
     });
-    error.log(this.verbose);
-    return { kind: "error", error };
   }
 
   private async fulfillTask(task: TaskRecord, doneValue: Done): Promise<void> {
-    const encodeResult = this.codec.encode(doneValue.value);
-    if (encodeResult.kind === "error") {
-      const error = exceptions.ENCODING_RETV_UNENCODEABLE(doneValue.id, encodeResult.error);
-      error.log(this.verbose);
-      return;
-    }
+    const encoded = this.codec.encode(doneValue.value);
 
-    const sendResult = await this.send({
+    await this.send({
       kind: "task.fulfill",
       head: { corrId: "", version: "" },
       data: {
@@ -204,52 +183,37 @@ export class Core {
           data: {
             id: doneValue.id,
             state: doneValue.state,
-            value: encodeResult.value,
+            value: encoded,
           },
         },
       },
     });
-    if (sendResult.kind === "error") {
-      sendResult.error.log(this.verbose);
-    }
   }
 
-  public async onMessage(msg: Message): Promise<Result<Status, ResonateError | undefined>> {
+  public async onMessage(msg: Message): Promise<Status> {
     util.assert(msg.kind === "execute");
 
     const task = msg.data.task;
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "task.acquire",
       head: { corrId: "", version: "" },
       data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
     });
 
-    if (sendResult.kind === "error") {
-      sendResult.error.log(this.verbose);
-      return { kind: "error", error: undefined };
-    }
-    const res = sendResult.value;
-
     if (!isSuccess(res)) {
-      const error = exceptions.SERVER_ERROR(res.data, true, {
+      throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
         message: res.data,
       });
-      error.log(this.verbose);
-      return { kind: "error", error: undefined };
     }
 
-    const decodeResult = this.codec.decodePromise(res.data.promise);
-    if (decodeResult.kind === "error") {
-      decodeResult.error.log(this.verbose);
-      return { kind: "error", error: undefined };
-    }
+    const rootPromise = this.codec.decodePromise(res.data.promise);
 
     const acquiredTask: TaskRecord = { id: task.id, state: "acquired", version: task.version };
     return this.executeUntilBlocked({
       kind: "claimed",
       task: acquiredTask,
-      rootPromise: decodeResult.value,
+      rootPromise,
       preload: res.data.preload,
     });
   }
