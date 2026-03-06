@@ -14,17 +14,20 @@ class DummyNetwork {
 
   send: Send = <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
-  ): Promise<Extract<Response, { kind: K }>> => {
+  ): Promise<Result<Extract<Response, { kind: K }>, any>> => {
     switch (req.kind) {
       case "promise.create": {
         const createReq = req as Extract<Request, { kind: "promise.create" }>;
         const existing = this.promises.get(createReq.data.id);
         if (existing) {
           return Promise.resolve({
-            kind: req.kind,
-            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-            data: { promise: existing },
-          } as Extract<Response, { kind: K }>);
+            kind: "value",
+            value: {
+              kind: req.kind,
+              head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+              data: { promise: existing },
+            } as Extract<Response, { kind: K }>,
+          });
         }
         const p: PromiseRecord = {
           id: createReq.data.id,
@@ -37,10 +40,13 @@ class DummyNetwork {
         };
         this.promises.set(p.id, p);
         return Promise.resolve({
-          kind: req.kind,
-          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-          data: { promise: p },
-        } as Extract<Response, { kind: K }>);
+          kind: "value",
+          value: {
+            kind: req.kind,
+            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+            data: { promise: p },
+          } as Extract<Response, { kind: K }>,
+        });
       }
 
       case "promise.settle": {
@@ -50,10 +56,13 @@ class DummyNetwork {
         p.value = settleReq.data.value;
         this.promises.set(p.id, p);
         return Promise.resolve({
-          kind: req.kind,
-          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-          data: { promise: p },
-        } as Extract<Response, { kind: K }>);
+          kind: "value",
+          value: {
+            kind: req.kind,
+            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+            data: { promise: p },
+          } as Extract<Response, { kind: K }>,
+        });
       }
       default:
         throw new Error("All other kind will not be implemented");

@@ -34,7 +34,11 @@ export class AsyncHeartbeat implements Heartbeat {
           pid: this.pid,
           tasks: [],
         },
-      }).catch(() => {});
+      }).then((result) => {
+        if (result.kind === "error") {
+          console.warn("Heartbeat. Failed to send heartbeat:", result.error);
+        }
+      });
     }, this.delay);
   }
 

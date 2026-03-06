@@ -80,9 +80,12 @@ async function seedAcquiredTask(
   func: string,
   args: any[],
 ): Promise<{ task: TaskRecord; rootPromise: PromiseRecord }> {
-  const param = codec.encode({ func, args, version: 1 });
+  const encodeResult = codec.encode({ func, args, version: 1 });
+  if (encodeResult.kind === "error") {
+    throw encodeResult.error;
+  }
 
-  const res = await send({
+  const sendResult = await send({
     kind: "task.create",
     head: { corrId: "", version: "" },
     data: {
@@ -93,18 +96,25 @@ async function seedAcquiredTask(
         head: { corrId: "", version: "" },
         data: {
           id,
-          param,
+          param: encodeResult.value,
           tags: { "resonate:target": "default" },
           timeoutAt: Date.now() + 60_000,
         },
       },
     },
   });
+  if (sendResult.kind === "error") {
+    throw sendResult.error;
+  }
+  const res = sendResult.value;
   if (!isSuccess(res)) {
     throw new Error(`Failed to create task: ${res.head.status}`);
   }
-  const rootPromise = codec.decodePromise(res.data.promise);
-  return { task: res.data.task, rootPromise };
+  const decodeResult = codec.decodePromise(res.data.promise);
+  if (decodeResult.kind === "error") {
+    throw decodeResult.error;
+  }
+  return { task: res.data.task, rootPromise: decodeResult.value };
 }
 
 async function seedPendingTask(
@@ -116,13 +126,16 @@ async function seedPendingTask(
   network: LocalNetwork,
 ): Promise<TaskRecord> {
   const { task } = await seedAcquiredTask(send, codec, id, func, args);
-  const res = await send({
+  const releaseResult = await send({
     kind: "task.release",
     head: { corrId: "", version: "" },
     data: { id: task.id, version: task.version },
   });
-  if (res.head.status !== 200) {
-    throw new Error(`Failed to release task: ${res.head.status}`);
+  if (releaseResult.kind === "error") {
+    throw releaseResult.error;
+  }
+  if (releaseResult.value.head.status !== 200) {
+    throw new Error(`Failed to release task: ${releaseResult.value.head.status}`);
   }
   const serverTask = (network as any).server?.tasks?.get(task.id);
   return { id: task.id, state: "pending", version: serverTask?.version ?? task.version + 1 };
@@ -243,9 +256,12 @@ describe("Core", () => {
       sendHolder.fn = ((req: any) => {
         if (req.kind === "task.suspend") {
           return Promise.resolve({
-            kind: "task.suspend",
-            head: { corrId: "", status: 300, version: "" },
-            data: { preload: [] },
+            kind: "value",
+            value: {
+              kind: "task.suspend",
+              head: { corrId: "", status: 300, version: "" },
+              data: { preload: [] },
+            },
           });
         }
         return origFn(req);

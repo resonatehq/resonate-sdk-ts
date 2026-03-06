@@ -115,33 +115,52 @@ export function buildTransport(network: Network, verbose: boolean = false): Tran
   return {
     send: async <K extends Request["kind"]>(
       req: Extract<Request, { kind: K }>,
-    ): Promise<Extract<Response, { kind: K }>> => {
+    ): Promise<Result<Extract<Response, { kind: K }>, ResonateError>> => {
       if (verbose) {
         console.log("[Network] Sending:", req);
       }
-      const errorRes = {
-        kind: req.kind,
-        head: { corrId: req.head.corrId, version: req.head.version, status: 500 },
-        data: "invalid response",
-      } as Extract<Response, { kind: K }>;
 
-      const resStr = await network.send(JSON.stringify(req));
+      let resStr: string;
+      try {
+        resStr = await network.send(JSON.stringify(req));
+      } catch (e) {
+        return {
+          kind: "error",
+          error: exceptions.SERVER_ERROR(e instanceof Error ? e.message : String(e), true, {
+            code: 500,
+            message: e instanceof Error ? e.message : String(e),
+          }),
+        };
+      }
+
       let res: unknown;
       try {
         res = JSON.parse(resStr);
       } catch {
-        return errorRes;
+        return {
+          kind: "error",
+          error: exceptions.SERVER_ERROR("invalid response", true, {
+            code: 500,
+            message: "Failed to parse response JSON",
+          }),
+        };
       }
 
       if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
-        return errorRes;
+        return {
+          kind: "error",
+          error: exceptions.SERVER_ERROR("invalid response", true, {
+            code: 500,
+            message: "Response did not match request",
+          }),
+        };
       }
 
       if (verbose) {
         console.log(`[Network] Received ${res.head.status}:`, `for request:`, req, `response:${res.data}`);
       }
 
-      return res as Extract<Response, { kind: K }>;
+      return { kind: "value", value: res as Extract<Response, { kind: K }> };
     },
     recv: (callback: (msg: Message) => void) => {
       network.recv((msgStr: string) => {
@@ -192,7 +211,14 @@ export async function executeWithRetry(
 
 // effects
 export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] = []): Effects {
-  const cache = new Map<string, PromiseRecord>(preload.map((p) => [p.id, codec.decodePromise(p)]));
+  // Decode preloaded promises, skipping any that fail to decode
+  const cache = new Map<string, PromiseRecord>();
+  for (const p of preload) {
+    const decoded = codec.decodePromise(p);
+    if (decoded.kind === "value") {
+      cache.set(p.id, decoded.value);
+    }
+  }
 
   return {
     promiseCreate: async (req, func = "unknown") => {
@@ -201,16 +227,20 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
         return { kind: "value" as const, value: cached };
       }
 
-      try {
-        req.data.param = codec.encode(req.data.param.data);
-      } catch (e) {
+      const encodeResult = codec.encode(req.data.param.data);
+      if (encodeResult.kind === "error") {
         return {
           kind: "error" as const,
-          error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, e),
+          error: exceptions.ENCODING_ARGS_UNENCODEABLE(req.data.param.data?.func ?? func, encodeResult.error),
         };
       }
+      req.data.param = encodeResult.value;
 
-      const res = await send(req);
+      const sendResult = await send(req);
+      if (sendResult.kind === "error") {
+        return sendResult;
+      }
+      const res = sendResult.value;
       if (!isSuccess(res)) {
         return {
           kind: "error",
@@ -220,13 +250,13 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
           }),
         };
       }
-      try {
-        const promise = codec.decodePromise(res.data.promise);
-        cache.set(promise.id, promise);
-        return { kind: "value", value: promise };
-      } catch (e) {
-        return { kind: "error", error: e as ResonateError };
+
+      const decodeResult = codec.decodePromise(res.data.promise);
+      if (decodeResult.kind === "error") {
+        return decodeResult;
       }
+      cache.set(decodeResult.value.id, decodeResult.value);
+      return { kind: "value", value: decodeResult.value };
     },
 
     promiseSettle: async (req, func = "unknown") => {
@@ -235,16 +265,20 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
         return { kind: "value" as const, value: cached };
       }
 
-      try {
-        req.data.value = codec.encode(req.data.value.data);
-      } catch (e) {
+      const encodeResult = codec.encode(req.data.value.data);
+      if (encodeResult.kind === "error") {
         return {
           kind: "error" as const,
-          error: exceptions.ENCODING_RETV_UNENCODEABLE(func, e),
+          error: exceptions.ENCODING_RETV_UNENCODEABLE(func, encodeResult.error),
         };
       }
+      req.data.value = encodeResult.value;
 
-      const res = await send(req);
+      const sendResult = await send(req);
+      if (sendResult.kind === "error") {
+        return sendResult;
+      }
+      const res = sendResult.value;
       if (!isSuccess(res)) {
         return {
           kind: "error",
@@ -254,13 +288,13 @@ export function buildEffects(send: Send, codec: Codec, preload: PromiseRecord[] 
           }),
         };
       }
-      try {
-        const promise = codec.decodePromise(res.data.promise);
-        cache.set(promise.id, promise);
-        return { kind: "value", value: promise };
-      } catch (e) {
-        return { kind: "error", error: e as ResonateError };
+
+      const decodeResult = codec.decodePromise(res.data.promise);
+      if (decodeResult.kind === "error") {
+        return decodeResult;
       }
+      cache.set(decodeResult.value.id, decodeResult.value);
+      return { kind: "value", value: decodeResult.value };
     },
   };
 }

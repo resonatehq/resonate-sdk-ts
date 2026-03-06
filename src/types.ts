@@ -25,7 +25,7 @@ export type Result<V, E> = { kind: "value"; value: V } | { kind: "error"; error:
 // Send
 export type Send = <K extends Request["kind"]>(
   req: Extract<Request, { kind: K }>,
-) => Promise<Extract<Response, { kind: K }>>;
+) => Promise<Result<Extract<Response, { kind: K }>, ResonateError>>;
 // Recv
 export type Recv = (callback: (msg: Message) => void) => void;
 // Transport
