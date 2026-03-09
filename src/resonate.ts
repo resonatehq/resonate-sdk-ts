@@ -890,7 +890,7 @@ export class Resonate {
       this.core.onMessage(msg).catch((err) => console.warn("onMessage failed", err));
       return;
     }
-    util.assert(msg.kind === "notify");
+    util.assert(msg.kind === "unblock");
 
     const decodeResult = this.codec.decodePromise(msg.data.promise);
     if (decodeResult.kind === "error") {

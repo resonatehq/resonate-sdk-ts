@@ -245,10 +245,9 @@ export class Core {
       return { kind: "error", error: undefined };
     }
 
-    const acquiredTask: TaskRecord = { id: task.id, state: "acquired", version: task.version };
     return this.executeUntilBlocked({
       kind: "claimed",
-      task: acquiredTask,
+      task: res.data.task,
       rootPromise: decodeResult.value,
       preload: res.data.preload,
     });
