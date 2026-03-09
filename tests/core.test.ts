@@ -5,6 +5,7 @@ import type { Status } from "../src/computation.js";
 import { Core } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { LocalNetwork } from "../src/network/local.js";
+
 import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js";
 import { isSuccess } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
@@ -100,7 +101,7 @@ async function seedAcquiredTask(
       },
     },
   });
-  if (!isSuccess(res)) {
+  if (!isSuccess(res) || res.data.task === undefined) {
     throw new Error(`Failed to create task: ${res.head.status}`);
   }
   return { task: res.data.task, rootPromise: codec.decodePromise(res.data.promise) };
@@ -124,7 +125,12 @@ async function seedPendingTask(
     throw new Error(`Failed to release task: ${releaseRes.head.status}`);
   }
   const serverTask = (network as any).server?.tasks?.get(task.id);
-  return { id: task.id, state: "pending", version: serverTask?.version ?? task.version + 1 };
+  return {
+    id: task.id,
+    state: "pending",
+    version: serverTask?.version ?? task.version + 1,
+    resumes: [...serverTask.resumes],
+  };
 }
 
 function interceptSend(sendHolder: { fn: Send }): { sent: Request[] } {

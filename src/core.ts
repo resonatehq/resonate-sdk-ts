@@ -196,8 +196,6 @@ export class Core {
     }
 
     const rootPromise = this.codec.decodePromise(res.data.promise);
-
-    const acquiredTask = { id: task.id, state: "acquired" as const, version: task.version };
-    return this.executeUntilBlocked(acquiredTask, rootPromise, res.data.preload);
+    return this.executeUntilBlocked(res.data.task, rootPromise, res.data.preload);
   }
 }
