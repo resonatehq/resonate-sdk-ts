@@ -1,32 +1,18 @@
 import type { Clock } from "./clock.js";
 import type { Codec } from "./codec.js";
 import { Computation, type Done, type Status } from "./computation.js";
-import exceptions, { type ResonateError } from "./exceptions.js";
+import exceptions, { ResonateError } from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
 import { isRedirect, isSuccess, type Message, type PromiseRecord, type TaskRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
-import type { Effects, Result, Send } from "./types.js";
+import type { Effects, Send } from "./types.js";
 import * as util from "./util.js";
 
 export type PromiseHandler = {
   addEventListener: (event: "created" | "completed", callback: (p: PromiseRecord) => void) => void;
   subscribe: () => Promise<void>;
-};
-
-export type Task = ClaimedTask | UnclaimedTask;
-
-export type ClaimedTask = {
-  kind: "claimed";
-  task: TaskRecord;
-  rootPromise: PromiseRecord;
-  preload?: PromiseRecord[];
-};
-
-export type UnclaimedTask = {
-  kind: "unclaimed";
-  task: TaskRecord;
 };
 
 export class Core {
@@ -85,39 +71,35 @@ export class Core {
     ]);
   }
 
-  public async executeUntilBlocked(claimed: ClaimedTask): Promise<Result<Status, ResonateError | undefined>> {
-    const computation = this.createComputation(
-      claimed.rootPromise.id,
-      util.buildEffects(this.send, this.codec, claimed.preload),
-    );
+  public async executeUntilBlocked(
+    task: TaskRecord,
+    rootPromise: PromiseRecord,
+    preload?: PromiseRecord[],
+  ): Promise<Status> {
+    util.assert(task.state === "acquired", `expected task state to be 'acquired', got '${task.state}'`);
+    const computation = this.createComputation(rootPromise.id, util.buildEffects(this.send, this.codec, preload));
 
     try {
-      const compRes = await computation.executeUntilBlocked(claimed);
-      if (compRes.kind === "error") {
-        await this.releaseTask(claimed.task);
-        return compRes;
-      }
-      const status = compRes.value;
+      const status = await computation.executeUntilBlocked(rootPromise);
       if (status.kind === "suspended") {
-        const suspendRes = await this.suspendTask(claimed, status);
-        if (suspendRes.kind === "error") {
-          return suspendRes;
+        const suspendResult = await this.suspendTask(task, rootPromise, status.awaited);
+        if (suspendResult.continue) {
+          return this.executeUntilBlocked(task, rootPromise, suspendResult.preload);
         }
-        if (suspendRes.value.continue) {
-          claimed.preload = suspendRes.value.preload;
-          return this.executeUntilBlocked(claimed);
-        }
-        return compRes;
       }
       if (status.kind === "done") {
-        await this.fulfillTask(claimed.task, status);
-        return compRes;
+        await this.fulfillTask(task, status);
       }
-      return compRes;
+      return status;
     } catch (err) {
-      console.warn("executeUntilBlocked failed unexpectedly", err);
-      await this.releaseTask(claimed.task).catch(() => {});
-      return { kind: "error", error: undefined };
+      // TODO: Some kinds of error must releaseTask, others must haltTask, figure out when to halt and when to release
+      if (err instanceof ResonateError) {
+        err.log(this.verbose);
+      } else {
+        console.warn("executeUntilBlocked failed unexpectedly", err);
+      }
+      await this.releaseTask(task).catch(() => {});
+      throw err;
     }
   }
 
@@ -137,62 +119,47 @@ export class Core {
   }
 
   private async releaseTask(task: TaskRecord): Promise<void> {
-    const result = await this.send({
+    await this.send({
       kind: "task.release",
       head: { corrId: "", version: "" },
       data: { id: task.id, version: task.version },
     });
-    if (result.kind === "error") {
-      result.error.log(this.verbose);
-    }
   }
 
   private async suspendTask(
-    claimed: ClaimedTask,
-    status: { kind: "suspended"; awaited: string[] },
-  ): Promise<Result<{ continue: true; preload: PromiseRecord[] } | { continue: false }, ResonateError>> {
-    const task = claimed.task;
-    const sendResult = await this.send({
+    task: TaskRecord,
+    rootPromise: PromiseRecord,
+    awaited: string[],
+  ): Promise<{ continue: true; preload: PromiseRecord[] } | { continue: false }> {
+    const res = await this.send({
       kind: "task.suspend",
       head: { corrId: "", version: "" },
       data: {
         id: task.id,
         version: task.version,
-        actions: status.awaited.map((a) => ({
+        actions: awaited.map((a) => ({
           kind: "promise.register_callback",
           head: { corrId: "", version: "" },
-          data: { awaiter: claimed.rootPromise.id, awaited: a },
+          data: { awaiter: rootPromise.id, awaited: a },
         })),
       },
     });
-    if (sendResult.kind === "error") {
-      sendResult.error.log(this.verbose);
-      return { kind: "error", error: sendResult.error };
-    }
-    const res = sendResult.value;
     if (isSuccess(res)) {
-      return { kind: "value", value: { continue: false } };
+      return { continue: false };
     }
     if (isRedirect(res)) {
-      return { kind: "value", value: { continue: true, preload: res.data.preload } };
+      return { continue: true, preload: res.data.preload };
     }
-    const error = exceptions.SERVER_ERROR(res.data, true, {
+    throw exceptions.SERVER_ERROR(res.data, true, {
       code: res.head.status,
       message: res.data,
     });
-    error.log(this.verbose);
-    return { kind: "error", error };
   }
 
   private async fulfillTask(task: TaskRecord, doneValue: Done): Promise<void> {
-    const encodeResult = this.codec.encode(doneValue.value);
-    if (encodeResult.kind === "error") {
-      const error = exceptions.ENCODING_RETV_UNENCODEABLE(doneValue.id, encodeResult.error);
-      error.log(this.verbose);
-      return;
-    }
+    const encoded = this.codec.encode(doneValue.value);
 
-    const sendResult = await this.send({
+    await this.send({
       kind: "task.fulfill",
       head: { corrId: "", version: "" },
       data: {
@@ -204,53 +171,33 @@ export class Core {
           data: {
             id: doneValue.id,
             state: doneValue.state,
-            value: encodeResult.value,
+            value: encoded,
           },
         },
       },
     });
-    if (sendResult.kind === "error") {
-      sendResult.error.log(this.verbose);
-    }
   }
 
-  public async onMessage(msg: Message): Promise<Result<Status, ResonateError | undefined>> {
+  public async onMessage(msg: Message): Promise<Status> {
     util.assert(msg.kind === "execute");
 
     const task = msg.data.task;
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "task.acquire",
       head: { corrId: "", version: "" },
       data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
     });
 
-    if (sendResult.kind === "error") {
-      sendResult.error.log(this.verbose);
-      return { kind: "error", error: undefined };
-    }
-    const res = sendResult.value;
-
     if (!isSuccess(res)) {
-      const error = exceptions.SERVER_ERROR(res.data, true, {
+      throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
         message: res.data,
       });
-      error.log(this.verbose);
-      return { kind: "error", error: undefined };
     }
 
-    const decodeResult = this.codec.decodePromise(res.data.promise);
-    if (decodeResult.kind === "error") {
-      decodeResult.error.log(this.verbose);
-      return { kind: "error", error: undefined };
-    }
+    const rootPromise = this.codec.decodePromise(res.data.promise);
 
-    const acquiredTask: TaskRecord = { id: task.id, state: "acquired", version: task.version };
-    return this.executeUntilBlocked({
-      kind: "claimed",
-      task: acquiredTask,
-      rootPromise: decodeResult.value,
-      preload: res.data.preload,
-    });
+    const acquiredTask = { id: task.id, state: "acquired" as const, version: task.version };
+    return this.executeUntilBlocked(acquiredTask, rootPromise, res.data.preload);
   }
 }

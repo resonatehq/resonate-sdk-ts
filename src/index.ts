@@ -2,7 +2,7 @@ export { WallClock } from "./clock.js";
 export { Codec } from "./codec.js";
 export { Status } from "./computation.js";
 export { Context } from "./context.js";
-export { Core, type Task } from "./core.js";
+export { Core } from "./core.js";
 export { type Encryptor, NoopEncryptor } from "./encryptor.js";
 export * as essential from "./essential.js";
 export { AsyncHeartbeat, NoopHeartbeat } from "./heartbeat.js";
