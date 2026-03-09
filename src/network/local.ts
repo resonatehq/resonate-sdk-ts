@@ -73,7 +73,7 @@ export interface STimeout {
 
 export type PromiseState = "pending" | "resolved" | "rejected" | "rejected_canceled" | "rejected_timedout";
 
-export interface Promise {
+export interface DurablePromise {
   id: string;
   state: PromiseState;
   param: Value;
@@ -136,7 +136,7 @@ const PENDING_RETRY_TTL = 30000;
 // =============================================================================
 
 export class Server {
-  promises = new Map<string, Promise>();
+  promises = new Map<string, DurablePromise>();
   tasks = new Map<string, Task>();
   schedules = new Map<string, Schedule>();
   pTimeouts: PTimeout[] = [];
@@ -341,7 +341,7 @@ export class Server {
 
     // Check if the promise is already timed out at creation
     if (now >= req.data.timeoutAt) {
-      const promise: Promise = {
+      const promise: DurablePromise = {
         id: req.data.id,
         state: this.timeoutState(req.data.tags),
         param: req.data.param ?? { data: undefined, headers: undefined },
@@ -364,7 +364,7 @@ export class Server {
       };
     }
 
-    const promise: Promise = {
+    const promise: DurablePromise = {
       id: req.data.id,
       state: "pending",
       param: req.data.param ?? { data: undefined, headers: undefined },
@@ -426,7 +426,7 @@ export class Server {
 
     const changes: Change[] = [];
 
-    const settled: Promise = {
+    const settled: DurablePromise = {
       ...promise,
       state: req.data.state,
       value: req.data.value,
@@ -575,7 +575,7 @@ export class Server {
 
     // Guard: promise already timed out
     if (now >= actionData.timeoutAt) {
-      const promise: Promise = {
+      const promise: DurablePromise = {
         id: actionData.id,
         state: this.timeoutState(actionData.tags),
         param: actionData.param,
@@ -608,7 +608,7 @@ export class Server {
     }
 
     // Create promise in pending state
-    const promise: Promise = {
+    const promise: DurablePromise = {
       id: actionData.id,
       state: "pending",
       param: actionData.param,
@@ -738,7 +738,7 @@ export class Server {
     }
 
     // Settle the promise
-    const settled: Promise = {
+    const settled: DurablePromise = {
       ...promise,
       state: settle.state,
       value: settle.value ?? {},
@@ -1159,7 +1159,7 @@ export class Server {
   // CONVERTERS
   // ===========================================================================
 
-  private toPromiseRecord(p: Promise): PromiseRecord {
+  private toPromiseRecord(p: DurablePromise): PromiseRecord {
     const { awaiters, subscribers, settledAt, ...rest } = p;
     return settledAt != null ? { ...rest, settledAt } : rest;
   }
@@ -1331,7 +1331,7 @@ export class Server {
     return tags["resonate:timer"] === "true" ? "resolved" : "rejected_timedout";
   }
 
-  private getPromiseOrThrow(id: string): Promise {
+  private getPromiseOrThrow(id: string): DurablePromise {
     const promise = this.promises.get(id);
     if (!promise) {
       throw new Error(`Invariant violation: promise ${id} not found`);
@@ -1339,7 +1339,7 @@ export class Server {
     return promise;
   }
 
-  private getAddressOrThrow(promise: Promise): string {
+  private getAddressOrThrow(promise: DurablePromise): string {
     const address = promise.tags["resonate:target"];
     if (!address) {
       throw new Error(`Invariant violation: promise ${promise.id} has no resonate:target tag`);
@@ -1366,7 +1366,7 @@ export class Server {
   // ACCESSORS (change-tracking)
   // ===========================================================================
 
-  private setPromise(p: Promise): Change {
+  private setPromise(p: DurablePromise): Change {
     this.promises.set(p.id, p);
     return { kind: "promise.set", promise: this.toPromiseRecord(p) };
   }
@@ -1502,7 +1502,7 @@ export class LocalNetwork implements Network {
 
   // -- Network ---------------------------------------------------------------
 
-  async start(): globalThis.Promise<void> {
+  async start(): Promise<void> {
     if (this.started) return;
     this.tickInterval = setInterval(() => {
       const now = Date.now();
@@ -1516,7 +1516,7 @@ export class LocalNetwork implements Network {
     this.started = true;
   }
 
-  async stop(): globalThis.Promise<void> {
+  async stop(): Promise<void> {
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
     }
@@ -1524,7 +1524,7 @@ export class LocalNetwork implements Network {
     this.started = false;
   }
 
-  send(req: string): globalThis.Promise<string> {
+  send(req: string): Promise<string> {
     const reqData = JSON.parse(req);
     assert(isRequest(reqData));
     const { corrId, version } = reqData.head;
