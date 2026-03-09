@@ -25,7 +25,7 @@ const logged: Map<string, boolean> = new Map();
 
 type LocalWorkEntry = {
   funcName: string;
-  promise: Promise<Result<Suspended | Done, any>>;
+  promise: Promise<Suspended | Done>;
 };
 
 export class Coroutine<T> {
@@ -52,12 +52,12 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     effects: Effects,
-  ): Promise<Result<Suspended | Done, any>> {
+  ): Promise<Suspended | Done> {
     const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), effects);
     return await coroutine.exec();
   }
 
-  private async exec(): Promise<Result<Suspended | Done, any>> {
+  private async exec(): Promise<Suspended | Done> {
     const remote: RemoteTodo[] = [];
     const localWork: Map<string, LocalWorkEntry> = new Map();
 
@@ -72,27 +72,22 @@ export class Coroutine<T> {
       if (action.type === "internal.async.l") {
         const res = await this.effects.promiseCreate(action.createReq, action.func.name);
 
-        if (res.kind === "error") {
-          res.error.log(this.verbose);
-          return res;
-        }
-
         const ctx = this.ctx.child({
-          id: res.value.id,
+          id: res.id,
           func: action.func.name,
-          timeout: res.value.timeoutAt,
+          timeout: res.timeoutAt,
           version: action.version,
           retryPolicy: action.retryPolicy,
         });
 
-        if (res.value.state === "pending") {
+        if (res.state === "pending") {
           // Start local work eagerly — both regular functions and generators
-          let localPromise: Promise<Result<Suspended | Done, any>>;
+          let localPromise: Promise<Suspended | Done>;
 
           if (!util.isGeneratorFunction(action.func)) {
             localPromise = util
               .executeWithRetry(ctx, action.func, action.args, this.verbose)
-              .then((result): Result<Done, never> => ({ kind: "value", value: { type: "done", result } }));
+              .then((result): Done => ({ type: "done", result }));
           } else {
             localPromise = Coroutine.exec(
               this.verbose,
@@ -112,7 +107,7 @@ export class Coroutine<T> {
           };
         } else {
           // durable promise is already completed (replay)
-          input = this.completedPromise(action.id, res.value);
+          input = this.completedPromise(action.id, res);
         }
         continue;
       }
@@ -121,12 +116,7 @@ export class Coroutine<T> {
       if (action.type === "internal.async.r") {
         const res = await this.effects.promiseCreate(action.createReq, "unknown");
 
-        if (res.kind === "error") {
-          res.error.log(this.verbose);
-          return res;
-        }
-
-        if (res.value.state === "pending") {
+        if (res.state === "pending") {
           if (action.mode === "attached") remote.push({ id: action.id });
 
           input = {
@@ -136,7 +126,7 @@ export class Coroutine<T> {
             id: action.id,
           };
         } else {
-          input = this.completedPromise(action.id, res.value);
+          input = this.completedPromise(action.id, res);
         }
         continue;
       }
@@ -144,8 +134,7 @@ export class Coroutine<T> {
       // Handle die
       if (action.type === "internal.die") {
         if (action.condition) {
-          action.error.log(this.verbose);
-          return { kind: "error", error: action.error };
+          throw action.error;
         }
         input = { type: "internal.nothing" };
         continue;
@@ -174,24 +163,12 @@ export class Coroutine<T> {
         if (localEntry) {
           // This is a local in-flight task — await it inline
           localWork.delete(action.id);
-          const result = await localEntry.promise;
-
-          if (result.kind === "error") {
-            result.error.log(this.verbose);
-            return result;
-          }
-
-          const localResult = result.value;
+          const localResult = await localEntry.promise;
 
           if (localResult.type === "done") {
             const settleRes = await this.settle(action.id, localResult.result, localEntry.funcName);
 
-            if (settleRes.kind === "error") {
-              settleRes.error.log(this.verbose);
-              return settleRes;
-            }
-
-            util.assert(settleRes.value.state !== "pending", "promise must be completed");
+            util.assert(settleRes.state !== "pending", "promise must be completed");
 
             // Feed the resolved/rejected value directly as a Literal so the generator continues
             input = {
@@ -204,10 +181,9 @@ export class Coroutine<T> {
           // localResult.type === "suspended": child generator has remote deps
           // Flush remaining local work and collect all remote todos
           const res = await this.flushLocalWork(localWork);
-          if (res.kind === "error") return res;
 
-          const allRemote = [...remote, ...localResult.todo.remote, ...res.value.remote];
-          return { kind: "value", value: { type: "suspended", todo: { remote: allRemote } } };
+          const allRemote = [...remote, ...localResult.todo.remote, ...res.remote];
+          return { type: "suspended", todo: { remote: allRemote } };
         }
 
         // Not in localWork — it's a remote pending promise.
@@ -217,10 +193,9 @@ export class Coroutine<T> {
         // the parent resumes and finds their durable promises still pending with no
         // task record to drive them.
         const flushResult = await this.flushLocalWork(localWork);
-        if (flushResult.kind === "error") return flushResult;
 
-        const allRemote = [...remote, ...flushResult.value.remote];
-        return { kind: "value", value: { type: "suspended", todo: { remote: allRemote } } };
+        const allRemote = [...remote, ...flushResult.remote];
+        return { type: "suspended", todo: { remote: allRemote } };
       }
 
       // Handle return
@@ -231,19 +206,18 @@ export class Coroutine<T> {
         // Structured concurrency: flush all in-flight local work before completing
         if (localWork.size > 0) {
           const flushResult = await this.flushLocalWork(localWork);
-          if (flushResult.kind === "error") return flushResult;
 
-          const allRemote = [...remote, ...flushResult.value.remote];
+          const allRemote = [...remote, ...flushResult.remote];
           if (allRemote.length > 0) {
-            return { kind: "value", value: { type: "suspended", todo: { remote: allRemote } } };
+            return { type: "suspended", todo: { remote: allRemote } };
           }
-          return { kind: "value", value: { type: "done", result: action.value.value } };
+          return { type: "done", result: action.value.value };
         }
 
         if (remote.length > 0) {
-          return { kind: "value", value: { type: "suspended", todo: { remote } } };
+          return { type: "suspended", todo: { remote } };
         }
-        return { kind: "value", value: { type: "done", result: action.value.value } };
+        return { type: "done", result: action.value.value };
       }
     }
   }
@@ -252,7 +226,7 @@ export class Coroutine<T> {
    * Awaits all in-flight local work entries, settles completed durable promises,
    * and collects remote todos from any suspended child generators.
    */
-  private async flushLocalWork(localWork: Map<string, LocalWorkEntry>): Promise<Result<{ remote: RemoteTodo[] }, any>> {
+  private async flushLocalWork(localWork: Map<string, LocalWorkEntry>): Promise<{ remote: RemoteTodo[] }> {
     const entries = [...localWork.entries()];
     localWork.clear();
 
@@ -264,28 +238,16 @@ export class Coroutine<T> {
     const allRemote: RemoteTodo[] = [];
 
     for (const { id, funcName, result } of results) {
-      if (result.kind === "error") {
-        result.error.log(this.verbose);
-        return result;
-      }
-
-      const localResult = result.value;
-
-      if (localResult.type === "suspended") {
+      if (result.type === "suspended") {
         // Child generator has remote deps, collect them; its durable promise remains pending
-        allRemote.push(...localResult.todo.remote);
+        allRemote.push(...result.todo.remote);
       } else {
         // Child completed (success or user error), settle its durable promise
-        const settleRes = await this.settle(id, localResult.result, funcName);
-
-        if (settleRes.kind === "error") {
-          settleRes.error.log(this.verbose);
-          return settleRes;
-        }
+        await this.settle(id, result.result, funcName);
       }
     }
 
-    return { kind: "value", value: { remote: allRemote } };
+    return { remote: allRemote };
   }
 
   private settle(id: string, result: Result<any, any>, funcName: string) {

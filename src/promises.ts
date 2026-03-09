@@ -11,11 +11,7 @@ export class Promises {
   }
 
   async get(id: string): Promise<PromiseRecord> {
-    const sendResult = await this.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
+    const res = await this.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } });
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -38,7 +34,7 @@ export class Promises {
       tags?: { [key: string]: string };
     } = {},
   ): Promise<PromiseRecord> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "promise.create",
       head: { corrId: "", version: "" },
       data: {
@@ -48,10 +44,6 @@ export class Promises {
         tags,
       },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -76,7 +68,7 @@ export class Promises {
       tags?: { [key: string]: string };
     } = {},
   ): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "task.create",
       head: { corrId: "", version: "" },
       data: {
@@ -89,10 +81,6 @@ export class Promises {
         },
       },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -113,7 +101,7 @@ export class Promises {
       data?: string;
     } = {},
   ): Promise<PromiseRecord> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "promise.settle",
       head: { corrId: "", version: "" },
       data: {
@@ -122,10 +110,6 @@ export class Promises {
         value: { headers, data },
       },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -141,15 +125,11 @@ export class Promises {
   ): Promise<{
     promise: PromiseRecord;
   }> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "promise.register_callback",
       head: { corrId: "", version: "" },
       data: { awaited, awaiter },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -165,15 +145,11 @@ export class Promises {
   ): Promise<{
     promise: PromiseRecord;
   }> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "promise.register_listener",
       head: { corrId: "", version: "" },
       data: { awaited, address },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,

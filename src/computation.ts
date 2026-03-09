@@ -1,6 +1,5 @@
 import type { Clock } from "./clock.js";
 import { InnerContext } from "./context.js";
-import type { ClaimedTask } from "./core.js";
 import { Coroutine } from "./coroutine.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
@@ -9,7 +8,7 @@ import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
 
-import type { Effects, Func, Result } from "./types.js";
+import type { Effects, Func } from "./types.js";
 import * as util from "./util.js";
 
 export type Status = Done | Suspended;
@@ -67,20 +66,20 @@ export class Computation {
     this.verbose = verbose;
   }
 
-  public async executeUntilBlocked(task: ClaimedTask): Promise<Result<Status, undefined>> {
-    // If we are already processing there is nothing to do, the
-    // caller will be notified via the promise handler
-    if (this.processing) return { kind: "error", error: undefined };
+  public async executeUntilBlocked(rootPromise: PromiseRecord): Promise<Status> {
+    if (this.processing) throw exceptions.PANIC("computation", "already processing");
 
     this.processing = true;
-    const result = await this.processAcquired(task);
-    this.processing = false;
-    return result;
+    try {
+      return await this.processAcquired(rootPromise);
+    } finally {
+      this.processing = false;
+    }
   }
 
-  private async processAcquired({ rootPromise }: ClaimedTask): Promise<Result<Status, undefined>> {
+  private async processAcquired(rootPromise: PromiseRecord): Promise<Status> {
     if (!isValidData(rootPromise.param?.data)) {
-      return { kind: "error", error: undefined };
+      throw exceptions.PANIC("computation", "invalid promise data");
     }
 
     const { func, args, retry, version = 1 } = rootPromise.param.data;
@@ -88,8 +87,7 @@ export class Computation {
 
     // function must be registered
     if (!registered) {
-      exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(func, version).log(this.verbose);
-      return { kind: "error", error: undefined };
+      throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(func, version);
     }
 
     if (version !== 0) util.assert(version === registered.version, "versions must match");
@@ -134,61 +132,41 @@ export class Computation {
     ctxConfig: ConstructorParameters<typeof InnerContext>[0],
     args: any[],
     rootPromise: PromiseRecord,
-  ): Promise<Result<Status, undefined>> {
+  ): Promise<Status> {
     // If boundary promise is done, short-circuit
     if (rootPromise.state !== "pending") {
       return {
-        kind: "value",
-        value: {
-          kind: "done",
-          id: rootPromise.id,
-          state: rootPromise.state === "resolved" ? "resolved" : "rejected",
-          value: rootPromise.value,
-        },
+        kind: "done",
+        id: rootPromise.id,
+        state: rootPromise.state === "resolved" ? "resolved" : "rejected",
+        value: rootPromise.value,
       };
     }
 
     const ctx = new InnerContext(ctxConfig);
-    const res = await Coroutine.exec(this.verbose, ctx, func, args, this.effects);
-
-    if (res.kind === "error") {
-      return { kind: "error", error: undefined };
-    }
-
-    const status = res.value;
+    const status = await Coroutine.exec(this.verbose, ctx, func, args, this.effects);
 
     if (status.type === "done") {
       return {
-        kind: "value",
-        value: {
-          kind: "done",
-          id: this.id,
-          state: status.result.kind === "value" ? "resolved" : "rejected",
-          value: status.result.kind === "value" ? status.result.value : status.result.error,
-        },
+        kind: "done",
+        id: this.id,
+        state: status.result.kind === "value" ? "resolved" : "rejected",
+        value: status.result.kind === "value" ? status.result.value : status.result.error,
       };
     }
 
     // Only remote todos remain — locals are handled inline by the coroutine
-    return { kind: "value", value: { kind: "suspended", awaited: status.todo.remote.map((t) => t.id) } };
+    return { kind: "suspended", awaited: status.todo.remote.map((t) => t.id) };
   }
 
-  private async processFunction(
-    id: string,
-    func: Func,
-    ctx: InnerContext,
-    args: any[],
-  ): Promise<Result<Status, undefined>> {
+  private async processFunction(id: string, func: Func, ctx: InnerContext, args: any[]): Promise<Status> {
     const result = await util.executeWithRetry(ctx, func, args, this.verbose);
 
     return {
-      kind: "value",
-      value: {
-        kind: "done",
-        id,
-        state: result.kind === "value" ? "resolved" : "rejected",
-        value: result.kind === "value" ? result.value : result.error,
-      },
+      kind: "done",
+      id,
+      state: result.kind === "value" ? "resolved" : "rejected",
+      value: result.kind === "value" ? result.value : result.error,
     };
   }
 }

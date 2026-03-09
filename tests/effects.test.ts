@@ -1,8 +1,6 @@
 import { Codec } from "../src/codec.js";
-import type { ResonateError } from "../src/exceptions.js";
 import type { PromiseRecord, Request, Response } from "../src/network/types.js";
-import type { Result, Send } from "../src/types.js";
-import * as util from "../src/util.js";
+import type { Send } from "../src/types.js";
 import { buildEffects } from "../src/util.js";
 
 // A simple in-memory stub that handles promise.create and promise.settle.
@@ -12,7 +10,7 @@ class StubNetwork {
 
   send: Send = <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
-  ): Promise<Result<Extract<Response, { kind: K }>, ResonateError>> => {
+  ): Promise<Extract<Response, { kind: K }>> => {
     this.sendCount++;
 
     switch (req.kind) {
@@ -29,13 +27,10 @@ class StubNetwork {
         };
         this.promises.set(p.id, p);
         return Promise.resolve({
-          kind: "value",
-          value: {
-            kind: req.kind,
-            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-            data: { promise: p },
-          } as Extract<Response, { kind: K }>,
-        });
+          kind: req.kind,
+          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+          data: { promise: p },
+        } as Extract<Response, { kind: K }>);
       }
 
       case "promise.settle": {
@@ -46,13 +41,10 @@ class StubNetwork {
         p.settledAt = Date.now();
         this.promises.set(p.id, p);
         return Promise.resolve({
-          kind: "value",
-          value: {
-            kind: req.kind,
-            head: { corrId: req.head.corrId, status: 200, version: req.head.version },
-            data: { promise: p },
-          } as Extract<Response, { kind: K }>,
-        });
+          kind: req.kind,
+          head: { corrId: req.head.corrId, status: 200, version: req.head.version },
+          data: { promise: p },
+        } as Extract<Response, { kind: K }>);
       }
 
       default:
@@ -65,9 +57,7 @@ const codec = new Codec();
 const head = { corrId: "", version: "" };
 
 function encodeOrThrow(value: any) {
-  const result = codec.encode(value);
-  util.assert(result.kind === "value", "encode failed in test helper");
-  return result.value;
+  return codec.encode(value);
 }
 
 function pendingPromise(id: string): PromiseRecord {
@@ -104,7 +94,7 @@ describe("Effects", () => {
         data: { id: "p1", timeoutAt: 0, param: { data: undefined }, tags: {} },
       });
 
-      expect(res.kind).toBe("value");
+      expect(res.state).toBe("pending");
       expect(network.sendCount).toBe(0);
     });
 
@@ -118,7 +108,7 @@ describe("Effects", () => {
         data: { id: "p2", timeoutAt: Date.now() + 60_000, param: { data: { func: "f", args: [] } }, tags: {} },
       });
 
-      expect(res.kind).toBe("value");
+      expect(res.state).toBe("pending");
       expect(network.sendCount).toBe(1);
     });
 
@@ -141,7 +131,7 @@ describe("Effects", () => {
         data: { id: "p3", timeoutAt: 0, param: { data: undefined }, tags: {} },
       });
 
-      expect(res.kind).toBe("value");
+      expect(res.state).toBe("pending");
       expect(network.sendCount).toBe(1);
     });
   });
@@ -158,10 +148,7 @@ describe("Effects", () => {
         data: { id: "s1", state: "resolved", value: { data: 99 } },
       });
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.state).toBe("resolved");
-      }
+      expect(res.state).toBe("resolved");
       expect(network.sendCount).toBe(0);
     });
 
@@ -184,7 +171,7 @@ describe("Effects", () => {
         data: { id: "s2", state: "resolved", value: { data: "ok" } },
       });
 
-      expect(res.kind).toBe("value");
+      expect(res.state).toBe("resolved");
       expect(network.sendCount).toBe(beforeCount + 1);
     });
 
@@ -215,7 +202,7 @@ describe("Effects", () => {
         data: { id: "s3", state: "resolved", value: { data: "v" } },
       });
 
-      expect(res.kind).toBe("value");
+      expect(res.state).toBe("resolved");
       expect(network.sendCount).toBe(2);
     });
 
@@ -237,7 +224,7 @@ describe("Effects", () => {
         data: { id: "s4", state: "resolved", value: { data: "x" } },
       });
 
-      expect(res.kind).toBe("value");
+      expect(res.state).toBe("resolved");
       expect(network.sendCount).toBe(beforeCount + 1);
     });
   });
@@ -254,12 +241,9 @@ describe("Effects", () => {
         data: { id: "v1", timeoutAt: 0, param: { data: undefined }, tags: {} },
       });
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.id).toBe("v1");
-        expect(res.value.state).toBe("pending");
-        expect(res.value.param.data).toEqual({ func: "f", args: [] });
-      }
+      expect(res.id).toBe("v1");
+      expect(res.state).toBe("pending");
+      expect(res.param.data).toEqual({ func: "f", args: [] });
     });
 
     test("preloaded resolved promise has decoded value", async () => {
@@ -273,12 +257,9 @@ describe("Effects", () => {
         data: { id: "v2", state: "resolved", value: { data: "ignored" } },
       });
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.id).toBe("v2");
-        expect(res.value.state).toBe("resolved");
-        expect(res.value.value.data).toEqual({ answer: 42 });
-      }
+      expect(res.id).toBe("v2");
+      expect(res.state).toBe("resolved");
+      expect(res.value.data).toEqual({ answer: 42 });
     });
 
     test("promise created via network has correct decoded values in cache", async () => {
@@ -301,12 +282,9 @@ describe("Effects", () => {
         data: { id: "v3", timeoutAt: 0, param: { data: undefined }, tags: {} },
       });
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.id).toBe("v3");
-        expect(res.value.state).toBe("pending");
-        expect(res.value.param.data).toEqual(paramData);
-      }
+      expect(res.id).toBe("v3");
+      expect(res.state).toBe("pending");
+      expect(res.param.data).toEqual(paramData);
     });
 
     test("promise settled via network has correct decoded values in cache", async () => {
@@ -336,12 +314,9 @@ describe("Effects", () => {
         data: { id: "v4", state: "resolved", value: { data: "ignored" } },
       });
 
-      expect(res.kind).toBe("value");
-      if (res.kind === "value") {
-        expect(res.value.id).toBe("v4");
-        expect(res.value.state).toBe("resolved");
-        expect(res.value.value.data).toEqual(settleValue);
-      }
+      expect(res.id).toBe("v4");
+      expect(res.state).toBe("resolved");
+      expect(res.value.data).toEqual(settleValue);
     });
 
     test("multiple preloaded promises each have correct values", async () => {
@@ -369,23 +344,14 @@ describe("Effects", () => {
 
       expect(network.sendCount).toBe(0);
 
-      expect(res1.kind).toBe("value");
-      if (res1.kind === "value") {
-        expect(res1.value.state).toBe("pending");
-        expect(res1.value.param.data).toEqual({ func: "f", args: [] });
-      }
+      expect(res1.state).toBe("pending");
+      expect(res1.param.data).toEqual({ func: "f", args: [] });
 
-      expect(res2.kind).toBe("value");
-      if (res2.kind === "value") {
-        expect(res2.value.state).toBe("resolved");
-        expect(res2.value.value.data).toBe("hello");
-      }
+      expect(res2.state).toBe("resolved");
+      expect(res2.value.data).toBe("hello");
 
-      expect(res3.kind).toBe("value");
-      if (res3.kind === "value") {
-        expect(res3.value.state).toBe("resolved");
-        expect(res3.value.value.data).toEqual([1, 2, 3]);
-      }
+      expect(res3.state).toBe("resolved");
+      expect(res3.value.data).toEqual([1, 2, 3]);
     });
   });
 });

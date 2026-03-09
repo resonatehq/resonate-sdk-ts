@@ -12,17 +12,13 @@ export class Schedules {
   }
 
   async get(id: string): Promise<ScheduleRecord> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "schedule.get",
       head: { corrId: "", version: "" },
       data: {
         id,
       },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -49,7 +45,7 @@ export class Schedules {
       promiseTags?: { [key: string]: string };
     } = {},
   ): Promise<ScheduleRecord> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "schedule.create",
       head: { corrId: "", version: "" },
       data: {
@@ -61,10 +57,6 @@ export class Schedules {
         promiseTags: promiseTags,
       },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -75,17 +67,13 @@ export class Schedules {
   }
 
   async delete(id: string): Promise<undefined> {
-    const sendResult = await this.send({
+    const res = await this.send({
       kind: "schedule.delete",
       head: { corrId: "", version: "" },
       data: {
         id,
       },
     });
-    if (sendResult.kind === "error") {
-      throw sendResult.error;
-    }
-    const res = sendResult.value;
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
