@@ -534,10 +534,8 @@ export class Resonate {
       },
     });
 
-    if (task) {
-      this.core
-        .executeUntilBlocked({ kind: "claimed", task: task, rootPromise: promise })
-        .catch((err) => console.warn("executeUntilBlocked failed", err));
+    if (task && task.state === "acquired") {
+      this.core.executeUntilBlocked(task, promise).catch((err) => console.warn("executeUntilBlocked failed", err));
     }
 
     return this.createHandle(promise);

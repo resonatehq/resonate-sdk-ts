@@ -1,6 +1,5 @@
 import type { Clock } from "./clock.js";
 import { InnerContext } from "./context.js";
-import type { ClaimedTask } from "./core.js";
 import { Coroutine } from "./coroutine.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
@@ -67,18 +66,18 @@ export class Computation {
     this.verbose = verbose;
   }
 
-  public async executeUntilBlocked(task: ClaimedTask): Promise<Status> {
+  public async executeUntilBlocked(rootPromise: PromiseRecord): Promise<Status> {
     if (this.processing) throw exceptions.PANIC("computation", "already processing");
 
     this.processing = true;
     try {
-      return await this.processAcquired(task);
+      return await this.processAcquired(rootPromise);
     } finally {
       this.processing = false;
     }
   }
 
-  private async processAcquired({ rootPromise }: ClaimedTask): Promise<Status> {
+  private async processAcquired(rootPromise: PromiseRecord): Promise<Status> {
     if (!isValidData(rootPromise.param?.data)) {
       throw exceptions.PANIC("computation", "invalid promise data");
     }

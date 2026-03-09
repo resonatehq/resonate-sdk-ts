@@ -2,7 +2,6 @@ import { describe, expect, jest, test } from "@jest/globals";
 import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import type { Status } from "../src/computation.js";
-import type { ClaimedTask } from "../src/core.js";
 import { Core } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { LocalNetwork } from "../src/network/local.js";
@@ -19,7 +18,7 @@ class TestHeartbeat implements Heartbeat {
 }
 
 class MockComputation {
-  public calls: ClaimedTask[] = [];
+  public calls: { rootPromise: PromiseRecord }[] = [];
   private responses: (Status | Error)[];
   private callIndex = 0;
 
@@ -27,8 +26,8 @@ class MockComputation {
     this.responses = responses;
   }
 
-  executeUntilBlocked(task: ClaimedTask | { kind: "unclaimed"; task: TaskRecord }): Promise<Status> {
-    this.calls.push(task as ClaimedTask);
+  executeUntilBlocked(rootPromise: PromiseRecord): Promise<Status> {
+    this.calls.push({ rootPromise });
     const res = this.responses[this.callIndex] ?? this.responses[this.responses.length - 1];
     this.callIndex++;
     if (res instanceof Error) return Promise.reject(res);
@@ -148,8 +147,7 @@ describe("Core", () => {
       const { task, rootPromise } = await seedAcquiredTask(sendHolder.fn, codec, "p1", "main", []);
       const { sent } = interceptSend(sendHolder);
 
-      const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      const res = await core.executeUntilBlocked(claimed);
+      const res = await core.executeUntilBlocked(task, rootPromise);
 
       expect(res.kind).toBe("done");
 
@@ -168,8 +166,7 @@ describe("Core", () => {
       const { task, rootPromise } = await seedAcquiredTask(sendHolder.fn, codec, "p2", "main", []);
       const { sent } = interceptSend(sendHolder);
 
-      const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      const res = await core.executeUntilBlocked(claimed);
+      const res = await core.executeUntilBlocked(task, rootPromise);
 
       expect(res.kind).toBe("done");
       const fulfill = sent.find((r) => r.kind === "task.fulfill");
@@ -187,8 +184,7 @@ describe("Core", () => {
       const { task, rootPromise } = await seedAcquiredTask(sendHolder.fn, codec, "p3", "main", []);
       const { sent } = interceptSend(sendHolder);
 
-      const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      await expect(core.executeUntilBlocked(claimed)).rejects.toThrow("test error");
+      await expect(core.executeUntilBlocked(task, rootPromise)).rejects.toThrow("test error");
       const release = sent.find((r) => r.kind === "task.release");
       expect(release).toBeDefined();
     });
@@ -204,8 +200,7 @@ describe("Core", () => {
 
       const { sent } = interceptSend(sendHolder);
 
-      const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      const res = await core.executeUntilBlocked(claimed);
+      const res = await core.executeUntilBlocked(task, rootPromise);
 
       expect(res.kind).toBe("suspended");
 
@@ -243,8 +238,7 @@ describe("Core", () => {
         return origFn(req);
       }) as Send;
 
-      const claimed: ClaimedTask = { kind: "claimed", task, rootPromise };
-      const res = await core.executeUntilBlocked(claimed);
+      const res = await core.executeUntilBlocked(task, rootPromise);
 
       expect(res.kind).toBe("done");
       expect(mockRef.mock.calls.length).toBe(2);
@@ -264,7 +258,6 @@ describe("Core", () => {
       await core.onMessage({ kind: "execute", head: {}, data: { task } });
 
       expect(mockRef.mock.calls.length).toBe(1);
-      expect(mockRef.mock.calls[0].kind).toBe("claimed");
     });
 
     test("acquire failure (409) throws without hanging", async () => {

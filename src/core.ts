@@ -15,20 +15,6 @@ export type PromiseHandler = {
   subscribe: () => Promise<void>;
 };
 
-export type Task = ClaimedTask | UnclaimedTask;
-
-export type ClaimedTask = {
-  kind: "claimed";
-  task: TaskRecord;
-  rootPromise: PromiseRecord;
-  preload?: PromiseRecord[];
-};
-
-export type UnclaimedTask = {
-  kind: "unclaimed";
-  task: TaskRecord;
-};
-
 export class Core {
   private pid: string;
   private ttl: number;
@@ -85,32 +71,34 @@ export class Core {
     ]);
   }
 
-  public async executeUntilBlocked(claimed: ClaimedTask): Promise<Status> {
-    const computation = this.createComputation(
-      claimed.rootPromise.id,
-      util.buildEffects(this.send, this.codec, claimed.preload),
-    );
+  public async executeUntilBlocked(
+    task: TaskRecord,
+    rootPromise: PromiseRecord,
+    preload?: PromiseRecord[],
+  ): Promise<Status> {
+    util.assert(task.state === "acquired", `expected task state to be 'acquired', got '${task.state}'`);
+    const computation = this.createComputation(rootPromise.id, util.buildEffects(this.send, this.codec, preload));
 
     try {
-      const status = await computation.executeUntilBlocked(claimed);
+      const status = await computation.executeUntilBlocked(rootPromise);
       if (status.kind === "suspended") {
-        const suspendResult = await this.suspendTask(claimed, status);
+        const suspendResult = await this.suspendTask(task, rootPromise, status.awaited);
         if (suspendResult.continue) {
-          claimed.preload = suspendResult.preload;
-          return this.executeUntilBlocked(claimed);
+          return this.executeUntilBlocked(task, rootPromise, suspendResult.preload);
         }
       }
       if (status.kind === "done") {
-        await this.fulfillTask(claimed.task, status);
+        await this.fulfillTask(task, status);
       }
       return status;
     } catch (err) {
+      // TODO: Some kinds of error must releaseTask, others must haltTask, figure out when to halt and when to release
       if (err instanceof ResonateError) {
         err.log(this.verbose);
       } else {
         console.warn("executeUntilBlocked failed unexpectedly", err);
       }
-      await this.releaseTask(claimed.task).catch(() => {});
+      await this.releaseTask(task).catch(() => {});
       throw err;
     }
   }
@@ -139,20 +127,20 @@ export class Core {
   }
 
   private async suspendTask(
-    claimed: ClaimedTask,
-    status: { kind: "suspended"; awaited: string[] },
+    task: TaskRecord,
+    rootPromise: PromiseRecord,
+    awaited: string[],
   ): Promise<{ continue: true; preload: PromiseRecord[] } | { continue: false }> {
-    const task = claimed.task;
     const res = await this.send({
       kind: "task.suspend",
       head: { corrId: "", version: "" },
       data: {
         id: task.id,
         version: task.version,
-        actions: status.awaited.map((a) => ({
+        actions: awaited.map((a) => ({
           kind: "promise.register_callback",
           head: { corrId: "", version: "" },
-          data: { awaiter: claimed.rootPromise.id, awaited: a },
+          data: { awaiter: rootPromise.id, awaited: a },
         })),
       },
     });
@@ -209,12 +197,7 @@ export class Core {
 
     const rootPromise = this.codec.decodePromise(res.data.promise);
 
-    const acquiredTask: TaskRecord = { id: task.id, state: "acquired", version: task.version };
-    return this.executeUntilBlocked({
-      kind: "claimed",
-      task: acquiredTask,
-      rootPromise,
-      preload: res.data.preload,
-    });
+    const acquiredTask = { id: task.id, state: "acquired" as const, version: task.version };
+    return this.executeUntilBlocked(acquiredTask, rootPromise, res.data.preload);
   }
 }

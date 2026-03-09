@@ -3,7 +3,6 @@ import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import { Computation } from "../src/computation.js";
 import type { Context } from "../src/context.js";
-import type { ClaimedTask } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { LocalNetwork } from "../src/network/local.js";
 import type { Network } from "../src/network/network.js";
@@ -48,14 +47,14 @@ function buildComputation(registry: Registry): {
   return { computation, network, effects };
 }
 
-function createClaimedTask(
+function createRootPromise(
   id: string,
   func: string,
   args: any[],
   opts?: { version?: number; tags?: Record<string, string>; retry?: { type: string; data: any } },
-): ClaimedTask {
+): PromiseRecord {
   const now = Date.now();
-  const rootPromise: PromiseRecord = {
+  return {
     id,
     state: "pending",
     param: {
@@ -74,12 +73,6 @@ function createClaimedTask(
     timeoutAt: now + 60_000,
     createdAt: now,
     value: { headers: {}, data: undefined },
-  };
-
-  return {
-    kind: "claimed",
-    task: { id, state: "acquired" as const, version: 1 },
-    rootPromise,
   };
 }
 
@@ -100,8 +93,8 @@ describe("Computation", () => {
       registry.add(add, "add");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("local-single", "main", []);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("local-single", "main", []);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("done");
       if (res.kind === "done") {
@@ -131,8 +124,8 @@ describe("Computation", () => {
       registry.add(square, "square");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("local-multi", "main", []);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("local-multi", "main", []);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("done");
       if (res.kind === "done") {
@@ -153,8 +146,8 @@ describe("Computation", () => {
       registry.add(main, "main");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("remote-single", "main", []);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("remote-single", "main", []);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("suspended");
       if (res.kind === "suspended") {
@@ -173,8 +166,8 @@ describe("Computation", () => {
       registry.add(main, "main");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("remote-multi", "main", []);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("remote-multi", "main", []);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("suspended");
       if (res.kind === "suspended") {
@@ -200,8 +193,8 @@ describe("Computation", () => {
       registry.add(add, "add");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("mixed", "main", []);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("mixed", "main", []);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("suspended");
       if (res.kind === "suspended") {
@@ -227,8 +220,8 @@ describe("Computation", () => {
       registry.add(multiply, "multiply");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("mixed-parallel", "main", []);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("mixed-parallel", "main", []);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("suspended");
       if (res.kind === "suspended") {
@@ -247,8 +240,8 @@ describe("Computation", () => {
       registry.add(add, "add");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("func-resolve", "add", [3, 4]);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("func-resolve", "add", [3, 4]);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("done");
       if (res.kind === "done") {
@@ -266,8 +259,11 @@ describe("Computation", () => {
       registry.add(fail, "fail");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("func-reject", "fail", [], { version: 1, retry: { type: "never", data: {} } });
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("func-reject", "fail", [], {
+        version: 1,
+        retry: { type: "never", data: {} },
+      });
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("done");
       if (res.kind === "done") {
@@ -284,8 +280,8 @@ describe("Computation", () => {
       registry.add(noop, "noop");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("func-void", "noop", []);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("func-void", "noop", []);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("done");
       if (res.kind === "done") {
@@ -303,8 +299,8 @@ describe("Computation", () => {
       registry.add(concat, "concat");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("func-args", "concat", ["x", "y", "z"]);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("func-args", "concat", ["x", "y", "z"]);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("done");
       if (res.kind === "done") {
@@ -330,8 +326,8 @@ describe("Computation", () => {
       registry.add(fail, "fail");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("error-local", "main", []);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("error-local", "main", []);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("done");
       if (res.kind === "done") {
@@ -359,8 +355,8 @@ describe("Computation", () => {
       registry.add(counter, "counter");
 
       const { computation } = buildComputation(registry);
-      const task = createClaimedTask("no-reexec", "main", []);
-      const res = await computation.executeUntilBlocked(task);
+      const rootPromise = createRootPromise("no-reexec", "main", []);
+      const res = await computation.executeUntilBlocked(rootPromise);
 
       expect(res.kind).toBe("done");
       if (res.kind === "done") {
