@@ -5,6 +5,12 @@ import * as util from "../util.js";
 import type { Network } from "./network.js";
 import { isMessage, isResponse, type Message, type Request, type Response } from "./types.js";
 
+// TODO: Prometheus-style metrics (counters, histograms, gauges) are deferred.
+// The spec calls for: resonate_network_requests_total, resonate_network_platform_failures_total,
+// resonate_network_timeouts_total, resonate_network_messages_received_total,
+// resonate_network_request_duration_ms (histogram), resonate_network_inflight_requests (gauge).
+// See 04-networking.md Observability section for full details.
+
 // =============================================================================
 // HttpAdapter Interface
 // =============================================================================
@@ -76,11 +82,16 @@ export class HttpNetwork implements Network {
   async init(): Promise<void> {
     util.assert(this.adapter !== undefined);
     await this.adapter.init();
+    this.logger?.info(
+      { component: "network", url: this.url, adapter_type: this.adapter.constructor.name },
+      "network initialized",
+    );
   }
 
   async stop(): Promise<void> {
     util.assert(this.adapter !== undefined);
     await this.adapter.stop();
+    this.logger?.info({ component: "network" }, "network stopped");
   }
 
   recv(callback: (msg: Message) => void): void {
@@ -109,7 +120,11 @@ export class HttpNetwork implements Network {
   send = async <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
   ): Promise<Extract<Response, { kind: K }>> => {
-    this.logger?.debug({ component: "network", kind: req.kind, corrId: req.head.corrId }, "sending request");
+    const startTime = Date.now();
+    this.logger?.debug(
+      { component: "network", url: `${this.url}/api`, kind: req.kind, corr_id: req.head.corrId },
+      "request sent",
+    );
 
     try {
       const controller = new AbortController();
@@ -125,9 +140,10 @@ export class HttpNetwork implements Network {
         });
       } catch (e) {
         const cause = e instanceof Error ? e.message : String(e);
+        const errorType = cause.includes("abort") ? "http_timeout" : "connection_error";
         this.logger?.warn(
-          { component: "network", kind: req.kind, corrId: req.head.corrId, error: cause },
-          `platform failure: fetch error`,
+          { component: "network", kind: req.kind, corr_id: req.head.corrId, error_type: errorType, error: cause },
+          "platform failure collapsed to synthetic timeout",
         );
         return this.syntheticTimeout(req, cause);
       } finally {
@@ -138,8 +154,14 @@ export class HttpNetwork implements Network {
       if (!HttpNetwork.PROTOCOL_STATUSES.has(httpResponse.status)) {
         const cause = `HTTP ${httpResponse.status}`;
         this.logger?.warn(
-          { component: "network", kind: req.kind, corrId: req.head.corrId, error: cause },
-          `platform failure: non-protocol HTTP status`,
+          {
+            component: "network",
+            kind: req.kind,
+            corr_id: req.head.corrId,
+            error_type: `server_error_${httpResponse.status}`,
+            error: cause,
+          },
+          "platform failure collapsed to synthetic timeout",
         );
         return this.syntheticTimeout(req, cause);
       }
@@ -150,8 +172,14 @@ export class HttpNetwork implements Network {
       } catch (e) {
         const cause = e instanceof Error ? e.message : String(e);
         this.logger?.warn(
-          { component: "network", kind: req.kind, corrId: req.head.corrId, error: cause },
-          `platform failure: failed to read response body`,
+          {
+            component: "network",
+            kind: req.kind,
+            corr_id: req.head.corrId,
+            error_type: "malformed_response",
+            error: cause,
+          },
+          "platform failure collapsed to synthetic timeout",
         );
         return this.syntheticTimeout(req, cause);
       }
@@ -161,23 +189,42 @@ export class HttpNetwork implements Network {
         res = JSON.parse(resStr);
       } catch {
         this.logger?.warn(
-          { component: "network", kind: req.kind, corrId: req.head.corrId },
-          `platform failure: failed to parse response JSON`,
+          {
+            component: "network",
+            kind: req.kind,
+            corr_id: req.head.corrId,
+            error_type: "malformed_response",
+            error: "failed to parse response JSON",
+          },
+          "platform failure collapsed to synthetic timeout",
         );
         return this.syntheticTimeout(req, "failed to parse response JSON");
       }
 
       if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
         this.logger?.warn(
-          { component: "network", kind: req.kind, corrId: req.head.corrId },
-          `platform failure: response did not match request`,
+          {
+            component: "network",
+            kind: req.kind,
+            corr_id: req.head.corrId,
+            error_type: "malformed_response",
+            error: "response did not match request",
+          },
+          "platform failure collapsed to synthetic timeout",
         );
         return this.syntheticTimeout(req, "response did not match request");
       }
 
+      const durationMs = Date.now() - startTime;
       this.logger?.debug(
-        { component: "network", kind: res.kind, corrId: res.head.corrId, status: res.head.status },
-        "received response",
+        {
+          component: "network",
+          kind: res.kind,
+          corr_id: res.head.corrId,
+          status: res.head.status,
+          duration_ms: durationMs,
+        },
+        "protocol response",
       );
 
       return res as Extract<Response, { kind: K }>;
@@ -185,8 +232,14 @@ export class HttpNetwork implements Network {
       // Catch-all: any unexpected error is also collapsed
       const cause = e instanceof Error ? e.message : String(e);
       this.logger?.warn(
-        { component: "network", kind: req.kind, corrId: req.head.corrId, error: cause },
-        `platform failure: unexpected error`,
+        {
+          component: "network",
+          kind: req.kind,
+          corr_id: req.head.corrId,
+          error_type: "unexpected_error",
+          error: cause,
+        },
+        "platform failure collapsed to synthetic timeout",
       );
       return this.syntheticTimeout(req, cause);
     }
@@ -261,8 +314,13 @@ export class PollMessageSource implements HttpAdapter {
     this.eventSource.addEventListener("open", () => {
       if (this.reconnectAttempt > 0) {
         this.logger?.info(
-          { component: "network", url: this.pollUrl, attempt: this.reconnectAttempt },
-          "SSE reconnected successfully",
+          { component: "network", adapter_type: "HttpPoll", address: this.pollUrl, attempt: this.reconnectAttempt },
+          "adapter reconnected",
+        );
+      } else {
+        this.logger?.info(
+          { component: "network", adapter_type: "HttpPoll", address: this.pollUrl },
+          "adapter connected",
         );
       }
       this.reconnectAttempt = 0;
@@ -282,8 +340,13 @@ export class PollMessageSource implements HttpAdapter {
       );
 
       this.logger?.warn(
-        { component: "network", url: this.pollUrl, attempt: this.reconnectAttempt, delayMs: delay },
-        `SSE connection error. Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt}).`,
+        {
+          component: "network",
+          adapter_type: "HttpPoll",
+          error: "SSE connection error",
+          attempt: this.reconnectAttempt,
+        },
+        "adapter reconnecting",
       );
 
       setTimeout(() => this.connect(), delay);
@@ -296,14 +359,32 @@ export class PollMessageSource implements HttpAdapter {
     let parsed: unknown;
     try {
       parsed = JSON.parse(msgStr);
-    } catch {
-      this.logger?.warn({ component: "network" }, "received invalid JSON message, discarding");
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      this.logger?.warn(
+        { component: "network", error, raw_data: msgStr.slice(0, 200) },
+        "message parse error",
+      );
       return;
     }
     if (!isMessage(parsed)) {
-      this.logger?.warn({ component: "network" }, "received invalid message, discarding");
+      this.logger?.warn(
+        { component: "network", error: "invalid message structure", raw_data: msgStr.slice(0, 200) },
+        "message parse error",
+      );
       return;
     }
+
+    const msgKind = parsed.kind;
+    const idField =
+      msgKind === "execute"
+        ? { task_id: parsed.data?.task?.id }
+        : { promise_id: parsed.data?.promise?.id };
+    this.logger?.debug(
+      { component: "network", msg_kind: msgKind, ...idField },
+      "message received",
+    );
+
     for (const callback of this.callbacks) {
       callback(parsed);
     }
@@ -365,6 +446,11 @@ export class PushMessageSource implements HttpAdapter {
         // set addresses now that the server is listening and port is known
         this.unicast = `http://${this.host}:${this.port}`;
         this.anycast = `http://${this.host}:${this.port}`;
+
+        this.logger?.info(
+          { component: "network", adapter_type: "HttpPush", address: `${this.host}:${this.port}` },
+          "adapter connected",
+        );
         resolve();
       });
       this.server.once("error", reject);
@@ -410,14 +496,32 @@ export class PushMessageSource implements HttpAdapter {
     let parsed: unknown;
     try {
       parsed = JSON.parse(msgStr);
-    } catch {
-      this.logger?.warn({ component: "network" }, "received invalid JSON message, discarding");
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      this.logger?.warn(
+        { component: "network", error, raw_data: msgStr.slice(0, 200) },
+        "message parse error",
+      );
       return;
     }
     if (!isMessage(parsed)) {
-      this.logger?.warn({ component: "network" }, "received invalid message, discarding");
+      this.logger?.warn(
+        { component: "network", error: "invalid message structure", raw_data: msgStr.slice(0, 200) },
+        "message parse error",
+      );
       return;
     }
+
+    const msgKind = parsed.kind;
+    const idField =
+      msgKind === "execute"
+        ? { task_id: parsed.data?.task?.id }
+        : { promise_id: parsed.data?.promise?.id };
+    this.logger?.debug(
+      { component: "network", msg_kind: msgKind, ...idField },
+      "message received",
+    );
+
     for (const callback of this.callbacks) {
       callback(parsed);
     }
