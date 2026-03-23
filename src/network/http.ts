@@ -207,6 +207,11 @@ export class PollMessageSource implements HttpAdapter {
   private callbacks: Array<(msg: Message) => void> = [];
   private logger?: Logger;
 
+  // Exponential backoff state
+  private reconnectAttempt = 0;
+  private static readonly INITIAL_BACKOFF_MS = 1000;
+  private static readonly MAX_BACKOFF_MS = 30000;
+
   constructor({
     url,
     auth = undefined,
@@ -253,6 +258,16 @@ export class PollMessageSource implements HttpAdapter {
         }),
     });
 
+    this.eventSource.addEventListener("open", () => {
+      if (this.reconnectAttempt > 0) {
+        this.logger?.info(
+          { component: "network", url: this.pollUrl, attempt: this.reconnectAttempt },
+          "SSE reconnected successfully",
+        );
+      }
+      this.reconnectAttempt = 0;
+    });
+
     this.eventSource.addEventListener("message", (event) => {
       this.deliver(event.data);
     });
@@ -260,13 +275,18 @@ export class PollMessageSource implements HttpAdapter {
     this.eventSource.addEventListener("error", () => {
       this.eventSource.close();
 
-      if (this.logger) {
-        this.logger.warn(
-          { component: "network", url: this.pollUrl },
-          `Cannot connect to [${this.pollUrl}]. Retrying in 5s.`,
-        );
-      }
-      setTimeout(() => this.connect(), 5000);
+      this.reconnectAttempt++;
+      const delay = Math.min(
+        PollMessageSource.INITIAL_BACKOFF_MS * 2 ** (this.reconnectAttempt - 1),
+        PollMessageSource.MAX_BACKOFF_MS,
+      );
+
+      this.logger?.warn(
+        { component: "network", url: this.pollUrl, attempt: this.reconnectAttempt, delayMs: delay },
+        `SSE connection error. Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt}).`,
+      );
+
+      setTimeout(() => this.connect(), delay);
     });
 
     return this.eventSource;
