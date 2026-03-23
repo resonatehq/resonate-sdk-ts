@@ -6,7 +6,7 @@ import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import exceptions, { ResonateError } from "./exceptions.js";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
 import { ConsoleLogger, type LogLevel, type Logger } from "./logger.js";
-import { HttpNetwork } from "./network/http.js";
+import { HttpNetwork, PollMessageSource } from "./network/http.js";
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
 import {
@@ -181,18 +181,23 @@ export class Resonate {
         this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
         hearbeat = false;
       } else {
+        const resolvedPid = pid ?? crypto.randomUUID().replace(/-/g, "");
+        const adapter = new PollMessageSource({
+          url: `${resolvedUrl}/poll/${encodeURIComponent(group)}/${encodeURIComponent(resolvedPid)}`,
+          auth: resolvedAuth,
+          token: resolvedToken,
+          logger: this.logger,
+        });
         this.network = new HttpNetwork({
           url: resolvedUrl,
           auth: resolvedAuth,
           token: resolvedToken,
           timeout: 1 * util.MIN,
           headers: {},
-          pid,
-          group,
-          messageSource: "poll",
+          adapter,
         });
 
-        this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
+        this.pid = resolvedPid;
         hearbeat = true;
       }
     }

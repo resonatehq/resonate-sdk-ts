@@ -1,7 +1,8 @@
-import { HttpNetwork } from "../../src/network/http.js";
+import { HttpNetwork, PushMessageSource } from "../../src/network/http.js";
 import type { Message } from "../../src/network/types.js";
 
 describe("PushMessageSource (via HttpNetwork)", () => {
+  let adapter: PushMessageSource;
   let network: HttpNetwork;
 
   afterEach(async () => {
@@ -13,10 +14,8 @@ describe("PushMessageSource (via HttpNetwork)", () => {
   });
 
   test("POST with valid body delivers typed Message to subscribers", async () => {
-    network = new HttpNetwork({
-      messageSource: "push",
-      // port 0 lets the OS pick a free port
-    });
+    adapter = new PushMessageSource();
+    network = new HttpNetwork({ adapter });
 
     const received: Message[] = [];
     network.recv((msg) => received.push(msg));
@@ -44,9 +43,8 @@ describe("PushMessageSource (via HttpNetwork)", () => {
   });
 
   test("POST with invalid JSON is discarded", async () => {
-    network = new HttpNetwork({
-      messageSource: "push",
-    });
+    adapter = new PushMessageSource();
+    network = new HttpNetwork({ adapter });
 
     const received: Message[] = [];
     network.recv((msg) => received.push(msg));
@@ -61,9 +59,8 @@ describe("PushMessageSource (via HttpNetwork)", () => {
   });
 
   test("POST with invalid message structure is discarded", async () => {
-    network = new HttpNetwork({
-      messageSource: "push",
-    });
+    adapter = new PushMessageSource();
+    network = new HttpNetwork({ adapter });
 
     const received: Message[] = [];
     network.recv((msg) => received.push(msg));
@@ -82,9 +79,8 @@ describe("PushMessageSource (via HttpNetwork)", () => {
   });
 
   test("OPTIONS request gets CORS headers (204)", async () => {
-    network = new HttpNetwork({
-      messageSource: "push",
-    });
+    adapter = new PushMessageSource();
+    network = new HttpNetwork({ adapter });
 
     await network.init();
 
@@ -98,9 +94,8 @@ describe("PushMessageSource (via HttpNetwork)", () => {
   });
 
   test("non-POST request gets 405", async () => {
-    network = new HttpNetwork({
-      messageSource: "push",
-    });
+    adapter = new PushMessageSource();
+    network = new HttpNetwork({ adapter });
 
     await network.init();
 
@@ -116,9 +111,8 @@ describe("PushMessageSource (via HttpNetwork)", () => {
   });
 
   test("init() listens on configured port, stop() closes the server", async () => {
-    network = new HttpNetwork({
-      messageSource: "push",
-    });
+    adapter = new PushMessageSource();
+    network = new HttpNetwork({ adapter });
 
     await network.init();
 
@@ -134,9 +128,8 @@ describe("PushMessageSource (via HttpNetwork)", () => {
   });
 
   test("unicast and anycast addresses are set after init()", async () => {
-    network = new HttpNetwork({
-      messageSource: "push",
-    });
+    adapter = new PushMessageSource();
+    network = new HttpNetwork({ adapter });
 
     await network.init();
 

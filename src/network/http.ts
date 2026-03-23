@@ -6,23 +6,37 @@ import * as util from "../util.js";
 import type { Network } from "./network.js";
 import { isMessage, isResponse, type Message, type Request, type Response } from "./types.js";
 
+// =============================================================================
+// HttpAdapter Interface
+// =============================================================================
+
+export interface HttpAdapter {
+  readonly unicast: string;
+  readonly anycast: string;
+  init(): Promise<void>;
+  stop(): Promise<void>;
+  onReceive(callback: (msg: Message) => void): void;
+}
+
+// =============================================================================
+// HttpNetwork
+// =============================================================================
+
 export interface HttpNetworkConfig {
   url?: string;
   timeout?: number;
   headers?: { [key: string]: string };
-  pid?: string;
-  group?: string;
-  messageSource?: "poll" | "push";
   auth?: { username: string; password: string };
   token?: string;
   logger?: Logger;
+  adapter?: HttpAdapter;
 }
 
 export class HttpNetwork implements Network {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
-  private _messageSource?: PollMessageSource | PushMessageSource;
+  private adapter?: HttpAdapter;
   private logger?: Logger;
 
   constructor({
@@ -31,14 +45,13 @@ export class HttpNetwork implements Network {
     headers = {},
     auth = undefined,
     token = undefined,
-    pid = undefined,
-    group = "default",
-    messageSource = undefined,
     logger = undefined,
+    adapter = undefined,
   }: HttpNetworkConfig) {
     this.url = url;
     this.timeout = timeout;
     this.logger = logger;
+    this.adapter = adapter;
 
     this.headers = { "Content-Type": "application/json", ...headers };
     if (token) {
@@ -46,49 +59,30 @@ export class HttpNetwork implements Network {
     } else if (auth) {
       this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
     }
-
-    if (messageSource === "poll") {
-      this._messageSource = new PollMessageSource({ url, pid, group, auth, token, logger });
-    } else if (messageSource === "push") {
-      this._messageSource = new PushMessageSource({ pid, group });
-    }
   }
 
   get unicast(): string {
-    util.assert(this._messageSource !== undefined);
-    return this._messageSource.unicast;
+    util.assert(this.adapter !== undefined);
+    return this.adapter.unicast;
   }
 
   get anycast(): string {
-    util.assert(this._messageSource !== undefined);
-    return this._messageSource.anycast;
+    util.assert(this.adapter !== undefined);
+    return this.adapter.anycast;
   }
 
   async init(): Promise<void> {
-    util.assert(this._messageSource !== undefined);
-    await this._messageSource.start();
+    util.assert(this.adapter !== undefined);
+    await this.adapter.init();
   }
 
   async stop(): Promise<void> {
-    util.assert(this._messageSource !== undefined);
-    await this._messageSource.stop();
+    util.assert(this.adapter !== undefined);
+    await this.adapter.stop();
   }
 
   recv(callback: (msg: Message) => void): void {
-    this._messageSource?.subscribe((msgStr: string) => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(msgStr);
-      } catch {
-        this.logger?.warn({ component: "network" }, "received invalid JSON message, discarding");
-        return;
-      }
-      if (!isMessage(parsed)) {
-        this.logger?.warn({ component: "network" }, "received invalid message, discarding");
-        return;
-      }
-      callback(parsed);
-    });
+    this.adapter?.onReceive(callback);
   }
 
   send = async <K extends Request["kind"]>(
@@ -144,39 +138,43 @@ export class HttpNetwork implements Network {
   };
 }
 
-class PollMessageSource {
-  readonly pid: string;
-  readonly group: string;
+// =============================================================================
+// PollMessageSource — implements HttpAdapter
+// =============================================================================
+
+export class PollMessageSource implements HttpAdapter {
   readonly unicast: string;
   readonly anycast: string;
 
-  private url: string;
+  private pollUrl: string;
   private headers: { [key: string]: string };
   private eventSource: EventSource;
-  private subscribers: Array<(msg: string) => void> = [];
+  private callbacks: Array<(msg: Message) => void> = [];
   private logger?: Logger;
 
   constructor({
-    url = "http://localhost:8001",
-    pid = crypto.randomUUID().replace(/-/g, ""),
-    group = "default",
+    url,
     auth = undefined,
     token = undefined,
     logger = undefined,
   }: {
-    url?: string;
-    pid?: string;
-    group?: string;
+    url: string;
     auth?: { username: string; password: string };
     token?: string;
     logger?: Logger;
   }) {
-    this.url = url;
-    this.pid = pid;
-    this.group = group;
+    this.pollUrl = url;
+    this.logger = logger;
+
+    // Derive unicast/anycast from the URL
+    // URL format: ${baseUrl}/poll/${group}/${pid}
+    const parsed = new URL(url);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    // segments: ["poll", group, pid]
+    const group = segments.length >= 2 ? decodeURIComponent(segments[1]) : "default";
+    const pid = segments.length >= 3 ? decodeURIComponent(segments[2]) : "";
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycast = `poll://any@${group}/${pid}`;
-    this.logger = logger;
 
     this.headers = {};
     if (token) {
@@ -189,8 +187,7 @@ class PollMessageSource {
   }
 
   private connect() {
-    const url = new URL(`/poll/${encodeURIComponent(this.group)}/${encodeURIComponent(this.pid)}`, `${this.url}`);
-    this.eventSource = new EventSource(url, {
+    this.eventSource = new EventSource(this.pollUrl, {
       fetch: (url, init) =>
         fetch(url, {
           ...init,
@@ -202,7 +199,7 @@ class PollMessageSource {
     });
 
     this.eventSource.addEventListener("message", (event) => {
-      this.recv(event.data);
+      this.deliver(event.data);
     });
 
     this.eventSource.addEventListener("error", () => {
@@ -210,8 +207,8 @@ class PollMessageSource {
 
       if (this.logger) {
         this.logger.warn(
-          { component: "network", url: `${this.url}/poll` },
-          `Cannot connect to [${this.url}/poll]. Retrying in 5s.`,
+          { component: "network", url: this.pollUrl },
+          `Cannot connect to [${this.pollUrl}]. Retrying in 5s.`,
         );
       }
       setTimeout(() => this.connect(), 5000);
@@ -220,62 +217,69 @@ class PollMessageSource {
     return this.eventSource;
   }
 
-  recv(msg: string): void {
-    for (const callback of this.subscribers) {
-      callback(msg);
+  private deliver(msgStr: string): void {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(msgStr);
+    } catch {
+      this.logger?.warn({ component: "network" }, "received invalid JSON message, discarding");
+      return;
+    }
+    if (!isMessage(parsed)) {
+      this.logger?.warn({ component: "network" }, "received invalid message, discarding");
+      return;
+    }
+    for (const callback of this.callbacks) {
+      callback(parsed);
     }
   }
 
-  public async start(): Promise<void> {}
+  public async init(): Promise<void> {}
 
   public async stop(): Promise<void> {
     this.eventSource.close();
   }
 
-  public subscribe(callback: (msg: string) => void): void {
-    this.subscribers.push(callback);
-  }
-
-  match(target: string): string {
-    return `poll://any@${target}`;
+  public onReceive(callback: (msg: Message) => void): void {
+    this.callbacks.push(callback);
   }
 }
 
-class PushMessageSource {
-  readonly pid: string;
-  readonly group: string;
-  readonly unicast: string;
-  readonly anycast: string;
+// =============================================================================
+// PushMessageSource — implements HttpAdapter
+// =============================================================================
+
+export class PushMessageSource implements HttpAdapter {
+  unicast: string;
+  anycast: string;
 
   private host: string;
   private port: number;
   private server: Server;
-  private subscribers: Array<(msg: string) => void> = [];
+  private callbacks: Array<(msg: Message) => void> = [];
+  private logger?: Logger;
 
   constructor({
     host = "0.0.0.0",
     port = 0,
-    pid = crypto.randomUUID().replace(/-/g, ""),
-    group = "default",
+    logger = undefined,
   }: {
     host?: string;
     port?: number;
-    pid?: string;
-    group?: string;
+    logger?: Logger;
   } = {}) {
     this.host = host;
     this.port = port;
-    this.pid = pid;
-    this.group = group;
+    this.logger = logger;
 
-    // addresses are set after start() resolves the actual port
+    // addresses are set after init() resolves the actual port
     this.unicast = "";
     this.anycast = "";
 
     this.server = createServer((req, res) => this.handleRequest(req, res));
   }
 
-  public start(): Promise<void> {
+  public init(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server.listen(this.port, this.host, () => {
         const addr = this.server.address();
@@ -284,8 +288,8 @@ class PushMessageSource {
         }
 
         // set addresses now that the server is listening and port is known
-        (this as any).unicast = `http://${this.host}:${this.port}`;
-        (this as any).anycast = `http://${this.host}:${this.port}`;
+        this.unicast = `http://${this.host}:${this.port}`;
+        this.anycast = `http://${this.host}:${this.port}`;
         resolve();
       });
       this.server.once("error", reject);
@@ -321,23 +325,30 @@ class PushMessageSource {
     });
 
     req.on("end", () => {
-      this.recv(body);
+      this.deliver(body);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
     });
   }
 
-  recv(msg: string): void {
-    for (const callback of this.subscribers) {
-      callback(msg);
+  private deliver(msgStr: string): void {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(msgStr);
+    } catch {
+      this.logger?.warn({ component: "network" }, "received invalid JSON message, discarding");
+      return;
+    }
+    if (!isMessage(parsed)) {
+      this.logger?.warn({ component: "network" }, "received invalid message, discarding");
+      return;
+    }
+    for (const callback of this.callbacks) {
+      callback(parsed);
     }
   }
 
-  public subscribe(callback: (msg: string) => void): void {
-    this.subscribers.push(callback);
-  }
-
-  match(target: string): string {
-    return `http://${this.host}:${this.port}`;
+  public onReceive(callback: (msg: Message) => void): void {
+    this.callbacks.push(callback);
   }
 }

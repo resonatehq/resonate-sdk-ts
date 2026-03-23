@@ -6,7 +6,7 @@ export { Core } from "./core.js";
 export { type Encryptor, NoopEncryptor } from "./encryptor.js";
 export * as essential from "./essential.js";
 export { AsyncHeartbeat, NoopHeartbeat } from "./heartbeat.js";
-export { HttpNetwork } from "./network/http.js";
+export { HttpNetwork, PollMessageSource, PushMessageSource, type HttpAdapter } from "./network/http.js";
 export { LocalNetwork } from "./network/local.js";
 export type { Network, Send, Recv } from "./network/network.js";
 export { type Logger, type LogLevel, ConsoleLogger } from "./logger.js";
