@@ -45,7 +45,7 @@ export class HttpNetwork implements Network {
   private logger?: Logger;
 
   constructor({
-    url = "http://localhost:8001",
+    url = undefined,
     timeout = undefined,
     headers = {},
     auth = undefined,
@@ -53,7 +53,8 @@ export class HttpNetwork implements Network {
     logger = undefined,
     adapter = undefined,
   }: HttpNetworkConfig) {
-    this.url = url;
+    // Priority: programmatic config > RESONATE_URL env var > default
+    this.url = url ?? process.env.RESONATE_URL ?? "http://localhost:8001";
 
     // Priority: programmatic config > RESONATE_TIMEOUT env var > default (10s)
     const envTimeout = process.env.RESONATE_TIMEOUT ? Number.parseInt(process.env.RESONATE_TIMEOUT, 10) : undefined;
@@ -61,9 +62,12 @@ export class HttpNetwork implements Network {
     this.logger = logger;
     this.adapter = adapter;
 
+    // Priority: programmatic token > programmatic auth > RESONATE_TOKEN env var
+    const resolvedToken = token ?? (auth ? undefined : process.env.RESONATE_TOKEN);
+
     this.headers = { "Content-Type": "application/json", ...headers };
-    if (token) {
-      this.headers.Authorization = `Bearer ${token}`;
+    if (resolvedToken) {
+      this.headers.Authorization = `Bearer ${resolvedToken}`;
     } else if (auth) {
       this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
     }

@@ -1,4 +1,4 @@
-import { describe, expect, test, afterEach } from "@jest/globals";
+import { describe, expect, test, beforeEach, afterEach } from "@jest/globals";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { HttpNetwork } from "../../src/network/http.js";
 
@@ -322,5 +322,162 @@ describe("HttpNetwork.send()", () => {
     expect(response).toBeDefined();
     expect(response.kind).toBe("promise.get");
     expect(response.head.status).toBe(500);
+  });
+});
+
+// =============================================================================
+// Environment variable configuration
+// =============================================================================
+
+describe("HttpNetwork environment variable configuration", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.RESONATE_URL;
+    delete process.env.RESONATE_TIMEOUT;
+    delete process.env.RESONATE_TOKEN;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  // ---- RESONATE_URL ----
+
+  test("RESONATE_URL used as default when url not provided", async () => {
+    let capturedUrl = "";
+    const result = await createTestServer((req, res) => {
+      capturedUrl = `http://${req.headers.host}${req.url}`;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        kind: "promise.get",
+        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
+      }));
+    });
+
+    const port = result.port;
+    process.env.RESONATE_URL = `http://127.0.0.1:${port}`;
+
+    const network = new HttpNetwork({ timeout: 500 });
+    await network.send(makeRequest());
+    await closeServer(result.server);
+
+    expect(capturedUrl).toBe(`http://127.0.0.1:${port}/api`);
+  });
+
+  test("programmatic url takes precedence over RESONATE_URL", async () => {
+    let capturedUrl = "";
+    const result = await createTestServer((req, res) => {
+      capturedUrl = `http://${req.headers.host}${req.url}`;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        kind: "promise.get",
+        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
+      }));
+    });
+
+    const port = result.port;
+    process.env.RESONATE_URL = "http://should-not-use:9999";
+
+    const network = new HttpNetwork({ url: `http://127.0.0.1:${port}`, timeout: 500 });
+    await network.send(makeRequest());
+    await closeServer(result.server);
+
+    expect(capturedUrl).toBe(`http://127.0.0.1:${port}/api`);
+  });
+
+  // ---- RESONATE_TIMEOUT ----
+
+  test("RESONATE_TIMEOUT used as default when timeout not provided", () => {
+    process.env.RESONATE_TIMEOUT = "5000";
+
+    const network = new HttpNetwork({});
+    // Access the private timeout field via any cast for testing
+    expect((network as any).timeout).toBe(5000);
+  });
+
+  test("programmatic timeout takes precedence over RESONATE_TIMEOUT", () => {
+    process.env.RESONATE_TIMEOUT = "5000";
+
+    const network = new HttpNetwork({ timeout: 2000 });
+    expect((network as any).timeout).toBe(2000);
+  });
+
+  test("default timeout is 10s when neither programmatic nor env var set", () => {
+    const network = new HttpNetwork({});
+    expect((network as any).timeout).toBe(10000);
+  });
+
+  // ---- RESONATE_TOKEN ----
+
+  test("RESONATE_TOKEN used as default when token not provided", async () => {
+    let capturedAuth = "";
+    const result = await createTestServer((req, res) => {
+      capturedAuth = req.headers.authorization ?? "";
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        kind: "promise.get",
+        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
+      }));
+    });
+
+    process.env.RESONATE_TOKEN = "env-token-abc";
+
+    const network = new HttpNetwork({ url: `http://127.0.0.1:${result.port}`, timeout: 500 });
+    await network.send(makeRequest());
+    await closeServer(result.server);
+
+    expect(capturedAuth).toBe("Bearer env-token-abc");
+  });
+
+  test("programmatic token takes precedence over RESONATE_TOKEN", async () => {
+    let capturedAuth = "";
+    const result = await createTestServer((req, res) => {
+      capturedAuth = req.headers.authorization ?? "";
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        kind: "promise.get",
+        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
+      }));
+    });
+
+    process.env.RESONATE_TOKEN = "env-token-should-not-use";
+
+    const network = new HttpNetwork({ url: `http://127.0.0.1:${result.port}`, timeout: 500, token: "programmatic-token" });
+    await network.send(makeRequest());
+    await closeServer(result.server);
+
+    expect(capturedAuth).toBe("Bearer programmatic-token");
+  });
+
+  test("programmatic auth takes precedence over RESONATE_TOKEN env var", async () => {
+    let capturedAuth = "";
+    const result = await createTestServer((req, res) => {
+      capturedAuth = req.headers.authorization ?? "";
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        kind: "promise.get",
+        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
+      }));
+    });
+
+    process.env.RESONATE_TOKEN = "env-token-should-not-use";
+
+    const network = new HttpNetwork({
+      url: `http://127.0.0.1:${result.port}`,
+      timeout: 500,
+      auth: { username: "user", password: "pass" },
+    });
+    await network.send(makeRequest());
+    await closeServer(result.server);
+
+    // Programmatic auth takes precedence over RESONATE_TOKEN env var
+    expect(capturedAuth).toMatch(/^Basic /);
   });
 });
