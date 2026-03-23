@@ -1,8 +1,10 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { EventSource } from "eventsource";
+import exceptions from "../exceptions.js";
 import type { Logger } from "../logger.js";
 import * as util from "../util.js";
 import type { Network } from "./network.js";
+import { isMessage, isResponse, type Message, type Request, type Response } from "./types.js";
 
 export interface HttpNetworkConfig {
   url?: string;
@@ -21,8 +23,7 @@ export class HttpNetwork implements Network {
   private timeout: number;
   private headers: { [key: string]: string };
   private _messageSource?: PollMessageSource | PushMessageSource;
-  private _pid: string;
-  private _group: string;
+  private logger?: Logger;
 
   constructor({
     url = "http://localhost:8001",
@@ -37,6 +38,7 @@ export class HttpNetwork implements Network {
   }: HttpNetworkConfig) {
     this.url = url;
     this.timeout = timeout;
+    this.logger = logger;
 
     this.headers = { "Content-Type": "application/json", ...headers };
     if (token) {
@@ -45,23 +47,11 @@ export class HttpNetwork implements Network {
       this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
     }
 
-    this._pid = pid ?? crypto.randomUUID().replace(/-/g, "");
-    this._group = group;
-
     if (messageSource === "poll") {
       this._messageSource = new PollMessageSource({ url, pid, group, auth, token, logger });
     } else if (messageSource === "push") {
       this._messageSource = new PushMessageSource({ pid, group });
     }
-  }
-
-  get pid(): string {
-    util.assert(this._messageSource !== undefined);
-    return this._pid;
-  }
-
-  get group(): string {
-    return this._group;
   }
 
   get unicast(): string {
@@ -74,7 +64,7 @@ export class HttpNetwork implements Network {
     return this._messageSource.anycast;
   }
 
-  async start(): Promise<void> {
+  async init(): Promise<void> {
     util.assert(this._messageSource !== undefined);
     await this._messageSource.start();
   }
@@ -84,32 +74,74 @@ export class HttpNetwork implements Network {
     await this._messageSource.stop();
   }
 
-  recv(callback: (msg: string) => void): void {
-    this._messageSource?.subscribe(callback);
+  recv(callback: (msg: Message) => void): void {
+    this._messageSource?.subscribe((msgStr: string) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(msgStr);
+      } catch {
+        this.logger?.warn({ component: "network" }, "received invalid JSON message, discarding");
+        return;
+      }
+      if (!isMessage(parsed)) {
+        this.logger?.warn({ component: "network" }, "received invalid message, discarding");
+        return;
+      }
+      callback(parsed);
+    });
   }
 
-  match(target: string): string {
-    util.assert(this._messageSource !== undefined);
-    return this._messageSource.match(target);
-  }
+  send = async <K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+  ): Promise<Extract<Response, { kind: K }>> => {
+    this.logger?.debug({ component: "network", kind: req.kind, corrId: req.head.corrId }, "sending request");
 
-  async send(req: string): Promise<string> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
+    let resStr: string;
     try {
       const response = await fetch(`${this.url}/api`, {
         method: "POST",
         headers: this.headers,
-        body: req,
+        body: JSON.stringify(req),
         signal: controller.signal,
       });
 
-      return await response.text();
+      resStr = await response.text();
+    } catch (e) {
+      throw exceptions.SERVER_ERROR(e instanceof Error ? e.message : String(e), true, {
+        code: 500,
+        message: e instanceof Error ? e.message : String(e),
+      });
     } finally {
       clearTimeout(timeoutId);
     }
-  }
+
+    let res: unknown;
+    try {
+      res = JSON.parse(resStr);
+    } catch {
+      throw exceptions.SERVER_ERROR("invalid response", true, {
+        code: 500,
+        message: "Failed to parse response JSON",
+      });
+    }
+
+    if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
+      throw exceptions.SERVER_ERROR("invalid response", true, {
+        code: 500,
+        message: "Response did not match request",
+      });
+    }
+
+    this.logger?.debug(
+      { component: "network", kind: res.kind, corrId: res.head.corrId, status: res.head.status },
+      "received response",
+    );
+
+    return res as Extract<Response, { kind: K }>;
+  };
 }
 
 class PollMessageSource {

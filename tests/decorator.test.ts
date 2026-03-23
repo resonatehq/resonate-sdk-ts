@@ -42,7 +42,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );
@@ -90,7 +90,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );
@@ -165,7 +165,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );
@@ -220,7 +220,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );
@@ -287,7 +287,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );
@@ -356,7 +356,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );
@@ -390,7 +390,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );
@@ -427,7 +427,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );
@@ -493,7 +493,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );
@@ -551,7 +551,7 @@ describe("Decorator", () => {
           timeout: 0,
           version: 1,
           retryPolicy: new Never(),
-          optsBuilder: new OptionsBuilder({ match: m.match, idPrefix: "" }),
+          optsBuilder: new OptionsBuilder({ match: (target: string) => `local://any@${target}`, idPrefix: "" }),
         }),
       ),
     );

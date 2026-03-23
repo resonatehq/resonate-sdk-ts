@@ -1,7 +1,7 @@
 import { CronExpressionParser } from "cron-parser";
 import { assert } from "../util.js";
 import type { Network } from "./network.js";
-import { isRequest, isResponse } from "./types.js";
+import { isResponse } from "./types.js";
 import type {
   DebugResetRes,
   DebugSnapRes,
@@ -1475,14 +1475,12 @@ export class Server {
 // =============================================================================
 
 export class LocalNetwork implements Network {
-  readonly pid: string;
-  readonly group: string;
   readonly unicast: string;
   readonly anycast: string;
 
   private started: boolean;
   private server: Server;
-  private subscribers: Array<(msg: string) => void> = [];
+  private subscribers: Array<(msg: Message) => void> = [];
   private tickInterval?: ReturnType<typeof setInterval>;
 
   constructor({
@@ -1494,15 +1492,13 @@ export class LocalNetwork implements Network {
   } = {}) {
     this.started = false;
     this.server = new Server();
-    this.pid = pid;
-    this.group = group;
     this.unicast = `local://uni@${group}/${pid}`;
     this.anycast = `local://any@${group}/${pid}`;
   }
 
   // -- Network ---------------------------------------------------------------
 
-  async start(): Promise<void> {
+  async init(): Promise<void> {
     if (this.started) return;
     this.tickInterval = setInterval(() => {
       const now = Date.now();
@@ -1524,13 +1520,13 @@ export class LocalNetwork implements Network {
     this.started = false;
   }
 
-  send(req: string): Promise<string> {
-    const reqData = JSON.parse(req);
-    assert(isRequest(reqData));
-    const { corrId, version } = reqData.head;
+  send = <K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+  ): Promise<Extract<Response, { kind: K }>> => {
+    const { corrId, version } = req.head;
 
     const now = Date.now();
-    const result = this.server.apply(now, reqData);
+    const result = this.server.apply(now, req);
     const response = result.response;
 
     const res = {
@@ -1542,17 +1538,12 @@ export class LocalNetwork implements Network {
 
     setTimeout(() => this.dispatchMessages(result), 0);
 
-    return Promise.resolve(JSON.stringify(res));
-  }
+    return Promise.resolve(res as Extract<Response, { kind: K }>);
+  };
 
-  recv(callback: (msg: string) => void): void {
+  recv(callback: (msg: Message) => void): void {
     this.subscribers.push(callback);
   }
-
-  // Arrow function to preserve `this` when extracted as a bare reference.
-  match = (target: string): string => {
-    return `local://any@${target}`;
-  };
 
   // -- internal: message dispatch --------------------------------------------
 
@@ -1560,7 +1551,7 @@ export class LocalNetwork implements Network {
     for (const change of result.changes) {
       if (change.kind !== "message.send") continue;
       for (const cb of this.subscribers) {
-        cb(JSON.stringify(change.message));
+        cb(change.message);
       }
     }
   }

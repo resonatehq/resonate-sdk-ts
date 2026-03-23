@@ -42,9 +42,8 @@ function buildComputation(registry: Registry, id = "foo.1"): {
   const network = new LocalNetwork();
   const codec = new Codec();
   const logger = new ConsoleLogger("error");
-  const transport = util.buildTransport(network, logger);
 
-  const effects = util.buildEffects(transport.send, codec);
+  const effects = util.buildEffects(network.send, codec);
 
   const computation = new Computation(
     id,

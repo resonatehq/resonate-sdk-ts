@@ -12,7 +12,6 @@ import { isSuccess } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import type { Send } from "../src/types.js";
-import { buildTransport } from "../src/util.js";
 
 class TestHeartbeat implements Heartbeat {
   start(): void {}
@@ -47,10 +46,9 @@ function buildCore(opts: { responses: (Status | Error)[]; mockRef?: { mock: Mock
   const network = new LocalNetwork();
   const codec = new Codec();
   const logger = new ConsoleLogger("error");
-  const transport = buildTransport(network, logger);
 
   // Mutable holder so interceptSend can swap the inner function
-  const sendHolder = { fn: transport.send };
+  const sendHolder = { fn: network.send as Send };
   const proxiedSend: Send = (req: any) => sendHolder.fn(req);
 
   const activeMock = new MockComputation(opts.responses);

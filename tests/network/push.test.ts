@@ -1,4 +1,5 @@
 import { HttpNetwork } from "../../src/network/http.js";
+import type { Message } from "../../src/network/types.js";
 
 describe("PushMessageSource (via HttpNetwork)", () => {
   let network: HttpNetwork;
@@ -11,22 +12,22 @@ describe("PushMessageSource (via HttpNetwork)", () => {
     }
   });
 
-  test("POST with valid body delivers message to subscribers", async () => {
+  test("POST with valid body delivers typed Message to subscribers", async () => {
     network = new HttpNetwork({
       messageSource: "push",
       // port 0 lets the OS pick a free port
     });
 
-    const received: string[] = [];
+    const received: Message[] = [];
     network.recv((msg) => received.push(msg));
 
-    await network.start();
+    await network.init();
 
     // The unicast address is the HTTP URL of the push server
     const url = network.unicast;
     expect(url).toMatch(/^http:\/\//);
 
-    const body = JSON.stringify({ hello: "world" });
+    const body = JSON.stringify({ kind: "execute", head: {}, data: { task: { id: "t1", version: 1 } } });
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -37,29 +38,47 @@ describe("PushMessageSource (via HttpNetwork)", () => {
     const json = await res.json();
     expect(json).toEqual({ status: "ok" });
 
-    // The raw body string should have been delivered to the subscriber
+    // The parsed typed Message should have been delivered to the subscriber
     expect(received).toHaveLength(1);
-    expect(received[0]).toBe(body);
+    expect(received[0].kind).toBe("execute");
   });
 
-  test("multiple subscribers all receive the message", async () => {
+  test("POST with invalid JSON is discarded", async () => {
     network = new HttpNetwork({
       messageSource: "push",
     });
 
-    const received1: string[] = [];
-    const received2: string[] = [];
-    network.recv((msg) => received1.push(msg));
-    network.recv((msg) => received2.push(msg));
+    const received: Message[] = [];
+    network.recv((msg) => received.push(msg));
 
-    await network.start();
+    await network.init();
 
     const url = network.unicast;
-    const body = "test-message";
-    await fetch(url, { method: "POST", body });
+    await fetch(url, { method: "POST", body: "not-json{{{" });
 
-    expect(received1).toEqual([body]);
-    expect(received2).toEqual([body]);
+    // Invalid JSON should be discarded, not delivered
+    expect(received).toHaveLength(0);
+  });
+
+  test("POST with invalid message structure is discarded", async () => {
+    network = new HttpNetwork({
+      messageSource: "push",
+    });
+
+    const received: Message[] = [];
+    network.recv((msg) => received.push(msg));
+
+    await network.init();
+
+    const url = network.unicast;
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notAMessage: true }),
+    });
+
+    // Invalid message structure should be discarded
+    expect(received).toHaveLength(0);
   });
 
   test("OPTIONS request gets CORS headers (204)", async () => {
@@ -67,7 +86,7 @@ describe("PushMessageSource (via HttpNetwork)", () => {
       messageSource: "push",
     });
 
-    await network.start();
+    await network.init();
 
     const url = network.unicast;
     const res = await fetch(url, { method: "OPTIONS" });
@@ -83,7 +102,7 @@ describe("PushMessageSource (via HttpNetwork)", () => {
       messageSource: "push",
     });
 
-    await network.start();
+    await network.init();
 
     const url = network.unicast;
 
@@ -96,12 +115,12 @@ describe("PushMessageSource (via HttpNetwork)", () => {
     expect(putRes.status).toBe(405);
   });
 
-  test("start() listens on configured port, stop() closes the server", async () => {
+  test("init() listens on configured port, stop() closes the server", async () => {
     network = new HttpNetwork({
       messageSource: "push",
     });
 
-    await network.start();
+    await network.init();
 
     const url = network.unicast;
     // Server should be reachable
@@ -114,12 +133,12 @@ describe("PushMessageSource (via HttpNetwork)", () => {
     await expect(fetch(url, { method: "POST", body: "ping" })).rejects.toThrow();
   });
 
-  test("unicast and anycast addresses are set after start()", async () => {
+  test("unicast and anycast addresses are set after init()", async () => {
     network = new HttpNetwork({
       messageSource: "push",
     });
 
-    await network.start();
+    await network.init();
 
     // Both addresses should be set to the same HTTP URL with the resolved port
     expect(network.unicast).toMatch(/^http:\/\/0\.0\.0\.0:\d+$/);

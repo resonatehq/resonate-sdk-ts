@@ -2,18 +2,12 @@ import type { Codec } from "./codec.js";
 import type { InnerContext } from "./context.js";
 import exceptions from "./exceptions.js";
 import type { Logger } from "./logger.js";
-import type { Network } from "./network/network.js";
 import {
-  isMessage,
-  isResponse,
   isSuccess,
-  type Message,
   type PromiseRecord,
-  type Request,
-  type Response,
 } from "./network/types.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
-import type { Effects, Func, Result, Send, Transport } from "./types.js";
+import type { Effects, Func, Result, Send } from "./types.js";
 
 // time
 
@@ -110,66 +104,6 @@ export function once<T extends () => any>(fn: T): T {
     called = true;
     return fn();
   }) as T;
-}
-
-export function buildTransport(network: Network, logger: Logger): Transport {
-  return {
-    send: async <K extends Request["kind"]>(
-      req: Extract<Request, { kind: K }>,
-    ): Promise<Extract<Response, { kind: K }>> => {
-      logger.debug({ component: "network", kind: req.kind, corrId: req.head.corrId }, "sending request");
-
-      let resStr: string;
-      try {
-        resStr = await network.send(JSON.stringify(req));
-      } catch (e) {
-        throw exceptions.SERVER_ERROR(e instanceof Error ? e.message : String(e), true, {
-          code: 500,
-          message: e instanceof Error ? e.message : String(e),
-        });
-      }
-
-      let res: unknown;
-      try {
-        res = JSON.parse(resStr);
-      } catch {
-        throw exceptions.SERVER_ERROR("invalid response", true, {
-          code: 500,
-          message: "Failed to parse response JSON",
-        });
-      }
-
-      if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
-        throw exceptions.SERVER_ERROR("invalid response", true, {
-          code: 500,
-          message: "Response did not match request",
-        });
-      }
-
-      logger.debug(
-        { component: "network", kind: res.kind, corrId: res.head.corrId, status: res.head.status },
-        "received response",
-      );
-
-      return res as Extract<Response, { kind: K }>;
-    },
-    recv: (callback: (msg: Message) => void) => {
-      network.recv((msgStr: string) => {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(msgStr);
-        } catch {
-          logger.warn({ component: "network" }, "received invalid JSON message, discarding");
-          return;
-        }
-        if (!isMessage(parsed)) {
-          logger.warn({ component: "network" }, "received invalid message, discarding");
-          return;
-        }
-        callback(parsed);
-      });
-    },
-  };
 }
 
 // retry

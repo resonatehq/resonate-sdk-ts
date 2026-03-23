@@ -161,12 +161,12 @@ describe("Resonate logger integration", () => {
     expect(result).toBe("hello");
 
     // The custom logger should have received at least one call
-    // (transport debug logs go through the custom logger)
+    // (structured logs from various components go through the custom logger)
     expect(calls.length).toBeGreaterThan(0);
 
-    // Verify structured fields are present
-    const networkCalls = calls.filter((c) => c.fields.component === "network");
-    expect(networkCalls.length).toBeGreaterThan(0);
+    // Verify structured fields are present (component field is set on all log calls)
+    const componentCalls = calls.filter((c) => c.fields.component !== undefined);
+    expect(componentCalls.length).toBeGreaterThan(0);
 
     await resonate.stop();
   });

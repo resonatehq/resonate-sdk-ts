@@ -1,13 +1,18 @@
+import type { Message, Request, Response } from "./types.js";
+
+export type Send = <K extends Request["kind"]>(
+  req: Extract<Request, { kind: K }>,
+) => Promise<Extract<Response, { kind: K }>>;
+
+export type Recv = (callback: (msg: Message) => void) => void;
+
 export interface Network {
-  readonly pid: string;
-  readonly group: string;
   readonly unicast: string;
   readonly anycast: string;
 
-  start(): Promise<void>;
+  init(): Promise<void>;
   stop(): Promise<void>;
 
-  send(req: string): Promise<string>;
-  recv(callback: (msg: string) => void): void;
-  match(target: string): string;
+  send: Send;
+  recv: Recv;
 }

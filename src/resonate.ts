@@ -24,7 +24,7 @@ import { type Options, OptionsBuilder } from "./options.js";
 import { Promises } from "./promises.js";
 import { Registry } from "./registry.js";
 import { Schedules } from "./schedules.js";
-import type { Func, ParamsWithOptions, Return, Transport } from "./types.js";
+import type { Func, ParamsWithOptions, Return, Send } from "./types.js";
 import * as util from "./util.js";
 
 export interface ResonateHandle<T> {
@@ -62,7 +62,7 @@ export class Resonate {
   private core: Core;
   private codec: Codec;
   private network: Network;
-  private transport: Transport;
+  private send: Send;
   private logger: Logger;
 
   private registry: Registry;
@@ -95,7 +95,7 @@ export class Resonate {
    * @param options.logLevel - Log level for the default ConsoleLogger. Defaults to `"warn"`. Takes precedence over `verbose`.
    * @param options.logger - Custom logger implementation. Defaults to {@link ConsoleLogger}.
    * @param options.encryptor - Payload encryptor. Defaults to {@link NoopEncryptor}.
-   * @param options.transport - Custom network transport implementation. Defaults to `undefined`.
+   * @param options.network - Custom network implementation. Defaults to `undefined`.
    * @param options.prefix - ID prefix applied to generated IDs. Defaults to
    *   `process.env.RESONATE_PREFIX` when set.
    */
@@ -134,7 +134,7 @@ export class Resonate {
     this.idPrefix = resolvedPrefix ? `${resolvedPrefix}:` : "";
 
     // Resolve logger: explicit logger > ConsoleLogger with resolved level
-    // logLevel takes precedence over verbose; verbose: true → "debug"
+    // logLevel takes precedence over verbose; verbose: true -> "debug"
     const resolvedLogLevel: LogLevel = logLevel ?? (verbose ? "debug" : "warn");
     this.logger = logger ?? new ConsoleLogger(resolvedLogLevel);
 
@@ -173,12 +173,12 @@ export class Resonate {
     let hearbeat: boolean;
     if (network) {
       this.network = network;
-      this.pid = pid ?? network.pid;
+      this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
       hearbeat = true;
     } else {
       if (!resolvedUrl) {
         this.network = new LocalNetwork({ pid, group });
-        this.pid = pid ?? this.network.pid;
+        this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
         hearbeat = false;
       } else {
         this.network = new HttpNetwork({
@@ -192,13 +192,15 @@ export class Resonate {
           messageSource: "poll",
         });
 
-        this.pid = pid ?? this.network.pid;
+        this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
         hearbeat = true;
       }
     }
-    this.transport = util.buildTransport(this.network, this.logger);
+
+    this.send = this.network.send;
+
     if (hearbeat) {
-      this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.transport.send, this.logger);
+      this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.send, this.logger);
     } else {
       this.heartbeat = new NoopHeartbeat();
     }
@@ -206,13 +208,26 @@ export class Resonate {
     this.registry = new Registry();
     this.dependencies = new Map();
 
-    this.optsBuilder = new OptionsBuilder({ match: this.network.match.bind(this.network), idPrefix: this.idPrefix });
+    // match function: resolve target to an anycast address
+    const matchFn = (target: string): string => {
+      if (util.isUrl(target)) return target;
+      // For local network, derive from the anycast scheme
+      const anycast = this.network.anycast;
+      const schemeEnd = anycast.indexOf("://");
+      if (schemeEnd >= 0) {
+        const scheme = anycast.slice(0, schemeEnd);
+        return `${scheme}://any@${target}`;
+      }
+      return target;
+    };
+
+    this.optsBuilder = new OptionsBuilder({ match: matchFn, idPrefix: this.idPrefix });
 
     this.core = new Core({
       pid: this.pid,
       ttl: this.ttl,
       clock: this.clock,
-      send: this.transport.send,
+      send: this.send,
       codec: this.codec,
       registry: this.registry,
       heartbeat: this.heartbeat,
@@ -221,12 +236,12 @@ export class Resonate {
       logger: this.logger,
     });
 
-    this.promises = new Promises(this.transport.send);
-    this.schedules = new Schedules(this.transport.send);
+    this.promises = new Promises(this.send);
+    this.schedules = new Schedules(this.send);
 
     // subscribe to network
-    this.transport.recv(this.onMessage.bind(this));
-    this.network.start().catch((err) => {
+    this.network.recv(this.onMessage.bind(this));
+    this.network.init().catch((err) => {
       this.logger.error(
         { component: "resonate", error: err instanceof Error ? err.message : String(err) },
         "Failed to start network",
@@ -261,7 +276,7 @@ export class Resonate {
    * Initializes a Resonate client instance for local development.
    *
    * Creates and returns a Resonate client configured for **local-only execution**
-   * with zero external dependencies. All state is stored in local memory — no
+   * with zero external dependencies. All state is stored in local memory -- no
    * network or external persistence is required. This mode is ideal for rapid
    * testing, debugging, and experimentation before connecting to a Resonate server.
    *
@@ -366,33 +381,6 @@ export class Resonate {
 
   /**
    * Registers a function with Resonate for execution and version control.
-   *
-   * This method makes a function available for distributed or top-level execution
-   * under a specific name and version.
-   *
-   * Providing explicit `name` or `version` options allows precise control over
-   * function identification and versioning, enabling repeatable, distributed
-   * invocation and backward-compatible deployments.
-   *
-   * @param nameOrFunc - Either the function name (string) or the function itself.
-   *   When passing a name, provide the function and optional options as additional parameters.
-   * @param funcOrOptions - The function to register, or an optional configuration object
-   *   with versioning information when the first argument is a name.
-   * @param maybeOptions - Optional configuration object when both name and function are provided.
-   *   Supports a `version` field to specify the registered function version.
-   *
-   * @returns A {@link ResonateFunc} wrapper for the registered function.
-   *   When used as a decorator, returns a decorator that registers the target function
-   *   upon definition.
-   *
-   * @example
-   * ```ts
-   * function greet(ctx: Context, name: string): string {
-   *   return `Hello, ${name}!`;
-   * }
-   *
-   * resonate.register("greet_user", greet, { version: 2 });
-   * ```
    */
   public register<F extends Func>(
     name: string,
@@ -437,33 +425,6 @@ export class Resonate {
     };
   }
 
-  /**
-   * Runs a registered function with Resonate and waits for the result.
-   *
-   * This method executes the specified function under a **durable promise**
-   * identified by the provided `id`. If a promise with the same `id` already exists,
-   * Resonate subscribes to its result or returns it immediately if it has already completed.
-   *
-   * Duplicate executions for the same `id` are automatically prevented, ensuring
-   * idempotent and consistent behavior across distributed runs.
-   *
-   * This is a **blocking operation** — execution will not continue until the
-   * function result is available.
-   *
-   * @param id - The unique identifier of the durable promise. Reusing an ID ensures
-   *   idempotent execution.
-   * @param funcOrName - Either the registered function reference or its string name
-   *   to execute.
-   * @param args - Positional arguments passed to the function.
-   *
-   * @returns A promise resolving to the final result returned from the function execution.
-   *
-   * @example
-   * ```ts
-   * const result = await client.run("job-123", "processData", { input: "records.csv" });
-   * console.log("Result:", result);
-   * ```
-   */
   public async run<F extends Func>(id: string, func: F, ...args: ParamsWithOptions<F>): Promise<Return<F>>;
   public async run<T>(id: string, name: string, ...args: any[]): Promise<T>;
   public async run<T>(id: string, funcOrName: Func | string, ...args: any[]): Promise<T>;
@@ -471,37 +432,6 @@ export class Resonate {
     return (await this.beginRun(id, funcOrName, ...args)).result();
   }
 
-  /**
-   * Runs a registered function asynchronously with Resonate.
-   *
-   * This method schedules the specified function for execution under a **durable promise**
-   * identified by the provided `id`. If a promise with the same `id` already exists,
-   * Resonate subscribes to its result or returns it immediately if it has already completed.
-   *
-   * Unlike {@link run}, this method is **non-blocking** and immediately returns a
-   * {@link ResonateHandle} that can be awaited or queried later to retrieve the final result
-   * once execution completes.
-   *
-   * Duplicate executions for the same `id` are automatically prevented, ensuring idempotent
-   * and consistent behavior across distributed runs.
-   *
-   * @param id - The unique identifier of the durable promise. Reusing an ID ensures
-   *   idempotent execution.
-   * @param funcOrName - Either the registered function reference or its string name
-   *   to execute.
-   * @param argsWithOpts - Positional arguments and optional configuration parameters
-   *   passed to the function.
-   *
-   * @returns A {@link ResonateHandle} representing the asynchronous execution.
-   *   The handle can be awaited or inspected for status and results.
-   *
-   * @example
-   * ```ts
-   * const handle = await client.beginRun("run-001", "generateReport", { period: "Q3" });
-   * const result = await handle.getResult();
-   * console.log(result);
-   * ```
-   */
   public async beginRun<F extends Func>(
     id: string,
     func: F,
@@ -570,35 +500,6 @@ export class Resonate {
     return this.createHandle(promise);
   }
 
-  /**
-   * Executes a registered function remotely with Resonate and waits for the result.
-   *
-   * This method runs the specified function on a remote worker or process under a
-   * **durable promise** identified by the provided `id`. If a promise with the same
-   * `id` already exists, Resonate subscribes to its result or returns it immediately
-   * if it has already completed.
-   *
-   * Unlike {@link beginRpc}, this method is **blocking** — it waits for the remote
-   * function to complete and returns the final result before continuing execution.
-   *
-   * Duplicate executions for the same `id` are automatically prevented, ensuring
-   * idempotent and consistent behavior across distributed runs.
-   *
-   * @param id - The unique identifier of the durable promise. Reusing an ID ensures
-   *   idempotent remote execution.
-   * @param funcOrName - Either the registered function reference or its string name
-   *   to execute remotely.
-   * @param args - Positional arguments passed to the remote function.
-   *
-   * @returns A promise resolving to the final result returned from the remote
-   *   function execution.
-   *
-   * @example
-   * ```ts
-   * const result = await client.rpc("job-42", "analyzeData", { file: "input.csv" });
-   * console.log("Remote result:", result);
-   * ```
-   */
   public async rpc<F extends Func>(id: string, func: F, ...args: ParamsWithOptions<F>): Promise<Return<F>>;
   public async rpc<T>(id: string, name: string, ...args: any[]): Promise<T>;
   public async rpc<T>(id: string, funcOrName: Func | string, ...args: any[]): Promise<T>;
@@ -606,37 +507,6 @@ export class Resonate {
     return (await this.beginRpc(id, funcOrName, ...args)).result();
   }
 
-  /**
-   * Initiates a remote procedure call (RPC) with Resonate and returns a handle to the execution.
-   *
-   * This method schedules a registered function for **remote execution** under a durable promise
-   * identified by the provided `id`. The function runs on a remote worker or process as part of
-   * Resonate's distributed execution environment.
-   *
-   * Unlike {@link rpc}, this method is **non-blocking** and immediately returns a
-   * {@link ResonateHandle} that can be awaited or queried later to retrieve the final result once
-   * remote execution completes.
-   *
-   * If a durable promise with the same `id` already exists, Resonate subscribes to its result or
-   * returns it immediately if it has already completed. Duplicate executions for the same `id`
-   * are automatically prevented, ensuring idempotent and consistent behavior.
-   *
-   * @param id - The unique identifier of the durable promise. Reusing an ID ensures
-   *   idempotent remote execution.
-   * @param funcOrName - Either the registered function reference or its string name to execute remotely.
-   * @param argsWithOpts - Positional arguments and optional configuration parameters
-   *   passed to the remote function.
-   *
-   * @returns A {@link ResonateHandle} representing the asynchronous remote execution.
-   *   The handle can be awaited or inspected for completion and results.
-   *
-   * @example
-   * ```ts
-   * const handle = await client.beginRpc("task-123", "processData", { input: "hello" });
-   * const result = await handle.getResult();
-   * console.log(result);
-   * ```
-   */
   public async beginRpc<F extends Func>(
     id: string,
     func: F,
@@ -725,24 +595,6 @@ export class Resonate {
     };
   }
 
-  /**
-   * Retrieves or subscribes to an existing execution by its unique ID.
-   *
-   * This method attaches to an existing **durable promise** identified by `id`.
-   * If the associated execution is still in progress, it returns a {@link ResonateHandle}
-   * that can be awaited or observed until completion. If the execution has already
-   * finished, the handle is immediately resolved with the stored result.
-   *
-   * Notes:
-   * - A durable promise with the given `id` must already exist.
-   * - This operation is **non-blocking**; awaiting the returned handle will block
-   *   only if the execution is still running.
-   *
-   * @param id - Unique identifier of the target execution or durable promise.
-   *
-   * @returns A {@link ResonateHandle} representing the existing execution.
-   *   The handle can be awaited or queried to retrieve the final result.
-   */
   public async get<T = any>(id: string): Promise<ResonateHandle<T>> {
     id = `${this.idPrefix}${id}`;
     const promise = await this.promiseGet({
@@ -779,7 +631,7 @@ export class Resonate {
   private async taskCreate(req: TaskCreateReq): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
     req.data.action.data.param = this.codec.encode(req.data.action.data.param.data);
 
-    const res = await this.transport.send(req);
+    const res = await this.send(req);
 
     if (!isSuccess(res) && !isConflict(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
@@ -807,7 +659,7 @@ export class Resonate {
   private async promiseCreate(req: PromiseCreateReq): Promise<PromiseRecord> {
     req.data.param = this.codec.encode(req.data.param.data);
 
-    const res = await this.transport.send(req);
+    const res = await this.send(req);
 
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
@@ -823,7 +675,7 @@ export class Resonate {
     const retryDelay = 5000;
     while (true) {
       try {
-        const res = await this.transport.send(req);
+        const res = await this.send(req);
         if (!isSuccess(res)) {
           await delay(retryDelay);
           continue;
@@ -842,7 +694,7 @@ export class Resonate {
   }
 
   private async promiseGet(req: PromiseGetReq): Promise<PromiseRecord> {
-    const res = await this.transport.send(req);
+    const res = await this.send(req);
 
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {

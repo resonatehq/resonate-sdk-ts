@@ -1,5 +1,5 @@
 import type { Context, DIE, Future, LFC, LFI, RFC, RFI } from "./context.js";
-import type { Message, PromiseCreateReq, PromiseRecord, PromiseSettleReq, Request, Response } from "./network/types.js";
+import type { PromiseCreateReq, PromiseRecord, PromiseSettleReq } from "./network/types.js";
 import type { Options } from "./options.js";
 
 // Resonate functions
@@ -21,18 +21,8 @@ export type Return<T> = T extends (...args: any[]) => Generator<infer __, infer 
 
 export type Result<V, E> = { kind: "value"; value: V } | { kind: "error"; error: E };
 
-// Send
-export type Send = <K extends Request["kind"]>(
-  req: Extract<Request, { kind: K }>,
-) => Promise<Extract<Response, { kind: K }>>;
-// Recv
-export type Recv = (callback: (msg: Message) => void) => void;
-// Transport
-
-export type Transport = {
-  send: Send;
-  recv: Recv;
-};
+// Re-export Send and Recv from the Network module for convenience
+export type { Send, Recv } from "./network/network.js";
 
 // Effects
 
