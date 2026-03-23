@@ -40,7 +40,7 @@ export class HttpNetwork implements Network {
 
   constructor({
     url = "http://localhost:8001",
-    timeout = 10000 * util.SEC,
+    timeout = undefined,
     headers = {},
     auth = undefined,
     token = undefined,
@@ -48,7 +48,10 @@ export class HttpNetwork implements Network {
     adapter = undefined,
   }: HttpNetworkConfig) {
     this.url = url;
-    this.timeout = timeout;
+
+    // Priority: programmatic config > RESONATE_TIMEOUT env var > default (10s)
+    const envTimeout = process.env.RESONATE_TIMEOUT ? Number.parseInt(process.env.RESONATE_TIMEOUT, 10) : undefined;
+    this.timeout = timeout ?? (envTimeout && !Number.isNaN(envTimeout) ? envTimeout : 10 * util.SEC);
     this.logger = logger;
     this.adapter = adapter;
 

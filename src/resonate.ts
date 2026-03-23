@@ -192,7 +192,6 @@ export class Resonate {
           url: resolvedUrl,
           auth: resolvedAuth,
           token: resolvedToken,
-          timeout: 1 * util.MIN,
           headers: {},
           adapter,
         });
