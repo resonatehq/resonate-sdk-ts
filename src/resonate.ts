@@ -427,6 +427,30 @@ export class Resonate {
     return this.createHandle(promise);
   }
 
+  /**
+   * Creates a recurring schedule that invokes a registered function on a cron interval.
+   *
+   * The schedule is persisted on the Resonate Server and triggers a new durable promise
+   * for each cron tick. The generated promise IDs include the schedule name and timestamp
+   * to ensure uniqueness across invocations.
+   *
+   * If a function reference is provided, it must already be registered via {@link register}.
+   * Alternatively, a function name (string) can be used for remote dispatch.
+   *
+   * @param name - A unique name identifying this schedule.
+   * @param cron - A cron expression defining the recurrence interval (e.g., `"* * * * *"` for every minute).
+   * @param funcOrName - Either the registered function reference or its string name to invoke on each tick.
+   * @param args - Positional arguments and optional configuration parameters passed to the function.
+   *
+   * @returns A {@link ResonateSchedule} handle with a `delete()` method to remove the schedule.
+   *
+   * @example
+   * ```ts
+   * const schedule = await resonate.schedule("daily-report", "0 0 * * *", generateReport);
+   * // Later, to remove:
+   * await schedule.delete();
+   * ```
+   */
   public async schedule<F extends Func>(
     name: string,
     cron: string,
@@ -479,6 +503,19 @@ export class Resonate {
     return this.createHandle(promise);
   }
 
+  /**
+   * Builds a resolved {@link Options} object by merging the provided partial options
+   * with the client's defaults.
+   *
+   * This is useful for inspecting the effective configuration that would be applied
+   * to a `run`, `rpc`, or `schedule` call, or for passing explicit options to the
+   * convenience methods on a {@link ResonateFunc} handle.
+   *
+   * @param opts - Partial options to merge. Supports `tags`, `target`, `timeout`,
+   *   `version`, and `retryPolicy`.
+   *
+   * @returns A fully resolved {@link Options} object.
+   */
   public options(
     opts: Partial<Pick<Options, "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {},
   ): Options {
@@ -489,10 +526,27 @@ export class Resonate {
     return util.splitArgsAndOpts(args, this.options({ version }));
   }
 
+  /**
+   * Registers a named dependency that will be available to all Resonate functions
+   * via `context.getDependency(name)`.
+   *
+   * Use this to inject services, clients, or configuration objects into Resonate
+   * functions without tight coupling.
+   *
+   * @param name - A unique key identifying the dependency.
+   * @param obj - The dependency value (any object or primitive).
+   */
   public setDependency(name: string, obj: any): void {
     this.dependencies.set(name, obj);
   }
 
+  /**
+   * Stops the Resonate client, releasing all resources.
+   *
+   * This shuts down the underlying network transport and message source, stops the
+   * heartbeat loop, and clears the subscription refresh interval. After calling
+   * `stop()`, the client should not be used for further operations.
+   */
   public async stop(): Promise<void> {
     await this.network.stop();
     this.heartbeat.stop();
