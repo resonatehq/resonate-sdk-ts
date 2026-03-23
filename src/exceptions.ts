@@ -52,6 +52,13 @@ export class ResonateError extends Error {
   }
 }
 
+export class ResonateTimeoutException extends Error {
+  constructor(cause: string) {
+    super(`platform failure: ${cause}`);
+    this.name = "ResonateTimeoutException";
+  }
+}
+
 export default {
   REGISTRY_VERSION_INVALID: (v: number) => {
     return new ResonateError("00", "Registry", `Function version must be greater than zero (${v} provided)`);

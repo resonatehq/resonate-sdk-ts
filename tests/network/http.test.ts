@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "@jest/globals";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { HttpNetwork } from "../../src/network/http.js";
+import { ResonateTimeoutException } from "../../src/exceptions.js";
 
 // Helper: create a local HTTP server that responds on /api
 function createTestServer(
@@ -138,10 +139,10 @@ describe("HttpNetwork.send()", () => {
   });
 
   // =========================================================================
-  // Platform failures — collapsed to synthetic timeout response
+  // Platform failures — throw ResonateTimeoutException
   // =========================================================================
 
-  test("returns synthetic timeout on server timeout (no response)", async () => {
+  test("throws ResonateTimeoutException on server timeout (no response)", async () => {
     const result = await createTestServer((_req, _res) => {
       // Intentionally never respond
     });
@@ -152,28 +153,20 @@ describe("HttpNetwork.send()", () => {
       timeout: 100,
     });
 
-    const response = await network.send(makeRequest());
-    expect(response.kind).toBe("promise.get");
-    expect(response.head.corrId).toBe("corr-1");
-    expect(response.head.status).toBe(500);
-    expect(response.data).toMatch(/^platform failure:/);
+    await expect(network.send(makeRequest())).rejects.toThrow(ResonateTimeoutException);
   });
 
-  test("returns synthetic timeout on connection refused", async () => {
+  test("throws ResonateTimeoutException on connection refused", async () => {
     // Use a port that is very likely not in use
     const network = new HttpNetwork({
       url: "http://127.0.0.1:19999",
       timeout: 500,
     });
 
-    const response = await network.send(makeRequest());
-    expect(response.kind).toBe("promise.get");
-    expect(response.head.corrId).toBe("corr-1");
-    expect(response.head.status).toBe(500);
-    expect(response.data).toMatch(/^platform failure:/);
+    await expect(network.send(makeRequest())).rejects.toThrow(ResonateTimeoutException);
   });
 
-  test("returns synthetic timeout on malformed JSON response", async () => {
+  test("throws ResonateTimeoutException on malformed JSON response", async () => {
     const result = await createTestServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end("this is not json{{{");
@@ -185,14 +178,10 @@ describe("HttpNetwork.send()", () => {
       timeout: 500,
     });
 
-    const response = await network.send(makeRequest());
-    expect(response.kind).toBe("promise.get");
-    expect(response.head.corrId).toBe("corr-1");
-    expect(response.head.status).toBe(500);
-    expect(response.data).toMatch(/^platform failure:.*parse/i);
+    await expect(network.send(makeRequest())).rejects.toThrow(ResonateTimeoutException);
   });
 
-  test("returns synthetic timeout on mismatched kind", async () => {
+  test("throws ResonateTimeoutException on mismatched kind", async () => {
     const result = await createTestServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
@@ -208,13 +197,10 @@ describe("HttpNetwork.send()", () => {
       timeout: 500,
     });
 
-    const response = await network.send(makeRequest());
-    expect(response.kind).toBe("promise.get");
-    expect(response.head.status).toBe(500);
-    expect(response.data).toMatch(/^platform failure:.*match/i);
+    await expect(network.send(makeRequest())).rejects.toThrow(ResonateTimeoutException);
   });
 
-  test("returns synthetic timeout on mismatched corrId", async () => {
+  test("throws ResonateTimeoutException on mismatched corrId", async () => {
     const result = await createTestServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
@@ -230,10 +216,22 @@ describe("HttpNetwork.send()", () => {
       timeout: 500,
     });
 
-    const response = await network.send(makeRequest());
-    expect(response.kind).toBe("promise.get");
-    expect(response.head.status).toBe(500);
-    expect(response.data).toMatch(/^platform failure:.*match/i);
+    await expect(network.send(makeRequest())).rejects.toThrow(ResonateTimeoutException);
+  });
+
+  test("ResonateTimeoutException message includes cause", async () => {
+    const network = new HttpNetwork({
+      url: "http://127.0.0.1:19999",
+      timeout: 500,
+    });
+
+    try {
+      await network.send(makeRequest());
+      fail("expected ResonateTimeoutException");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ResonateTimeoutException);
+      expect((e as ResonateTimeoutException).message).toMatch(/^platform failure:/);
+    }
   });
 
   // =========================================================================
@@ -241,7 +239,7 @@ describe("HttpNetwork.send()", () => {
   // =========================================================================
 
   for (const status of [400, 401, 403, 429, 500, 503]) {
-    test(`returns synthetic timeout for non-protocol HTTP ${status}`, async () => {
+    test(`throws ResonateTimeoutException for non-protocol HTTP ${status}`, async () => {
       const result = await createTestServer((_req, res) => {
         res.writeHead(status, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "server error" }));
@@ -253,11 +251,16 @@ describe("HttpNetwork.send()", () => {
         timeout: 500,
       });
 
-      const response = await network.send(makeRequest());
-      expect(response.kind).toBe("promise.get");
-      expect(response.head.corrId).toBe("corr-1");
-      expect(response.head.status).toBe(500);
-      expect(response.data).toMatch(new RegExp(`^platform failure:.*HTTP ${status}`));
+      try {
+        await network.send(makeRequest());
+        fail(`expected ResonateTimeoutException for HTTP ${status}`);
+      } catch (e) {
+        expect(e).toBeInstanceOf(ResonateTimeoutException);
+        expect((e as ResonateTimeoutException).message).toMatch(new RegExp(`HTTP ${status}`));
+      }
+
+      await closeServer(result.server);
+      server = undefined;
     });
   }
 
@@ -265,7 +268,7 @@ describe("HttpNetwork.send()", () => {
   // Classification: protocol vs platform
   // =========================================================================
 
-  test("protocol statuses (200, 300, 404, 409, 422, 501) are returned, not collapsed", async () => {
+  test("protocol statuses (200, 300, 404, 409, 422, 501) are returned, not thrown", async () => {
     for (const status of [200, 300, 404, 409, 422, 501]) {
       const responseBody = status === 200
         ? JSON.stringify({
@@ -301,27 +304,19 @@ describe("HttpNetwork.send()", () => {
 
       const response = await network.send(makeRequest());
       expect(response.head.status).toBe(status);
-      // data should NOT start with "platform failure:"
-      if (typeof response.data === "string") {
-        expect(response.data).not.toMatch(/^platform failure:/);
-      }
 
       await closeServer(result.server);
     }
   });
 
-  test("send never throws — all failures return synthetic timeout", async () => {
+  test("send throws ResonateTimeoutException on all platform failures", async () => {
     // Connection refused
     const network = new HttpNetwork({
       url: "http://127.0.0.1:19999",
       timeout: 100,
     });
 
-    // This should resolve, not reject
-    const response = await network.send(makeRequest());
-    expect(response).toBeDefined();
-    expect(response.kind).toBe("promise.get");
-    expect(response.head.status).toBe(500);
+    await expect(network.send(makeRequest())).rejects.toThrow(ResonateTimeoutException);
   });
 });
 

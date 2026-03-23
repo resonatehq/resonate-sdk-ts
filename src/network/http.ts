@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { EventSource } from "eventsource";
+import { ResonateTimeoutException } from "../exceptions.js";
 import type { Logger } from "../logger.js";
 import * as util from "../util.js";
 import type { Network } from "./network.js";
@@ -103,23 +104,8 @@ export class HttpNetwork implements Network {
   }
 
   // Valid protocol status codes — responses with these statuses are returned as-is.
-  // Everything else is a platform failure that gets collapsed into a synthetic timeout.
+  // Everything else is a platform failure that throws ResonateTimeoutException.
   private static readonly PROTOCOL_STATUSES = new Set([200, 300, 404, 409, 422, 501]);
-
-  private syntheticTimeout<K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-    cause: string,
-  ): Extract<Response, { kind: K }> {
-    return {
-      kind: req.kind,
-      head: {
-        corrId: req.head.corrId,
-        status: 500,
-        version: req.head.version,
-      },
-      data: `platform failure: ${cause}`,
-    } as Extract<Response, { kind: K }>;
-  }
 
   send = async <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
@@ -130,123 +116,107 @@ export class HttpNetwork implements Network {
       "request sent",
     );
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    let httpResponse: globalThis.Response;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      httpResponse = await fetch(`${this.url}/api`, {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify(req),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      const cause = e instanceof Error ? e.message : String(e);
+      const errorType = cause.includes("abort") ? "http_timeout" : "connection_error";
+      this.logger?.warn(
+        { component: "network", kind: req.kind, corr_id: req.head.corrId, error_type: errorType, error: cause },
+        "platform failure",
+      );
+      throw new ResonateTimeoutException(cause);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
-      let httpResponse: globalThis.Response;
-      try {
-        httpResponse = await fetch(`${this.url}/api`, {
-          method: "POST",
-          headers: this.headers,
-          body: JSON.stringify(req),
-          signal: controller.signal,
-        });
-      } catch (e) {
-        const cause = e instanceof Error ? e.message : String(e);
-        const errorType = cause.includes("abort") ? "http_timeout" : "connection_error";
-        this.logger?.warn(
-          { component: "network", kind: req.kind, corr_id: req.head.corrId, error_type: errorType, error: cause },
-          "platform failure collapsed to synthetic timeout",
-        );
-        return this.syntheticTimeout(req, cause);
-      } finally {
-        clearTimeout(timeoutId);
-      }
-
-      // Check HTTP status — non-protocol statuses are platform failures
-      if (!HttpNetwork.PROTOCOL_STATUSES.has(httpResponse.status)) {
-        const cause = `HTTP ${httpResponse.status}`;
-        this.logger?.warn(
-          {
-            component: "network",
-            kind: req.kind,
-            corr_id: req.head.corrId,
-            error_type: `server_error_${httpResponse.status}`,
-            error: cause,
-          },
-          "platform failure collapsed to synthetic timeout",
-        );
-        return this.syntheticTimeout(req, cause);
-      }
-
-      let resStr: string;
-      try {
-        resStr = await httpResponse.text();
-      } catch (e) {
-        const cause = e instanceof Error ? e.message : String(e);
-        this.logger?.warn(
-          {
-            component: "network",
-            kind: req.kind,
-            corr_id: req.head.corrId,
-            error_type: "malformed_response",
-            error: cause,
-          },
-          "platform failure collapsed to synthetic timeout",
-        );
-        return this.syntheticTimeout(req, cause);
-      }
-
-      let res: unknown;
-      try {
-        res = JSON.parse(resStr);
-      } catch {
-        this.logger?.warn(
-          {
-            component: "network",
-            kind: req.kind,
-            corr_id: req.head.corrId,
-            error_type: "malformed_response",
-            error: "failed to parse response JSON",
-          },
-          "platform failure collapsed to synthetic timeout",
-        );
-        return this.syntheticTimeout(req, "failed to parse response JSON");
-      }
-
-      if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
-        this.logger?.warn(
-          {
-            component: "network",
-            kind: req.kind,
-            corr_id: req.head.corrId,
-            error_type: "malformed_response",
-            error: "response did not match request",
-          },
-          "platform failure collapsed to synthetic timeout",
-        );
-        return this.syntheticTimeout(req, "response did not match request");
-      }
-
-      const durationMs = Date.now() - startTime;
-      this.logger?.debug(
+    // Check HTTP status — non-protocol statuses are platform failures
+    if (!HttpNetwork.PROTOCOL_STATUSES.has(httpResponse.status)) {
+      const cause = `HTTP ${httpResponse.status}`;
+      this.logger?.warn(
         {
           component: "network",
-          kind: res.kind,
-          corr_id: res.head.corrId,
-          status: res.head.status,
-          duration_ms: durationMs,
+          kind: req.kind,
+          corr_id: req.head.corrId,
+          error_type: `server_error_${httpResponse.status}`,
+          error: cause,
         },
-        "protocol response",
+        "platform failure",
       );
+      throw new ResonateTimeoutException(cause);
+    }
 
-      return res as Extract<Response, { kind: K }>;
+    let resStr: string;
+    try {
+      resStr = await httpResponse.text();
     } catch (e) {
-      // Catch-all: any unexpected error is also collapsed
       const cause = e instanceof Error ? e.message : String(e);
       this.logger?.warn(
         {
           component: "network",
           kind: req.kind,
           corr_id: req.head.corrId,
-          error_type: "unexpected_error",
+          error_type: "malformed_response",
           error: cause,
         },
-        "platform failure collapsed to synthetic timeout",
+        "platform failure",
       );
-      return this.syntheticTimeout(req, cause);
+      throw new ResonateTimeoutException(cause);
     }
+
+    let res: unknown;
+    try {
+      res = JSON.parse(resStr);
+    } catch {
+      this.logger?.warn(
+        {
+          component: "network",
+          kind: req.kind,
+          corr_id: req.head.corrId,
+          error_type: "malformed_response",
+          error: "failed to parse response JSON",
+        },
+        "platform failure",
+      );
+      throw new ResonateTimeoutException("failed to parse response JSON");
+    }
+
+    if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
+      this.logger?.warn(
+        {
+          component: "network",
+          kind: req.kind,
+          corr_id: req.head.corrId,
+          error_type: "malformed_response",
+          error: "response did not match request",
+        },
+        "platform failure",
+      );
+      throw new ResonateTimeoutException("response did not match request");
+    }
+
+    const durationMs = Date.now() - startTime;
+    this.logger?.debug(
+      {
+        component: "network",
+        kind: res.kind,
+        corr_id: res.head.corrId,
+        status: res.head.status,
+        duration_ms: durationMs,
+      },
+      "protocol response",
+    );
+
+    return res as Extract<Response, { kind: K }>;
   };
 }
 
