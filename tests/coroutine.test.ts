@@ -3,6 +3,7 @@ import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
 import { Coroutine, type Suspended } from "../src/coroutine.js";
 import { ConsoleLogger } from "../src/logger.js";
+import { TraceCollector } from "../src/trace.js";
 import type { PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
@@ -88,6 +89,7 @@ describe("Coroutine", () => {
       func,
       args,
       effects,
+      new TraceCollector(),
     );
 
     return res;
@@ -392,6 +394,7 @@ describe("Coroutine", () => {
         foo,
         [],
         effects,
+        new TraceCollector(),
       ),
     ).rejects.toThrow();
 

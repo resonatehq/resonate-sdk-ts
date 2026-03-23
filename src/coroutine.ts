@@ -3,6 +3,7 @@ import { Decorator, type PromiseCompleted, type Value } from "./decorator.js";
 import type { Logger } from "./logger.js";
 import type { PromiseRecord } from "./network/types.js";
 import { Never } from "./retries.js";
+import { TraceCollector } from "./trace.js";
 import type { Effects, Result, Yieldable } from "./types.js";
 import * as util from "./util.js";
 
@@ -34,12 +35,14 @@ export class Coroutine<T> {
   private logger: Logger;
   private decorator: Decorator<T>;
   private effects: Effects;
+  private trace: TraceCollector;
 
-  constructor(ctx: InnerContext, logger: Logger, decorator: Decorator<T>, effects: Effects) {
+  constructor(ctx: InnerContext, logger: Logger, decorator: Decorator<T>, effects: Effects, trace: TraceCollector) {
     this.ctx = ctx;
     this.logger = logger;
     this.decorator = decorator;
     this.effects = effects;
+    this.trace = trace;
 
     if (!(this.ctx.retryPolicy instanceof Never) && !logged.has(this.ctx.id)) {
       this.logger.warn(
@@ -56,14 +59,23 @@ export class Coroutine<T> {
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     effects: Effects,
+    trace: TraceCollector,
   ): Promise<Suspended | Done> {
-    const coroutine = new Coroutine(ctx, logger, new Decorator(func(ctx, ...args)), effects);
+    const coroutine = new Coroutine(ctx, logger, new Decorator(func(ctx, ...args)), effects, trace);
     return await coroutine.exec();
+  }
+
+  private emitTrace(event: import("./trace.js").Event): void {
+    this.trace.emit(event);
+    this.logger.debug({ component: "trace", ...event }, `trace: ${event.kind}`);
   }
 
   private async exec(): Promise<Suspended | Done> {
     const remote: RemoteTodo[] = [];
     const localWork: Map<string, LocalWorkEntry> = new Map();
+
+    // Emit spawn for this function's execution
+    this.emitTrace({ kind: "spawn", id: this.ctx.id });
 
     let input: Value<any> = {
       type: "internal.nothing",
@@ -72,9 +84,12 @@ export class Coroutine<T> {
     while (true) {
       const action = this.decorator.next(input);
 
-      // Handle internal.async.l (lfi/lfc)
+      // Handle internal.async.l (lfi/lfc) — local child creation (run)
       if (action.type === "internal.async.l") {
         const res = await this.effects.promiseCreate(action.createReq, action.func.name);
+
+        // Emit "run p q" — parent creates local child
+        this.emitTrace({ kind: "run", id: this.ctx.id, callee: action.id });
 
         const ctx = this.ctx.child({
           id: res.id,
@@ -89,9 +104,15 @@ export class Coroutine<T> {
           let localPromise: Promise<Suspended | Done>;
 
           if (!util.isGeneratorFunction(action.func)) {
-            localPromise = util
-              .executeWithRetry(ctx, action.func, action.args, this.logger)
-              .then((result): Done => ({ type: "done", result }));
+            // For regular functions, emit spawn/return around execution
+            localPromise = (async () => {
+              this.emitTrace({ kind: "spawn", id: action.id });
+              const result = await util.executeWithRetry(ctx, action.func, action.args, this.logger);
+              const state = result.kind === "value" ? "resolved" : "rejected";
+              const value = result.kind === "value" ? result.value : result.error;
+              this.emitTrace({ kind: "return", id: action.id, state, value });
+              return { type: "done" as const, result };
+            })();
           } else {
             localPromise = Coroutine.exec(
               this.logger,
@@ -99,6 +120,7 @@ export class Coroutine<T> {
               action.func as (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
               action.args,
               this.effects,
+              this.trace,
             );
           }
 
@@ -110,17 +132,26 @@ export class Coroutine<T> {
             id: action.id,
           };
         } else {
-          // durable promise is already completed (replay)
+          // durable promise is already completed (replay) — dedup
+          const state = res.state === "resolved" ? "resolved" : "rejected";
+          const value = res.value?.data;
+          this.emitTrace({ kind: "dedup", id: action.id, state, value });
           input = this.completedPromise(action.id, res);
         }
         continue;
       }
 
-      // Handle internal.async.r
+      // Handle internal.async.r — remote child creation (rpc)
       if (action.type === "internal.async.r") {
         const res = await this.effects.promiseCreate(action.createReq, "unknown");
 
+        // Emit "rpc p q" — parent creates remote child
+        this.emitTrace({ kind: "rpc", id: this.ctx.id, callee: action.id });
+
         if (res.state === "pending") {
+          // Emit "block q" — rpc child is unsettled
+          this.emitTrace({ kind: "block", id: action.id });
+
           if (action.mode === "attached") remote.push({ id: action.id });
 
           input = {
@@ -130,6 +161,10 @@ export class Coroutine<T> {
             id: action.id,
           };
         } else {
+          // Already settled — dedup
+          const state = res.state === "resolved" ? "resolved" : "rejected";
+          const value = res.value?.data;
+          this.emitTrace({ kind: "dedup", id: action.id, state, value });
           input = this.completedPromise(action.id, res);
         }
         continue;
@@ -146,6 +181,10 @@ export class Coroutine<T> {
 
       // Handle await on a completed promise (fast-path / replay)
       if (action.type === "internal.await" && action.promise.state === "completed") {
+        // Emit await + resume (child already settled)
+        this.emitTrace({ kind: "await", id: this.ctx.id, callee: action.id });
+        this.emitTrace({ kind: "resume", id: this.ctx.id, callee: action.id });
+
         util.assert(
           action.promise.value.type === "internal.literal",
           "promise value must be an 'internal.literal' type",
@@ -157,6 +196,9 @@ export class Coroutine<T> {
 
       // Handle await on a pending promise
       if (action.type === "internal.await" && action.promise.state === "pending") {
+        // Emit await
+        this.emitTrace({ kind: "await", id: this.ctx.id, callee: action.id });
+
         if (action.promise.mode === "detached") {
           // User is explicitly awaiting a detached promise — add its remote todo now
           remote.push({ id: action.id });
@@ -174,6 +216,9 @@ export class Coroutine<T> {
 
             util.assert(settleRes.state !== "pending", "promise must be completed");
 
+            // Emit resume — child completed, parent continues
+            this.emitTrace({ kind: "resume", id: this.ctx.id, callee: action.id });
+
             // Feed the resolved/rejected value directly as a Literal so the generator continues
             input = {
               type: "internal.literal",
@@ -186,17 +231,19 @@ export class Coroutine<T> {
           // Flush remaining local work and collect all remote todos
           const res = await this.flushLocalWork(localWork);
 
+          // Emit suspend — parent cannot continue
+          this.emitTrace({ kind: "suspend", id: this.ctx.id });
+
           const allRemote = [...remote, ...localResult.todo.remote, ...res.remote];
           return { type: "suspended", todo: { remote: allRemote } };
         }
 
         // Not in localWork — it's a remote pending promise.
         // Flush any in-flight local work so their remote dependencies are surfaced
-        // and their completed durable promises are settled. Without this, eagerly
-        // started local tasks would be silently abandoned, causing a deadlock when
-        // the parent resumes and finds their durable promises still pending with no
-        // task record to drive them.
         const flushResult = await this.flushLocalWork(localWork);
+
+        // Emit suspend — parent cannot continue (blocked on remote)
+        this.emitTrace({ kind: "suspend", id: this.ctx.id });
 
         const allRemote = [...remote, ...flushResult.remote];
         return { type: "suspended", todo: { remote: allRemote } };
@@ -213,14 +260,28 @@ export class Coroutine<T> {
 
           const allRemote = [...remote, ...flushResult.remote];
           if (allRemote.length > 0) {
+            // Emit suspend — parent cannot return due to unsettled remote children
+            this.emitTrace({ kind: "suspend", id: this.ctx.id });
             return { type: "suspended", todo: { remote: allRemote } };
           }
+          // Emit return — function completes
+          const result = action.value.value;
+          const state = result.kind === "value" ? "resolved" : "rejected";
+          const value = result.kind === "value" ? result.value : result.error;
+          this.emitTrace({ kind: "return", id: this.ctx.id, state, value });
           return { type: "done", result: action.value.value };
         }
 
         if (remote.length > 0) {
+          // Emit suspend — parent cannot return due to unsettled remote children
+          this.emitTrace({ kind: "suspend", id: this.ctx.id });
           return { type: "suspended", todo: { remote } };
         }
+        // Emit return — function completes
+        const result = action.value.value;
+        const state = result.kind === "value" ? "resolved" : "rejected";
+        const value = result.kind === "value" ? result.value : result.error;
+        this.emitTrace({ kind: "return", id: this.ctx.id, state, value });
         return { type: "done", result: action.value.value };
       }
     }

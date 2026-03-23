@@ -149,7 +149,7 @@ describe("Core", () => {
   describe("executeUntilBlocked", () => {
     test("computation resolves - sends task.fulfill with resolved value", async () => {
       const { core, sendHolder, codec } = buildCore({
-        responses: [{ kind: "done", id: "p1", state: "resolved", value: 42 }],
+        responses: [{ kind: "done", id: "p1", state: "resolved", value: 42, trace: [] }],
       });
 
       const { task, rootPromise } = await seedAcquiredTask(sendHolder.fn, codec, "p1", "main", []);
@@ -168,7 +168,7 @@ describe("Core", () => {
 
     test("computation rejects - sends task.fulfill with rejected value", async () => {
       const { core, sendHolder, codec } = buildCore({
-        responses: [{ kind: "done", id: "p2", state: "rejected", value: "err" }],
+        responses: [{ kind: "done", id: "p2", state: "rejected", value: "err", trace: [] }],
       });
 
       const { task, rootPromise } = await seedAcquiredTask(sendHolder.fn, codec, "p2", "main", []);
@@ -199,7 +199,7 @@ describe("Core", () => {
 
     test("computation suspends - sends task.suspend with awaited IDs", async () => {
       const { core, sendHolder, codec } = buildCore({
-        responses: [{ kind: "suspended", awaited: ["dep-a", "dep-b"] }],
+        responses: [{ kind: "suspended", awaited: ["dep-a", "dep-b"], trace: [] }],
       });
 
       const { task, rootPromise } = await seedAcquiredTask(sendHolder.fn, codec, "p4", "main", []);
@@ -225,8 +225,8 @@ describe("Core", () => {
       const mockRef = { mock: null as unknown as MockComputation };
       const { core, sendHolder, codec } = buildCore({
         responses: [
-          { kind: "suspended", awaited: ["dep-x"] },
-          { kind: "done", id: "p5", state: "resolved", value: "final" },
+          { kind: "suspended", awaited: ["dep-x"], trace: [] },
+          { kind: "done", id: "p5", state: "resolved", value: "final", trace: [] },
         ],
         mockRef,
       });
@@ -257,7 +257,7 @@ describe("Core", () => {
     test("acquires task then delegates to executeUntilBlocked", async () => {
       const mockRef = { mock: null as unknown as MockComputation };
       const { core, network, sendHolder, codec } = buildCore({
-        responses: [{ kind: "done", id: "on-msg-1", state: "resolved", value: "ok" }],
+        responses: [{ kind: "done", id: "on-msg-1", state: "resolved", value: "ok", trace: [] }],
         mockRef,
       });
 
@@ -271,7 +271,7 @@ describe("Core", () => {
     test("acquire failure (409) throws without hanging", async () => {
       const mockRef = { mock: null as unknown as MockComputation };
       const { core, sendHolder, codec } = buildCore({
-        responses: [{ kind: "done", id: "fail-acq", state: "resolved", value: 0 }],
+        responses: [{ kind: "done", id: "fail-acq", state: "resolved", value: 0, trace: [] }],
         mockRef,
       });
 
@@ -286,7 +286,7 @@ describe("Core", () => {
 
     test("fulfill encodes value via handler.encodeValue", async () => {
       const { core, network, sendHolder, codec } = buildCore({
-        responses: [{ kind: "done", id: "encode-test", state: "resolved", value: { x: 1 } }],
+        responses: [{ kind: "done", id: "encode-test", state: "resolved", value: { x: 1 }, trace: [] }],
       });
 
       const task = await seedPendingTask(sendHolder.fn, codec, "encode-test", "main", [], network);

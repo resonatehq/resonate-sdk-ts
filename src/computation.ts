@@ -8,6 +8,7 @@ import type { PromiseRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
+import { TraceCollector, type Trace } from "./trace.js";
 
 import type { Effects, Func } from "./types.js";
 import * as util from "./util.js";
@@ -19,11 +20,13 @@ export type Done = {
   id: string;
   state: "resolved" | "rejected";
   value: any;
+  trace: Trace;
 };
 
 export type Suspended = {
   kind: "suspended";
   awaited: string[];
+  trace: Trace;
 };
 
 interface Data {
@@ -137,18 +140,25 @@ export class Computation {
     args: any[],
     rootPromise: PromiseRecord,
   ): Promise<Status> {
-    // If boundary promise is done, short-circuit
+    const collector = new TraceCollector();
+
+    // If boundary promise is done, short-circuit (dedup the root)
     if (rootPromise.state !== "pending") {
+      const state = rootPromise.state === "resolved" ? "resolved" : "rejected";
+      collector.emit({ kind: "dedup", id: rootPromise.id, state, value: rootPromise.value });
+      this.logger.debug({ component: "trace", kind: "dedup", id: rootPromise.id }, "trace: dedup");
       return {
         kind: "done",
         id: rootPromise.id,
-        state: rootPromise.state === "resolved" ? "resolved" : "rejected",
+        state,
         value: rootPromise.value,
+        trace: collector.getTrace(),
       };
     }
 
     const ctx = new InnerContext(ctxConfig);
-    const status = await Coroutine.exec(this.logger, ctx, func, args, this.effects);
+    const status = await Coroutine.exec(this.logger, ctx, func, args, this.effects, collector);
+    const trace = collector.getTrace();
 
     if (status.type === "done") {
       return {
@@ -156,21 +166,32 @@ export class Computation {
         id: this.id,
         state: status.result.kind === "value" ? "resolved" : "rejected",
         value: status.result.kind === "value" ? status.result.value : status.result.error,
+        trace,
       };
     }
 
     // Only remote todos remain — locals are handled inline by the coroutine
-    return { kind: "suspended", awaited: status.todo.remote.map((t) => t.id) };
+    return { kind: "suspended", awaited: status.todo.remote.map((t) => t.id), trace };
   }
 
   private async processFunction(id: string, func: Func, ctx: InnerContext, args: any[]): Promise<Status> {
+    const collector = new TraceCollector();
+    collector.emit({ kind: "spawn", id });
+    this.logger.debug({ component: "trace", kind: "spawn", id }, "trace: spawn");
+
     const result = await util.executeWithRetry(ctx, func, args, this.logger);
+    const state = result.kind === "value" ? "resolved" : "rejected";
+    const value = result.kind === "value" ? result.value : result.error;
+
+    collector.emit({ kind: "return", id, state, value });
+    this.logger.debug({ component: "trace", kind: "return", id }, "trace: return");
 
     return {
       kind: "done",
       id,
-      state: result.kind === "value" ? "resolved" : "rejected",
-      value: result.kind === "value" ? result.value : result.error,
+      state,
+      value,
+      trace: collector.getTrace(),
     };
   }
 }

@@ -15,3 +15,20 @@ export { Registry } from "./registry.js";
 export { Resonate, ResonateFunc, ResonateHandle } from "./resonate.js";
 export type { Effects } from "./types.js";
 export { Func } from "./types.js";
+export {
+  type Event,
+  type Trace,
+  TraceCollector,
+  isWellFormed,
+  uniqueSpawn,
+  exclusiveLifecycle,
+  spawnIsFirst,
+  terminalIsLast,
+  blockIsSole,
+  dedupIsSole,
+  uniqueTerminal,
+  awaitThenResumeOrSuspend,
+  runHasCallee,
+  rpcHasCallee,
+  rootSpawn,
+} from "./trace.js";
