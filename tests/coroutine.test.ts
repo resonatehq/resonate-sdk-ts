@@ -2,12 +2,15 @@ import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
 import { Coroutine, type Suspended } from "../src/coroutine.js";
+import { ConsoleLogger } from "../src/logger.js";
 import type { PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
 import type { Effects, Result, Send } from "../src/types.js";
 import * as util from "../src/util.js";
+
+const testLogger = new ConsoleLogger("error");
 
 class DummyNetwork {
   private promises = new Map<string, PromiseRecord>();
@@ -69,7 +72,7 @@ function buildEffects(network: DummyNetwork): Effects {
 describe("Coroutine", () => {
   const exec = async (uuid: string, func: (ctx: Context, ...args: any[]) => any, args: any[], effects: Effects) => {
     const res = await Coroutine.exec(
-      false,
+      testLogger,
       new InnerContext({
         id: uuid,
         oId: uuid,
@@ -374,7 +377,7 @@ describe("Coroutine", () => {
 
     await expect(
       Coroutine.exec(
-        false,
+        testLogger,
         new InnerContext({
           id: "foo.1",
           func: foo.name,

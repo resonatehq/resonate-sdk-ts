@@ -1,5 +1,6 @@
 import type { Context, InnerContext } from "./context.js";
 import { Decorator, type PromiseCompleted, type Value } from "./decorator.js";
+import type { Logger } from "./logger.js";
 import type { PromiseRecord } from "./network/types.js";
 import { Never } from "./retries.js";
 import type { Effects, Result, Yieldable } from "./types.js";
@@ -30,30 +31,33 @@ type LocalWorkEntry = {
 
 export class Coroutine<T> {
   private ctx: InnerContext;
-  private verbose: boolean;
+  private logger: Logger;
   private decorator: Decorator<T>;
   private effects: Effects;
 
-  constructor(ctx: InnerContext, verbose: boolean, decorator: Decorator<T>, effects: Effects) {
+  constructor(ctx: InnerContext, logger: Logger, decorator: Decorator<T>, effects: Effects) {
     this.ctx = ctx;
-    this.verbose = verbose;
+    this.logger = logger;
     this.decorator = decorator;
     this.effects = effects;
 
     if (!(this.ctx.retryPolicy instanceof Never) && !logged.has(this.ctx.id)) {
-      console.warn(`Options. Generator function '${this.ctx.func}' does not support retries. Will ignore.`);
+      this.logger.warn(
+        { component: "coroutine", func: this.ctx.func, id: this.ctx.id },
+        `Generator function '${this.ctx.func}' does not support retries. Will ignore.`,
+      );
       logged.set(this.ctx.id, true);
     }
   }
 
   public static async exec(
-    verbose: boolean,
+    logger: Logger,
     ctx: InnerContext,
     func: (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
     args: any[],
     effects: Effects,
   ): Promise<Suspended | Done> {
-    const coroutine = new Coroutine(ctx, verbose, new Decorator(func(ctx, ...args)), effects);
+    const coroutine = new Coroutine(ctx, logger, new Decorator(func(ctx, ...args)), effects);
     return await coroutine.exec();
   }
 
@@ -86,11 +90,11 @@ export class Coroutine<T> {
 
           if (!util.isGeneratorFunction(action.func)) {
             localPromise = util
-              .executeWithRetry(ctx, action.func, action.args, this.verbose)
+              .executeWithRetry(ctx, action.func, action.args, this.logger)
               .then((result): Done => ({ type: "done", result }));
           } else {
             localPromise = Coroutine.exec(
-              this.verbose,
+              this.logger,
               ctx,
               action.func as (ctx: Context, ...args: any[]) => Generator<Yieldable, any, any>,
               action.args,

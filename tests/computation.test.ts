@@ -4,6 +4,7 @@ import { Codec } from "../src/codec.js";
 import { Computation } from "../src/computation.js";
 import type { Context } from "../src/context.js";
 import type { Heartbeat } from "../src/heartbeat.js";
+import { ConsoleLogger } from "../src/logger.js";
 import { LocalNetwork } from "../src/network/local.js";
 import type { Network } from "../src/network/network.js";
 import type { PromiseRecord } from "../src/network/types.js";
@@ -25,7 +26,8 @@ function buildComputation(registry: Registry): {
 } {
   const network = new LocalNetwork();
   const codec = new Codec();
-  const transport = util.buildTransport(network);
+  const logger = new ConsoleLogger("error");
+  const transport = util.buildTransport(network, logger);
 
   const effects = util.buildEffects(transport.send, codec);
 
@@ -41,7 +43,7 @@ function buildComputation(registry: Registry): {
     new TestHeartbeat(),
     new Map(),
     new OptionsBuilder({ match: (target: string) => target, idPrefix: "test-" }),
-    false,
+    logger,
   );
 
   return { computation, network, effects };

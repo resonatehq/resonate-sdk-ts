@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { EventSource } from "eventsource";
+import type { Logger } from "../logger.js";
 import * as util from "../util.js";
 import type { Network } from "./network.js";
 
@@ -12,6 +13,7 @@ export interface HttpNetworkConfig {
   messageSource?: "poll" | "push";
   auth?: { username: string; password: string };
   token?: string;
+  logger?: Logger;
 }
 
 export class HttpNetwork implements Network {
@@ -31,6 +33,7 @@ export class HttpNetwork implements Network {
     pid = undefined,
     group = "default",
     messageSource = undefined,
+    logger = undefined,
   }: HttpNetworkConfig) {
     this.url = url;
     this.timeout = timeout;
@@ -46,7 +49,7 @@ export class HttpNetwork implements Network {
     this._group = group;
 
     if (messageSource === "poll") {
-      this._messageSource = new PollMessageSource({ url, pid, group, auth, token });
+      this._messageSource = new PollMessageSource({ url, pid, group, auth, token, logger });
     } else if (messageSource === "push") {
       this._messageSource = new PushMessageSource({ pid, group });
     }
@@ -119,6 +122,7 @@ class PollMessageSource {
   private headers: { [key: string]: string };
   private eventSource: EventSource;
   private subscribers: Array<(msg: string) => void> = [];
+  private logger?: Logger;
 
   constructor({
     url = "http://localhost:8001",
@@ -126,18 +130,21 @@ class PollMessageSource {
     group = "default",
     auth = undefined,
     token = undefined,
+    logger = undefined,
   }: {
     url?: string;
     pid?: string;
     group?: string;
     auth?: { username: string; password: string };
     token?: string;
+    logger?: Logger;
   }) {
     this.url = url;
     this.pid = pid;
     this.group = group;
     this.unicast = `poll://uni@${group}/${pid}`;
     this.anycast = `poll://any@${group}/${pid}`;
+    this.logger = logger;
 
     this.headers = {};
     if (token) {
@@ -169,7 +176,12 @@ class PollMessageSource {
     this.eventSource.addEventListener("error", () => {
       this.eventSource.close();
 
-      console.warn(`Networking. Cannot connect to [${this.url}/poll]. Retrying in 5s.`);
+      if (this.logger) {
+        this.logger.warn(
+          { component: "network", url: `${this.url}/poll` },
+          `Cannot connect to [${this.url}/poll]. Retrying in 5s.`,
+        );
+      }
       setTimeout(() => this.connect(), 5000);
     });
 

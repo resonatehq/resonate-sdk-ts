@@ -1,3 +1,4 @@
+import type { Logger } from "./logger.js";
 import type { Send } from "./types.js";
 
 export interface Heartbeat {
@@ -11,11 +12,13 @@ export class AsyncHeartbeat implements Heartbeat {
   private pid: string;
   private counter = 0;
   private delay: number;
+  private logger: Logger;
 
-  constructor(pid: string, delay: number, send: Send) {
+  constructor(pid: string, delay: number, send: Send, logger: Logger) {
     this.pid = pid;
     this.delay = delay;
     this.send = send;
+    this.logger = logger;
   }
 
   start(): void {
@@ -35,7 +38,10 @@ export class AsyncHeartbeat implements Heartbeat {
           tasks: [],
         },
       }).catch((err) => {
-        console.warn("Heartbeat. Failed to send heartbeat:", err);
+        this.logger.warn(
+          { component: "heartbeat", pid: this.pid, error: err instanceof Error ? err.message : String(err) },
+          "Failed to send heartbeat",
+        );
       });
     }, this.delay);
   }

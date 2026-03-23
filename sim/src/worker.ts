@@ -2,6 +2,7 @@ import type { StepClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
 import { Core } from "../../src/core.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
+import { ConsoleLogger } from "../../src/logger.js";
 import type { Network } from "../../src/network/network.js";
 import { isRequest, isResponse } from "../../src/network/types.js";
 
@@ -155,7 +156,8 @@ export class WorkerProcess extends Process {
     super(iaddr, gaddr);
     this.clock = clock;
     this.network = new SimulatedNetwork(iaddr, gaddr, prng, { charFlipProb }, unicast(iaddr), unicast("server"));
-    const { send, recv } = util.buildTransport(this.network);
+    const logger = new ConsoleLogger("error");
+    const { send, recv } = util.buildTransport(this.network, logger);
     const core = new Core({
       pid: iaddr,
       ttl: 10000,
@@ -166,7 +168,7 @@ export class WorkerProcess extends Process {
       heartbeat: new NoopHeartbeat(),
       dependencies: new Map(),
       optsBuilder: new OptionsBuilder({ match: this.network.match.bind(this.network), idPrefix: "" }),
-      verbose: false,
+      logger,
     });
     recv((msg) => {
       core.onMessage(msg).catch(() => {});

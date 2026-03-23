@@ -3,6 +3,7 @@ import type { Codec } from "./codec.js";
 import { Computation, type Done, type Status } from "./computation.js";
 import exceptions, { ResonateError } from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
+import type { Logger } from "./logger.js";
 import { isRedirect, isSuccess, type Message, type PromiseRecord, type TaskRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
@@ -26,7 +27,7 @@ export class Core {
   private heartbeat: Heartbeat;
   private dependencies: Map<string, any>;
   private optsBuilder: OptionsBuilder;
-  private verbose: boolean;
+  private logger: Logger;
 
   constructor({
     pid,
@@ -38,7 +39,7 @@ export class Core {
     heartbeat,
     dependencies,
     optsBuilder,
-    verbose,
+    logger,
   }: {
     pid: string;
     ttl: number;
@@ -49,7 +50,7 @@ export class Core {
     heartbeat: Heartbeat;
     dependencies: Map<string, any>;
     optsBuilder: OptionsBuilder;
-    verbose: boolean;
+    logger: Logger;
   }) {
     this.pid = pid;
     this.ttl = ttl;
@@ -60,7 +61,7 @@ export class Core {
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
     this.optsBuilder = optsBuilder;
-    this.verbose = verbose;
+    this.logger = logger;
 
     // default retry policies
     this.retries = new Map<string, RetryPolicyConstructor>([
@@ -94,9 +95,12 @@ export class Core {
     } catch (err) {
       // TODO: Some kinds of error must releaseTask, others must haltTask, figure out when to halt and when to release
       if (err instanceof ResonateError) {
-        err.log(this.verbose);
+        err.log(this.logger);
       } else {
-        console.warn("executeUntilBlocked failed unexpectedly", err);
+        this.logger.warn(
+          { component: "core", error: err instanceof Error ? err.message : String(err) },
+          "executeUntilBlocked failed unexpectedly",
+        );
       }
       await this.releaseTask(task).catch(() => {});
       throw err;
@@ -114,7 +118,7 @@ export class Core {
       this.heartbeat,
       this.dependencies,
       this.optsBuilder,
-      this.verbose,
+      this.logger,
     );
   }
 

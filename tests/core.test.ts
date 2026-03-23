@@ -4,6 +4,7 @@ import { Codec } from "../src/codec.js";
 import type { Status } from "../src/computation.js";
 import { Core } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
+import { ConsoleLogger } from "../src/logger.js";
 import { LocalNetwork } from "../src/network/local.js";
 
 import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js";
@@ -45,7 +46,8 @@ function buildCore(opts: { responses: (Status | Error)[]; mockRef?: { mock: Mock
 } {
   const network = new LocalNetwork();
   const codec = new Codec();
-  const transport = buildTransport(network);
+  const logger = new ConsoleLogger("error");
+  const transport = buildTransport(network, logger);
 
   // Mutable holder so interceptSend can swap the inner function
   const sendHolder = { fn: transport.send };
@@ -66,7 +68,7 @@ function buildCore(opts: { responses: (Status | Error)[]; mockRef?: { mock: Mock
     heartbeat: new TestHeartbeat(),
     dependencies: new Map(),
     optsBuilder: new OptionsBuilder({ match: (t: string) => t, idPrefix: "test-" }),
-    verbose: false,
+    logger,
   });
 
   const ctorSpy = jest.spyOn(core as any, "createComputation").mockReturnValue(activeMock);

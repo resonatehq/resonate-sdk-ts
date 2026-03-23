@@ -1,6 +1,7 @@
 import type { Codec } from "./codec.js";
 import type { InnerContext } from "./context.js";
 import exceptions from "./exceptions.js";
+import type { Logger } from "./logger.js";
 import type { Network } from "./network/network.js";
 import {
   isMessage,
@@ -111,14 +112,12 @@ export function once<T extends () => any>(fn: T): T {
   }) as T;
 }
 
-export function buildTransport(network: Network, verbose: boolean = false): Transport {
+export function buildTransport(network: Network, logger: Logger): Transport {
   return {
     send: async <K extends Request["kind"]>(
       req: Extract<Request, { kind: K }>,
     ): Promise<Extract<Response, { kind: K }>> => {
-      if (verbose) {
-        console.log("[Network] Sending:", req);
-      }
+      logger.debug({ component: "network", kind: req.kind, corrId: req.head.corrId }, "sending request");
 
       let resStr: string;
       try {
@@ -147,9 +146,10 @@ export function buildTransport(network: Network, verbose: boolean = false): Tran
         });
       }
 
-      if (verbose) {
-        console.log(`[Network] Received ${res.head.status}:`, `for request:`, req, `response:${res.data}`);
-      }
+      logger.debug(
+        { component: "network", kind: res.kind, corrId: res.head.corrId, status: res.head.status },
+        "received response",
+      );
 
       return res as Extract<Response, { kind: K }>;
     },
@@ -159,11 +159,11 @@ export function buildTransport(network: Network, verbose: boolean = false): Tran
         try {
           parsed = JSON.parse(msgStr);
         } catch {
-          console.warn("[Network] Received invalid JSON message, discarding");
+          logger.warn({ component: "network" }, "received invalid JSON message, discarding");
           return;
         }
         if (!isMessage(parsed)) {
-          console.warn("[Network] Received invalid message, discarding");
+          logger.warn({ component: "network" }, "received invalid message, discarding");
           return;
         }
         callback(parsed);
@@ -177,7 +177,7 @@ export async function executeWithRetry(
   ctx: InnerContext,
   func: Func,
   args: any[],
-  verbose: boolean,
+  logger: Logger,
 ): Promise<Result<any, any>> {
   while (true) {
     try {
@@ -188,12 +188,14 @@ export async function executeWithRetry(
       if (retryIn === null || ctx.clock.now() + retryIn >= ctx.info.timeout) {
         return { kind: "error", error };
       }
-      console.warn(
-        `Runtime. Function '${ctx.func}' failed with '${String(error)}' (retrying in ${retryIn / 1000} secs)`,
+      logger.warn(
+        { component: "runtime", func: ctx.func, attempt: ctx.info.attempt, retryIn },
+        `Function '${ctx.func}' failed with '${String(error)}' (retrying in ${retryIn / 1000} secs)`,
       );
-      if (verbose) {
-        console.warn(error);
-      }
+      logger.debug(
+        { component: "runtime", func: ctx.func, error: error instanceof Error ? error.stack : String(error) },
+        `Retry error details for '${ctx.func}'`,
+      );
       ctx.info.attempt++;
       await new Promise((resolve) => setTimeout(resolve, retryIn));
     }

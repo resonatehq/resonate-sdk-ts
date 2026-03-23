@@ -1,4 +1,5 @@
 import exceptions from "./exceptions.js";
+import { ConsoleLogger } from "./logger.js";
 import { LocalNetwork } from "./network/local.js";
 import { isSuccess, type PromiseRecord, type TaskRecord } from "./network/types.js";
 import type { Send } from "./types.js";
@@ -6,7 +7,7 @@ import { buildTransport } from "./util.js";
 
 export class Promises {
   private send: Send;
-  constructor(send: Send = buildTransport(new LocalNetwork()).send) {
+  constructor(send: Send = buildTransport(new LocalNetwork(), new ConsoleLogger()).send) {
     this.send = send;
   }
 

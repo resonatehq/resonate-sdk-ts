@@ -5,6 +5,7 @@ import { Core } from "./core.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import exceptions, { ResonateError } from "./exceptions.js";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
+import { ConsoleLogger, type LogLevel, type Logger } from "./logger.js";
 import { HttpNetwork } from "./network/http.js";
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
@@ -62,7 +63,7 @@ export class Resonate {
   private codec: Codec;
   private network: Network;
   private transport: Transport;
-  private verbose: boolean;
+  private logger: Logger;
 
   private registry: Registry;
   private heartbeat: Heartbeat;
@@ -90,7 +91,9 @@ export class Resonate {
    * @param options.auth - Basic authentication credentials. Defaults to
    *   `process.env.RESONATE_USERNAME` and `process.env.RESONATE_PASSWORD` when set.
    * @param options.token - Bearer token for authentication. Defaults to `process.env.RESONATE_TOKEN`.
-   * @param options.verbose - Enables verbose logging. Defaults to `false`.
+   * @param options.verbose - Enables verbose logging (shorthand for `logLevel: "debug"`). Defaults to `false`.
+   * @param options.logLevel - Log level for the default ConsoleLogger. Defaults to `"warn"`. Takes precedence over `verbose`.
+   * @param options.logger - Custom logger implementation. Defaults to {@link ConsoleLogger}.
    * @param options.encryptor - Payload encryptor. Defaults to {@link NoopEncryptor}.
    * @param options.transport - Custom network transport implementation. Defaults to `undefined`.
    * @param options.prefix - ID prefix applied to generated IDs. Defaults to
@@ -104,6 +107,8 @@ export class Resonate {
     auth = undefined,
     token = undefined,
     verbose = false,
+    logLevel = undefined,
+    logger = undefined,
     encryptor = undefined,
     network = undefined,
     prefix = undefined,
@@ -115,6 +120,8 @@ export class Resonate {
     auth?: { username: string; password: string };
     token?: string;
     verbose?: boolean;
+    logLevel?: LogLevel;
+    logger?: Logger;
     encryptor?: Encryptor;
     network?: Network;
     prefix?: string;
@@ -126,7 +133,11 @@ export class Resonate {
     const resolvedPrefix = prefix ?? process.env.RESONATE_PREFIX;
     this.idPrefix = resolvedPrefix ? `${resolvedPrefix}:` : "";
 
-    this.verbose = verbose;
+    // Resolve logger: explicit logger > ConsoleLogger with resolved level
+    // logLevel takes precedence over verbose; verbose: true → "debug"
+    const resolvedLogLevel: LogLevel = logLevel ?? (verbose ? "debug" : "warn");
+    this.logger = logger ?? new ConsoleLogger(resolvedLogLevel);
+
     this.subscribeEvery = 60 * 1000; // make this configurable
 
     // Determine the URL based on priority: url arg > RESONATE_URL > RESONATE_HOST+PORT
@@ -185,9 +196,9 @@ export class Resonate {
         hearbeat = true;
       }
     }
-    this.transport = util.buildTransport(this.network, this.verbose);
+    this.transport = util.buildTransport(this.network, this.logger);
     if (hearbeat) {
-      this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.transport.send);
+      this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.transport.send, this.logger);
     } else {
       this.heartbeat = new NoopHeartbeat();
     }
@@ -207,7 +218,7 @@ export class Resonate {
       heartbeat: this.heartbeat,
       dependencies: this.dependencies,
       optsBuilder: this.optsBuilder,
-      verbose: this.verbose,
+      logger: this.logger,
     });
 
     this.promises = new Promises(this.transport.send);
@@ -216,7 +227,10 @@ export class Resonate {
     // subscribe to network
     this.transport.recv(this.onMessage.bind(this));
     this.network.start().catch((err) => {
-      console.error("Failed to start network", err);
+      this.logger.error(
+        { component: "resonate", error: err instanceof Error ? err.message : String(err) },
+        "Failed to start network",
+      );
     });
     // periodically refresh subscriptions
     this.intervalId = setInterval(async () => {
@@ -266,9 +280,13 @@ export class Resonate {
    */
   static local({
     verbose = false,
+    logLevel = undefined,
+    logger = undefined,
     encryptor = undefined,
   }: {
     verbose?: boolean;
+    logLevel?: LogLevel;
+    logger?: Logger;
     encryptor?: Encryptor;
   } = {}): Resonate {
     return new Resonate({
@@ -276,6 +294,8 @@ export class Resonate {
       pid: "default",
       ttl: Number.MAX_SAFE_INTEGER,
       verbose,
+      logLevel,
+      logger,
       encryptor,
     });
   }
@@ -324,6 +344,8 @@ export class Resonate {
     auth = undefined,
     token = undefined,
     verbose = false,
+    logLevel = undefined,
+    logger = undefined,
     encryptor = undefined,
     prefix = undefined,
   }: {
@@ -334,10 +356,12 @@ export class Resonate {
     auth?: { username: string; password: string };
     token?: string;
     verbose?: boolean;
+    logLevel?: LogLevel;
+    logger?: Logger;
     encryptor?: Encryptor;
     prefix?: string;
   } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth, token, verbose, encryptor, prefix });
+    return new Resonate({ url, group, pid, ttl, auth, token, verbose, logLevel, logger, encryptor, prefix });
   }
 
   /**
@@ -535,7 +559,12 @@ export class Resonate {
     });
 
     if (task && task.state === "acquired") {
-      this.core.executeUntilBlocked(task, promise).catch((err) => console.warn("executeUntilBlocked failed", err));
+      this.core.executeUntilBlocked(task, promise).catch((err) =>
+        this.logger.warn(
+          { component: "resonate", error: err instanceof Error ? err.message : String(err) },
+          "executeUntilBlocked failed",
+        ),
+      );
     }
 
     return this.createHandle(promise);
@@ -802,7 +831,10 @@ export class Resonate {
         return this.codec.decodePromise(res.data.promise);
       } catch (err) {
         if (!(err instanceof ResonateError)) {
-          console.warn("promiseRegisterListener failed:", err);
+          this.logger.warn(
+            { component: "resonate", error: err instanceof Error ? err.message : String(err) },
+            "promiseRegisterListener failed",
+          );
         }
         await delay(retryDelay);
       }
@@ -841,7 +873,12 @@ export class Resonate {
 
   private onMessage(msg: Message): void {
     if (msg.kind === "execute") {
-      this.core.onMessage(msg).catch((err) => console.warn("onMessage failed", err));
+      this.core.onMessage(msg).catch((err) =>
+        this.logger.warn(
+          { component: "resonate", error: err instanceof Error ? err.message : String(err) },
+          "onMessage failed",
+        ),
+      );
       return;
     }
     util.assert(msg.kind === "unblock");

@@ -39,12 +39,16 @@ export class ResonateError extends Error {
     this.serverError = serverError;
   }
 
-  log(verbose: boolean) {
-    console.error(`${this.type}. ${this.message}. ${this.next}. (See ${this.href} for more information)`);
+  log(logger: import("./logger.js").Logger) {
+    logger.error(
+      { component: "error", code: this.code, type: this.type, next: this.next, href: this.href },
+      `${this.type}. ${this.message}. ${this.next}. (See ${this.href} for more information)`,
+    );
 
-    if (verbose) {
-      console.error(this);
-    }
+    logger.debug(
+      { component: "error", code: this.code, error: this.stack ?? this.message },
+      `${this.type} full error details`,
+    );
   }
 }
 

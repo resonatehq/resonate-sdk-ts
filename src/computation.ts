@@ -3,6 +3,7 @@ import { InnerContext } from "./context.js";
 import { Coroutine } from "./coroutine.js";
 import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
+import type { Logger } from "./logger.js";
 import type { PromiseRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
@@ -40,7 +41,7 @@ export class Computation {
   private registry: Registry;
   private dependencies: Map<string, any>;
   private optsBuilder: OptionsBuilder;
-  private verbose: boolean;
+  private logger: Logger;
   private heartbeat: Heartbeat;
   private processing = false;
 
@@ -53,7 +54,7 @@ export class Computation {
     heartbeat: Heartbeat,
     dependencies: Map<string, any>,
     optsBuilder: OptionsBuilder,
-    verbose: boolean,
+    logger: Logger,
   ) {
     this.id = id;
     this.clock = clock;
@@ -63,7 +64,7 @@ export class Computation {
     this.heartbeat = heartbeat;
     this.dependencies = dependencies;
     this.optsBuilder = optsBuilder;
-    this.verbose = verbose;
+    this.logger = logger;
   }
 
   public async executeUntilBlocked(rootPromise: PromiseRecord): Promise<Status> {
@@ -104,7 +105,10 @@ export class Computation {
         : new Exponential();
 
     if (retry && !retryCtor) {
-      console.warn(`Options. Retry policy '${retry.type}' not found. Will ignore.`);
+      this.logger.warn(
+        { component: "computation", retryType: retry.type },
+        `Retry policy '${retry.type}' not found. Will ignore.`,
+      );
     }
 
     const ctxConfig = {
@@ -144,7 +148,7 @@ export class Computation {
     }
 
     const ctx = new InnerContext(ctxConfig);
-    const status = await Coroutine.exec(this.verbose, ctx, func, args, this.effects);
+    const status = await Coroutine.exec(this.logger, ctx, func, args, this.effects);
 
     if (status.type === "done") {
       return {
@@ -160,7 +164,7 @@ export class Computation {
   }
 
   private async processFunction(id: string, func: Func, ctx: InnerContext, args: any[]): Promise<Status> {
-    const result = await util.executeWithRetry(ctx, func, args, this.verbose);
+    const result = await util.executeWithRetry(ctx, func, args, this.logger);
 
     return {
       kind: "done",
