@@ -106,7 +106,7 @@ describe("Resonate logger integration", () => {
   test("verbose: true results in debug-level output", async () => {
     const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
 
-    const resonate = Resonate.local({ verbose: true });
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER, verbose: true });
 
     function myFunc(_ctx: Context): string {
       return "result";
@@ -150,7 +150,7 @@ describe("Resonate logger integration", () => {
       },
     };
 
-    const resonate = Resonate.local({ logger: customLogger });
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER, logger: customLogger });
 
     function myFunc(_ctx: Context): string {
       return "hello";
@@ -176,7 +176,7 @@ describe("Resonate logger integration", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
 
     // verbose: true would normally set debug, but logLevel: "error" should take precedence
-    const resonate = Resonate.local({ verbose: true, logLevel: "error" });
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER, verbose: true, logLevel: "error" });
 
     function myFunc(_ctx: Context): string {
       return "result";

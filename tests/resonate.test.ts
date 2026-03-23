@@ -12,7 +12,7 @@ function encodeValue(codec: Codec, value: any): Value {
 
 describe("Resonate usage tests", () => {
   test("only rpc", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
     const f1 = resonate.register(
       "f",
       function foo(ctx: Context): number {
@@ -25,7 +25,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("try versions", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     const f1 = resonate.register(
       "f",
@@ -59,7 +59,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("test lineage rfc", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       // origin: foo.1
       // parent: foo.1
@@ -111,7 +111,7 @@ describe("Resonate usage tests", () => {
     });
   });
   test("test lineage rfc set ids", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       const v = yield ctx.rpc(bar, ctx.options({ id: "bar" }));
       return v;
@@ -155,7 +155,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("test lineage lfc", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       const v = yield ctx.lfc(bar);
       return v;
@@ -193,7 +193,7 @@ describe("Resonate usage tests", () => {
     });
   });
   test("test lineage lfc set ids", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
       const v = yield ctx.lfc(bar, ctx.options({ id: "bar" }));
       return v;
@@ -232,7 +232,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("done check", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     const f = resonate.register("f", function foo(_: Context): string {
       return "hello world";
@@ -249,7 +249,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("function retries", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     let tries = 0;
     const g = async (_ctx: Context, msg: string) => {
@@ -275,7 +275,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("function is executed on schedule", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     // A promise that resolves when the scheduled function runs
     let resolveRun!: () => void;
@@ -305,7 +305,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("concurrent execution must be concurrent", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     const g = async (ctx: Context, msg: string) => {
       await setTimeout(500);
@@ -335,7 +335,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("sequential execution must be sequential", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     const g = async (_ctx: Context, msg: string) => {
       await setTimeout(250);
@@ -363,7 +363,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Correctly rejects a top level function using ctx.beginRun", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     const g = async (_ctx: Context, msg: string) => {
       throw msg;
@@ -380,7 +380,7 @@ describe("Resonate usage tests", () => {
   });
 
   test("Correctly rejects a top level function using ctx.run", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     const g = async (_ctx: Context, msg: string) => {
       throw msg;
@@ -1077,7 +1077,7 @@ describe("Context usage tests", () => {
   test("ctx.panic aborts execution when condition is true", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
 
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     let completed = false;
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -1096,7 +1096,7 @@ describe("Context usage tests", () => {
   });
 
   test("ctx.panic continues execution when condition is false", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     const f = resonate.register("f", function* foo(ctx: Context) {
       yield* ctx.panic(false, "This should not abort");
@@ -1112,7 +1112,7 @@ describe("Context usage tests", () => {
   test("ctx.assert aborts execution when condition is false", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
 
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     let completed = false;
     const f = resonate.register("f", function* foo(ctx: Context) {
@@ -1131,7 +1131,7 @@ describe("Context usage tests", () => {
   });
 
   test("ctx.assert continues execution when condition is true", async () => {
-    const resonate = Resonate.local();
+    const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 
     const f = resonate.register("f", function* foo(ctx: Context) {
       yield* ctx.assert(true, "This should pass");
@@ -1245,12 +1245,7 @@ describe("Resonate environment variable initialization", () => {
 
   beforeEach(() => {
     process.env = { ...originalEnv };
-    delete process.env.RESONATE_HOST;
-    delete process.env.RESONATE_PORT;
     delete process.env.RESONATE_URL;
-    delete process.env.RESONATE_SCHEME;
-    delete process.env.RESONATE_USERNAME;
-    delete process.env.RESONATE_PASSWORD;
   });
 
   afterAll(() => {
@@ -1258,12 +1253,10 @@ describe("Resonate environment variable initialization", () => {
     global.fetch = originalFetch;
   });
 
-  test("url arg takes priority over env vars", async () => {
+  test("url arg takes priority over RESONATE_URL env var", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
-    process.env.RESONATE_HOST = "envhost";
-    process.env.RESONATE_PORT = "8080";
     process.env.RESONATE_URL = "http://url-from-env:9000";
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
@@ -1279,34 +1272,6 @@ describe("Resonate environment variable initialization", () => {
     });
 
     const resonate = new Resonate({ url: "http://arg-url:3000", group: "default", pid: "0", ttl: 60_000 });
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("RESONATE_HOST + RESONATE_PORT used when url arg not set", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_HOST = "localhost";
-    process.env.RESONATE_PORT = "8001";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:8001/api") {
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:8001/poll/default/0") {
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
     resonate.promises.create("test", 0);
 
     await p1.promise;
@@ -1360,64 +1325,6 @@ describe("Resonate environment variable initialization", () => {
     await resonate.stop();
   });
 
-  test("RESONATE_URL takes priority over HOST and PORT", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_HOST = "should-not-use";
-    process.env.RESONATE_PORT = "7000";
-    process.env.RESONATE_URL = "http://priority-url:9000";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://priority-url:9000/api") {
-        p1.resolve(null);
-      } else if (urlStr === "http://priority-url:9000/poll/default/0") {
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("RESONATE_URL empty fallbacks to HOST and PORT", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_HOST = "fallback";
-    process.env.RESONATE_PORT = "8080";
-    process.env.RESONATE_URL = "";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://fallback:8080/api") {
-        p1.resolve(null);
-      } else if (urlStr === "http://fallback:8080/poll/default/0") {
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
   test("Empty RESONATE_URL and no url arg falls back to LocalNetwork", async () => {
     process.env.RESONATE_URL = "";
 
@@ -1435,12 +1342,9 @@ describe("Resonate environment variable initialization", () => {
     await resonate.stop();
   });
 
-  test("auth arg takes priority over env vars", async () => {
+  test("auth arg is passed through to HttpNetwork", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_USERNAME = "envuser";
-    process.env.RESONATE_PASSWORD = "envpass";
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
       const urlStr = url instanceof URL ? url.href : url;
@@ -1471,275 +1375,16 @@ describe("Resonate environment variable initialization", () => {
     mockFetch.mockReset();
     await resonate.stop();
   });
-
-  test("RESONATE_USERNAME and RESONATE_PASSWORD used when auth arg not set", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_USERNAME = "envuser";
-    process.env.RESONATE_PASSWORD = "envpass";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/api") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjplbnZwYXNz");
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({
-      url: "http://localhost:9999",
-      group: "default",
-      pid: "0",
-      ttl: 60_000,
-    });
-
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("auth is defined when only RESONATE_USERNAME is set", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_USERNAME = "envuser";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/api") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjo=");
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic ZW52dXNlcjo=");
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({
-      url: "http://localhost:9999",
-      group: "default",
-      pid: "0",
-      ttl: 60_000,
-    });
-
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("auth is undefined when only RESONATE_PASSWORD is set", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_PASSWORD = "envpass";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/api") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({
-      url: "http://localhost:9999",
-      group: "default",
-      pid: "0",
-      ttl: 60_000,
-    });
-
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("auth is undefined when no env vars or arg are set", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/api") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBeUndefined();
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({
-      url: "http://localhost:9999",
-      group: "default",
-      pid: "0",
-      ttl: 60_000,
-    });
-
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("RESONATE_SCHEME defaults to http when not set", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_HOST = "localhost";
-    process.env.RESONATE_PORT = "8001";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:8001/api") {
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:8001/poll/default/0") {
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("RESONATE_SCHEME can be set to https", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_SCHEME = "https";
-    process.env.RESONATE_HOST = "secure-host";
-    process.env.RESONATE_PORT = "8443";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "https://secure-host:8443/api") {
-        p1.resolve(null);
-      } else if (urlStr === "https://secure-host:8443/poll/default/0") {
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("RESONATE_PORT defaults to 8001 when not set", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_HOST = "default-port-host";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://default-port-host:8001/api") {
-        p1.resolve(null);
-      } else if (urlStr === "http://default-port-host:8001/poll/default/0") {
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("RESONATE_SCHEME and RESONATE_PORT both use defaults", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_HOST = "defaults-host";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://defaults-host:8001/api") {
-        p1.resolve(null);
-      } else if (urlStr === "http://defaults-host:8001/poll/default/0") {
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
 });
 
 describe("Bearer token authentication", () => {
-  const originalEnv = process.env;
   const originalFetch = global.fetch;
 
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-    delete process.env.RESONATE_TOKEN;
-    delete process.env.RESONATE_USERNAME;
-    delete process.env.RESONATE_PASSWORD;
-  });
-
   afterAll(() => {
-    process.env = originalEnv;
     global.fetch = originalFetch;
   });
 
-  test("Bearer token auth", async () => {
+  test("Bearer token is passed through to HttpNetwork", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1774,7 +1419,7 @@ describe("Bearer token authentication", () => {
     await resonate.stop();
   });
 
-  test("Bearer token takes priority over basic auth", async () => {
+  test("Bearer token takes priority over basic auth when both passed", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1803,80 +1448,6 @@ describe("Bearer token authentication", () => {
     });
 
     resonate.promises.create("foo", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("RESONATE_TOKEN used when token arg not set", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_TOKEN = "env-token-456";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/api") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-456");
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-456");
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({
-      url: "http://localhost:9999",
-      group: "default",
-      pid: "0",
-      ttl: 60_000,
-    });
-
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
-  test("RESONATE_TOKEN takes priority over RESONATE_USERNAME and RESONATE_PASSWORD", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    process.env.RESONATE_TOKEN = "env-token-priority";
-    process.env.RESONATE_USERNAME = "ignored";
-    process.env.RESONATE_PASSWORD = "ignored";
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/api") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-priority");
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Bearer env-token-priority");
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({
-      url: "http://localhost:9999",
-      group: "default",
-      pid: "0",
-      ttl: 60_000,
-    });
-
-    resonate.promises.create("test", 0);
 
     await p1.promise;
     await p2.promise;

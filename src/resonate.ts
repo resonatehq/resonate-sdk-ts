@@ -80,17 +80,17 @@ export class Resonate {
    * Creates a new Resonate client instance.
    *
    * @param options - Configuration options for the client.
-   * @param options.url - Resonate server URL. Defaults to `process.env.RESONATE_URL`,
-   *   otherwise builds from `process.env.RESONATE_SCHEME` (defaults to `"http"`),
-   *   `process.env.RESONATE_HOST`, and `process.env.RESONATE_PORT` (defaults to `"8001"`).
+   * @param options.url - Resonate server URL. Falls back to `process.env.RESONATE_URL`.
    *   If no URL is resolved, a local in-memory network is used.
    * @param options.group - Worker group name. Defaults to `"default"`.
-   * @param options.pid - Process identifier for the client. Defaults to the
-   *   message source's generated PID.
+   * @param options.pid - Process identifier for the client. Defaults to a random UUID.
    * @param options.ttl - Time-to-live (in seconds) for claimed tasks. Defaults to `1 * util.MIN`.
-   * @param options.auth - Basic authentication credentials. Defaults to
-   *   `process.env.RESONATE_USERNAME` and `process.env.RESONATE_PASSWORD` when set.
-   * @param options.token - Bearer token for authentication. Defaults to `process.env.RESONATE_TOKEN`.
+   * @param options.auth - Basic authentication credentials. Passed through to HttpNetwork
+   *   which falls back to `RESONATE_USERNAME`/`RESONATE_PASSWORD` env vars.
+   * @param options.token - Bearer token for authentication. Passed through to HttpNetwork
+   *   which falls back to `RESONATE_TOKEN` env var.
+   * @param options.timeout - Network request timeout. Passed through to HttpNetwork
+   *   which falls back to `RESONATE_TIMEOUT` env var (default: 10s).
    * @param options.verbose - Enables verbose logging (shorthand for `logLevel: "debug"`). Defaults to `false`.
    * @param options.logLevel - Log level for the default ConsoleLogger. Defaults to `"warn"`. Takes precedence over `verbose`.
    * @param options.logger - Custom logger implementation. Defaults to {@link ConsoleLogger}.
@@ -106,6 +106,7 @@ export class Resonate {
     ttl = 1 * util.MIN,
     auth = undefined,
     token = undefined,
+    timeout = undefined,
     verbose = false,
     logLevel = undefined,
     logger = undefined,
@@ -119,6 +120,7 @@ export class Resonate {
     ttl?: number;
     auth?: { username: string; password: string };
     token?: string;
+    timeout?: number;
     verbose?: boolean;
     logLevel?: LogLevel;
     logger?: Logger;
@@ -140,70 +142,42 @@ export class Resonate {
 
     this.subscribeEvery = 60 * 1000; // make this configurable
 
-    // Determine the URL based on priority: url arg > RESONATE_URL > RESONATE_HOST+PORT
-    let resolvedUrl = url;
-    if (!resolvedUrl) {
-      if (process.env.RESONATE_URL) {
-        resolvedUrl = process.env.RESONATE_URL;
-      } else {
-        const resonateScheme = process.env.RESONATE_SCHEME ?? "http";
-        const resonateHost = process.env.RESONATE_HOST;
-        const resonatePort = process.env.RESONATE_PORT ?? "8001";
+    // Determine the URL: url arg > RESONATE_URL env var
+    // Only used to decide between LocalNetwork and HttpNetwork.
+    // Full URL/auth/token/timeout env var resolution is HttpNetwork's responsibility (3.7).
+    const resolvedUrl = url ?? (process.env.RESONATE_URL || undefined);
 
-        if (resonateHost) {
-          resolvedUrl = `${resonateScheme}://${resonateHost}:${resonatePort}`;
-        }
-      }
-    }
+    this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
 
-    // Determine the token based on priority: token arg > RESONATE_TOKEN
-    const resolvedToken = token ?? process.env.RESONATE_TOKEN;
-
-    // Determine the auth based on priority: auth arg > RESONATE_USERNAME+RESONATE_PASSWORD
-    let resolvedAuth = auth;
-    if (!resolvedAuth) {
-      const resonateUsername = process.env.RESONATE_USERNAME;
-      const resonatePassword = process.env.RESONATE_PASSWORD ?? "";
-
-      if (resonateUsername) {
-        resolvedAuth = { username: resonateUsername, password: resonatePassword };
-      }
-    }
-
-    let hearbeat: boolean;
+    let heartbeat: boolean;
     if (network) {
       this.network = network;
-      this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
-      hearbeat = true;
+      heartbeat = true;
+    } else if (resolvedUrl) {
+      const adapter = new PollMessageSource({
+        url: `${resolvedUrl}/poll/${encodeURIComponent(group)}/${encodeURIComponent(this.pid)}`,
+        auth,
+        token,
+        logger: this.logger,
+      });
+      this.network = new HttpNetwork({
+        url: resolvedUrl,
+        auth,
+        token,
+        timeout,
+        headers: {},
+        adapter,
+        logger: this.logger,
+      });
+      heartbeat = true;
     } else {
-      if (!resolvedUrl) {
-        this.network = new LocalNetwork({ pid, group });
-        this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
-        hearbeat = false;
-      } else {
-        const resolvedPid = pid ?? crypto.randomUUID().replace(/-/g, "");
-        const adapter = new PollMessageSource({
-          url: `${resolvedUrl}/poll/${encodeURIComponent(group)}/${encodeURIComponent(resolvedPid)}`,
-          auth: resolvedAuth,
-          token: resolvedToken,
-          logger: this.logger,
-        });
-        this.network = new HttpNetwork({
-          url: resolvedUrl,
-          auth: resolvedAuth,
-          token: resolvedToken,
-          headers: {},
-          adapter,
-        });
-
-        this.pid = resolvedPid;
-        hearbeat = true;
-      }
+      this.network = new LocalNetwork({ pid: this.pid, group });
+      heartbeat = false;
     }
 
     this.send = this.network.send;
 
-    if (hearbeat) {
+    if (heartbeat) {
       this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.send, this.logger);
     } else {
       this.heartbeat = new NoopHeartbeat();
@@ -274,113 +248,6 @@ export class Resonate {
         }
       }
     }, this.subscribeEvery);
-  }
-
-  /**
-   * Initializes a Resonate client instance for local development.
-   *
-   * Creates and returns a Resonate client configured for **local-only execution**
-   * with zero external dependencies. All state is stored in local memory -- no
-   * network or external persistence is required. This mode is ideal for rapid
-   * testing, debugging, and experimentation before connecting to a Resonate server.
-   *
-   * The client runs with a `"default"` worker group, a `"default"` process ID,
-   * and an effectively infinite TTL (`Number.MAX_SAFE_INTEGER`) for tasks.
-   *
-   * @returns A {@link Resonate} client instance configured for local development.
-   *
-   * @example
-   * ```ts
-   * const resonate = Resonate.local();
-   * resonate.register(foo);
-   * const result = await resonate.run("foo.1", foo, { data: "test" });
-   * console.log(result);
-   * ```
-   */
-  static local({
-    verbose = false,
-    logLevel = undefined,
-    logger = undefined,
-    encryptor = undefined,
-  }: {
-    verbose?: boolean;
-    logLevel?: LogLevel;
-    logger?: Logger;
-    encryptor?: Encryptor;
-  } = {}): Resonate {
-    return new Resonate({
-      group: "default",
-      pid: "default",
-      ttl: Number.MAX_SAFE_INTEGER,
-      verbose,
-      logLevel,
-      logger,
-      encryptor,
-    });
-  }
-
-  /**
-   * Initializes a Resonate client instance with remote configuration.
-   *
-   * Creates and returns a Resonate client that connects to a **Resonate Server**
-   * and optional remote message sources. This configuration enables distributed,
-   * durable workers to cooperate and execute functions via **durable RPCs**.
-   *
-   * By default, the client connects to a Resonate Server running locally
-   * (`http://localhost:8001`) and joins the `"default"` worker group.
-   *
-   * The client is identified by a unique process ID (`pid`) and maintains
-   * claimed task leases for the duration specified by `ttl`.
-   *
-   * @param options - Configuration options for the remote client.
-   * @param options.url - The base URL of the remote Resonate Server. Defaults to `"http://localhost:8001"`.
-   * @param options.group - The worker group name. Defaults to `"default"`.
-   * @param options.pid - Optional process identifier for the client. Defaults to a randomly generated UUID.
-   * @param options.ttl - Time-to-live (in seconds) for claimed tasks. Defaults to `1 * util.MIN`.
-   * @param options.auth - Optional authentication credentials for connecting to the remote server.
-   * @param options.token - Optional bearer token for authentication. Takes priority over basic auth.
-   *
-   * @returns A {@link Resonate} client instance configured for remote operation.
-   *
-   * @example
-   * ```ts
-   * const resonate = Resonate.remote({
-   *   url: "https://resonate.example.com",
-   *   group: "analytics",
-   *   ttl: 30,
-   *   token: "bearer-token-here",
-   * });
-   *
-   * const result = await resonate.run("task-42", "processData", { input: "dataset.csv" });
-   * console.log(result);
-   * ```
-   */
-  static remote({
-    url = "http://localhost:8001",
-    group = "default",
-    pid = crypto.randomUUID().replace(/-/g, ""),
-    ttl = 1 * util.MIN,
-    auth = undefined,
-    token = undefined,
-    verbose = false,
-    logLevel = undefined,
-    logger = undefined,
-    encryptor = undefined,
-    prefix = undefined,
-  }: {
-    url?: string;
-    group?: string;
-    pid?: string;
-    ttl?: number;
-    auth?: { username: string; password: string };
-    token?: string;
-    verbose?: boolean;
-    logLevel?: LogLevel;
-    logger?: Logger;
-    encryptor?: Encryptor;
-    prefix?: string;
-  } = {}): Resonate {
-    return new Resonate({ url, group, pid, ttl, auth, token, verbose, logLevel, logger, encryptor, prefix });
   }
 
   /**
