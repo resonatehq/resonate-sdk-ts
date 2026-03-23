@@ -1,6 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { EventSource } from "eventsource";
-import exceptions from "../exceptions.js";
 import type { Logger } from "../logger.js";
 import * as util from "../util.js";
 import type { Network } from "./network.js";
@@ -85,56 +84,109 @@ export class HttpNetwork implements Network {
     this.adapter?.onReceive(callback);
   }
 
+  // Valid protocol status codes — responses with these statuses are returned as-is.
+  // Everything else is a platform failure that gets collapsed into a synthetic timeout.
+  private static readonly PROTOCOL_STATUSES = new Set([200, 300, 404, 409, 422, 501]);
+
+  private syntheticTimeout<K extends Request["kind"]>(
+    req: Extract<Request, { kind: K }>,
+    cause: string,
+  ): Extract<Response, { kind: K }> {
+    return {
+      kind: req.kind,
+      head: {
+        corrId: req.head.corrId,
+        status: 500,
+        version: req.head.version,
+      },
+      data: `platform failure: ${cause}`,
+    } as Extract<Response, { kind: K }>;
+  }
+
   send = async <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
   ): Promise<Extract<Response, { kind: K }>> => {
     this.logger?.debug({ component: "network", kind: req.kind, corrId: req.head.corrId }, "sending request");
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-    let resStr: string;
     try {
-      const response = await fetch(`${this.url}/api`, {
-        method: "POST",
-        headers: this.headers,
-        body: JSON.stringify(req),
-        signal: controller.signal,
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      resStr = await response.text();
+      let httpResponse: globalThis.Response;
+      try {
+        httpResponse = await fetch(`${this.url}/api`, {
+          method: "POST",
+          headers: this.headers,
+          body: JSON.stringify(req),
+          signal: controller.signal,
+        });
+      } catch (e) {
+        const cause = e instanceof Error ? e.message : String(e);
+        this.logger?.warn(
+          { component: "network", kind: req.kind, corrId: req.head.corrId, error: cause },
+          `platform failure: fetch error`,
+        );
+        return this.syntheticTimeout(req, cause);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      // Check HTTP status — non-protocol statuses are platform failures
+      if (!HttpNetwork.PROTOCOL_STATUSES.has(httpResponse.status)) {
+        const cause = `HTTP ${httpResponse.status}`;
+        this.logger?.warn(
+          { component: "network", kind: req.kind, corrId: req.head.corrId, error: cause },
+          `platform failure: non-protocol HTTP status`,
+        );
+        return this.syntheticTimeout(req, cause);
+      }
+
+      let resStr: string;
+      try {
+        resStr = await httpResponse.text();
+      } catch (e) {
+        const cause = e instanceof Error ? e.message : String(e);
+        this.logger?.warn(
+          { component: "network", kind: req.kind, corrId: req.head.corrId, error: cause },
+          `platform failure: failed to read response body`,
+        );
+        return this.syntheticTimeout(req, cause);
+      }
+
+      let res: unknown;
+      try {
+        res = JSON.parse(resStr);
+      } catch {
+        this.logger?.warn(
+          { component: "network", kind: req.kind, corrId: req.head.corrId },
+          `platform failure: failed to parse response JSON`,
+        );
+        return this.syntheticTimeout(req, "failed to parse response JSON");
+      }
+
+      if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
+        this.logger?.warn(
+          { component: "network", kind: req.kind, corrId: req.head.corrId },
+          `platform failure: response did not match request`,
+        );
+        return this.syntheticTimeout(req, "response did not match request");
+      }
+
+      this.logger?.debug(
+        { component: "network", kind: res.kind, corrId: res.head.corrId, status: res.head.status },
+        "received response",
+      );
+
+      return res as Extract<Response, { kind: K }>;
     } catch (e) {
-      throw exceptions.SERVER_ERROR(e instanceof Error ? e.message : String(e), true, {
-        code: 500,
-        message: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      clearTimeout(timeoutId);
+      // Catch-all: any unexpected error is also collapsed
+      const cause = e instanceof Error ? e.message : String(e);
+      this.logger?.warn(
+        { component: "network", kind: req.kind, corrId: req.head.corrId, error: cause },
+        `platform failure: unexpected error`,
+      );
+      return this.syntheticTimeout(req, cause);
     }
-
-    let res: unknown;
-    try {
-      res = JSON.parse(resStr);
-    } catch {
-      throw exceptions.SERVER_ERROR("invalid response", true, {
-        code: 500,
-        message: "Failed to parse response JSON",
-      });
-    }
-
-    if (!isResponse(res) || res.kind !== req.kind || res.head.corrId !== req.head.corrId) {
-      throw exceptions.SERVER_ERROR("invalid response", true, {
-        code: 500,
-        message: "Response did not match request",
-      });
-    }
-
-    this.logger?.debug(
-      { component: "network", kind: res.kind, corrId: res.head.corrId, status: res.head.status },
-      "received response",
-    );
-
-    return res as Extract<Response, { kind: K }>;
   };
 }
 

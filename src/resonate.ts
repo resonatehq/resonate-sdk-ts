@@ -3,7 +3,7 @@ import { WallClock } from "./clock.js";
 import { Codec } from "./codec.js";
 import { Core } from "./core.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
-import exceptions, { ResonateError } from "./exceptions.js";
+import exceptions from "./exceptions.js";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
 import { ConsoleLogger, type LogLevel, type Logger } from "./logger.js";
 import { HttpNetwork, PollMessageSource } from "./network/http.js";
@@ -679,22 +679,12 @@ export class Resonate {
   private async promiseRegisterListener(req: PromiseRegisterListenerReq): Promise<PromiseRecord> {
     const retryDelay = 5000;
     while (true) {
-      try {
-        const res = await this.send(req);
-        if (!isSuccess(res)) {
-          await delay(retryDelay);
-          continue;
-        }
-        return this.codec.decodePromise(res.data.promise);
-      } catch (err) {
-        if (!(err instanceof ResonateError)) {
-          this.logger.warn(
-            { component: "resonate", error: err instanceof Error ? err.message : String(err) },
-            "promiseRegisterListener failed",
-          );
-        }
+      const res = await this.send(req);
+      if (!isSuccess(res)) {
         await delay(retryDelay);
+        continue;
       }
+      return this.codec.decodePromise(res.data.promise);
     }
   }
 
