@@ -8,7 +8,7 @@ import type { PromiseRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";
-import { TraceCollector, type Trace } from "./trace.js";
+import { type Trace, TraceCollector } from "./trace.js";
 
 import type { Effects, Func } from "./types.js";
 import * as util from "./util.js";

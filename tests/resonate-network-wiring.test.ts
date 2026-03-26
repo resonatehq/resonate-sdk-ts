@@ -8,10 +8,10 @@
  * 4. Messages received via `network.recv` trigger `onMessage` processing
  */
 
+import type { Context } from "../src/context.js";
 import type { Network, Send } from "../src/network/network.js";
 import type { Message, PromiseRecord, Request, Response } from "../src/network/types.js";
 import { Resonate } from "../src/resonate.js";
-import type { Context } from "../src/context.js";
 import * as util from "../src/util.js";
 
 // ---------------------------------------------------------------------------
@@ -52,11 +52,13 @@ class MockNetwork implements Network {
   // Response factory: given a parsed request, produce a response object
   private responseFactory: (req: any) => any;
 
-  constructor(opts: {
-    unicast?: string;
-    anycast?: string;
-    responseFactory?: (req: any) => any;
-  } = {}) {
+  constructor(
+    opts: {
+      unicast?: string;
+      anycast?: string;
+      responseFactory?: (req: any) => any;
+    } = {},
+  ) {
     this.unicast = opts.unicast ?? "mock://uni@mock-group/mock-pid";
     this.anycast = opts.anycast ?? "mock://any@mock-group";
     this.responseFactory = opts.responseFactory ?? MockNetwork.defaultResponseFactory;
@@ -104,7 +106,14 @@ class MockNetwork implements Network {
         head: { corrId, status: 200, version: "" },
         data: {
           promise,
-          task: { id: `task-${promiseData.id}`, state: "acquired", version: 1, resumes: [], pid: req.data.pid, ttl: req.data.ttl },
+          task: {
+            id: `task-${promiseData.id}`,
+            state: "acquired",
+            version: 1,
+            resumes: [],
+            pid: req.data.pid,
+            ttl: req.data.ttl,
+          },
           preload: [],
         },
       };

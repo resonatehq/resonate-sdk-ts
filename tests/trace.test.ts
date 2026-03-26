@@ -11,30 +11,33 @@ import type { PromiseRecord } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Exponential, Never } from "../src/retries.js";
-import type { Effects, Func } from "../src/types.js";
-import * as util from "../src/util.js";
 import {
-  type Trace,
-  isWellFormed,
-  uniqueSpawn,
-  exclusiveLifecycle,
-  spawnIsFirst,
-  terminalIsLast,
+  awaitThenResumeOrSuspend,
   blockIsSole,
   dedupIsSole,
-  uniqueTerminal,
-  awaitThenResumeOrSuspend,
-  runHasCallee,
-  rpcHasCallee,
+  exclusiveLifecycle,
+  isWellFormed,
   rootSpawn,
+  rpcHasCallee,
+  runHasCallee,
+  spawnIsFirst,
+  type Trace,
+  terminalIsLast,
+  uniqueSpawn,
+  uniqueTerminal,
 } from "../src/trace.js";
+import type { Effects } from "../src/types.js";
+import * as util from "../src/util.js";
 
 class TestHeartbeat implements Heartbeat {
   start(): void {}
   stop(): void {}
 }
 
-function buildComputation(registry: Registry, id = "foo.1"): {
+function buildComputation(
+  registry: Registry,
+  id = "foo.1",
+): {
   computation: Computation;
   network: Network;
   effects: Effects;
@@ -163,9 +166,7 @@ describe("Trace", () => {
       expect(childSpawns.length).toBe(1);
 
       // Should have return for child
-      const childReturns = trace.filter(
-        (e) => e.kind === "return" && e.id !== "foo.1",
-      );
+      const childReturns = trace.filter((e) => e.kind === "return" && e.id !== "foo.1");
       expect(childReturns.length).toBe(1);
       if (childReturns[0].kind === "return") {
         expect(childReturns[0].state).toBe("resolved");
@@ -259,10 +260,7 @@ describe("Trace", () => {
 
       // Both rpcs before any await
       const firstAwaitIdx = trace.findIndex((e) => e.kind === "await");
-      const lastRpcIdx = trace.reduce(
-        (max, e, i) => (e.kind === "rpc" ? i : max),
-        -1,
-      );
+      const lastRpcIdx = trace.reduce((max, e, i) => (e.kind === "rpc" ? i : max), -1);
       expect(lastRpcIdx).toBeLessThan(firstAwaitIdx);
 
       expect(isWellFormed(trace)).toBe(true);
@@ -676,9 +674,7 @@ describe("Trace", () => {
     });
 
     test("isWellFormed: dedup-only trace passes", () => {
-      const t: Trace = [
-        { kind: "dedup", id: "a", state: "resolved", value: 42 },
-      ];
+      const t: Trace = [{ kind: "dedup", id: "a", state: "resolved", value: 42 }];
       // dedup is sole, root is dedup not spawn — rootSpawn will fail
       // because trace must start with spawn for well-formedness
       // Actually: a dedup-only trace starts with dedup not spawn, so rootSpawn fails

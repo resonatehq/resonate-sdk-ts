@@ -5,7 +5,7 @@ import { Core } from "./core.js";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import exceptions, { ResonateTimeoutException } from "./exceptions.js";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
-import { ConsoleLogger, type LogLevel, type Logger } from "./logger.js";
+import { ConsoleLogger, type Logger, type LogLevel } from "./logger.js";
 import { HttpNetwork, PollMessageSource } from "./network/http.js";
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
@@ -360,12 +360,14 @@ export class Resonate {
     });
 
     if (task && task.state === "acquired") {
-      this.core.executeUntilBlocked(task, promise).catch((err) =>
-        this.logger.warn(
-          { component: "resonate", error: err instanceof Error ? err.message : String(err) },
-          "executeUntilBlocked failed",
-        ),
-      );
+      this.core
+        .executeUntilBlocked(task, promise)
+        .catch((err) =>
+          this.logger.warn(
+            { component: "resonate", error: err instanceof Error ? err.message : String(err) },
+            "executeUntilBlocked failed",
+          ),
+        );
     }
 
     return this.createHandle(promise);
@@ -648,12 +650,14 @@ export class Resonate {
 
   private onMessage(msg: Message): void {
     if (msg.kind === "execute") {
-      this.core.onMessage(msg).catch((err) =>
-        this.logger.warn(
-          { component: "resonate", error: err instanceof Error ? err.message : String(err) },
-          "onMessage failed",
-        ),
-      );
+      this.core
+        .onMessage(msg)
+        .catch((err) =>
+          this.logger.warn(
+            { component: "resonate", error: err instanceof Error ? err.message : String(err) },
+            "onMessage failed",
+          ),
+        );
       return;
     }
     util.assert(msg.kind === "unblock");

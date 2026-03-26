@@ -1,7 +1,7 @@
-import { describe, expect, test, beforeEach, afterEach } from "@jest/globals";
-import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
-import { HttpNetwork } from "../../src/network/http.js";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import { ResonateTimeoutException } from "../../src/exceptions.js";
+import { HttpNetwork } from "../../src/network/http.js";
 
 // Helper: create a local HTTP server that responds on /api
 function createTestServer(
@@ -184,11 +184,13 @@ describe("HttpNetwork.send()", () => {
   test("throws ResonateTimeoutException on mismatched kind", async () => {
     const result = await createTestServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        kind: "promise.create",
-        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
-        data: {},
-      }));
+      res.end(
+        JSON.stringify({
+          kind: "promise.create",
+          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+          data: {},
+        }),
+      );
     });
     server = result.server;
 
@@ -203,11 +205,13 @@ describe("HttpNetwork.send()", () => {
   test("throws ResonateTimeoutException on mismatched corrId", async () => {
     const result = await createTestServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        kind: "promise.get",
-        head: { corrId: "wrong-corr-id", status: 200, version: "1.0.0" },
-        data: {},
-      }));
+      res.end(
+        JSON.stringify({
+          kind: "promise.get",
+          head: { corrId: "wrong-corr-id", status: 200, version: "1.0.0" },
+          data: {},
+        }),
+      );
     });
     server = result.server;
 
@@ -270,27 +274,28 @@ describe("HttpNetwork.send()", () => {
 
   test("protocol statuses (200, 300, 404, 409, 422, 501) are returned, not thrown", async () => {
     for (const status of [200, 300, 404, 409, 422, 501]) {
-      const responseBody = status === 200
-        ? JSON.stringify({
-            kind: "promise.get",
-            head: { corrId: "corr-1", status: 200, version: "1.0.0" },
-            data: {
-              promise: {
-                id: "p1",
-                state: "pending",
-                param: { headers: {}, data: "" },
-                value: { headers: {}, data: "" },
-                tags: {},
-                timeoutAt: Date.now() + 60000,
-                createdAt: Date.now(),
+      const responseBody =
+        status === 200
+          ? JSON.stringify({
+              kind: "promise.get",
+              head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+              data: {
+                promise: {
+                  id: "p1",
+                  state: "pending",
+                  param: { headers: {}, data: "" },
+                  value: { headers: {}, data: "" },
+                  tags: {},
+                  timeoutAt: Date.now() + 60000,
+                  createdAt: Date.now(),
+                },
               },
-            },
-          })
-        : JSON.stringify({
-            kind: "promise.get",
-            head: { corrId: "corr-1", status, version: "1.0.0" },
-            data: "protocol error",
-          });
+            })
+          : JSON.stringify({
+              kind: "promise.get",
+              head: { corrId: "corr-1", status, version: "1.0.0" },
+              data: "protocol error",
+            });
 
       const result = await createTestServer((_req, res) => {
         res.writeHead(status, { "Content-Type": "application/json" });
@@ -345,11 +350,23 @@ describe("HttpNetwork environment variable configuration", () => {
     const result = await createTestServer((req, res) => {
       capturedUrl = `http://${req.headers.host}${req.url}`;
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        kind: "promise.get",
-        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
-        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
-      }));
+      res.end(
+        JSON.stringify({
+          kind: "promise.get",
+          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+          data: {
+            promise: {
+              id: "p1",
+              state: "pending",
+              param: { headers: {}, data: "" },
+              value: { headers: {}, data: "" },
+              tags: {},
+              timeoutAt: Date.now() + 60000,
+              createdAt: Date.now(),
+            },
+          },
+        }),
+      );
     });
 
     const port = result.port;
@@ -367,11 +384,23 @@ describe("HttpNetwork environment variable configuration", () => {
     const result = await createTestServer((req, res) => {
       capturedUrl = `http://${req.headers.host}${req.url}`;
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        kind: "promise.get",
-        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
-        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
-      }));
+      res.end(
+        JSON.stringify({
+          kind: "promise.get",
+          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+          data: {
+            promise: {
+              id: "p1",
+              state: "pending",
+              param: { headers: {}, data: "" },
+              value: { headers: {}, data: "" },
+              tags: {},
+              timeoutAt: Date.now() + 60000,
+              createdAt: Date.now(),
+            },
+          },
+        }),
+      );
     });
 
     const port = result.port;
@@ -413,11 +442,23 @@ describe("HttpNetwork environment variable configuration", () => {
     const result = await createTestServer((req, res) => {
       capturedAuth = req.headers.authorization ?? "";
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        kind: "promise.get",
-        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
-        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
-      }));
+      res.end(
+        JSON.stringify({
+          kind: "promise.get",
+          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+          data: {
+            promise: {
+              id: "p1",
+              state: "pending",
+              param: { headers: {}, data: "" },
+              value: { headers: {}, data: "" },
+              tags: {},
+              timeoutAt: Date.now() + 60000,
+              createdAt: Date.now(),
+            },
+          },
+        }),
+      );
     });
 
     process.env.RESONATE_TOKEN = "env-token-abc";
@@ -434,16 +475,32 @@ describe("HttpNetwork environment variable configuration", () => {
     const result = await createTestServer((req, res) => {
       capturedAuth = req.headers.authorization ?? "";
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        kind: "promise.get",
-        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
-        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
-      }));
+      res.end(
+        JSON.stringify({
+          kind: "promise.get",
+          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+          data: {
+            promise: {
+              id: "p1",
+              state: "pending",
+              param: { headers: {}, data: "" },
+              value: { headers: {}, data: "" },
+              tags: {},
+              timeoutAt: Date.now() + 60000,
+              createdAt: Date.now(),
+            },
+          },
+        }),
+      );
     });
 
     process.env.RESONATE_TOKEN = "env-token-should-not-use";
 
-    const network = new HttpNetwork({ url: `http://127.0.0.1:${result.port}`, timeout: 500, token: "programmatic-token" });
+    const network = new HttpNetwork({
+      url: `http://127.0.0.1:${result.port}`,
+      timeout: 500,
+      token: "programmatic-token",
+    });
     await network.send(makeRequest());
     await closeServer(result.server);
 
@@ -455,11 +512,23 @@ describe("HttpNetwork environment variable configuration", () => {
     const result = await createTestServer((req, res) => {
       capturedAuth = req.headers.authorization ?? "";
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        kind: "promise.get",
-        head: { corrId: "corr-1", status: 200, version: "1.0.0" },
-        data: { promise: { id: "p1", state: "pending", param: { headers: {}, data: "" }, value: { headers: {}, data: "" }, tags: {}, timeoutAt: Date.now() + 60000, createdAt: Date.now() } },
-      }));
+      res.end(
+        JSON.stringify({
+          kind: "promise.get",
+          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+          data: {
+            promise: {
+              id: "p1",
+              state: "pending",
+              param: { headers: {}, data: "" },
+              value: { headers: {}, data: "" },
+              tags: {},
+              timeoutAt: Date.now() + 60000,
+              createdAt: Date.now(),
+            },
+          },
+        }),
+      );
     });
 
     process.env.RESONATE_TOKEN = "env-token-should-not-use";

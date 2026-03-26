@@ -1520,9 +1520,7 @@ export class LocalNetwork implements Network {
     this.started = false;
   }
 
-  send = <K extends Request["kind"]>(
-    req: Extract<Request, { kind: K }>,
-  ): Promise<Extract<Response, { kind: K }>> => {
+  send = <K extends Request["kind"]>(req: Extract<Request, { kind: K }>): Promise<Extract<Response, { kind: K }>> => {
     const { corrId, version } = req.head;
 
     const now = Date.now();

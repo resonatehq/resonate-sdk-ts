@@ -3,7 +3,7 @@ import { Decorator, type PromiseCompleted, type Value } from "./decorator.js";
 import type { Logger } from "./logger.js";
 import type { PromiseRecord } from "./network/types.js";
 import { Never } from "./retries.js";
-import { TraceCollector } from "./trace.js";
+import type { TraceCollector } from "./trace.js";
 import type { Effects, Result, Yieldable } from "./types.js";
 import * as util from "./util.js";
 
@@ -53,6 +53,11 @@ export class Coroutine<T> {
     }
   }
 
+  private emitTrace(event: import("./trace.js").Event): void {
+    this.trace.emit(event);
+    this.logger.debug({ component: "trace", ...event }, `trace: ${event.kind}`);
+  }
+
   public static async exec(
     logger: Logger,
     ctx: InnerContext,
@@ -63,11 +68,6 @@ export class Coroutine<T> {
   ): Promise<Suspended | Done> {
     const coroutine = new Coroutine(ctx, logger, new Decorator(func(ctx, ...args)), effects, trace);
     return await coroutine.exec();
-  }
-
-  private emitTrace(event: import("./trace.js").Event): void {
-    this.trace.emit(event);
-    this.logger.debug({ component: "trace", ...event }, `trace: ${event.kind}`);
   }
 
   private async exec(): Promise<Suspended | Done> {

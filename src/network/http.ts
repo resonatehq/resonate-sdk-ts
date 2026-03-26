@@ -335,10 +335,7 @@ export class PollMessageSource implements HttpAdapter {
       parsed = JSON.parse(msgStr);
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
-      this.logger?.warn(
-        { component: "network", error, raw_data: msgStr.slice(0, 200) },
-        "message parse error",
-      );
+      this.logger?.warn({ component: "network", error, raw_data: msgStr.slice(0, 200) }, "message parse error");
       return;
     }
     if (!isMessage(parsed)) {
@@ -351,13 +348,8 @@ export class PollMessageSource implements HttpAdapter {
 
     const msgKind = parsed.kind;
     const idField =
-      msgKind === "execute"
-        ? { task_id: parsed.data?.task?.id }
-        : { promise_id: parsed.data?.promise?.id };
-    this.logger?.debug(
-      { component: "network", msg_kind: msgKind, ...idField },
-      "message received",
-    );
+      msgKind === "execute" ? { task_id: parsed.data?.task?.id } : { promise_id: parsed.data?.promise?.id };
+    this.logger?.debug({ component: "network", msg_kind: msgKind, ...idField }, "message received");
 
     for (const callback of this.callbacks) {
       callback(parsed);
@@ -472,10 +464,7 @@ export class PushMessageSource implements HttpAdapter {
       parsed = JSON.parse(msgStr);
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
-      this.logger?.warn(
-        { component: "network", error, raw_data: msgStr.slice(0, 200) },
-        "message parse error",
-      );
+      this.logger?.warn({ component: "network", error, raw_data: msgStr.slice(0, 200) }, "message parse error");
       return;
     }
     if (!isMessage(parsed)) {
@@ -488,13 +477,8 @@ export class PushMessageSource implements HttpAdapter {
 
     const msgKind = parsed.kind;
     const idField =
-      msgKind === "execute"
-        ? { task_id: parsed.data?.task?.id }
-        : { promise_id: parsed.data?.promise?.id };
-    this.logger?.debug(
-      { component: "network", msg_kind: msgKind, ...idField },
-      "message received",
-    );
+      msgKind === "execute" ? { task_id: parsed.data?.task?.id } : { promise_id: parsed.data?.promise?.id };
+    this.logger?.debug({ component: "network", msg_kind: msgKind, ...idField }, "message received");
 
     for (const callback of this.callbacks) {
       callback(parsed);
