@@ -3,11 +3,11 @@ import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
 import { Coroutine, type Suspended } from "../src/coroutine.js";
 import { ConsoleLogger } from "../src/logger.js";
-import { TraceCollector } from "../src/trace.js";
 import type { PromiseRecord, Request, Response } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
+import { TraceCollector } from "../src/trace.js";
 import type { Effects, Result, Send } from "../src/types.js";
 import * as util from "../src/util.js";
 

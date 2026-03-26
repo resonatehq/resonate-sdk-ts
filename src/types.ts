@@ -22,7 +22,7 @@ export type Return<T> = T extends (...args: any[]) => Generator<infer __, infer 
 export type Result<V, E> = { kind: "value"; value: V } | { kind: "error"; error: E };
 
 // Re-export Send and Recv from the Network module for convenience
-export type { Send, Recv } from "./network/network.js";
+export type { Recv, Send } from "./network/network.js";
 
 // Effects
 

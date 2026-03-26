@@ -165,10 +165,7 @@ export function awaitThenResumeOrSuspend(t: Trace): boolean {
       for (let j = i + 1; j < t.length; j++) {
         if (t[j].id === e.id) {
           const next = t[j];
-          if (
-            (next.kind === "resume" && "callee" in next && next.callee === e.callee) ||
-            next.kind === "suspend"
-          ) {
+          if ((next.kind === "resume" && "callee" in next && next.callee === e.callee) || next.kind === "suspend") {
             found = true;
           }
           // Whether found or not, this is the next event for p — must be resume or suspend
