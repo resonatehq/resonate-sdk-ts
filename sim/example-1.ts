@@ -3,6 +3,7 @@ import { StepClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import type * as context from "../src/context.js";
 import { Registry } from "../src/registry.js";
+import { VERSION } from "../src/util.js";
 import { ServerProcess } from "./src/server.js";
 import { Message, Random, Simulator, unicast } from "./src/simulator.js";
 import { WorkerProcess } from "./src/worker.js";
@@ -54,7 +55,7 @@ sim.repeat(1, () => {
       unicast("server"),
       {
         kind: "debug.tick",
-        head: { corrId: randomUUID(), version: "" },
+        head: { corrId: randomUUID(), version: VERSION },
         data: { time: clock.time },
       },
       { requ: true },
@@ -69,7 +70,7 @@ sim.repeat(1, () => {
       unicast("server"),
       {
         kind: "promise.create",
-        head: { corrId: randomUUID(), version: "" },
+        head: { corrId: randomUUID(), version: VERSION },
         data: {
           id,
           timeoutAt: Number.MAX_SAFE_INTEGER,

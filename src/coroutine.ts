@@ -320,7 +320,7 @@ export class Coroutine<T> {
     return this.effects.promiseSettle(
       {
         kind: "promise.settle",
-        head: { corrId: randomUUID(), version: "" },
+        head: { corrId: randomUUID(), version: util.VERSION },
         data: {
           id,
           state: result.kind === "value" ? "resolved" : "rejected",

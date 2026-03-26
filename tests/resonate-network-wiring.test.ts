@@ -103,7 +103,7 @@ class MockNetwork implements Network {
       promise.param = promiseData.param ?? { data: "", headers: {} };
       return {
         kind,
-        head: { corrId, status: 200, version: "" },
+        head: { corrId, status: 200, version: util.VERSION },
         data: {
           promise,
           task: {
@@ -125,7 +125,7 @@ class MockNetwork implements Network {
       promise.param = promiseData.param ?? { data: "", headers: {} };
       return {
         kind,
-        head: { corrId, status: 200, version: "" },
+        head: { corrId, status: 200, version: util.VERSION },
         data: { promise },
       };
     }
@@ -134,7 +134,7 @@ class MockNetwork implements Network {
       const promise = makePromise(req.data.awaited, "resolved", "mock-result");
       return {
         kind,
-        head: { corrId, status: 200, version: "" },
+        head: { corrId, status: 200, version: util.VERSION },
         data: { promise },
       };
     }
@@ -142,7 +142,7 @@ class MockNetwork implements Network {
     if (kind === "task.fulfill" || kind === "task.halt") {
       return {
         kind,
-        head: { corrId, status: 200, version: "" },
+        head: { corrId, status: 200, version: util.VERSION },
         data: {},
       };
     }
@@ -150,7 +150,7 @@ class MockNetwork implements Network {
     // Fallback: return a generic 200 success
     return {
       kind,
-      head: { corrId, status: 200, version: "" },
+      head: { corrId, status: 200, version: util.VERSION },
       data: {},
     };
   }
@@ -213,7 +213,7 @@ describe("Resonate <-> Network Wiring", () => {
         if (req.kind === "task.create") {
           return {
             kind: "task.create",
-            head: { corrId, status: 409, version: "" },
+            head: { corrId, status: 409, version: util.VERSION },
             data: "conflict",
           };
         }
@@ -222,7 +222,7 @@ describe("Resonate <-> Network Wiring", () => {
           const promise = makePromise(req.data.awaited, "resolved", "conflict-result");
           return {
             kind: "promise.register_listener",
-            head: { corrId, status: 200, version: "" },
+            head: { corrId, status: 200, version: util.VERSION },
             data: { promise },
           };
         }
@@ -322,7 +322,7 @@ describe("Resonate <-> Network Wiring", () => {
           promise.param = promiseData.param ?? { data: "", headers: {} };
           const resp: any = {
             kind: "task.create",
-            head: { corrId, status: 200, version: "" },
+            head: { corrId, status: 200, version: util.VERSION },
             data: {
               promise,
               preload: [],
@@ -335,7 +335,7 @@ describe("Resonate <-> Network Wiring", () => {
           const promise = makePromise(req.data.awaited, "pending", null);
           return {
             kind: "promise.register_listener",
-            head: { corrId, status: 200, version: "" },
+            head: { corrId, status: 200, version: util.VERSION },
             data: { promise },
           };
         }

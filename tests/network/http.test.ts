@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import { ResonateTimeoutException } from "../../src/exceptions.js";
 import { HttpNetwork } from "../../src/network/http.js";
+import { VERSION } from "../../src/util.js";
 
 // Helper: create a local HTTP server that responds on /api
 function createTestServer(
@@ -38,7 +39,7 @@ function closeServer(server: Server): Promise<void> {
 function makeRequest(corrId = "corr-1") {
   return {
     kind: "promise.get" as const,
-    head: { corrId, version: "1.0.0" },
+    head: { corrId, version: VERSION },
     data: { id: "p1" },
   };
 }
@@ -60,7 +61,7 @@ describe("HttpNetwork.send()", () => {
   test("returns typed Response for HTTP 200", async () => {
     const responseBody = JSON.stringify({
       kind: "promise.get",
-      head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+      head: { corrId: "corr-1", status: 200, version: VERSION },
       data: {
         promise: {
           id: "p1",
@@ -99,7 +100,7 @@ describe("HttpNetwork.send()", () => {
     test(`returns typed Response for protocol HTTP ${status}`, async () => {
       const responseBody = JSON.stringify({
         kind: "promise.get",
-        head: { corrId: "corr-1", status, version: "1.0.0" },
+        head: { corrId: "corr-1", status, version: VERSION },
         data: "not found",
       });
 
@@ -125,7 +126,7 @@ describe("HttpNetwork.send()", () => {
   test("returns typed Response for protocol HTTP 300 (redirect)", async () => {
     const responseBody = JSON.stringify({
       kind: "promise.get",
-      head: { corrId: "corr-1", status: 300, version: "1.0.0" },
+      head: { corrId: "corr-1", status: 300, version: VERSION },
       data: "redirect",
     });
 
@@ -194,7 +195,7 @@ describe("HttpNetwork.send()", () => {
       res.end(
         JSON.stringify({
           kind: "promise.create",
-          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+          head: { corrId: "corr-1", status: 200, version: VERSION },
           data: {},
         }),
       );
@@ -215,7 +216,7 @@ describe("HttpNetwork.send()", () => {
       res.end(
         JSON.stringify({
           kind: "promise.get",
-          head: { corrId: "wrong-corr-id", status: 200, version: "1.0.0" },
+          head: { corrId: "wrong-corr-id", status: 200, version: VERSION },
           data: {},
         }),
       );
@@ -300,7 +301,7 @@ describe("HttpNetwork.send()", () => {
             })
           : JSON.stringify({
               kind: "promise.get",
-              head: { corrId: "corr-1", status, version: "1.0.0" },
+              head: { corrId: "corr-1", status, version: VERSION },
               data: "protocol error",
             });
 

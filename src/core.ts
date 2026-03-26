@@ -126,7 +126,7 @@ export class Core {
   private async releaseTask(task: TaskRecord): Promise<void> {
     await this.send({
       kind: "task.release",
-      head: { corrId: randomUUID(), version: "" },
+      head: { corrId: randomUUID(), version: util.VERSION },
       data: { id: task.id, version: task.version },
     });
   }
@@ -138,13 +138,13 @@ export class Core {
   ): Promise<{ continue: true; preload: PromiseRecord[] } | { continue: false }> {
     const res = await this.send({
       kind: "task.suspend",
-      head: { corrId: randomUUID(), version: "" },
+      head: { corrId: randomUUID(), version: util.VERSION },
       data: {
         id: task.id,
         version: task.version,
         actions: awaited.map((a) => ({
           kind: "promise.register_callback",
-          head: { corrId: randomUUID(), version: "" },
+          head: { corrId: randomUUID(), version: util.VERSION },
           data: { awaiter: rootPromise.id, awaited: a },
         })),
       },
@@ -166,13 +166,13 @@ export class Core {
 
     await this.send({
       kind: "task.fulfill",
-      head: { corrId: randomUUID(), version: "" },
+      head: { corrId: randomUUID(), version: util.VERSION },
       data: {
         id: task.id,
         version: task.version,
         action: {
           kind: "promise.settle",
-          head: { corrId: randomUUID(), version: "" },
+          head: { corrId: randomUUID(), version: util.VERSION },
           data: {
             id: doneValue.id,
             state: doneValue.state,
@@ -189,7 +189,7 @@ export class Core {
     const task = msg.data.task;
     const res = await this.send({
       kind: "task.acquire",
-      head: { corrId: randomUUID(), version: "" },
+      head: { corrId: randomUUID(), version: util.VERSION },
       data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
     });
 

@@ -100,7 +100,7 @@ describe("Coroutine", () => {
     return await effects.promiseSettle(
       {
         kind: "promise.settle",
-        head: { corrId: randomUUID(), version: "" },
+        head: { corrId: randomUUID(), version: util.VERSION },
         data: {
           id: id,
           state: result.kind === "value" ? "resolved" : "rejected",

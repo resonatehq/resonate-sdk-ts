@@ -12,6 +12,7 @@ import { isSuccess } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import type { Send } from "../src/types.js";
+import { VERSION } from "../src/util.js";
 
 class TestHeartbeat implements Heartbeat {
   start(): void {}
@@ -85,13 +86,13 @@ async function seedAcquiredTask(
 
   const res = await send({
     kind: "task.create",
-    head: { corrId: randomUUID(), version: "" },
+    head: { corrId: randomUUID(), version: VERSION },
     data: {
       pid: "test-pid",
       ttl: 60_000,
       action: {
         kind: "promise.create",
-        head: { corrId: randomUUID(), version: "" },
+        head: { corrId: randomUUID(), version: VERSION },
         data: {
           id,
           param: encoded,
@@ -118,7 +119,7 @@ async function seedPendingTask(
   const { task } = await seedAcquiredTask(send, codec, id, func, args);
   const releaseRes = await send({
     kind: "task.release",
-    head: { corrId: randomUUID(), version: "" },
+    head: { corrId: randomUUID(), version: VERSION },
     data: { id: task.id, version: task.version },
   });
   if (releaseRes.head.status !== 200) {
@@ -237,7 +238,7 @@ describe("Core", () => {
         if (req.kind === "task.suspend") {
           return Promise.resolve({
             kind: "task.suspend",
-            head: { corrId: randomUUID(), status: 300, version: "" },
+            head: { corrId: randomUUID(), status: 300, version: VERSION },
             data: { preload: [] },
           });
         }
