@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { StepClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import type * as context from "../src/context.js";
@@ -54,7 +55,7 @@ sim.repeat(1, () => {
       unicast("server"),
       {
         kind: "debug.tick",
-        head: { corrId: "", version: "" },
+        head: { corrId: randomUUID(), version: "" },
         data: { time: clock.time },
       },
       { requ: true },
@@ -69,7 +70,7 @@ sim.repeat(1, () => {
       unicast("server"),
       {
         kind: "promise.create",
-        head: { corrId: "", version: "" },
+        head: { corrId: randomUUID(), version: "" },
         data: {
           id,
           timeoutAt: Number.MAX_SAFE_INTEGER,

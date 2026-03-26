@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Command } from "commander";
 import { StepClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
@@ -205,7 +206,7 @@ export async function run(options: Options) {
         unicast("server"),
         {
           kind: "debug.tick",
-          head: { corrId: "", version: "" },
+          head: { corrId: randomUUID(), version: "" },
           data: { time: clock.time },
         },
         { requ: true },
@@ -249,7 +250,7 @@ export async function run(options: Options) {
             unicast("server"),
             {
               kind: "promise.create",
-              head: { corrId: "", version: "" },
+              head: { corrId: randomUUID(), version: "" },
               data: {
                 id,
                 timeoutAt,
@@ -269,7 +270,7 @@ export async function run(options: Options) {
             unicast("server"),
             {
               kind: "promise.create",
-              head: { corrId: "", version: "" },
+              head: { corrId: randomUUID(), version: "" },
               data: {
                 id,
                 timeoutAt,

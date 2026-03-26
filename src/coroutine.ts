@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Context, InnerContext } from "./context.js";
 import { Decorator, type PromiseCompleted, type Value } from "./decorator.js";
 import type { Logger } from "./logger.js";
@@ -319,7 +320,7 @@ export class Coroutine<T> {
     return this.effects.promiseSettle(
       {
         kind: "promise.settle",
-        head: { corrId: "", version: "" },
+        head: { corrId: randomUUID(), version: "" },
         data: {
           id,
           state: result.kind === "value" ? "resolved" : "rejected",

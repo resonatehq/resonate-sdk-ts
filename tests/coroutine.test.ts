@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import { type Context, InnerContext } from "../src/context.js";
@@ -99,7 +100,7 @@ describe("Coroutine", () => {
     return await effects.promiseSettle(
       {
         kind: "promise.settle",
-        head: { corrId: "", version: "" },
+        head: { corrId: randomUUID(), version: "" },
         data: {
           id: id,
           state: result.kind === "value" ? "resolved" : "rejected",

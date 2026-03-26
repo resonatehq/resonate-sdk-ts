@@ -23,7 +23,14 @@ function createTestServer(
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
-    server.close((err) => (err ? reject(err) : resolve()));
+    server.closeAllConnections();
+    server.close((err) => {
+      if (!err || (err as NodeJS.ErrnoException).code === "ERR_SERVER_NOT_RUNNING") {
+        resolve();
+      } else {
+        reject(err);
+      }
+    });
   });
 }
 

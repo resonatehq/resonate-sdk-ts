@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import exceptions from "./exceptions.js";
 import { LocalNetwork } from "./network/local.js";
 import { isSuccess, type PromiseRecord, type TaskRecord } from "./network/types.js";
@@ -10,7 +11,7 @@ export class Promises {
   }
 
   async get(id: string): Promise<PromiseRecord> {
-    const res = await this.send({ kind: "promise.get", head: { corrId: "", version: "" }, data: { id } });
+    const res = await this.send({ kind: "promise.get", head: { corrId: randomUUID(), version: "" }, data: { id } });
     if (!isSuccess(res)) {
       throw exceptions.SERVER_ERROR(res.data, true, {
         code: res.head.status,
@@ -35,7 +36,7 @@ export class Promises {
   ): Promise<PromiseRecord> {
     const res = await this.send({
       kind: "promise.create",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: "" },
       data: {
         id,
         timeoutAt,
@@ -69,13 +70,13 @@ export class Promises {
   ): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
     const res = await this.send({
       kind: "task.create",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: "" },
       data: {
         pid,
         ttl,
         action: {
           kind: "promise.create",
-          head: { corrId: "", version: "" },
+          head: { corrId: randomUUID(), version: "" },
           data: { id, timeoutAt, param: { headers, data }, tags },
         },
       },
@@ -102,7 +103,7 @@ export class Promises {
   ): Promise<PromiseRecord> {
     const res = await this.send({
       kind: "promise.settle",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: "" },
       data: {
         id,
         state,
@@ -126,7 +127,7 @@ export class Promises {
   }> {
     const res = await this.send({
       kind: "promise.register_callback",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: "" },
       data: { awaited, awaiter },
     });
     if (!isSuccess(res)) {
@@ -146,7 +147,7 @@ export class Promises {
   }> {
     const res = await this.send({
       kind: "promise.register_listener",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: "" },
       data: { awaited, address },
     });
     if (!isSuccess(res)) {

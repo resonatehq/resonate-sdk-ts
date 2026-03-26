@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "@jest/globals";
 import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
@@ -100,7 +101,7 @@ async function presettle(effects: Effects, id: string, value: any) {
   await effects.promiseCreate(
     {
       kind: "promise.create",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: "" },
       data: {
         id,
         timeoutAt: Date.now() + 60_000,
@@ -114,7 +115,7 @@ async function presettle(effects: Effects, id: string, value: any) {
   await effects.promiseSettle(
     {
       kind: "promise.settle",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: "" },
       data: {
         id,
         state: "resolved",

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Logger } from "./logger.js";
 import type { Send } from "./types.js";
 
@@ -32,7 +33,7 @@ export class AsyncHeartbeat implements Heartbeat {
     this.intervalId = setInterval(() => {
       this.send({
         kind: "task.heartbeat",
-        head: { corrId: "", version: "" },
+        head: { corrId: randomUUID(), version: "" },
         data: {
           pid: this.pid,
           tasks: [],
