@@ -41,6 +41,7 @@ export class HttpNetwork implements Network {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
+  private token?: string;
   private adapter?: HttpAdapter;
   private logger?: Logger;
 
@@ -114,6 +115,12 @@ export class HttpNetwork implements Network {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    // Inject token into request head if present and not already set
+    util.assert(req.head.auth === undefined);
+    if (this.token) {
+      req = { ...req, head: { ...req.head, auth: this.token } };
+    }
 
     let httpResponse: globalThis.Response;
     try {
