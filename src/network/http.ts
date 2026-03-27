@@ -63,11 +63,11 @@ export class HttpNetwork implements Network {
     this.adapter = adapter;
 
     // Priority: programmatic token > env var
-    this.token = token ?? process.env.RESONATE_TOKEN;
+    const resolvedToken = token ?? process.env.RESONATE_TOKEN;
 
     this.headers = { "Content-Type": "application/json", ...headers };
-    if (this.token) {
-      this.headers.Authorization = `Bearer ${this.token}`;
+    if (resolvedToken) {
+      this.headers.Authorization = `Bearer ${resolvedToken}`;
     }
   }
 
