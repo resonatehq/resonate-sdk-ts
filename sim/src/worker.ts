@@ -1,17 +1,15 @@
 import type { StepClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
 import { Core } from "../../src/core.js";
-import exceptions from "../../src/exceptions.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import { ConsoleLogger } from "../../src/logger.js";
 import type { Network } from "../../src/network/network.js";
-import { isRequest, isResponse, type Message, type Request, type Response } from "../../src/network/types.js";
+import { isResponse, type Message, type Request, type Response } from "../../src/network/types.js";
 
 import { OptionsBuilder } from "../../src/options.js";
 import type { Registry } from "../../src/registry.js";
-import type { Send } from "../../src/types.js";
 import * as util from "../../src/util.js";
-import { type Address, Message as SimMessage, Process, type Random, unicast } from "./simulator.js";
+import { type Address, Process, type Random, Message as SimMessage, unicast } from "./simulator.js";
 
 interface DeliveryOptions {
   charFlipProb?: number;

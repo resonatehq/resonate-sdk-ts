@@ -60,12 +60,7 @@ export class ConsoleLogger implements Logger {
     return LOG_LEVEL_ORDER[level] >= LOG_LEVEL_ORDER[this.level];
   }
 
-  private emit(
-    level: string,
-    fields: Record<string, any>,
-    msg: string,
-    writer: (...args: any[]) => void,
-  ): void {
+  private emit(level: string, fields: Record<string, any>, msg: string, writer: (...args: any[]) => void): void {
     const entry = {
       timestamp: new Date().toISOString(),
       level,

@@ -1,7 +1,7 @@
 import { describe, expect, jest, test } from "@jest/globals";
+import type { Context } from "../src/context.js";
 import { ConsoleLogger, type Logger } from "../src/logger.js";
 import { Resonate } from "../src/resonate.js";
-import type { Context } from "../src/context.js";
 
 describe("ConsoleLogger", () => {
   test("level filtering: debug logger emits all levels", () => {
