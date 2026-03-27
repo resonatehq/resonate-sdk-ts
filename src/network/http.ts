@@ -41,6 +41,7 @@ export class HttpNetwork implements Network {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
+  private token?: string;
   private adapter?: HttpAdapter;
   private logger?: Logger;
 
@@ -62,11 +63,11 @@ export class HttpNetwork implements Network {
     this.adapter = adapter;
 
     // Priority: programmatic token > env var
-    const resolvedToken = token ?? process.env.RESONATE_TOKEN;
+    this.token = token ?? process.env.RESONATE_TOKEN;
 
     this.headers = { "Content-Type": "application/json", ...headers };
-    if (resolvedToken) {
-      this.headers.Authorization = `Bearer ${resolvedToken}`;
+    if (this.token) {
+      this.headers.Authorization = `Bearer ${this.token}`;
     }
   }
 
@@ -114,6 +115,12 @@ export class HttpNetwork implements Network {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    // Inject token into request head if present and not already set
+    util.assert(req.head.auth === undefined);
+    if (this.token) {
+      req = { ...req, head: { ...req.head, auth: this.token } };
+    }
 
     let httpResponse: globalThis.Response;
     try {
