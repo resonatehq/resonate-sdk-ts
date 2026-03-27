@@ -514,42 +514,4 @@ describe("HttpNetwork environment variable configuration", () => {
 
     expect(capturedAuth).toBe("Bearer programmatic-token");
   });
-
-  test("programmatic auth takes precedence over RESONATE_TOKEN env var", async () => {
-    let capturedAuth = "";
-    const result = await createTestServer((req, res) => {
-      capturedAuth = req.headers.authorization ?? "";
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          kind: "promise.get",
-          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
-          data: {
-            promise: {
-              id: "p1",
-              state: "pending",
-              param: { headers: {}, data: "" },
-              value: { headers: {}, data: "" },
-              tags: {},
-              timeoutAt: Date.now() + 60000,
-              createdAt: Date.now(),
-            },
-          },
-        }),
-      );
-    });
-
-    process.env.RESONATE_TOKEN = "env-token-should-not-use";
-
-    const network = new HttpNetwork({
-      url: `http://127.0.0.1:${result.port}`,
-      timeout: 500,
-      auth: { username: "user", password: "pass" },
-    });
-    await network.send(makeRequest());
-    await closeServer(result.server);
-
-    // Programmatic auth takes precedence over RESONATE_TOKEN env var
-    expect(capturedAuth).toMatch(/^Basic /);
-  });
 });

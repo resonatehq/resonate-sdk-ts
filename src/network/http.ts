@@ -32,7 +32,6 @@ export interface HttpNetworkConfig {
   url?: string;
   timeout?: number;
   headers?: { [key: string]: string };
-  auth?: { username: string; password: string };
   token?: string;
   logger?: Logger;
   adapter?: HttpAdapter;
@@ -49,7 +48,6 @@ export class HttpNetwork implements Network {
     url = undefined,
     timeout = undefined,
     headers = {},
-    auth = undefined,
     token = undefined,
     logger = undefined,
     adapter = undefined,
@@ -63,14 +61,12 @@ export class HttpNetwork implements Network {
     this.logger = logger;
     this.adapter = adapter;
 
-    // Priority: programmatic token > programmatic auth > RESONATE_TOKEN env var
-    const resolvedToken = token ?? (auth ? undefined : process.env.RESONATE_TOKEN);
+    // Priority: programmatic token > env var
+    const resolvedToken = token ?? process.env.RESONATE_TOKEN;
 
     this.headers = { "Content-Type": "application/json", ...headers };
     if (resolvedToken) {
       this.headers.Authorization = `Bearer ${resolvedToken}`;
-    } else if (auth) {
-      this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
     }
   }
 
@@ -241,12 +237,10 @@ export class PollMessageSource implements HttpAdapter {
 
   constructor({
     url,
-    auth = undefined,
     token = undefined,
     logger = undefined,
   }: {
     url: string;
-    auth?: { username: string; password: string };
     token?: string;
     logger?: Logger;
   }) {
@@ -266,8 +260,6 @@ export class PollMessageSource implements HttpAdapter {
     this.headers = {};
     if (token) {
       this.headers.Authorization = `Bearer ${token}`;
-    } else if (auth) {
-      this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
     }
 
     this.eventSource = this.connect();

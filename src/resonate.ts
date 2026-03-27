@@ -86,8 +86,6 @@ export class Resonate {
    * @param options.group - Worker group name. Defaults to `"default"`.
    * @param options.pid - Process identifier for the client. Defaults to a random UUID.
    * @param options.ttl - Time-to-live (in seconds) for claimed tasks. Defaults to `1 * util.MIN`.
-   * @param options.auth - Basic authentication credentials. Passed through to HttpNetwork
-   *   which falls back to `RESONATE_USERNAME`/`RESONATE_PASSWORD` env vars.
    * @param options.token - Bearer token for authentication. Passed through to HttpNetwork
    *   which falls back to `RESONATE_TOKEN` env var.
    * @param options.timeout - Network request timeout. Passed through to HttpNetwork
@@ -105,7 +103,6 @@ export class Resonate {
     group = "default",
     pid = undefined,
     ttl = 1 * util.MIN,
-    auth = undefined,
     token = undefined,
     timeout = undefined,
     verbose = false,
@@ -119,7 +116,6 @@ export class Resonate {
     group?: string;
     pid?: string;
     ttl?: number;
-    auth?: { username: string; password: string };
     token?: string;
     timeout?: number;
     verbose?: boolean;
@@ -145,7 +141,9 @@ export class Resonate {
 
     // Determine the URL: url arg > RESONATE_URL env var
     // Only used to decide between LocalNetwork and HttpNetwork.
-    // Full URL/auth/token/timeout env var resolution is HttpNetwork's responsibility (3.7).
+    // Full URL/bun fmt
+    // bun check
+    // /token/timeout env var resolution is HttpNetwork's responsibility (3.7).
     const resolvedUrl = url ?? (process.env.RESONATE_URL || undefined);
 
     this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
@@ -157,13 +155,11 @@ export class Resonate {
     } else if (resolvedUrl) {
       const adapter = new PollMessageSource({
         url: `${resolvedUrl}/poll/${encodeURIComponent(group)}/${encodeURIComponent(this.pid)}`,
-        auth,
         token,
         logger: this.logger,
       });
       this.network = new HttpNetwork({
         url: resolvedUrl,
-        auth,
         token,
         timeout,
         headers: {},
