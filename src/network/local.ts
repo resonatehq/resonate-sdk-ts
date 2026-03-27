@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { CronExpressionParser } from "cron-parser";
-import { assert } from "../util.js";
+import { assert, VERSION } from "../util.js";
 import type { Network } from "./network.js";
 import { isResponse } from "./types.js";
 import type {
@@ -1128,7 +1129,7 @@ export class Server {
 
       const { changes: createChanges } = this.promiseCreate(now, {
         kind: "promise.create",
-        head: { corrId: "", version: "" },
+        head: { corrId: randomUUID(), version: VERSION },
         data: {
           id: promiseId,
           timeoutAt: st.timeout + schedule.promiseTimeout,
@@ -1504,7 +1505,7 @@ export class LocalNetwork implements Network {
       const now = Date.now();
       const result = this.server.apply(now, {
         kind: "debug.tick",
-        head: { corrId: "", version: "" },
+        head: { corrId: randomUUID(), version: VERSION },
         data: { time: now },
       });
       this.dispatchMessages(result);

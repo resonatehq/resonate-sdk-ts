@@ -696,43 +696,6 @@ describe("Resonate usage tests", () => {
     await resonate.stop();
   });
 
-  test("Basic auth", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    // mock fetch
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/api") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic Zm9vOmJhcg==");
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic Zm9vOmJhcg==");
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-
-      // leave on read
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({
-      url: "http://localhost:9999",
-      group: "default",
-      pid: "0",
-      ttl: 60_000,
-      auth: { username: "foo", password: "bar" },
-    });
-
-    resonate.promises.create("foo", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
-
   test("Target is set to anycast without preference by default", async () => {
     const resonate = new Resonate({ group: "test", pid: "0", ttl: 50_000 });
 
@@ -1341,40 +1304,6 @@ describe("Resonate environment variable initialization", () => {
     mockFetch.mockReset();
     await resonate.stop();
   });
-
-  test("auth arg is passed through to HttpNetwork", async () => {
-    const p1 = Promise.withResolvers();
-    const p2 = Promise.withResolvers();
-
-    const mockFetch = jest.spyOn(global, "fetch").mockImplementation((url, options) => {
-      const urlStr = url instanceof URL ? url.href : url;
-      if (urlStr === "http://localhost:9999/api") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
-        p1.resolve(null);
-      } else if (urlStr === "http://localhost:9999/poll/default/0") {
-        expect((options?.headers as { [key: string]: string }).Authorization).toBe("Basic YXJndXNlcjphcmdwYXNz");
-        p2.resolve(null);
-      } else {
-        throw new Error(`Unexpected URL called: ${urlStr}`);
-      }
-      return new Promise(() => {});
-    });
-
-    const resonate = new Resonate({
-      url: "http://localhost:9999",
-      group: "default",
-      pid: "0",
-      ttl: 60_000,
-      auth: { username: "arguser", password: "argpass" },
-    });
-
-    resonate.promises.create("test", 0);
-
-    await p1.promise;
-    await p2.promise;
-    mockFetch.mockReset();
-    await resonate.stop();
-  });
 });
 
 describe("Bearer token authentication", () => {
@@ -1419,7 +1348,7 @@ describe("Bearer token authentication", () => {
     await resonate.stop();
   });
 
-  test("Bearer token takes priority over basic auth when both passed", async () => {
+  test("Bearer token takes priority", async () => {
     const p1 = Promise.withResolvers();
     const p2 = Promise.withResolvers();
 
@@ -1444,7 +1373,6 @@ describe("Bearer token authentication", () => {
       pid: "0",
       ttl: 60_000,
       token: "priority-token",
-      auth: { username: "ignored", password: "ignored" },
     });
 
     resonate.promises.create("foo", 0);

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Clock } from "./clock.js";
 import exceptions, { type ResonateError } from "./exceptions.js";
 import type { PromiseCreateReq } from "./network/types.js";
@@ -617,7 +618,7 @@ export class InnerContext implements Context {
 
     return {
       kind: "promise.create",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: util.VERSION },
       data: {
         id,
         timeoutAt,
@@ -651,7 +652,7 @@ export class InnerContext implements Context {
 
     return {
       kind: "promise.create",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: util.VERSION },
       data: {
         id,
         timeoutAt,
@@ -686,7 +687,7 @@ export class InnerContext implements Context {
 
     return {
       kind: "promise.create",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: util.VERSION },
       data: {
         id,
         timeoutAt,
@@ -716,7 +717,7 @@ export class InnerContext implements Context {
 
     return {
       kind: "promise.create",
-      head: { corrId: "", version: "" },
+      head: { corrId: randomUUID(), version: util.VERSION },
       data: {
         id,
         timeoutAt,

@@ -9,6 +9,7 @@
 
 import { describe, expect, test } from "@jest/globals";
 import { LocalNetwork } from "../../src/network/local.js";
+import { VERSION } from "../../src/util.js";
 
 describe("LocalNetwork typed send", () => {
   test("send accepts typed Request and returns typed Response", async () => {
@@ -16,7 +17,7 @@ describe("LocalNetwork typed send", () => {
 
     const req = {
       kind: "promise.create" as const,
-      head: { corrId: "corr-1", version: "1.0.0" },
+      head: { corrId: "corr-1", version: VERSION },
       data: {
         id: "p1",
         timeoutAt: Date.now() + 60000,
@@ -41,7 +42,7 @@ describe("LocalNetwork typed send", () => {
     // Create a promise first
     await network.send({
       kind: "promise.create" as const,
-      head: { corrId: "c1", version: "" },
+      head: { corrId: "c1", version: VERSION },
       data: {
         id: "p2",
         timeoutAt: Date.now() + 60000,
@@ -53,7 +54,7 @@ describe("LocalNetwork typed send", () => {
     // Get the promise
     const res = await network.send({
       kind: "promise.get" as const,
-      head: { corrId: "c2", version: "" },
+      head: { corrId: "c2", version: VERSION },
       data: { id: "p2" },
     });
 
@@ -74,13 +75,13 @@ describe("LocalNetwork typed send", () => {
     // Create a task that will generate execute messages
     await network.send({
       kind: "task.create" as const,
-      head: { corrId: "c1", version: "" },
+      head: { corrId: "c1", version: VERSION },
       data: {
         pid: "test-pid",
         ttl: 60000,
         action: {
           kind: "promise.create" as const,
-          head: { corrId: "c1", version: "" },
+          head: { corrId: "c1", version: VERSION },
           data: {
             id: "p3",
             timeoutAt: Date.now() + 60000,

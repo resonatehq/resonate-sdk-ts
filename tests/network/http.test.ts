@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import { ResonateTimeoutException } from "../../src/exceptions.js";
 import { HttpNetwork } from "../../src/network/http.js";
+import { VERSION } from "../../src/util.js";
 
 // Helper: create a local HTTP server that responds on /api
 function createTestServer(
@@ -23,7 +24,14 @@ function createTestServer(
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
-    server.close((err) => (err ? reject(err) : resolve()));
+    server.closeAllConnections();
+    server.close((err) => {
+      if (!err || (err as NodeJS.ErrnoException).code === "ERR_SERVER_NOT_RUNNING") {
+        resolve();
+      } else {
+        reject(err);
+      }
+    });
   });
 }
 
@@ -31,7 +39,7 @@ function closeServer(server: Server): Promise<void> {
 function makeRequest(corrId = "corr-1") {
   return {
     kind: "promise.get" as const,
-    head: { corrId, version: "1.0.0" },
+    head: { corrId, version: VERSION },
     data: { id: "p1" },
   };
 }
@@ -53,7 +61,7 @@ describe("HttpNetwork.send()", () => {
   test("returns typed Response for HTTP 200", async () => {
     const responseBody = JSON.stringify({
       kind: "promise.get",
-      head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+      head: { corrId: "corr-1", status: 200, version: VERSION },
       data: {
         promise: {
           id: "p1",
@@ -92,7 +100,7 @@ describe("HttpNetwork.send()", () => {
     test(`returns typed Response for protocol HTTP ${status}`, async () => {
       const responseBody = JSON.stringify({
         kind: "promise.get",
-        head: { corrId: "corr-1", status, version: "1.0.0" },
+        head: { corrId: "corr-1", status, version: VERSION },
         data: "not found",
       });
 
@@ -118,7 +126,7 @@ describe("HttpNetwork.send()", () => {
   test("returns typed Response for protocol HTTP 300 (redirect)", async () => {
     const responseBody = JSON.stringify({
       kind: "promise.get",
-      head: { corrId: "corr-1", status: 300, version: "1.0.0" },
+      head: { corrId: "corr-1", status: 300, version: VERSION },
       data: "redirect",
     });
 
@@ -187,7 +195,7 @@ describe("HttpNetwork.send()", () => {
       res.end(
         JSON.stringify({
           kind: "promise.create",
-          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
+          head: { corrId: "corr-1", status: 200, version: VERSION },
           data: {},
         }),
       );
@@ -208,7 +216,7 @@ describe("HttpNetwork.send()", () => {
       res.end(
         JSON.stringify({
           kind: "promise.get",
-          head: { corrId: "wrong-corr-id", status: 200, version: "1.0.0" },
+          head: { corrId: "wrong-corr-id", status: 200, version: VERSION },
           data: {},
         }),
       );
@@ -293,7 +301,7 @@ describe("HttpNetwork.send()", () => {
             })
           : JSON.stringify({
               kind: "promise.get",
-              head: { corrId: "corr-1", status, version: "1.0.0" },
+              head: { corrId: "corr-1", status, version: VERSION },
               data: "protocol error",
             });
 
@@ -505,43 +513,5 @@ describe("HttpNetwork environment variable configuration", () => {
     await closeServer(result.server);
 
     expect(capturedAuth).toBe("Bearer programmatic-token");
-  });
-
-  test("programmatic auth takes precedence over RESONATE_TOKEN env var", async () => {
-    let capturedAuth = "";
-    const result = await createTestServer((req, res) => {
-      capturedAuth = req.headers.authorization ?? "";
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          kind: "promise.get",
-          head: { corrId: "corr-1", status: 200, version: "1.0.0" },
-          data: {
-            promise: {
-              id: "p1",
-              state: "pending",
-              param: { headers: {}, data: "" },
-              value: { headers: {}, data: "" },
-              tags: {},
-              timeoutAt: Date.now() + 60000,
-              createdAt: Date.now(),
-            },
-          },
-        }),
-      );
-    });
-
-    process.env.RESONATE_TOKEN = "env-token-should-not-use";
-
-    const network = new HttpNetwork({
-      url: `http://127.0.0.1:${result.port}`,
-      timeout: 500,
-      auth: { username: "user", password: "pass" },
-    });
-    await network.send(makeRequest());
-    await closeServer(result.server);
-
-    // Programmatic auth takes precedence over RESONATE_TOKEN env var
-    expect(capturedAuth).toMatch(/^Basic /);
   });
 });

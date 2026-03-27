@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { Codec } from "../src/codec.js";
 import type { PromiseRecord, Request, Response } from "../src/network/types.js";
 import type { Send } from "../src/types.js";
-import { buildEffects } from "../src/util.js";
+import { buildEffects, VERSION } from "../src/util.js";
 
 // A simple in-memory stub that handles promise.create and promise.settle.
 class StubNetwork {
@@ -54,7 +55,7 @@ class StubNetwork {
 }
 
 const codec = new Codec();
-const head = { corrId: "", version: "" };
+const head = { corrId: randomUUID(), version: VERSION };
 
 function encodeOrThrow(value: any) {
   return codec.encode(value);

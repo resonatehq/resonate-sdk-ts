@@ -32,7 +32,6 @@ export interface HttpNetworkConfig {
   url?: string;
   timeout?: number;
   headers?: { [key: string]: string };
-  auth?: { username: string; password: string };
   token?: string;
   logger?: Logger;
   adapter?: HttpAdapter;
@@ -42,6 +41,7 @@ export class HttpNetwork implements Network {
   private url: string;
   private timeout: number;
   private headers: { [key: string]: string };
+  private token?: string;
   private adapter?: HttpAdapter;
   private logger?: Logger;
 
@@ -49,7 +49,6 @@ export class HttpNetwork implements Network {
     url = undefined,
     timeout = undefined,
     headers = {},
-    auth = undefined,
     token = undefined,
     logger = undefined,
     adapter = undefined,
@@ -63,14 +62,12 @@ export class HttpNetwork implements Network {
     this.logger = logger;
     this.adapter = adapter;
 
-    // Priority: programmatic token > programmatic auth > RESONATE_TOKEN env var
-    const resolvedToken = token ?? (auth ? undefined : process.env.RESONATE_TOKEN);
+    // Priority: programmatic token > env var
+    this.token = token ?? process.env.RESONATE_TOKEN;
 
     this.headers = { "Content-Type": "application/json", ...headers };
-    if (resolvedToken) {
-      this.headers.Authorization = `Bearer ${resolvedToken}`;
-    } else if (auth) {
-      this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
+    if (this.token) {
+      this.headers.Authorization = `Bearer ${this.token}`;
     }
   }
 
@@ -118,6 +115,12 @@ export class HttpNetwork implements Network {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    // Inject token into request head if present and not already set
+    util.assert(req.head.auth === undefined);
+    if (this.token) {
+      req = { ...req, head: { ...req.head, auth: this.token } };
+    }
 
     let httpResponse: globalThis.Response;
     try {
@@ -241,12 +244,10 @@ export class PollMessageSource implements HttpAdapter {
 
   constructor({
     url,
-    auth = undefined,
     token = undefined,
     logger = undefined,
   }: {
     url: string;
-    auth?: { username: string; password: string };
     token?: string;
     logger?: Logger;
   }) {
@@ -266,8 +267,6 @@ export class PollMessageSource implements HttpAdapter {
     this.headers = {};
     if (token) {
       this.headers.Authorization = `Bearer ${token}`;
-    } else if (auth) {
-      this.headers.Authorization = `Basic ${util.base64Encode(`${auth.username}:${auth.password}`)}`;
     }
 
     this.eventSource = this.connect();

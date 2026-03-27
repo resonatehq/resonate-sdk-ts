@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { Command } from "commander";
 import { StepClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import type { Context } from "../src/context.js";
 import type { Request } from "../src/network/types.js";
 import { Registry } from "../src/registry.js";
+import { VERSION } from "../src/util.js";
 import { ServerProcess } from "./src/server.js";
 import { Message, Random, Simulator, unicast } from "./src/simulator.js";
 import { WorkerProcess } from "./src/worker.js";
@@ -205,7 +207,7 @@ export async function run(options: Options) {
         unicast("server"),
         {
           kind: "debug.tick",
-          head: { corrId: "", version: "" },
+          head: { corrId: randomUUID(), version: VERSION },
           data: { time: clock.time },
         },
         { requ: true },
@@ -249,7 +251,7 @@ export async function run(options: Options) {
             unicast("server"),
             {
               kind: "promise.create",
-              head: { corrId: "", version: "" },
+              head: { corrId: randomUUID(), version: VERSION },
               data: {
                 id,
                 timeoutAt,
@@ -269,7 +271,7 @@ export async function run(options: Options) {
             unicast("server"),
             {
               kind: "promise.create",
-              head: { corrId: "", version: "" },
+              head: { corrId: randomUUID(), version: VERSION },
               data: {
                 id,
                 timeoutAt,
