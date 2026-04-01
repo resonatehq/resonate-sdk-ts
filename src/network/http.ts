@@ -68,6 +68,7 @@ export class HttpNetwork implements Network {
     this.headers = { "Content-Type": "application/json", ...headers };
     if (resolvedToken) {
       this.headers.Authorization = `Bearer ${resolvedToken}`;
+      this.token = resolvedToken;
     }
   }
 
@@ -116,8 +117,6 @@ export class HttpNetwork implements Network {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-    // Inject token into request head if present and not already set
-    util.assert(req.head.auth === undefined);
     if (this.token) {
       req = { ...req, head: { ...req.head, auth: this.token } };
     }
