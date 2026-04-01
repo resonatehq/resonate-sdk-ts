@@ -124,7 +124,7 @@ export class HttpNetwork implements Network {
 
     let httpResponse: globalThis.Response;
     try {
-      httpResponse = await fetch(`${this.url}/api`, {
+      httpResponse = await fetch(`${this.url}`, {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify(req),
