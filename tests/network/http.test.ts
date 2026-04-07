@@ -2,9 +2,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import { ResonateTimeoutException } from "../../src/exceptions.js";
 import { HttpNetwork } from "../../src/network/http.js";
-import { VERSION } from "../../src/util.js";
+import { assert, VERSION } from "../../src/util.js";
 
-// Helper: create a local HTTP server that responds on /api
+// Helper: create a local HTTP server that responds on
 function createTestServer(
   handler: (req: IncomingMessage, res: ServerResponse) => void,
 ): Promise<{ server: Server; port: number }> {
@@ -384,7 +384,7 @@ describe("HttpNetwork environment variable configuration", () => {
     await network.send(makeRequest());
     await closeServer(result.server);
 
-    expect(capturedUrl).toBe(`http://127.0.0.1:${port}/api`);
+    expect(capturedUrl).toBe(`http://127.0.0.1:${port}/`);
   });
 
   test("programmatic url takes precedence over RESONATE_URL", async () => {
@@ -418,7 +418,7 @@ describe("HttpNetwork environment variable configuration", () => {
     await network.send(makeRequest());
     await closeServer(result.server);
 
-    expect(capturedUrl).toBe(`http://127.0.0.1:${port}/api`);
+    expect(capturedUrl).toBe(`http://127.0.0.1:${port}/`);
   });
 
   // ---- RESONATE_TIMEOUT ----

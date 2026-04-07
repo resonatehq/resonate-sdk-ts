@@ -109,7 +109,7 @@ export class HttpNetwork implements Network {
   ): Promise<Extract<Response, { kind: K }>> => {
     const startTime = Date.now();
     this.logger?.debug(
-      { component: "network", url: `${this.url}/api`, kind: req.kind, corr_id: req.head.corrId },
+      { component: "network", url: `${this.url}`, kind: req.kind, corr_id: req.head.corrId },
       "request sent",
     );
 
