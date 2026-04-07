@@ -175,6 +175,19 @@ export class HttpNetwork implements Network {
       throw new ResonateTimeoutException(cause);
     }
 
+    if (httpResponse.status === 404 && !httpResponse.headers.get("content-type")?.includes("application/json")) {
+      this.logger?.warn(
+        {
+          component: "network",
+          kind: req.kind,
+          corr_id: req.head.corrId,
+          error_type: "outdated_server",
+        },
+        "Legacy server detected. Please upgrade to the latest server: https://github.com/resonatehq/resonate",
+      );
+      throw new ResonateTimeoutException("legacy server detected");
+    }
+
     let res: unknown;
     try {
       res = JSON.parse(resStr);
