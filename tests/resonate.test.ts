@@ -113,12 +113,12 @@ describe("Resonate usage tests", () => {
   test("test lineage rfc set ids", async () => {
     const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
-      const v = yield ctx.rpc(bar, ctx.options({ id: "bar" }));
+      const v = yield ctx.rpc(bar);
       return v;
     });
 
     function* bar(ctx: Context): Generator {
-      const v = yield ctx.rpc(baz, ctx.options({ id: "baz" }));
+      const v = yield ctx.rpc(baz);
       return v;
     }
 
@@ -138,17 +138,17 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:target": "local://any@default/default",
     });
-    expect((await resonate.promises.get("bar")).tags).toEqual({
-      "resonate:origin": "bar",
-      "resonate:branch": "bar",
+    expect((await resonate.promises.get("foo.0")).tags).toEqual({
+      "resonate:origin": "foo",
+      "resonate:branch": "foo.0",
       "resonate:parent": "foo",
       "resonate:scope": "global",
       "resonate:target": "local://any@default",
     });
-    expect((await resonate.promises.get("baz")).tags).toEqual({
-      "resonate:origin": "baz",
-      "resonate:branch": "baz",
-      "resonate:parent": "bar",
+    expect((await resonate.promises.get("foo.0.0")).tags).toEqual({
+      "resonate:origin": "foo",
+      "resonate:branch": "foo.0.0",
+      "resonate:parent": "foo.0",
       "resonate:scope": "global",
       "resonate:target": "local://any@default",
     });
@@ -195,12 +195,12 @@ describe("Resonate usage tests", () => {
   test("test lineage lfc set ids", async () => {
     const resonate = new Resonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
     const f = resonate.register("f", function* foo(ctx: Context): Generator {
-      const v = yield ctx.lfc(bar, ctx.options({ id: "bar" }));
+      const v = yield ctx.lfc(bar);
       return v;
     });
 
     function* bar(ctx: Context): Generator {
-      const v = yield ctx.lfc(baz, ctx.options({ id: "baz" }));
+      const v = yield ctx.lfc(baz);
       return v;
     }
 
@@ -217,16 +217,16 @@ describe("Resonate usage tests", () => {
       "resonate:scope": "global",
       "resonate:target": "local://any@default/default",
     });
-    expect((await resonate.promises.get("bar")).tags).toEqual({
-      "resonate:origin": "bar",
+    expect((await resonate.promises.get("foo.0")).tags).toEqual({
+      "resonate:origin": "foo",
       "resonate:branch": "foo",
       "resonate:parent": "foo",
       "resonate:scope": "local",
     });
-    expect((await resonate.promises.get("baz")).tags).toEqual({
-      "resonate:origin": "baz",
+    expect((await resonate.promises.get("foo.0.0")).tags).toEqual({
+      "resonate:origin": "foo",
       "resonate:branch": "foo",
-      "resonate:parent": "bar",
+      "resonate:parent": "foo.0",
       "resonate:scope": "local",
     });
   });
@@ -403,15 +403,15 @@ describe("Resonate usage tests", () => {
     };
 
     const f = resonate.register("f", function* foo(ctx: Context) {
-      const fu = yield* ctx.beginRun(g, "this is a function", ctx.options({ id: "altId", tags: { myTag: "value" } }));
-      expect(fu.id).toBe("altId");
+      const fu = yield* ctx.beginRun(g, "this is a function", ctx.options({ tags: { myTag: "value" } }));
+      expect(fu.id).toBe("f.0");
       return yield* fu;
     });
 
     const v = await f.run("f");
     expect(v.msg).toBe("this is a function");
-    const durable = await resonate.promises.get("altId");
-    expect(durable.id).toBe("altId");
+    const durable = await resonate.promises.get("f.0");
+    expect(durable.id).toBe("f.0");
     expect(durable.tags).toMatchObject({ myTag: "value", "resonate:scope": "local" });
     await resonate.stop();
   });
@@ -486,21 +486,21 @@ describe("Resonate usage tests", () => {
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
 
     const f = resonate.register("f", function* foo(ctx: Context) {
-      const fu = yield* ctx.promise({ id: "myId" });
-      expect(fu.id).toBe("myId");
+      const fu = yield* ctx.promise();
+      expect(fu.id).toBe("f.0");
       return yield* fu;
     });
 
     const p = await f.beginRun("f");
-    await setTimeout(100); // Ensure myId promise is created
+    await setTimeout(100); // Ensure f.0 promise is created
 
-    await resonate.promises.settle("myId", "resolved", { data: encodeValue(codec, "myValue").data });
+    await resonate.promises.settle("f.0", "resolved", { data: encodeValue(codec, "myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     await resonate.stop();
-    expect((await resonate.promises.get("myId")).tags).toEqual({
-      "resonate:branch": "myId",
-      "resonate:origin": "myId",
+    expect((await resonate.promises.get("f.0")).tags).toEqual({
+      "resonate:branch": "f.0",
+      "resonate:origin": "f",
       "resonate:parent": "f",
       "resonate:scope": "global",
     });
@@ -537,24 +537,24 @@ describe("Resonate usage tests", () => {
     const time = Date.now();
 
     const f = resonate.register("f", function* foo(ctx: Context) {
-      const fu = yield* ctx.promise(ctx.options({ id: "myId", timeout: 5 * util.HOUR }));
-      expect(fu.id).toBe("myId");
+      const fu = yield* ctx.promise({ timeout: 5 * util.HOUR });
+      expect(fu.id).toBe("f.0");
       return yield* fu;
     });
 
     const p = await f.beginRun("f");
-    await setTimeout(100); // Ensure myId promise is created
+    await setTimeout(100); // Ensure f.0 promise is created
 
-    const durable = await resonate.promises.get("myId");
+    const durable = await resonate.promises.get("f.0");
     expect(durable.timeoutAt).toBeGreaterThanOrEqual(time + 5 * util.HOUR);
     expect(durable.timeoutAt).toBeLessThan(time + 5 * util.HOUR + 1000);
     expect(durable.tags).toEqual({
-      "resonate:branch": "myId",
-      "resonate:origin": "myId",
+      "resonate:branch": "f.0",
+      "resonate:origin": "f",
       "resonate:parent": "f",
       "resonate:scope": "global",
     });
-    await resonate.promises.settle("myId", "resolved", { data: encodeValue(codec, "myValue").data });
+    await resonate.promises.settle("f.0", "resolved", { data: encodeValue(codec, "myValue").data });
     const v = await p.result();
     expect(v).toBe("myValue");
     await resonate.stop();
@@ -1020,7 +1020,7 @@ describe("Resonate usage tests", () => {
 
     function* foo(ctx: Context) {
       const p = yield* ctx.beginRun(bar);
-      yield* ctx.run(baz, ctx.options({ id: "bazId" }));
+      yield* ctx.run(baz);
       yield* ctx.run(qux);
       yield* p;
       return "ok";

@@ -227,17 +227,7 @@ export interface Context {
 
   // promise
   promise<T>(): RFI<T>;
-  promise<T>({
-    id,
-    timeout,
-    data,
-    tags,
-  }: {
-    id?: string;
-    timeout?: number;
-    data?: any;
-    tags?: { [key: string]: string };
-  }): RFI<T>;
+  promise<T>({ timeout, data, tags }: { timeout?: number; data?: any; tags?: { [key: string]: string } }): RFI<T>;
 
   // die
 
@@ -251,7 +241,7 @@ export interface Context {
   getDependency<T = any>(key: string): T | undefined;
 
   // options
-  options(opts?: Partial<Options>): Options;
+  options(opts?: Partial<Omit<Options, "id">>): Options;
 
   // date
   date: ResonateDate;
@@ -538,22 +528,11 @@ export class InnerContext implements Context {
     );
   }
 
-  promise<T>({
-    id,
-    timeout,
-    data,
-    tags,
-  }: {
-    id?: string;
-    timeout?: number;
-    data?: any;
-    tags?: { [key: string]: string };
-  } = {}): RFI<T> {
-    const idChanged = id !== undefined;
-    id = id ?? this.seqid();
+  promise<T>({ timeout, data, tags }: { timeout?: number; data?: any; tags?: { [key: string]: string } } = {}): RFI<T> {
+    const id = this.seqid();
     this.seq++;
 
-    return new RFI(id, "unknown", 1, this.latentCreateOpts({ id, timeout, data, tags, breaksLineage: idChanged }));
+    return new RFI(id, "unknown", 1, this.latentCreateOpts({ id, timeout, data, tags, breaksLineage: false }));
   }
 
   sleep(msOrOpts: number | { for?: number; until?: Date }): RFC<void> {
@@ -588,9 +567,7 @@ export class InnerContext implements Context {
     return this.dependencies.get(name);
   }
 
-  options(
-    opts: Partial<Pick<Options, "id" | "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {},
-  ): Options {
+  options(opts: Partial<Pick<Options, "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {}): Options {
     return this.optsBuilder.build(opts);
   }
 

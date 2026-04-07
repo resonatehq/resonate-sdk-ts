@@ -14,8 +14,8 @@ function* fibonacci(ctx: context.Context, n: number): Generator<any, number, any
   if (n <= 1) {
     return n;
   }
-  const v1 = yield ctx.run(fibonacci, n - 1, ctx.options({ id: `fibonacci-${n - 1}` }));
-  const v2 = yield ctx.run("fibonacci", n - 2, ctx.options({ id: `fibonacci-${n - 2}` }));
+  const v1 = yield ctx.run(fibonacci, n - 1);
+  const v2 = yield ctx.run("fibonacci", n - 2);
 
   return v1 + v2;
 }

@@ -63,11 +63,12 @@ export class HttpNetwork implements Network {
     this.adapter = adapter;
 
     // Priority: programmatic token > env var
-    this.token = token ?? process.env.RESONATE_TOKEN;
+    const resolvedToken = token ?? process.env.RESONATE_TOKEN;
 
     this.headers = { "Content-Type": "application/json", ...headers };
-    if (this.token) {
-      this.headers.Authorization = `Bearer ${this.token}`;
+    if (resolvedToken) {
+      this.headers.Authorization = `Bearer ${resolvedToken}`;
+      this.token = resolvedToken;
     }
   }
 
@@ -116,15 +117,13 @@ export class HttpNetwork implements Network {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-    // Inject token into request head if present and not already set
-    util.assert(req.head.auth === undefined);
     if (this.token) {
       req = { ...req, head: { ...req.head, auth: this.token } };
     }
 
     let httpResponse: globalThis.Response;
     try {
-      httpResponse = await fetch(`${this.url}/api`, {
+      httpResponse = await fetch(`${this.url}`, {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify(req),
@@ -174,6 +173,19 @@ export class HttpNetwork implements Network {
         "platform failure",
       );
       throw new ResonateTimeoutException(cause);
+    }
+
+    if (httpResponse.status === 404 && !httpResponse.headers.get("content-type")?.includes("application/json")) {
+      this.logger?.warn(
+        {
+          component: "network",
+          kind: req.kind,
+          corr_id: req.head.corrId,
+          error_type: "outdated_server",
+        },
+        "Legacy server detected. Please upgrade to the latest server: https://github.com/resonatehq/resonate",
+      );
+      throw new ResonateTimeoutException("legacy server detected");
     }
 
     let res: unknown;
