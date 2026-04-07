@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import { ResonateTimeoutException } from "../../src/exceptions.js";
 import { HttpNetwork } from "../../src/network/http.js";
-import { assert, VERSION } from "../../src/util.js";
+import { VERSION } from "../../src/util.js";
 
 // Helper: create a local HTTP server that responds on
 function createTestServer(
