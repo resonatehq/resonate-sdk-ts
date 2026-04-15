@@ -67,6 +67,10 @@ class MockNetwork implements Network {
   async init(): Promise<void> {}
   async stop(): Promise<void> {}
 
+  match(target: string): string {
+    return `mock://any@${target}`;
+  }
+
   send: Send = async <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
   ): Promise<Extract<Response, { kind: K }>> => {
