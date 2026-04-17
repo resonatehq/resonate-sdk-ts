@@ -1336,11 +1336,21 @@ export function isTaskFenceRes(val: unknown): val is TaskFenceRes {
   if (status === 200) {
     if (typeof v.data !== "object" || v.data === null) return false;
     const d = v.data as Record<string, unknown>;
-    return (
-      (isPromiseCreateRes(d.action) || isPromiseSettleRes(d.action)) &&
-      Array.isArray(d.preload) &&
-      (d.preload as unknown[]).every(isPromiseRecord)
-    );
+    if (!Array.isArray(d.preload) || !(d.preload as unknown[]).every(isPromiseRecord)) return false;
+    // The nested action carries the same status/shape as a promise.create|settle response,
+    // but may arrive with only { status } on its head (outer head carries corrId/version).
+    if (typeof d.action !== "object" || d.action === null) return false;
+    const a = d.action as Record<string, unknown>;
+    if (a.kind !== "promise.create" && a.kind !== "promise.settle") return false;
+    if (typeof a.head !== "object" || a.head === null) return false;
+    if (typeof (a.head as Record<string, unknown>).status !== "number") return false;
+    const innerStatus = (a.head as Record<string, unknown>).status as number;
+    if (innerStatus === 200) {
+      return (
+        typeof a.data === "object" && a.data !== null && isPromiseRecord((a.data as Record<string, unknown>).promise)
+      );
+    }
+    return typeof a.data === "string";
   }
   return typeof v.data === "string";
 }
