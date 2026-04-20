@@ -892,8 +892,13 @@ export class Server {
       inner = this.promiseSettle(now, action);
     }
 
+    const actionResponse = {
+      ...inner.response,
+      head: { corrId: req.head.corrId, status: inner.response.head.status, version: req.head.version },
+    };
+
     return {
-      response: this.response("task.fence", 200, { action: inner.response, preload: [] }),
+      response: this.response("task.fence", 200, { action: actionResponse, preload: [] }),
       changes: inner.changes,
     };
   }
