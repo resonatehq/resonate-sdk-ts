@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Codec } from "./codec.js";
 import type { InnerContext } from "./context.js";
 import exceptions from "./exceptions.js";
@@ -88,6 +88,10 @@ export function semverLessThan(a: string, b: string): boolean {
   if (aMajor !== bMajor) return aMajor < bMajor;
   if (aMinor !== bMinor) return aMinor < bMinor;
   return aPatch < bPatch;
+}
+
+export function detachedId(originId: string, seqid: string): string {
+  return `${originId}.${createHash("sha256").update(seqid).digest("hex")}`;
 }
 
 export function getCallerInfo(): string {
