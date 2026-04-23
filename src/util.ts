@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { Codec } from "./codec.js";
 import type { InnerContext } from "./context.js";
 import exceptions from "./exceptions.js";
@@ -90,8 +90,25 @@ export function semverLessThan(a: string, b: string): boolean {
   return aPatch < bPatch;
 }
 
+const UTF8 = new TextEncoder();
+
+function cyrb53(input: string | Uint8Array, seed = 0): number {
+  const bytes = typeof input === "string" ? UTF8.encode(input) : input;
+  let h1 = 0xdeadbeef ^ seed,
+    h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < bytes.length; i++) {
+    h1 = Math.imul(h1 ^ bytes[i], 2654435761);
+    h2 = Math.imul(h2 ^ bytes[i], 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+
 export function detachedId(originId: string, seqid: string): string {
-  return `${originId}.${createHash("sha256").update(seqid).digest("hex")}`;
+  return `${originId}.${cyrb53(seqid).toString(16)}`;
 }
 
 export function getCallerInfo(): string {
