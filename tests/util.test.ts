@@ -1,10 +1,11 @@
+import { createHash } from "node:crypto";
 import { WallClock } from "../src/clock.js";
 import { InnerContext } from "../src/context.js";
 import { ConsoleLogger } from "../src/logger.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Constant, Exponential, type RetryPolicy } from "../src/retries.js";
-import { base64Decode, base64Encode, executeWithRetry, isGeneratorFunction } from "../src/util.js";
+import { base64Decode, base64Encode, detachedId, executeWithRetry, isGeneratorFunction } from "../src/util.js";
 
 // Helper to create a minimal InnerContext for executeWithRetry tests
 function makeCtx({
@@ -166,6 +167,43 @@ describe("base64 encoder", () => {
 
   test.each(cases.map((str) => [str]))("encodes and decodes correctly: %s", (string) => {
     expect(base64Decode(base64Encode(string))).toEqual(string);
+  });
+});
+
+describe("detachedId", () => {
+  const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+
+  test("returns originId dot sha256(seqid)", () => {
+    expect(detachedId("root", "root.0")).toBe(`root.${sha256("root.0")}`);
+  });
+
+  test("hash is 64 hex characters", () => {
+    const result = detachedId("origin", "origin.3");
+    const hash = result.split(".").slice(1).join(".");
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("is deterministic — same inputs produce same output", () => {
+    expect(detachedId("a", "a.0")).toBe(detachedId("a", "a.0"));
+  });
+
+  test("different seqids produce different ids", () => {
+    expect(detachedId("root", "root.0")).not.toBe(detachedId("root", "root.1"));
+  });
+
+  test("different originIds produce different ids", () => {
+    expect(detachedId("root.0", "root.0.0")).not.toBe(detachedId("root.1", "root.0.0"));
+  });
+
+  test("originId is preserved as prefix before the dot", () => {
+    const originId = "my-workflow-abc123";
+    const result = detachedId(originId, "my-workflow-abc123.5");
+    expect(result.startsWith(`${originId}.`)).toBe(true);
+  });
+
+  test("works with empty strings", () => {
+    const result = detachedId("", "");
+    expect(result).toBe(`.${sha256("")}`);
   });
 });
 
