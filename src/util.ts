@@ -108,7 +108,7 @@ function cyrb53(input: string | Uint8Array, seed = 0): number {
 }
 
 export function detachedId(originId: string, seqid: string): string {
-  return `${originId}.${cyrb53(seqid).toString(16)}`;
+  return `${originId}.${cyrb53(seqid).toString(16).padStart(14, '0')}`;
 }
 
 export function getCallerInfo(): string {
