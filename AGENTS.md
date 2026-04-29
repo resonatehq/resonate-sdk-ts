@@ -9,7 +9,6 @@ The TypeScript SDK for [Resonate](https://resonatehq.io) — a durable execution
 - **Latest published:** `@resonatehq/sdk@0.10.2` on npm (2026-04-29)
 - **Major line:** `0.10.x` — current generation, talks the v0.9.x Rust server protocol
 - **Cadence:** active. The 0.10.x line shipped the renamed promise API (`.settle()` → `.resolve()` / `.reject()` / `.cancel()`) across the 0.10.0 → 0.10.1 boundary, with point releases following from there.
-- **Owners:** Tomas Perez, David Farr (architecture), Andres Villegas (occasional fixes)
 
 ## Stack
 
@@ -37,7 +36,7 @@ npm run check:fix      # biome lint with --write
 npm run fmt            # biome format with --write
 ```
 
-Cully prefers to run long-lived processes himself. Run one-shot commands (build, test, lint, check, dst) freely; don't auto-start watchers or dev servers.
+Run one-shot commands (build, test, lint, check, dst) freely; don't auto-start watchers or dev servers — the operator runs long-lived processes themselves.
 
 ## Architecture notes
 
