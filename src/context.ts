@@ -539,14 +539,18 @@ export class InnerContext implements Context {
       id,
       func,
       version,
-      // breaksLineage must mirror the other dispatch methods (idChanged), NOT be
-      // hardcoded true. The detached id is `${this.originId}.${hash}`, so its
-      // resonate:origin must stay anchored to this.originId -- otherwise a
-      // detached workflow re-roots its origin to its own (already-prefixed) id,
-      // and recursive detached ids grow `${hash}` per level without bound. With
-      // idChanged: an auto-id detached inherits this.originId (bounded); a
-      // custom-id detached roots at its own fixed id, exactly like rfi/rfc.
-      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, breaksLineage: idChanged }),
+      // detached NEVER breaks the origin lineage (breaksLineage: false), even
+      // with an explicit id. "detached" decouples the await/suspension
+      // relationship -- the parent does not block on it -- but NOT the origin:
+      // resonate:origin is the root of the durable computation graph (it rides
+      // in the task.release/suspend/fulfill message head for routing), and a
+      // detached workflow stays part of its dispatcher's lineage. This also
+      // keeps recursive detached ids bounded: the id is `${this.originId}.${hash}`,
+      // so anchoring resonate:origin to this.originId means each level shares the
+      // top origin instead of re-rooting to its own (already-prefixed) id, which
+      // would grow `${hash}` per level. Mirrors the Python SDK, which always
+      // writes resonate:origin = self.origin_id with no break path.
+      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, breaksLineage: false }),
       "detached",
     );
   }

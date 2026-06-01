@@ -442,6 +442,30 @@ describe("Coroutine", () => {
     expect(ids.size).toBe((FANOUT ** (DEPTH + 1) - FANOUT) / (FANOUT - 1));
   });
 
+  test("detached never breaks the origin lineage, even with an explicit id", () => {
+    // "detached" decouples the await relationship, NOT the origin: a detached
+    // workflow stays part of its dispatcher's lineage. Even a caller-pinned id
+    // (which breaks lineage for rfi/rfc) must NOT break origin here.
+    const optsBuilder = new OptionsBuilder({ match: (t) => t, idPrefix: "" });
+    const ctx = new InnerContext({
+      id: "wf",
+      oId: "top",
+      func: "fires",
+      clock: new WallClock(),
+      registry: new Registry(),
+      dependencies: new Map(),
+      timeout: 0,
+      version: 1,
+      retryPolicy: new Never(),
+      optsBuilder,
+    });
+
+    const rfi = ctx.detached("fires", optsBuilder.build({ id: "custom-detached" }));
+
+    expect(rfi.id).toBe("custom-detached");
+    expect(rfi.createReq.data.tags?.["resonate:origin"]).toBe("top");
+  });
+
   test("lfc/rfc", async () => {
     function* bar() {
       return 42;
