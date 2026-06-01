@@ -539,7 +539,14 @@ export class InnerContext implements Context {
       id,
       func,
       version,
-      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, breaksLineage: true }),
+      // breaksLineage must mirror the other dispatch methods (idChanged), NOT be
+      // hardcoded true. The detached id is `${this.originId}.${hash}`, so its
+      // resonate:origin must stay anchored to this.originId -- otherwise a
+      // detached workflow re-roots its origin to its own (already-prefixed) id,
+      // and recursive detached ids grow `${hash}` per level without bound. With
+      // idChanged: an auto-id detached inherits this.originId (bounded); a
+      // custom-id detached roots at its own fixed id, exactly like rfi/rfc.
+      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, breaksLineage: idChanged }),
       "detached",
     );
   }
