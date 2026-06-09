@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import exceptions from "./exceptions.js";
 import { LocalNetwork } from "./network/local.js";
 import { isSuccess, type ScheduleRecord } from "./network/types.js";
@@ -15,7 +14,7 @@ export class Schedules {
   async get(id: string): Promise<ScheduleRecord> {
     const res = await this.send({
       kind: "schedule.get",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: {
         id,
       },
@@ -48,7 +47,7 @@ export class Schedules {
   ): Promise<ScheduleRecord> {
     const res = await this.send({
       kind: "schedule.create",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: {
         id: id,
         cron: cron,
@@ -70,7 +69,7 @@ export class Schedules {
   async delete(id: string): Promise<undefined> {
     const res = await this.send({
       kind: "schedule.delete",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: {
         id,
       },

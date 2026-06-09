@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { CronExpressionParser } from "cron-parser";
 import { assert, VERSION } from "../util.js";
 import type { Network } from "./network.js";
@@ -1633,7 +1632,7 @@ export class LocalNetwork implements Network {
       const now = Date.now();
       const result = this.server.apply(now, {
         kind: "debug.tick",
-        head: { corrId: randomUUID(), version: VERSION },
+        head: { corrId: crypto.randomUUID(), version: VERSION },
         data: { time: now },
       });
       this.dispatchMessages(result);
