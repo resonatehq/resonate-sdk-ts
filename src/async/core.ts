@@ -8,13 +8,16 @@ import { isRedirect, isSuccess, type Message, type PromiseRecord, type TaskRecor
 import type { OptionsBuilder } from "../options.js";
 import type { Registry } from "../registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicy, type RetryPolicyConstructor } from "../retries.js";
+import { type Trace, TraceCollector } from "../trace.js";
 import type { Effects, Send } from "../types.js";
 import * as util from "../util.js";
 import { type AnyFunc, AsyncContext, runWithRetry } from "./context.js";
 
-// Structurally identical to the generator engine's Status, minus the trace.
-export type Done = { kind: "done"; id: string; state: "resolved" | "rejected"; value: any };
-export type Suspended = { kind: "suspended"; awaited: string[] };
+// Structurally identical to the generator engine's Status, including the
+// lifecycle trace (the spawn/run/rpc/block/dedup/return/suspend subset — the
+// async engine cannot observe await/resume; see `isWellFormedLifecycle`).
+export type Done = { kind: "done"; id: string; state: "resolved" | "rejected"; value: any; trace: Trace };
+export type Suspended = { kind: "suspended"; awaited: string[]; trace: Trace };
 export type Status = Done | Suspended;
 
 /**
@@ -153,15 +156,22 @@ export class AsyncCore {
 
     this.heartbeat.start();
 
-    // Root dedup: if the boundary promise is already settled, short-circuit.
+    // One trace per pass (mirrors Computation.processGenerator); threaded into
+    // the root context and propagated to every child via AsyncContext.child.
+    const trace = new TraceCollector();
+
+    // Root dedup: if the boundary promise is already settled, short-circuit with
+    // a single dedup event (no spawn — the root never ran this pass).
     if (rootPromise.state !== "pending") {
-      return {
-        kind: "done",
-        id: rootPromise.id,
-        state: rootPromise.state === "resolved" ? "resolved" : "rejected",
-        value: rootPromise.value?.data,
-      };
+      const state = rootPromise.state === "resolved" ? "resolved" : "rejected";
+      trace.emit({ kind: "dedup", id: rootPromise.id, state, value: rootPromise.value?.data });
+      return { kind: "done", id: rootPromise.id, state, value: rootPromise.value?.data, trace: trace.getTrace() };
     }
+
+    // Root spawn — emitted once before the (possibly retried) run driver, matching
+    // the generator coroutine's own spawn at exec start. Retries re-run the body
+    // but do not re-emit spawn.
+    trace.emit({ kind: "spawn", id: rootPromise.id });
 
     // Run the root with in-process retries. Each attempt runs under a fresh
     // context so durable children replay identically via dedup. nonRetryable
@@ -183,6 +193,7 @@ export class AsyncCore {
             attempt,
           },
           effects,
+          trace,
         ),
       registered.func as AnyFunc,
       args,
@@ -193,14 +204,13 @@ export class AsyncCore {
     );
 
     if (outcome.kind === "suspended") {
-      return { kind: "suspended", awaited: outcome.remote };
+      trace.emit({ kind: "suspend", id: rootPromise.id });
+      return { kind: "suspended", awaited: outcome.remote, trace: trace.getTrace() };
     }
-    return {
-      kind: "done",
-      id: rootPromise.id,
-      state: outcome.kind === "value" ? "resolved" : "rejected",
-      value: outcome.kind === "value" ? outcome.value : outcome.error,
-    };
+    const state = outcome.kind === "value" ? "resolved" : "rejected";
+    const value = outcome.kind === "value" ? outcome.value : outcome.error;
+    trace.emit({ kind: "return", id: rootPromise.id, state, value });
+    return { kind: "done", id: rootPromise.id, state, value, trace: trace.getTrace() };
   }
 
   private async releaseTask(task: TaskRecord, rootPromise: PromiseRecord): Promise<void> {

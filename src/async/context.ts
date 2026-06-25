@@ -6,6 +6,7 @@ import type { PromiseCreateReq, PromiseRecord } from "../network/types.js";
 import type { Options, OptionsBuilder } from "../options.js";
 import type { Registry } from "../registry.js";
 import { Never, type RetryPolicy } from "../retries.js";
+import type { TraceCollector } from "../trace.js";
 import type { Effects } from "../types.js";
 import * as util from "../util.js";
 
@@ -146,6 +147,8 @@ export class AsyncContext implements Context {
   private dependencies: Map<string, any>;
   private optsBuilder: OptionsBuilder;
   private effects: Effects;
+  /** Lifecycle-event sink for this pass; shared with the root + every child. */
+  private trace: TraceCollector;
 
   private seq = 0;
 
@@ -159,7 +162,7 @@ export class AsyncContext implements Context {
   /** Tail of the creation sequencer chain (serializes promiseCreate calls). */
   private createTail: Promise<void> = Promise.resolve();
 
-  constructor(cfg: AsyncContextConfig, effects: Effects) {
+  constructor(cfg: AsyncContextConfig, effects: Effects, trace: TraceCollector) {
     this.id = cfg.id;
     this.originId = cfg.oId ?? cfg.id;
     this.branchId = cfg.bId ?? cfg.id;
@@ -173,6 +176,7 @@ export class AsyncContext implements Context {
     this.version = cfg.version;
     this.attempt = cfg.attempt ?? 1;
     this.effects = effects;
+    this.trace = trace;
 
     this.suspendSignal = new Promise<void>((resolve) => {
       this._fireSuspend = resolve;
@@ -201,6 +205,7 @@ export class AsyncContext implements Context {
         attempt: cfg.attempt,
       },
       this.effects,
+      this.trace,
     );
   }
 
@@ -264,13 +269,23 @@ export class AsyncContext implements Context {
 
     const outcome = (async (): Promise<Outcome> => {
       const rec = await this.createSlotted(createReq, func.name, slot);
+
+      // run p→q: the parent created a local child (emitted after create, before
+      // the spawn/dedup split, mirroring the generator coroutine).
+      this.trace.emit({ kind: "run", id: this.id, callee: id });
+
       if (rec.state !== "pending") {
+        // Replay: the child is already settled → dedup, no spawn/return.
+        const state = rec.state === "resolved" ? "resolved" : "rejected";
+        this.trace.emit({ kind: "dedup", id, state, value: rec.value?.data });
         return recordOutcome(rec);
       }
 
-      // Pending: execute the child in-process via the recursive runner, retrying
-      // failed attempts per the policy (each attempt gets a fresh child context
-      // so durable child ids replay identically via dedup).
+      // Pending: spawn the child, then execute it in-process via the recursive
+      // runner, retrying failed attempts per the policy (each attempt gets a fresh
+      // child context so durable child ids replay identically via dedup).
+      this.trace.emit({ kind: "spawn", id });
+
       const childOutcome = await runWithRetry(
         (attempt) => this.child({ id, func: func.name, timeout: rec.timeoutAt, version, attempt }),
         func,
@@ -282,11 +297,16 @@ export class AsyncContext implements Context {
       );
 
       if (childOutcome.kind === "suspended") {
+        // The child has remote deps of its own and could not complete this pass.
+        this.trace.emit({ kind: "suspend", id });
         this.fireSuspend();
         return childOutcome;
       }
 
       await this.settle(id, childOutcome, func.name);
+      const state = childOutcome.kind === "value" ? "resolved" : "rejected";
+      const value = childOutcome.kind === "value" ? childOutcome.value : childOutcome.error;
+      this.trace.emit({ kind: "return", id, state, value });
       return childOutcome;
     })();
 
@@ -367,7 +387,17 @@ export class AsyncContext implements Context {
     // (so the spawn survives), never for the detached workflow's result, and
     // never suspends on it — the outcome is always `value`, never `suspended`.
     const outcome = (async (): Promise<Outcome> => {
-      await this.createSlotted(createReq, func, slot);
+      const rec = await this.createSlotted(createReq, func, slot);
+      // Like the generator engine, detached takes the remote path (rpc + block):
+      // it creates a global promise it does not run itself. It just never adds the
+      // child to the remote-todo set, so the parent does not suspend on it.
+      this.trace.emit({ kind: "rpc", id: this.id, callee: id });
+      if (rec.state !== "pending") {
+        const state = rec.state === "resolved" ? "resolved" : "rejected";
+        this.trace.emit({ kind: "dedup", id, state, value: rec.value?.data });
+      } else {
+        this.trace.emit({ kind: "block", id });
+      }
       return { kind: "value", value: { id } satisfies DetachedHandle };
     })();
     this.spawnedHandles.push(outcome);
@@ -401,10 +431,18 @@ export class AsyncContext implements Context {
   ): Promise<Outcome> {
     return (async (): Promise<Outcome> => {
       const rec = await this.createSlotted(createReq, name, slot);
+
+      // rpc p→q: the parent created a remote child (rpc / sleep / DPC promise all
+      // take this path — they create a global promise and block on its settle).
+      this.trace.emit({ kind: "rpc", id: this.id, callee: id });
+
       if (rec.state !== "pending") {
+        const state = rec.state === "resolved" ? "resolved" : "rejected";
+        this.trace.emit({ kind: "dedup", id, state, value: rec.value?.data });
         return recordOutcome(rec);
       }
 
+      this.trace.emit({ kind: "block", id });
       this.fireSuspend();
       return { kind: "suspended", remote: [id] };
     })();

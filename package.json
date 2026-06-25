@@ -32,6 +32,7 @@
     "debug": "node --inspect-brk ./node_modules/.bin/jest -i",
     "docs": "npx typedoc ./src --githubPages",
     "dst": "npx tsx sim/main.ts",
+    "dst:diff": "npx tsx sim/src/differential.ts",
     "fmt": "npx @biomejs/biome format ./ --write",
     "prepare": "npm run build",
     "test": "npx jest --config jest.config.cjs",
