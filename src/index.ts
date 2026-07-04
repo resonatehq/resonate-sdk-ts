@@ -10,6 +10,7 @@ export { ConsoleLogger, type Logger, type LogLevel } from "./logger.js";
 export { type HttpAdapter, HttpNetwork, PollMessageSource, PushMessageSource } from "./network/http.js";
 export { LocalNetwork } from "./network/local.js";
 export { NatsNetwork, type NatsNetworkConfig } from "./network/nats.js";
+export { PostgresNetwork, type PostgresNetworkConfig } from "./network/postgres.js";
 export type { Network, Recv, Send } from "./network/network.js";
 export * from "./network/types.js";
 export { OptionsBuilder } from "./options.js";
