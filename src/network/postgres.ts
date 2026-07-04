@@ -2,7 +2,7 @@
 // PostgresNetwork
 // =============================================================================
 // A `Network` whose server *is* Postgres: the Resonate protocol runs as stored
-// procedures in a `resonate` schema (see github.com/resonatehq/resonate-smol-pg).
+// procedures in a `resonate` schema (see github.com/resonatehq/resonate-postgres).
 //
 //   send(req)  -> `SELECT resonate.resonate_rpc($1::jsonb)`, which runs the
 //                 stored procedure for the request kind and returns the exact
