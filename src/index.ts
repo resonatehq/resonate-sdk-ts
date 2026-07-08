@@ -14,6 +14,7 @@ export * from "./network/types.js";
 export { OptionsBuilder } from "./options.js";
 export { Registry } from "./registry.js";
 export { Resonate, type ResonateFunc, type ResonateHandle } from "./resonate.js";
+export { Constant, Exponential, Linear, Never, type RetryPolicy } from "./retries.js";
 export {
   awaitThenResumeOrSuspend,
   blockIsSole,

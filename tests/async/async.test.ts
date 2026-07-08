@@ -10,10 +10,12 @@ function newResonate(): AsyncResonate {
   return new AsyncResonate({ pid: "default", ttl: Number.MAX_SAFE_INTEGER });
 }
 
-// Wraps a network and records the ids of every durable promise.create issued
-// through task.fence (the effects path) — used to assert creation ordering.
+// Wraps a network and records every durable promise.create issued — bare
+// (resonate.rpc), embedded in task.create (resonate.run), or embedded in
+// task.fence (the effects path) — used to assert creation ordering and tags.
 class RecordingNetwork implements Network {
   readonly creates: string[] = [];
+  readonly tags = new Map<string, Record<string, string>>();
   constructor(private inner: Network) {}
   get unicast() {
     return this.inner.unicast;
@@ -31,8 +33,15 @@ class RecordingNetwork implements Network {
     return this.inner.stop();
   }
   send: Network["send"] = ((req: any) => {
-    if (req.kind === "task.fence" && req.data?.action?.kind === "promise.create") {
-      this.creates.push(req.data.action.data.id);
+    const data =
+      req.kind === "promise.create"
+        ? req.data
+        : req.data?.action?.kind === "promise.create"
+          ? req.data.action.data
+          : undefined;
+    if (data) {
+      this.creates.push(data.id);
+      this.tags.set(data.id, data.tags);
     }
     return this.inner.send(req);
   }) as Network["send"];
@@ -44,6 +53,7 @@ describe("AsyncResonate — async/await engine", () => {
 
   afterEach(async () => {
     await resonate?.stop();
+    jest.restoreAllMocks();
   });
 
   test("leaf (Info) completes in one pass", async () => {
@@ -295,6 +305,134 @@ describe("AsyncResonate — async/await engine", () => {
     // The parent completed without waiting; the detached child runs on its own
     // root task and its result can be awaited out of band.
     expect(await (await resonate.get<number>(childId)).result()).toBe(50);
+  });
+
+  test("resonate:prefix is set at the root and propagates to every child create", async () => {
+    const recording = new RecordingNetwork(new LocalNetwork({ pid: "default", group: "default" }));
+    resonate = new AsyncResonate({ network: recording, ttl: Number.MAX_SAFE_INTEGER });
+    resonate.register("pchild", async (_info: Info, n: number): Promise<number> => n);
+    resonate.register("pdet", async (_info: Info): Promise<void> => {});
+    const wf = async (ctx: Context): Promise<number> => {
+      const v = await ctx.run<number>("pchild", 7);
+      await ctx.sleep(1);
+      await ctx.detached("pdet");
+      return v;
+    };
+    resonate.register("prefixwf", wf);
+
+    await (await resonate.run("prefix-1", wf)).result();
+
+    expect(recording.tags.get("prefix-1")?.["resonate:prefix"]).toBe("prefix-1"); // root
+    expect(recording.tags.get("prefix-1.0")?.["resonate:prefix"]).toBe("prefix-1"); // local child
+    expect(recording.tags.get("prefix-1.1")?.["resonate:prefix"]).toBe("prefix-1"); // sleep timer
+    const detachedId = recording.creates.find((id) => id.startsWith("prefix-1.d"));
+    expect(detachedId).toMatch(/^prefix-1\.d[0-9a-f]{14}$/);
+    expect(recording.tags.get(detachedId as string)?.["resonate:prefix"]).toBe("prefix-1");
+  });
+
+  test("nested detached ids stay bounded via the fixed prefix", async () => {
+    resonate = newResonate();
+    const seen: { id: string; prefixId: string; originId: string }[] = [];
+    const deepest = Promise.withResolvers<void>();
+    const nest = async (ctx: Context, depth: number): Promise<void> => {
+      seen.push({ id: ctx.id, prefixId: ctx.prefixId, originId: ctx.originId });
+      if (depth >= 3) {
+        deepest.resolve();
+        return;
+      }
+      await ctx.detached("nest", depth + 1);
+    };
+    resonate.register("nest", nest);
+
+    await (await resonate.run("nest-root", nest, 1)).result();
+    await deepest.promise;
+
+    expect(seen).toHaveLength(3);
+    expect(seen[0].id).toBe("nest-root");
+    // Every level keeps the top-level root as its id-generation prefix, so each
+    // detached id is exactly one `.d` segment past it — bounded at any depth.
+    for (const s of seen) expect(s.prefixId).toBe("nest-root");
+    expect(seen[1].id).toMatch(/^nest-root\.d[0-9a-f]{14}$/);
+    expect(seen[2].id).toMatch(/^nest-root\.d[0-9a-f]{14}$/);
+    // The detached re-root breaks lineage: origin resets to its own id.
+    expect(seen[1].originId).toBe(seen[1].id);
+  });
+
+  test("ctx.panic aborts the pass: execution stops and nothing settles", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    resonate = newResonate();
+
+    let completed = false;
+    const wf = async (ctx: Context): Promise<string> => {
+      ctx.panic(true, "This should abort");
+      completed = true;
+      return "should not reach here";
+    };
+    resonate.register("panicwf", wf);
+
+    await resonate.run("panic-1", wf);
+    await sleep(50);
+
+    expect(completed).toBe(false);
+    // The task is released without settling — the root stays pending, exactly
+    // like the generator engine's DIE (never a rejected root).
+    expect((await resonate.promises.get("panic-1")).state).toBe("pending");
+  });
+
+  test("a user try/catch cannot suppress a panic", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    resonate = newResonate();
+
+    const wf = async (ctx: Context): Promise<string> => {
+      try {
+        ctx.assert(false, "assertion failed");
+      } catch {
+        // swallowed — but the abort is recorded on the context and must win
+      }
+      return "survived";
+    };
+    resonate.register("sneakywf", wf);
+
+    await resonate.run("panic-2", wf);
+    await sleep(50);
+
+    expect((await resonate.promises.get("panic-2")).state).toBe("pending");
+  });
+
+  test("a panic in a child workflow aborts the whole pass", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    resonate = newResonate();
+
+    resonate.register("panicchild", async (ctx: Context): Promise<void> => {
+      ctx.panic(true, "child abort");
+    });
+    const parent = async (ctx: Context): Promise<string> => {
+      await ctx.run<void>("panicchild");
+      return "done";
+    };
+    resonate.register("panicparent", parent);
+
+    await resonate.run("panic-3", parent);
+    await sleep(50);
+
+    // Neither the root nor the (created) child promise settles.
+    expect((await resonate.promises.get("panic-3")).state).toBe("pending");
+    expect((await resonate.promises.get("panic-3.0")).state).toBe("pending");
+  });
+
+  test("ctx.panic(false) and ctx.assert(true) do not abort", async () => {
+    resonate = newResonate();
+    const wf = async (ctx: Context): Promise<string> => {
+      ctx.panic(false, "should not abort");
+      ctx.assert(true, "should pass");
+      return "success";
+    };
+    resonate.register("okwf", wf);
+
+    expect(await (await resonate.run("panic-4", wf)).result()).toBe("success");
   });
 
   test("get() returns a handle to an existing promise", async () => {

@@ -186,8 +186,17 @@ export class Core {
     });
   }
 
-  public async onMessage(msg: Message): Promise<Status> {
-    util.assert(msg.kind === "execute");
+  public async onMessage(msg: Message): Promise<Status | undefined> {
+    // `msg` arrives off the network: an unexpected kind is an external
+    // condition (unhandled message type, corruption), not an internal
+    // invariant — drop it with a warning instead of asserting (which exits).
+    if (msg.kind !== "execute") {
+      this.logger.warn(
+        { component: "core", kind: (msg as { kind?: unknown }).kind },
+        "dropping message with unexpected kind",
+      );
+      return undefined;
+    }
 
     const task = msg.data.task;
     const res = await this.send({

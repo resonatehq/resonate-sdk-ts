@@ -218,9 +218,17 @@ export class AsyncResonate {
 
     this.registry.add(func as unknown as Func, name, version);
 
+    // Re-flatten the split: spreading the [args, opts] tuple itself would pass
+    // the args array as a single argument to the function.
     return {
-      run: (id, ...args) => this.run(id, func, ...this.getArgsAndOpts(args, version)),
-      rpc: (id, ...args) => this.rpc(id, func, ...this.getArgsAndOpts(args, version)),
+      run: (id, ...args) => {
+        const [argu, opts] = this.getArgsAndOpts(args, version);
+        return this.run(id, func, ...argu, opts);
+      },
+      rpc: (id, ...args) => {
+        const [argu, opts] = this.getArgsAndOpts(args, version);
+        return this.rpc(id, func, ...argu, opts);
+      },
       options: this.options,
     };
   }
@@ -269,6 +277,9 @@ export class AsyncResonate {
             tags: {
               ...opts.tags,
               "resonate:origin": id,
+              // A genuine top-level root is its own lineage origin AND its own
+              // id-generation prefix; the prefix then propagates down unchanged.
+              "resonate:prefix": id,
               "resonate:branch": id,
               "resonate:parent": id,
               "resonate:scope": "global",
@@ -322,6 +333,9 @@ export class AsyncResonate {
         tags: {
           ...opts.tags,
           "resonate:origin": id,
+          // A genuine top-level root is its own lineage origin AND its own
+          // id-generation prefix; the prefix then propagates down unchanged.
+          "resonate:prefix": id,
           "resonate:branch": id,
           "resonate:parent": id,
           "resonate:scope": "global",
@@ -387,7 +401,9 @@ export class AsyncResonate {
     return this.createHandle(promise);
   }
 
-  public options(opts: Partial<Pick<Options, "tags" | "target" | "timeout" | "version">> = {}): Options {
+  public options(
+    opts: Partial<Pick<Options, "tags" | "target" | "timeout" | "version" | "retryPolicy">> = {},
+  ): Options {
     return this.optsBuilder.build(opts);
   }
 
