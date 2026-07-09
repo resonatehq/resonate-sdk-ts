@@ -3,7 +3,7 @@
 // These wrap functionality that historically came from Node-only modules
 // (`node:crypto`, `node:timers/promises`, `process.env`) so the SDK can be
 // bundled for the browser. Each helper relies only on APIs available in both
-// Node 19+ and modern browsers.
+// Node (see the `engines` field in package.json) and modern browsers.
 
 // randomUUID — `globalThis.crypto.randomUUID()` is available on Node 19+ and
 // all modern browsers, replacing `node:crypto`'s `randomUUID`.

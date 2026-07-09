@@ -19,15 +19,10 @@
       "import": "./dist/index.browser.js",
       "default": "./dist/index.browser.js"
     },
-    "./network/http": {
-      "types": "./dist/network/http.d.ts",
-      "import": "./dist/network/http.js",
-      "default": "./dist/network/http.js"
-    },
-    "./network/browser": {
-      "types": "./dist/network/browser.d.ts",
-      "import": "./dist/network/browser.js",
-      "default": "./dist/network/browser.js"
+    "./async": {
+      "types": "./dist/async/index.d.ts",
+      "import": "./dist/async/index.js",
+      "default": "./dist/async/index.js"
     },
     "./package.json": "./package.json"
   },
