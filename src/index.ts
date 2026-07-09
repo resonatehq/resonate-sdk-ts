@@ -1,34 +1,12 @@
-export { WallClock } from "./clock.js";
-export { Codec } from "./codec.js";
-export type { Status } from "./computation.js";
-export type { Context } from "./context.js";
-export { Core } from "./core.js";
-export { type Encryptor, NoopEncryptor } from "./encryptor.js";
-export { ResonateTimeoutException } from "./exceptions.js";
-export { AsyncHeartbeat, NoopHeartbeat } from "./heartbeat.js";
-export { ConsoleLogger, type Logger, type LogLevel } from "./logger.js";
-export { type HttpAdapter, HttpNetwork, PollMessageSource, PushMessageSource } from "./network/http.js";
-export { LocalNetwork } from "./network/local.js";
-export type { Network, Recv, Send } from "./network/network.js";
-export * from "./network/types.js";
-export { OptionsBuilder } from "./options.js";
-export { Registry } from "./registry.js";
-export { Resonate, type ResonateFunc, type ResonateHandle } from "./resonate.js";
-export {
-  awaitThenResumeOrSuspend,
-  blockIsSole,
-  dedupIsSole,
-  type Event,
-  exclusiveLifecycle,
-  isWellFormed,
-  rootSpawn,
-  rpcHasCallee,
-  runHasCallee,
-  spawnIsFirst,
-  type Trace,
-  TraceCollector,
-  terminalIsLast,
-  uniqueSpawn,
-  uniqueTerminal,
-} from "./trace.js";
-export type { Effects, Func } from "./types.js";
+// =============================================================================
+// Default entry point — `@resonatehq/sdk` (server / Node)
+// =============================================================================
+//
+// The default build is the server build. It re-exports the full browser-safe
+// surface from ./index.browser.js and adds PushMessageSource, the server-only
+// message adapter that runs an HTTP server via `node:http`. Importing this
+// entry therefore pulls in `node:http`; browser users should opt in to the
+// browser build via "@resonatehq/sdk/browser" instead.
+
+export * from "./index.browser.js";
+export { PushMessageSource } from "./network/http.js";

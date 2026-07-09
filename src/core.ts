@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { Clock } from "./clock.js";
 import type { Codec } from "./codec.js";
 import { Computation, type Done, type Status } from "./computation.js";
@@ -7,6 +6,7 @@ import type { Heartbeat } from "./heartbeat.js";
 import type { Logger } from "./logger.js";
 import { isRedirect, isSuccess, type Message, type PromiseRecord, type TaskRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
+import { randomUUID } from "./platform.js";
 import type { Registry } from "./registry.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicyConstructor } from "./retries.js";
 import type { Effects, Send } from "./types.js";
