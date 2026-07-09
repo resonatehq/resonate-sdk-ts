@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
 import { WallClock } from "../clock.js";
 import { Codec } from "../codec.js";
 import { type Encryptor, NoopEncryptor } from "../encryptor.js";
@@ -21,6 +19,7 @@ import {
   type TaskRecord,
 } from "../network/types.js";
 import { type Options, OptionsBuilder } from "../options.js";
+import { delay, getEnv, randomUUID } from "../platform.js";
 import { Promises } from "../promises.js";
 import { Registry } from "../registry.js";
 import { Schedules } from "../schedules.js";
@@ -111,7 +110,7 @@ export class AsyncResonate {
     this.ttl = ttl;
     this.codec = new Codec(encryptor ?? new NoopEncryptor());
 
-    const resolvedPrefix = prefix ?? process.env.RESONATE_PREFIX;
+    const resolvedPrefix = prefix ?? getEnv("RESONATE_PREFIX");
     this.idPrefix = resolvedPrefix ? `${resolvedPrefix}:` : "";
 
     const resolvedLogLevel: LogLevel = logLevel ?? (verbose ? "debug" : "warn");
@@ -119,8 +118,8 @@ export class AsyncResonate {
 
     this.subscribeEvery = util.MIN;
 
-    const resolvedUrl = url ?? (process.env.RESONATE_URL || undefined);
-    this.pid = pid ?? crypto.randomUUID().replace(/-/g, "");
+    const resolvedUrl = url ?? (getEnv("RESONATE_URL") || undefined);
+    this.pid = pid ?? randomUUID().replace(/-/g, "");
 
     let heartbeat: boolean;
     if (network) {

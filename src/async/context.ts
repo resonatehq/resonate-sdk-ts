@@ -1,9 +1,8 @@
-import { randomUUID } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
 import type { Clock } from "../clock.js";
 import exceptions, { type ResonateError } from "../exceptions.js";
 import type { PromiseCreateReq, PromiseRecord } from "../network/types.js";
 import type { Options, OptionsBuilder } from "../options.js";
+import { delay, randomUUID } from "../platform.js";
 import type { Registry } from "../registry.js";
 import { Never, type RetryPolicy } from "../retries.js";
 import type { TraceCollector } from "../trace.js";
