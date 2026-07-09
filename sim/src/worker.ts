@@ -4,7 +4,7 @@ import { Core } from "../../src/core.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import { ConsoleLogger } from "../../src/logger.js";
 import type { Network } from "../../src/network/network.js";
-import { isResponse, type Message, type Request, type Response } from "../../src/network/types.js";
+import { isMessage, isResponse, type Message, type Request, type Response } from "../../src/network/types.js";
 
 import { OptionsBuilder } from "../../src/options.js";
 import type { Registry } from "../../src/registry.js";
@@ -144,10 +144,12 @@ class SimulatedNetwork implements Network {
       } catch {
         return; // discard corrupted messages
       }
-      // Validate it's a proper Message
-      if (typeof parsed === "object" && parsed !== null && "kind" in parsed) {
+      // Validate at the trust boundary with the same guard production HTTP uses
+      // (src/network/http.ts); corrupted/malformed messages are dropped here
+      // instead of reaching the engine.
+      if (isMessage(parsed)) {
         for (const callback of this.subscribers) {
-          callback(parsed as Message);
+          callback(parsed);
         }
       }
     }

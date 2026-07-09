@@ -53,7 +53,6 @@ Deliberately excluded from cross-engine comparison, with reasons:
 | Task `version` (fencing epoch) | Counts acquire/resume cycles, which differ with suspend/resume granularity and tick timing (e.g. how a sleep lines up with the server tick). Internal bookkeeping, not durable behavior. |
 | `pid`, `corrId`, message head | Per-instance non-determinism. |
 | Listeners, outbound messages | Reflect harness subscription and eager-vs-lazy message counts, not engine semantics. |
-| `resonate:prefix` tag | See divergence #5 below. |
 
 The harness also forces each workload function's JS `.name` to its registered
 name, because local calls store `func.name` in the durable param
@@ -133,48 +132,58 @@ the step budget (identical for both engines → not a divergence).
 
 ## Findings
 
-### Runtime finding: shared `onMessage` assert under corruption
+### Runtime finding: shared `onMessage` assert under corruption — FIXED
 
-Both engines guard `onMessage` with `util.assert(msg.kind === "execute")`
+Both engines used to guard `onMessage` with `util.assert(msg.kind === "execute")`
 (`src/core.ts`, `src/async/core.ts`), and `util.assert` calls `process.exit(1)`.
-Message corruption (`--charFlipProb`) can mangle a message's `kind` past the
+Message corruption (`--charFlipProb`) could mangle a message's `kind` past the
 worker's JSON-only validation, tripping that assert and killing the process.
 
-This is **identical code in both engines** — not an async-only divergence. Which
-engine trips it first is seed-dependent because the two consume the fault RNG
-differently. The differential runner converts `process.exit` into a thrown,
-swallowed error so a single corrupted message doesn't kill the fuzz loop, and
-corruption is off by default. (Corruption can also persist a mangled tag value —
+Fixed by treating the network as a trust boundary instead of an invariant:
+both engines' `onMessage` now warn-and-drop unexpected kinds, and the sim
+network validates inbound messages with `isMessage` (the same guard production
+HTTP uses in `src/network/http.ts`). Corruption is now a usable fault dimension
+in both `dst` and `dst:diff`. (Corruption can still persist a mangled tag value —
 e.g. `resonate:origin: "fibRfcX0"` — which the comparison correctly flags as a
 diff; that is a property of the injected fault, not engine behavior.)
 
-### Known divergences (documented, not fixed)
+Note: single-engine `npm run dst` draws unspecified fault probabilities from the
+seeded RNG (drop up to 0.5, corruption up to 0.15, ...) and now prints the
+resolved config as a `[faults]` line at startup.
 
-1. **Default retry policy** — generator leaf default is `Exponential`
-   (`src/computation.ts`), async is `Never` (`src/async/context.ts`). Neutralized
-   in tests by pinning `Never` on every child call.
+### Known divergences
+
+1. **Default retry policy** — INTENDED, kept by decision: generator leaf default
+   is `Exponential` (`src/computation.ts`), async is `Never` for everything
+   (`src/async/context.ts`). Async leaves and workflows are runtime-
+   indistinguishable (no `function*` marker), so retries are opt-in via an
+   explicit `retryPolicy` in options. This is a documented migration step, not a
+   bug. Neutralized in tests by pinning `Never` on every child call.
 2. **Eager vs lazy creation** — the async engine has no `begin*` forms and creates
    promises eagerly; the generator engine creates lazily. Changes message
    order/count (not durable state). Cross-engine DST is restricted to
    call-and-await forms; snapshots are sorted before comparison.
-3. **No async trace** — the generator engine emits a structured trace
-   (`src/trace.ts`); the async engine emits none. Trace-level equivalence was out
-   of scope; Layer B substitutes per-run structural invariants for the async run.
-4. **Detached id hashing** — `util.detachedId(prefixId, …)` (generator,
-   `src/context.ts`) vs `util.detachedId(originId, …)` (async,
-   `src/async/context.ts`). For a top-level parent `prefixId === originId`, so the
-   `detached` workload currently passes; a **nested**-detached parent would
-   surface the difference.
-5. **`resonate:prefix` root tag** — present on the generator root
-   (`src/computation.ts`), absent on the async root (`src/async/resonate.ts`);
-   likely the root cause of #4. Excluded from the canonical tag set.
+3. ~~**No async trace**~~ — RESOLVED: the async engine now emits the full
+   lifecycle subset of the trace (spawn/run/rpc/block/dedup/return/suspend, no
+   await/resume — see `isWellFormedLifecycle` in `src/trace.ts` and
+   `tests/async/async-trace.test.ts`).
+4. ~~**Detached id hashing**~~ — RESOLVED: the async engine now threads
+   `prefixId` and mints detached ids via `util.detachedId(prefixId, …)`,
+   matching the generator; recursive/nested detached ids stay bounded.
+5. ~~**`resonate:prefix` root tag**~~ — RESOLVED: the async root
+   (`src/async/resonate.ts`) now sets `resonate:prefix`, `AsyncCore` reads it,
+   and every child create request propagates it, matching the generator. The
+   tag is no longer excluded from the canonical snapshot — the oracle now
+   verifies it.
 
 ### Suggested follow-ups (separate from this detect-and-report work)
 
-- Converge the detached-id / `resonate:prefix` divergence (#4, #5).
-- Align the default retry policy between engines (#1).
-- Harden the shared `onMessage` assert against malformed input rather than
-  `process.exit`.
+- ~~Converge the detached-id / `resonate:prefix` divergence (#4, #5).~~ Done.
+- ~~Align the default retry policy between engines (#1).~~ Decided: keep `Never`
+  everywhere in the async engine; retries are explicit (see #1).
+- ~~Harden the shared `onMessage` assert against malformed input rather than
+  `process.exit`.~~ Done: warn-and-drop in both engines + `isMessage` at the sim
+  network boundary.
 
 ---
 

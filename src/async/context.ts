@@ -1,5 +1,5 @@
 import type { Clock } from "../clock.js";
-import exceptions from "../exceptions.js";
+import exceptions, { type ResonateError } from "../exceptions.js";
 import type { PromiseCreateReq, PromiseRecord } from "../network/types.js";
 import type { Options, OptionsBuilder } from "../options.js";
 import { delay, randomUUID } from "../platform.js";
@@ -31,6 +31,10 @@ export interface Info {
   readonly id: string;
   readonly parentId: string;
   readonly originId: string;
+  /** The id-generation prefix (resonate:prefix). Set once at the top and
+   * propagated down unchanged — through every child AND across detached
+   * re-roots — so recursive detached ids stay bounded. */
+  readonly prefixId: string;
   readonly branchId: string;
   readonly timeoutAt: number;
   readonly attempt: number;
@@ -43,19 +47,20 @@ export interface Info {
 /**
  * Full durable API available to a "workflow" function (first parameter typed
  * `Context`). All operations are eager — calling `run`/`rpc`/`sleep` begins the
- * work immediately and returns an already-running `Promise`. Awaiting one now is
- * call-and-wait; holding several and awaiting them later is fan-out.
+ * work immediately and returns an already-running {@link DurablePromise}.
+ * Awaiting one now is call-and-wait; holding several and awaiting them later is
+ * fan-out.
  *
- * A pending durable promise makes the returned `Promise` **hang** (never settle)
+ * A pending durable promise makes the returned promise **hang** (never settle)
  * for this pass — the engine ends the pass out of band. So `await` here behaves
  * like a normal JS promise: it only ever throws a real rejection.
  */
 export interface Context extends Info {
-  run<F extends AnyFunc>(func: F, ...args: ParamsWithOptions<F>): Promise<Return<F>>;
-  run<T>(func: string, ...args: any[]): Promise<T>;
+  run<F extends AnyFunc>(func: F, ...args: ParamsWithOptions<F>): DurablePromise<Return<F>>;
+  run<T>(func: string, ...args: any[]): DurablePromise<T>;
 
-  rpc<F extends AnyFunc>(func: F, ...args: ParamsWithOptions<F>): Promise<Return<F>>;
-  rpc<T>(func: string, ...args: any[]): Promise<T>;
+  rpc<F extends AnyFunc>(func: F, ...args: ParamsWithOptions<F>): DurablePromise<Return<F>>;
+  rpc<T>(func: string, ...args: any[]): DurablePromise<T>;
 
   /**
    * Spawns a workflow as a fresh root promise — independent execution lifecycle
@@ -76,8 +81,8 @@ export interface Context extends Info {
    * }
    * ```
    */
-  detached<F extends AnyFunc>(func: F, ...args: ParamsWithOptions<F>): Promise<DetachedHandle>;
-  detached(func: string, ...args: any[]): Promise<DetachedHandle>;
+  detached<F extends AnyFunc>(func: F, ...args: ParamsWithOptions<F>): DurablePromise<DetachedHandle>;
+  detached(func: string, ...args: any[]): DurablePromise<DetachedHandle>;
 
   /**
    * Creates a latent durable promise (DPC) with no associated function, intended
@@ -85,20 +90,25 @@ export interface Context extends Info {
    * `resonate.promises.resolve(id)`. Awaiting it suspends the parent until the
    * promise is settled externally. The id is `${ctx.id}.${seq}`.
    */
-  promise<T>(opts?: { timeout?: number; data?: any; tags?: { [key: string]: string } }): Promise<T>;
+  promise<T>(opts?: { timeout?: number; data?: any; tags?: { [key: string]: string } }): DurablePromise<T>;
 
-  sleep(ms: number): Promise<void>;
-  sleep(opts: { for?: number; until?: Date }): Promise<void>;
-  sleep(msOrOpts: number | { for?: number; until?: Date }): Promise<void>;
+  sleep(ms: number): DurablePromise<void>;
+  sleep(opts: { for?: number; until?: Date }): DurablePromise<void>;
+  sleep(msOrOpts: number | { for?: number; until?: Date }): DurablePromise<void>;
 
   options(opts?: Partial<Omit<Options, "id">>): Options;
 
-  // Aborts the execution of the root promise if condition is true / false.
+  /**
+   * Aborts the entire pass if condition is true (`panic`) / false (`assert`):
+   * no promise is settled and the task is released for redelivery — mirroring
+   * the generator engine's DIE. The abort is recorded on the context before
+   * the throw, so a surrounding user try/catch cannot suppress it.
+   */
   panic(condition: boolean, msg?: string): void;
   assert(condition: boolean, msg?: string): void;
 
-  date: { now(): Promise<number> };
-  math: { random(): Promise<number> };
+  date: { now(): DurablePromise<number> };
+  math: { random(): DurablePromise<number> };
 }
 
 /**
@@ -116,9 +126,47 @@ export interface DetachedHandle {
   readonly id: string;
 }
 
+/**
+ * The branded handle returned by every durable operation on {@link Context}
+ * (`run`, `rpc`, `sleep`, `detached`, `promise`). Behaves exactly like the
+ * user-facing promise it wraps (then/catch/finally/await, including the
+ * hang-on-suspend semantics) and additionally exposes the durable promise `id`.
+ *
+ * The brand marks the awaitables that are safe inside a workflow: replay
+ * determinism requires that `await` only ever targets durable promises —
+ * awaiting a timer, I/O, or a plain async-helper chain lets durable ids be
+ * assigned in completion order, which cross-wires them on replay.
+ */
+export class DurablePromise<T> implements Promise<T> {
+  readonly [Symbol.toStringTag] = "DurablePromise";
+
+  constructor(
+    /** The durable promise id (`""` when the op failed before creating one). */
+    readonly id: string,
+    private readonly promise: Promise<T>,
+  ) {}
+
+  // biome-ignore lint/suspicious/noThenProperty: being awaitable is this class's purpose
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    return this.promise.then(onfulfilled, onrejected);
+  }
+
+  catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null): Promise<T | TResult> {
+    return this.promise.catch(onrejected);
+  }
+
+  finally(onfinally?: (() => void) | null): Promise<T> {
+    return this.promise.finally(onfinally);
+  }
+}
+
 interface AsyncContextConfig {
   id: string;
   oId?: string;
+  prId?: string;
   bId?: string;
   pId?: string;
   func: string;
@@ -134,6 +182,7 @@ interface AsyncContextConfig {
 export class AsyncContext implements Context {
   readonly id: string;
   readonly originId: string;
+  readonly prefixId: string;
   readonly branchId: string;
   readonly parentId: string;
   readonly func: string;
@@ -150,6 +199,8 @@ export class AsyncContext implements Context {
   private trace: TraceCollector;
 
   private seq = 0;
+  /** Set once the pass is finalized (drain stable); durable ops then panic. */
+  private closed = false;
 
   // --- per-pass bookkeeping (owned by the pass; never escapes the pass) ---
 
@@ -158,12 +209,17 @@ export class AsyncContext implements Context {
   /** Resolved the first time any op observes a pending remote → ends the pass. */
   readonly suspendSignal: Promise<void>;
   private _fireSuspend!: () => void;
+  /** Resolved by ctx.panic → ends the pass; the recorded error aborts it. */
+  readonly panicSignal: Promise<void>;
+  private _firePanic!: () => void;
+  private _panicError?: ResonateError;
   /** Tail of the creation sequencer chain (serializes promiseCreate calls). */
   private createTail: Promise<void> = Promise.resolve();
 
   constructor(cfg: AsyncContextConfig, effects: Effects, trace: TraceCollector) {
     this.id = cfg.id;
     this.originId = cfg.oId ?? cfg.id;
+    this.prefixId = cfg.prId ?? cfg.id;
     this.branchId = cfg.bId ?? cfg.id;
     this.parentId = cfg.pId ?? cfg.id;
     this.func = cfg.func;
@@ -180,6 +236,15 @@ export class AsyncContext implements Context {
     this.suspendSignal = new Promise<void>((resolve) => {
       this._fireSuspend = resolve;
     });
+    this.panicSignal = new Promise<void>((resolve) => {
+      this._firePanic = resolve;
+    });
+  }
+
+  /** The panic that aborted this pass, if any. Authoritative: set by ctx.panic
+   * before the throw, so it survives a user try/catch around the call. */
+  get panicError(): ResonateError | undefined {
+    return this._panicError;
   }
 
   /** End the pass: a durable op observed a pending remote. Idempotent. */
@@ -187,11 +252,33 @@ export class AsyncContext implements Context {
     this._fireSuspend();
   }
 
+  /**
+   * Finalize the pass. Every op in `spawnedHandles` has been drained; a durable
+   * op started after this point comes from a continuation that outlived the pass
+   * (parked on a non-durable await — a timer, I/O, etc.). It would escape the
+   * drain and race task.suspend/fulfill as a zombie, so it panics instead.
+   */
+  close(): void {
+    this.closed = true;
+  }
+
+  private guardOpen(op: string): void {
+    if (this.closed) {
+      throw exceptions.PANIC(
+        "async-context",
+        `ctx.${op} called after the pass ended (id=${this.id}). A durable operation ` +
+          `must not follow a non-durable await (timer, I/O, ...) in a workflow — ` +
+          `the pass can end while such a continuation is still parked.`,
+      );
+    }
+  }
+
   private child(cfg: { id: string; func: string; timeout: number; version: number; attempt?: number }): AsyncContext {
     return new AsyncContext(
       {
         id: cfg.id,
         oId: this.originId,
+        prId: this.prefixId,
         bId: this.branchId,
         pId: this.id,
         func: cfg.func,
@@ -238,12 +325,15 @@ export class AsyncContext implements Context {
 
   // --- durable operations -------------------------------------------------
 
-  run(funcOrName: AnyFunc | string, ...args: any[]): Promise<any> {
+  run(funcOrName: AnyFunc | string, ...args: any[]): DurablePromise<any> {
+    this.guardOpen("run");
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "string" && !registered) {
+      // No durable promise was created (and no seq consumed) — id is empty.
       return this.track(
+        "",
         Promise.resolve<Outcome>({
           kind: "error",
           error: exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version),
@@ -309,15 +399,18 @@ export class AsyncContext implements Context {
       return childOutcome;
     })();
 
-    return this.track(outcome);
+    return this.track(id, outcome);
   }
 
-  rpc(funcOrName: AnyFunc | string, ...args: any[]): Promise<any> {
+  rpc(funcOrName: AnyFunc | string, ...args: any[]): DurablePromise<any> {
+    this.guardOpen("rpc");
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
     if (typeof funcOrName === "function" && !registered) {
+      // No durable promise was created (and no seq consumed) — id is empty.
       return this.track(
+        "",
         Promise.resolve<Outcome>({
           kind: "error",
           error: exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
@@ -335,12 +428,13 @@ export class AsyncContext implements Context {
     const createReq = this.remoteCreateReq({ id, data, opts, breaksLineage: idChanged });
     const slot = this.claimCreateSlot();
 
-    return this.track(this.remoteOutcome(id, createReq, slot, func));
+    return this.track(id, this.remoteOutcome(id, createReq, slot, func));
   }
 
-  sleep(ms: number): Promise<void>;
-  sleep(opts: { for?: number; until?: Date }): Promise<void>;
-  sleep(msOrOpts: number | { for?: number; until?: Date }): Promise<void> {
+  sleep(ms: number): DurablePromise<void>;
+  sleep(opts: { for?: number; until?: Date }): DurablePromise<void>;
+  sleep(msOrOpts: number | { for?: number; until?: Date }): DurablePromise<void> {
+    this.guardOpen("sleep");
     let time: number;
     if (typeof msOrOpts === "number") {
       time = this.clock.now() + msOrOpts;
@@ -356,10 +450,11 @@ export class AsyncContext implements Context {
     this.seq++;
     const createReq = this.sleepCreateReq({ id, time });
     const slot = this.claimCreateSlot();
-    return this.track(this.remoteOutcome(id, createReq, slot, "sleep"));
+    return this.track(id, this.remoteOutcome(id, createReq, slot, "sleep"));
   }
 
-  detached(funcOrName: AnyFunc | string, ...args: any[]): Promise<DetachedHandle> {
+  detached(funcOrName: AnyFunc | string, ...args: any[]): DurablePromise<DetachedHandle> {
+    this.guardOpen("detached");
     const [argu, opts] = util.splitArgsAndOpts(args, this.options());
     const registered = this.registry.get(funcOrName, opts.version);
 
@@ -368,12 +463,15 @@ export class AsyncContext implements Context {
         kind: "error",
         error: exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
       });
-      this.spawnedHandles.push(errOutcome);
-      return this.facing(errOutcome) as Promise<DetachedHandle>;
+      // No durable promise was created (and no seq consumed) — id is empty.
+      return this.track("", errOutcome);
     }
 
     const idChanged = opts.id !== undefined;
-    const id = idChanged ? (opts.id as string) : util.detachedId(this.originId, this.seqid());
+    // Detached ids are minted off the fixed id-generation prefix (NOT the grown
+    // id or the diverging origin), so recursive detached stays bounded at one
+    // segment past the prefix. Mirrors the generator engine (src/context.ts).
+    const id = idChanged ? (opts.id as string) : util.detachedId(this.prefixId, this.seqid());
     this.seq++;
 
     const func = registered ? registered.name : (funcOrName as string);
@@ -399,8 +497,7 @@ export class AsyncContext implements Context {
       }
       return { kind: "value", value: { id } satisfies DetachedHandle };
     })();
-    this.spawnedHandles.push(outcome);
-    return this.facing(outcome) as Promise<DetachedHandle>;
+    return this.track(id, outcome);
   }
 
   promise<T>({
@@ -411,12 +508,13 @@ export class AsyncContext implements Context {
     timeout?: number;
     data?: any;
     tags?: { [key: string]: string };
-  } = {}): Promise<T> {
+  } = {}): DurablePromise<T> {
+    this.guardOpen("promise");
     const id = this.seqid();
     this.seq++;
     const createReq = this.latentCreateReq({ id, timeout, data, tags });
     const slot = this.claimCreateSlot();
-    return this.track(this.remoteOutcome(id, createReq, slot, "promise"));
+    return this.track(id, this.remoteOutcome(id, createReq, slot, "promise"));
   }
 
   // Shared body for remote-backed ops (rpc, sleep): create the promise; if it
@@ -447,10 +545,10 @@ export class AsyncContext implements Context {
     })();
   }
 
-  // Register an outcome for draining and derive the user-facing promise.
-  private track(outcome: Promise<Outcome>): Promise<any> {
+  // Register an outcome for draining and derive the branded user-facing handle.
+  private track(id: string, outcome: Promise<Outcome>): DurablePromise<any> {
     this.spawnedHandles.push(outcome);
-    return this.facing(outcome);
+    return new DurablePromise(id, this.facing(outcome));
   }
 
   // Derive the user-facing promise from an outcome: value → resolve, error →
@@ -496,7 +594,13 @@ export class AsyncContext implements Context {
 
   panic(condition: boolean, msg?: string): void {
     if (condition) {
-      throw exceptions.PANIC(util.getCallerInfo(), msg);
+      const error = exceptions.PANIC(util.getCallerInfo(), msg);
+      // Record + signal BEFORE throwing: the abort must survive a user
+      // try/catch around this call (the generator's DIE is thrown by the
+      // driver, out of user reach — this is the async equivalent).
+      this._panicError = error;
+      this._firePanic();
+      throw error;
     }
   }
 
@@ -505,11 +609,11 @@ export class AsyncContext implements Context {
   }
 
   readonly date = {
-    now: (): Promise<number> => this.run((this.getDependency<DateConstructor>("resonate:date") ?? Date).now),
+    now: (): DurablePromise<number> => this.run((this.getDependency<DateConstructor>("resonate:date") ?? Date).now),
   };
 
   readonly math = {
-    random: (): Promise<number> => this.run((this.getDependency<Math>("resonate:math") ?? Math).random),
+    random: (): DurablePromise<number> => this.run((this.getDependency<Math>("resonate:math") ?? Math).random),
   };
 
   // --- promise-create request builders (kept identical to InnerContext) ---
@@ -554,6 +658,9 @@ export class AsyncContext implements Context {
         "resonate:branch": this.branchId,
         "resonate:parent": this.id,
         "resonate:origin": breaksLineage ? id : this.originId,
+        // Prefix is set at the top and propagates down unchanged forever,
+        // independent of origin (which detached/explicit-id may break).
+        "resonate:prefix": this.prefixId,
         ...opts.tags,
       },
     });
@@ -580,6 +687,9 @@ export class AsyncContext implements Context {
         "resonate:branch": id,
         "resonate:parent": this.id,
         "resonate:origin": breaksLineage ? id : this.originId,
+        // Prefix is set at the top and propagates down unchanged forever,
+        // independent of origin (which detached/explicit-id may break).
+        "resonate:prefix": this.prefixId,
         ...opts.tags,
       },
     });
@@ -598,6 +708,9 @@ export class AsyncContext implements Context {
         "resonate:branch": id,
         "resonate:parent": this.id,
         "resonate:origin": id,
+        // Prefix carries forward unchanged across the detached re-root (origin
+        // breaks, prefix does not) — this is what keeps recursive ids bounded.
+        "resonate:prefix": this.prefixId,
         ...opts.tags,
       },
     });
@@ -624,6 +737,8 @@ export class AsyncContext implements Context {
         "resonate:branch": id,
         "resonate:parent": this.id,
         "resonate:origin": this.originId,
+        // Prefix is set at the top and propagates down unchanged forever.
+        "resonate:prefix": this.prefixId,
         ...tags,
       },
     });
@@ -639,6 +754,8 @@ export class AsyncContext implements Context {
         "resonate:branch": id,
         "resonate:parent": this.id,
         "resonate:origin": this.originId,
+        // Prefix is set at the top and propagates down unchanged forever.
+        "resonate:prefix": this.prefixId,
         "resonate:timer": "true",
       },
     });
@@ -655,6 +772,14 @@ function recordOutcome(rec: PromiseRecord): Outcome {
     ? { kind: "value", value: rec.value?.data }
     : { kind: "error", error: rec.value?.data };
 }
+
+/**
+ * Microtask generations the drain waits for the op set to stabilize. Bounds the
+ * non-durable `await` hops a continuation may take between a settled durable op
+ * and its next durable call while still landing inside the pass; deeper chains
+ * are off-contract and panic via the closed context.
+ */
+const DRAIN_YIELDS = 16;
 
 /**
  * Run a user function to completion or suspension under `ctx`.
@@ -674,13 +799,47 @@ export async function run(ctx: AsyncContext, func: AnyFunc, args: any[]): Promis
       }
     })(),
     ctx.suspendSignal.then(() => ({ tag: "stuck" as const })),
+    // A panic ends the pass even if the user catches the throw and then parks
+    // on a non-durable await (the fn branch would never settle).
+    ctx.panicSignal.then(() => ({ tag: "panicked" as const })),
   ]);
 
   // Structured-concurrency drain. allSettled awaits every started op (so no
-  // unhandled rejections) and never hangs (outcomes always settle). An op whose
-  // promiseCreate/settle failed at the infra level fails the whole pass (the
-  // task is released and retried), rather than settling a child rejected.
-  const settled = await Promise.allSettled(ctx.spawnedHandles);
+  // unhandled rejections) and never hangs (outcomes always settle). Ops can
+  // start MORE ops from continuations behind an earlier op's await (a chained
+  // ctx.run), so a single snapshot is not enough: drain in rounds until the op
+  // set stops growing, then yield a bounded number of microtask generations
+  // before declaring the set stable — continuations may still be walking toward
+  // their next durable call through combinator/microtask hops (Promise.all
+  // resolution, `await null`). Microtask-only on purpose: the deterministic
+  // simulator drains the whole microtask queue per tick (so these yields are
+  // free in sim-time) but never fires engine timers/setImmediate. Only then is
+  // the pass finalized (ctx.close): a later op — a continuation parked on a
+  // timer or I/O — would race task.suspend/fulfill as a zombie, so it panics
+  // instead.
+  const settled: PromiseSettledResult<Outcome>[] = [];
+  drain: while (true) {
+    while (settled.length < ctx.spawnedHandles.length) {
+      settled.push(...(await Promise.allSettled(ctx.spawnedHandles.slice(settled.length))));
+    }
+    for (let k = 0; k < DRAIN_YIELDS; k++) {
+      await Promise.resolve();
+      if (settled.length < ctx.spawnedHandles.length) continue drain;
+    }
+    break;
+  }
+  ctx.close();
+
+  // A panic aborts the whole pass — the task is released, nothing settles —
+  // exactly like the generator's DIE. Checked on the context, not the race,
+  // so a user try/catch around ctx.panic cannot suppress it; checked after
+  // the drain so no op is left mid-flight. It propagates: a child's panic
+  // rejects its outcome, and the parent's drain rethrows it below.
+  if (ctx.panicError) throw ctx.panicError;
+
+  // An op whose promiseCreate/settle failed at the infra level fails the whole
+  // pass (the task is released and retried), rather than settling a child
+  // rejected. Deferred until the drain is complete so no op is left mid-flight.
   const remote: string[] = [];
   for (const s of settled) {
     if (s.status === "rejected") throw s.reason;

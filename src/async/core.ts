@@ -183,6 +183,11 @@ export class AsyncCore {
           {
             id: rootPromise.id,
             oId: rootPromise.tags["resonate:origin"] ?? rootPromise.id,
+            // The id-generation prefix, propagated unchanged across re-roots (a
+            // detached child resets origin to its own id but carries prefix
+            // forward), so recursive detached ids stay bounded. Falls back to
+            // the id like oId.
+            prId: rootPromise.tags["resonate:prefix"] ?? rootPromise.id,
             func: registered.func.name,
             clock: this.clock,
             registry: this.registry,
@@ -273,8 +278,17 @@ export class AsyncCore {
     });
   }
 
-  public async onMessage(msg: Message): Promise<Status> {
-    util.assert(msg.kind === "execute");
+  public async onMessage(msg: Message): Promise<Status | undefined> {
+    // `msg` arrives off the network: an unexpected kind is an external
+    // condition (unhandled message type, corruption), not an internal
+    // invariant — drop it with a warning instead of asserting (which exits).
+    if (msg.kind !== "execute") {
+      this.logger.warn(
+        { component: "async-core", kind: (msg as { kind?: unknown }).kind },
+        "dropping message with unexpected kind",
+      );
+      return undefined;
+    }
 
     const task = msg.data.task;
     const res = await this.send({

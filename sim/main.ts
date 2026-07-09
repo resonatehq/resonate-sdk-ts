@@ -190,12 +190,25 @@ export async function run(options: Options) {
 
   const rnd = new Random(options.seed);
 
-  const sim = new Simulator(rnd, {
+  // Resolve the full fault configuration up front (unspecified probabilities are
+  // drawn from the seeded RNG) and print it: a seed-randomized fault like
+  // charFlipProb silently being nonzero is otherwise invisible in a failing run.
+  const faults = {
     randomDelay: options.randomDelay ?? rnd.random(0.5),
     dropProb: options.dropProb ?? rnd.random(0.5),
     duplProb: options.duplProb ?? rnd.random(0.5),
     deactivateProb: options.deactivateProb ?? rnd.random(0.01),
     activateProb: options.activateProb ?? rnd.random(0.5),
+    charFlipProb: options.charFlipProb ?? rnd.random(0.15),
+  };
+  console.log(`[faults] seed=${options.seed}`, JSON.stringify(faults));
+
+  const sim = new Simulator(rnd, {
+    randomDelay: faults.randomDelay,
+    dropProb: faults.dropProb,
+    duplProb: faults.duplProb,
+    deactivateProb: faults.deactivateProb,
+    activateProb: faults.activateProb,
   });
 
   const clock = new StepClock();
@@ -233,15 +246,7 @@ export async function run(options: Options) {
   // workers
   for (let i = 1; i <= 3; i++) {
     sim.register(
-      new WorkerProcess(
-        rnd,
-        clock,
-        registry,
-        { charFlipProb: options.charFlipProb ?? rnd.random(0.15) },
-        `worker-${i}`,
-        "default",
-        factory,
-      ),
+      new WorkerProcess(rnd, clock, registry, { charFlipProb: faults.charFlipProb }, `worker-${i}`, "default", factory),
     );
   }
 

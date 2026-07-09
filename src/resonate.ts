@@ -266,15 +266,20 @@ export class Resonate {
 
     this.registry.add(func, name, version);
 
+    // Re-flatten the split: spreading the [args, opts] tuple itself would pass
+    // the args array as a single argument to the function.
+    const flatten = (args: ParamsWithOptions<F>): any[] => {
+      const [argu, opts] = this.getArgsAndOpts(args, version);
+      return [...argu, opts];
+    };
+
     return {
-      run: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> =>
-        this.run(id, func, ...this.getArgsAndOpts(args, version)),
-      rpc: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> =>
-        this.rpc(id, func, ...this.getArgsAndOpts(args, version)),
+      run: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> => this.run(id, func, ...flatten(args)),
+      rpc: (id: string, ...args: ParamsWithOptions<F>): Promise<Return<F>> => this.rpc(id, func, ...flatten(args)),
       beginRun: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
-        this.beginRun(id, func, ...this.getArgsAndOpts(args, version)),
+        this.beginRun(id, func, ...flatten(args)),
       beginRpc: (id: string, ...args: ParamsWithOptions<F>): Promise<ResonateHandle<Return<F>>> =>
-        this.beginRpc(id, func, ...this.getArgsAndOpts(args, version)),
+        this.beginRpc(id, func, ...flatten(args)),
       options: this.options,
     };
   }
