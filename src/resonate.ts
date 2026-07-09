@@ -5,7 +5,7 @@ import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import exceptions, { ResonateTimeoutException } from "./exceptions.js";
 import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
 import { ConsoleLogger, type Logger, type LogLevel } from "./logger.js";
-import { HttpNetwork, PollMessageSource } from "./network/browser.js";
+import { HttpNetwork, PollMessageSource } from "./network/http.js";
 import { LocalNetwork } from "./network/local.js";
 import type { Network } from "./network/network.js";
 import {
