@@ -673,7 +673,7 @@ export class InnerContext implements Context {
 
     return {
       kind: "promise.create",
-      head: { corrId: randomUUID(), version: util.VERSION },
+      head: { corrId: crypto.randomUUID(), version: util.VERSION },
       data: {
         id,
         timeoutAt,
@@ -710,7 +710,7 @@ export class InnerContext implements Context {
 
     return {
       kind: "promise.create",
-      head: { corrId: randomUUID(), version: util.VERSION },
+      head: { corrId: crypto.randomUUID(), version: util.VERSION },
       data: {
         id,
         timeoutAt,
@@ -748,7 +748,7 @@ export class InnerContext implements Context {
 
     return {
       kind: "promise.create",
-      head: { corrId: randomUUID(), version: util.VERSION },
+      head: { corrId: crypto.randomUUID(), version: util.VERSION },
       data: {
         id,
         timeoutAt,
@@ -783,7 +783,7 @@ export class InnerContext implements Context {
 
     return {
       kind: "promise.create",
-      head: { corrId: randomUUID(), version: util.VERSION },
+      head: { corrId: crypto.randomUUID(), version: util.VERSION },
       data: {
         id,
         timeoutAt,

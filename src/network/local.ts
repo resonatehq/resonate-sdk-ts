@@ -1643,7 +1643,7 @@ export class LocalNetwork implements Network {
       const now = Date.now();
       const result = this.server.apply(now, {
         kind: "debug.tick",
-        head: { corrId: randomUUID(), version: VERSION },
+        head: { corrId: crypto.randomUUID(), version: VERSION },
         data: { time: now },
       });
       this.dispatchMessages(result);

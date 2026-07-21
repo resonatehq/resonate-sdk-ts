@@ -129,7 +129,11 @@ export class Core {
   private async releaseTask(task: TaskRecord, rootPromise: PromiseRecord): Promise<void> {
     await this.send({
       kind: "task.release",
-      head: { corrId: randomUUID(), version: util.VERSION, "resonate:origin": rootPromise.tags["resonate:origin"] },
+      head: {
+        corrId: crypto.randomUUID(),
+        version: util.VERSION,
+        "resonate:origin": rootPromise.tags["resonate:origin"],
+      },
       data: { id: task.id, version: task.version },
     });
   }
@@ -141,13 +145,17 @@ export class Core {
   ): Promise<{ continue: true; preload: PromiseRecord[] } | { continue: false }> {
     const res = await this.send({
       kind: "task.suspend",
-      head: { corrId: randomUUID(), version: util.VERSION, "resonate:origin": rootPromise.tags["resonate:origin"] },
+      head: {
+        corrId: crypto.randomUUID(),
+        version: util.VERSION,
+        "resonate:origin": rootPromise.tags["resonate:origin"],
+      },
       data: {
         id: task.id,
         version: task.version,
         actions: awaited.map((a) => ({
           kind: "promise.register_callback",
-          head: { corrId: randomUUID(), version: util.VERSION },
+          head: { corrId: crypto.randomUUID(), version: util.VERSION },
           data: { awaiter: rootPromise.id, awaited: a },
         })),
       },
@@ -169,13 +177,21 @@ export class Core {
 
     await this.send({
       kind: "task.fulfill",
-      head: { corrId: randomUUID(), version: util.VERSION, "resonate:origin": rootPromise.tags["resonate:origin"] },
+      head: {
+        corrId: crypto.randomUUID(),
+        version: util.VERSION,
+        "resonate:origin": rootPromise.tags["resonate:origin"],
+      },
       data: {
         id: task.id,
         version: task.version,
         action: {
           kind: "promise.settle",
-          head: { corrId: randomUUID(), version: util.VERSION, "resonate:origin": rootPromise.tags["resonate:origin"] },
+          head: {
+            corrId: crypto.randomUUID(),
+            version: util.VERSION,
+            "resonate:origin": rootPromise.tags["resonate:origin"],
+          },
           data: {
             id: doneValue.id,
             state: doneValue.state,
@@ -201,7 +217,7 @@ export class Core {
     const task = msg.data.task;
     const res = await this.send({
       kind: "task.acquire",
-      head: { corrId: randomUUID(), version: util.VERSION, "resonate:origin": task.id },
+      head: { corrId: crypto.randomUUID(), version: util.VERSION, "resonate:origin": task.id },
       data: { id: task.id, version: task.version, pid: this.pid, ttl: this.ttl },
     });
 

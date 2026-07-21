@@ -14,7 +14,7 @@ export class Promises {
   async get(id: string): Promise<PromiseRecord> {
     const res = await this.send({
       kind: "promise.get",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: { id },
     });
     if (!isSuccess(res)) {
@@ -41,7 +41,7 @@ export class Promises {
   ): Promise<PromiseRecord> {
     const res = await this.send({
       kind: "promise.create",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: {
         id,
         timeoutAt,
@@ -75,13 +75,13 @@ export class Promises {
   ): Promise<{ promise: PromiseRecord; task?: TaskRecord }> {
     const res = await this.send({
       kind: "task.create",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: {
         pid,
         ttl,
         action: {
           kind: "promise.create",
-          head: { corrId: randomUUID(), version: VERSION },
+          head: { corrId: crypto.randomUUID(), version: VERSION },
           data: { id, timeoutAt, param: { headers, data }, tags },
         },
       },
@@ -145,7 +145,7 @@ export class Promises {
   ): Promise<PromiseRecord> {
     const res = await this.send({
       kind: "promise.settle",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: {
         id,
         state,
@@ -169,7 +169,7 @@ export class Promises {
   }> {
     const res = await this.send({
       kind: "promise.register_callback",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: { awaited, awaiter },
     });
     if (!isSuccess(res)) {
@@ -189,7 +189,7 @@ export class Promises {
   }> {
     const res = await this.send({
       kind: "promise.register_listener",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: { awaited, address },
     });
     if (!isSuccess(res)) {
