@@ -23,6 +23,11 @@
       "import": "./dist/network/nats.js",
       "default": "./dist/network/nats.js"
     },
+    "./postgres": {
+      "types": "./dist/network/postgres.d.ts",
+      "import": "./dist/network/postgres.js",
+      "default": "./dist/network/postgres.js"
+    },
     "./package.json": "./package.json"
   },
   "repository": {
