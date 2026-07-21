@@ -2,17 +2,18 @@
 // PostgresNetwork
 // =============================================================================
 // A `Network` whose server *is* Postgres: the Resonate protocol runs as stored
-// procedures in a `resonate` schema (see github.com/resonatehq/resonate-postgres).
+// procedures in a `resonate` schema (see github.com/resonatehq/resonate-pg).
 //
 //   send(req)  -> `SELECT resonate.resonate_rpc($1::jsonb)`, which runs the
 //                 stored procedure for the request kind and returns the exact
 //                 wire Response. All protocol logic lives in SQL.
-//   recv(cb)   -> a dedicated LISTEN connection on `resonate_outbox` /
-//                 `resonate_timeout`. On any notification (and on a short
-//                 fallback interval) it drives `process_timeouts(now)` and drains
-//                 the `outbox`, delivering each row as an `execute` / `unblock`
-//                 Message. This pump is the runtime: it forwards server-pushed
-//                 messages and advances Postgres's (schedulerless) timers.
+//   recv(cb)   -> a dedicated LISTEN connection on this node's per-address
+//                 channels (`resonate.outbox_channel` of the unicast and
+//                 anycast). On each notification (and on a short fallback
+//                 interval) it drives `process_timeouts()` and dequeues this
+//                 node's outbox rows, delivering each as an `execute` /
+//                 `unblock` Message. This pump is the runtime: it forwards
+//                 server-pushed messages and advances Postgres's timers.
 //
 // `pg` (node-postgres) is an optional peer dependency, imported dynamically so
 // the SDK carries no hard dependency on it unless PostgresNetwork is used.
@@ -26,7 +27,7 @@ export interface PostgresNetworkConfig {
   connectionString: string;
   /** Worker group; a task targets the group (anycast). Default "default". */
   group?: string;
-  /** This process's id; a callback/listener targets it (unicast). */
+  /** This process's id; a callback/listener targets it (unicast). Defaults to a random id. */
   pid?: string;
   /** Fallback poll interval (ms) so timers still fire if a NOTIFY is missed. */
   tickMs?: number;
@@ -57,17 +58,18 @@ export class PostgresNetwork implements Network {
   constructor(cfg: PostgresNetworkConfig) {
     this.connectionString = cfg.connectionString;
     this.group = cfg.group ?? "default";
-    this.pid = cfg.pid ?? "node";
+    this.pid = cfg.pid ?? crypto.randomUUID().replace(/-/g, "");
     this.tickMs = cfg.tickMs ?? 250;
     this.logger = cfg.logger;
     // A task targets the group (anycast); a callback/listener targets this
-    // specific process (unicast).
-    this.unicast = `postgres://uni@${this.group}/${this.pid}`;
-    this.anycast = `postgres://any@${this.group}`;
+    // specific process (unicast). The poll:// scheme mirrors the poll
+    // adapter's addressing and is what the schema accepts for listeners.
+    this.unicast = `poll://uni@${this.group}/${this.pid}`;
+    this.anycast = `poll://any@${this.group}`;
   }
 
   match(target: string): string {
-    return `postgres://any@${target}`;
+    return `poll://any@${target}`;
   }
 
   private async pg(): Promise<{ Pool: typeof Pool; Client: typeof Client }> {
@@ -89,9 +91,10 @@ export class PostgresNetwork implements Network {
   }
 
   async init(): Promise<void> {
-    await this.getPool();
+    const pool = await this.getPool();
     // A dedicated connection held open for LISTEN; node-postgres surfaces
-    // notifications as 'notification' events.
+    // notifications as 'notification' events. The schema NOTIFYs on a channel
+    // derived from each row's address, so listen on this node's addresses.
     const pg = await this.pg();
     this.listenClient = new pg.Client({ connectionString: this.connectionString });
     await this.listenClient.connect();
@@ -99,10 +102,12 @@ export class PostgresNetwork implements Network {
     this.listenClient.on("error", (err: Error) =>
       this.logger?.warn({ component: "network", error: err.message }, "postgres listen error"),
     );
-    await this.listenClient.query("LISTEN resonate_outbox");
-    await this.listenClient.query("LISTEN resonate_timeout");
+    for (const address of [this.unicast, this.anycast]) {
+      const { rows } = await pool.query("SELECT resonate.outbox_channel($1) AS channel", [address]);
+      await this.listenClient.query(`LISTEN "${rows[0].channel}"`);
+    }
 
-    await this.scheduleNext();
+    this.scheduleNext();
     await this.drain();
     this.logger?.info({ component: "network", group: this.group, pid: this.pid }, "postgres network initialized");
   }
@@ -139,7 +144,7 @@ export class PostgresNetwork implements Network {
     for (const cb of this.callbacks) cb(msg);
   }
 
-  /** Fire due timers, then flush the outbox, delivering each message. */
+  /** Fire due timers, then dequeue this node's outbox rows, delivering each. */
   private async drain(): Promise<void> {
     if (this.stopped) return;
     if (this.draining) {
@@ -149,18 +154,27 @@ export class PostgresNetwork implements Network {
     this.draining = true;
     try {
       const pool = await this.getPool();
-      await pool.query("SELECT resonate.process_timeouts($1)", [Date.now()]);
-      const { rows } = await pool.query(
-        `WITH d AS (DELETE FROM resonate.outbox RETURNING *)
-         SELECT kind, address, task_id, version, promise FROM d ORDER BY seq`,
-      );
-      for (const r of rows) {
-        if (r.kind === "execute") {
-          this.deliver({ kind: "execute", head: {}, data: { task: { id: r.task_id, version: r.version } } });
-        } else {
-          this.deliver({ kind: "unblock", head: {}, data: { promise: r.promise } });
-        }
+      // No-arg overload: timers fire on database time (clock_timestamp), so
+      // every node shares one time authority regardless of local clock skew,
+      // and concurrent calls from multiple nodes are safe (advisory locks,
+      // idempotent handlers).
+      await pool.query("SELECT resonate.process_timeouts()");
+      // Addressed, destructive dequeue (FOR UPDATE SKIP LOCKED): this node
+      // only consumes rows addressed to it, and same-group nodes split the
+      // anycast stream. Delivery is at-least-once: if we crash after
+      // dequeuing an execute row but before the task is claimed, the task
+      // stays pending and the server re-emits it on the task retry timeout
+      // (stale duplicates fail acquire with a 409, which the SDK tolerates).
+      // Execute rows target the task's target address (anycast by default);
+      // unblock rows target the listener's address (this node's unicast).
+      for (const address of [this.anycast, this.unicast]) {
+        await this.dequeue(pool, "SELECT task_id, version FROM resonate.dequeue_execute($1, $2)", address, (r) =>
+          this.deliver({ kind: "execute", head: {}, data: { task: { id: r.task_id, version: r.version } } }),
+        );
       }
+      await this.dequeue(pool, "SELECT promise FROM resonate.dequeue_unblock($1, $2)", this.unicast, (r) =>
+        this.deliver({ kind: "unblock", head: {}, data: { promise: r.promise } }),
+      );
     } catch (err) {
       if (!this.stopped) {
         this.logger?.warn({ component: "network", error: (err as Error).message }, "postgres drain error");
@@ -171,25 +185,24 @@ export class PostgresNetwork implements Network {
         this.redrain = false;
         void this.drain();
       }
-      await this.scheduleNext();
+      this.scheduleNext();
     }
   }
 
-  /** Sleep until the earliest timer deadline (capped at tickMs), waking early on NOTIFY. */
-  private async scheduleNext(): Promise<void> {
+  /** Dequeue rows addressed to `address` in batches until the backlog is empty. */
+  private async dequeue(pool: Pool, sql: string, address: string, deliver: (row: any) => void): Promise<void> {
+    const limit = 100;
+    while (true) {
+      const { rows } = await pool.query(sql, [address, limit]);
+      for (const r of rows) deliver(r);
+      if (rows.length < limit) return;
+    }
+  }
+
+  /** Fallback tick so timers and missed NOTIFYs still advance the pump. */
+  private scheduleNext(): void {
     if (this.stopped) return;
     if (this.timer) clearTimeout(this.timer);
-    let delay = this.tickMs;
-    try {
-      const pool = await this.getPool();
-      const { rows } = await pool.query("SELECT resonate.next_deadline() AS dl");
-      const dl = rows[0]?.dl;
-      if (dl != null) {
-        delay = Math.max(5, Math.min(this.tickMs, Number(dl) - Date.now()));
-      }
-    } catch {
-      /* fall back to tickMs */
-    }
-    this.timer = setTimeout(() => void this.drain(), delay);
+    this.timer = setTimeout(() => void this.drain(), this.tickMs);
   }
 }
