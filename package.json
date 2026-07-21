@@ -1,6 +1,6 @@
 {
   "name": "@resonatehq/sdk",
-  "version": "0.10.4",
+  "version": "0.11.2",
   "description": "TypeScript SDK for Resonate",
   "author": "Resonate Developers",
   "license": "Apache-2.0",
@@ -12,6 +12,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./async": {
+      "types": "./dist/async/index.d.ts",
+      "import": "./dist/async/index.js",
+      "default": "./dist/async/index.js"
+    },
+    "./nats": {
+      "types": "./dist/network/nats.d.ts",
+      "import": "./dist/network/nats.js",
+      "default": "./dist/network/nats.js"
     },
     "./package.json": "./package.json"
   },
@@ -32,6 +42,7 @@
     "debug": "node --inspect-brk ./node_modules/.bin/jest -i",
     "docs": "npx typedoc ./src --githubPages",
     "dst": "npx tsx sim/main.ts",
+    "dst:diff": "npx tsx sim/src/differential.ts",
     "fmt": "npx @biomejs/biome format ./ --write",
     "prepare": "npm run build",
     "test": "npx jest --config jest.config.cjs",
