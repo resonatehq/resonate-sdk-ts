@@ -76,7 +76,7 @@
     "@nats-io/transport-node": "^3.4.0",
     "@types/jest": "30.0.0",
     "@types/node": "^25.0.3",
-    "commander": "^14.0.0",
+    "commander": "^15.0.0",
     "esbuild": "^0.28.0",
     "ts-jest": "^29.4.9",
     "tsx": "^4.20.5",
