@@ -13,20 +13,25 @@
     "uuid": "^11.1.1"
   },
   "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
     },
     "./async": {
+      "types": "./dist/src/async/index.d.ts",
       "import": "./dist/src/async/index.js",
       "default": "./dist/src/async/index.js"
     },
     "./nats": {
+      "types": "./dist/src/network/nats.d.ts",
       "import": "./dist/src/network/nats.js",
       "default": "./dist/src/network/nats.js"
     },
     "./postgres": {
+      "types": "./dist/src/network/postgres.d.ts",
       "import": "./dist/src/network/postgres.js",
       "default": "./dist/src/network/postgres.js"
     },
