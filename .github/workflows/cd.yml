@@ -5,11 +5,14 @@ on:
     types: [released]
 
 jobs:
-  # Everything that can reject a bad release happens here, before any publish:
-  # the root package must carry the tag's version, and the whole suite (lint,
-  # types, tests, build of core + shims) must pass from source. The publish job
-  # ships exactly what this job built.
-  verify:
+  # One job: every check that can reject a bad release (version == tag, lint,
+  # types, tests, build of core + shims) runs before the publish step, so
+  # nothing ships if any of them fail. npm has no skip-existing, so the publish
+  # loop checks the registry per package, in dependency order (root first).
+  release:
+    permissions:
+      id-token: write
+
     runs-on: ubuntu-latest
 
     steps:
@@ -19,6 +22,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          registry-url: "https://registry.npmjs.org"
 
       # The tag tracks the root SDK's version (vX.Y.Z); a mismatch means a
       # package would publish under the wrong version, so nothing ships.
@@ -45,49 +49,23 @@ jobs:
           npm run build
           npm run build --workspaces --if-present
 
-  publish:
-    needs: verify
-
-    permissions:
-      id-token: write
-
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: set up node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: install
-        run: npm ci
-
-      - name: build core and shims
-        run: |
-          npm run build
-          npm run build --workspaces --if-present
-
-      # Publish in dependency order: the root package first, then the shims
-      # that depend on it. The skip mirrors py's skip-existing — an unchanged
-      # package whose version is already on npm rides along without republishing,
-      # and a re-run can finish a partial release.
+      # Root first (shims depend on it), then every packages/* discovered on
+      # disk -- a new shim is covered the day it lands, no name hardcoded.
+      # npm has no skip-existing: check the registry per package. An unchanged
+      # package whose version is already on npm rides along without
+      # republishing, and a re-run can finish a partial release. Private
+      # packages are skipped (npm publish would error on them, not skip).
       - name: publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          publish() { # <dir> [workspace-flag]
-            name=$(node -p "require('./$1/package.json').name")
-            version=$(node -p "require('./$1/package.json').version")
-            if npm view "$name@$version" version >/dev/null 2>&1; then
-              echo "skip $name@$version (already published)"
+          for dir in . packages/*; do
+            [ -f "$dir/package.json" ] || continue
+            read -r pkg private < <(node -p "const p=require('./$dir/package.json'); p.name+'@'+p.version+' '+!!p.private")
+            [ "$private" = true ] && { echo "skip $pkg (private)"; continue; }
+            if npm view "$pkg" version >/dev/null 2>&1; then
+              echo "skip $pkg (already published)"
             else
-              npm publish $2 --provenance --access public
+              (cd "$dir" && npm publish --provenance --access public)
             fi
-          }
-          publish .
-          for pkg in aws gcp cloudflare; do
-            publish "packages/$pkg" "-w @resonatehq/$pkg"
           done
