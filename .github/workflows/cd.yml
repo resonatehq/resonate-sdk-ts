@@ -1,0 +1,93 @@
+name: cd
+
+on:
+  release:
+    types: [released]
+
+jobs:
+  # Everything that can reject a bad release happens here, before any publish:
+  # the root package must carry the tag's version, and the whole suite (lint,
+  # types, tests, build of core + shims) must pass from source. The publish job
+  # ships exactly what this job built.
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The tag tracks the root SDK's version (vX.Y.Z); a mismatch means a
+      # package would publish under the wrong version, so nothing ships.
+      - name: verify the root version matches the release tag
+        run: |
+          version=$(npm pkg get version | tr -d '"')
+          test "$version" = "${GITHUB_REF_NAME#v}" \
+            || { echo "root version $version != tag ${GITHUB_REF_NAME#v}"; exit 1; }
+
+      - name: install
+        run: npm ci
+
+      - name: check linting
+        run: npm run check
+
+      - name: check types
+        run: npm run type-check
+
+      - name: run tests
+        run: npm test
+
+      - name: build core and shims
+        run: |
+          npm run build
+          npm run build --workspaces --if-present
+
+  publish:
+    needs: verify
+
+    permissions:
+      id-token: write
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: install
+        run: npm ci
+
+      - name: build core and shims
+        run: |
+          npm run build
+          npm run build --workspaces --if-present
+
+      # Publish in dependency order: the root package first, then the shims
+      # that depend on it. The skip mirrors py's skip-existing — an unchanged
+      # package whose version is already on npm rides along without republishing,
+      # and a re-run can finish a partial release.
+      - name: publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          publish() { # <dir> [workspace-flag]
+            name=$(node -p "require('./$1/package.json').name")
+            version=$(node -p "require('./$1/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip $name@$version (already published)"
+            else
+              npm publish $2 --provenance --access public
+            fi
+          }
+          publish .
+          for pkg in aws gcp cloudflare; do
+            publish "packages/$pkg" "-w @resonatehq/$pkg"
+          done

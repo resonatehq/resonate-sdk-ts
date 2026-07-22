@@ -5,14 +5,12 @@
     "moduleResolution": "NodeNext",
     "lib": ["ESNext"],
     "types": ["node", "jest"],
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
+    "declaration": false,
     "outDir": "./dist",
     "strict": true,
     "allowJs": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
   },
-  "include": ["sim/**/*", "src/**/*", "tests/**/*"]
+  "include": ["src/**/*", "tests/**/*", "sim/**/*", "examples/**/*"],
 }
