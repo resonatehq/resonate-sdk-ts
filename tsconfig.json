@@ -1,16 +1,8 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ESNext"],
     "types": ["node", "jest"],
-    "declaration": true,
-    "outDir": "./dist",
-    "strict": true,
-    "allowJs": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
   },
-  "include": ["src/**/*", "tests/**/*", "sim/**/*", "examples/**/*"],
+  "include": ["src/**/*", "tests/**/*", "sim/**/*", "examples/**/*"]
 }

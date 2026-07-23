@@ -48,9 +48,10 @@
     "dist/src"
   ],
   "scripts": {
-    "build": "tsc && rm -rf dist/tests dist/sim dist/examples",
+    "build": "tsc -p tsconfig.build.json",
     "check": "biome check ./",
     "check:fix": "biome check ./ --write",
+    "check:all": "npm run build && npm run check && npm run type-check && npm test",
     "debug": "node --inspect-brk ./node_modules/.bin/jest -i",
     "docs": "typedoc ./src --githubPages",
     "dst": "tsx sim/main.ts",
@@ -95,6 +96,7 @@
     "typescript": "^6.0.2"
   },
   "engines": {
-    "node": ">= 22"
+    "node": ">= 22",
+    "npm": ">= 10"
   }
 }
