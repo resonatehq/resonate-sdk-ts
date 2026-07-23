@@ -49,6 +49,33 @@ jobs:
           npm run build
           npm run build --workspaces --if-present
 
+      # Mirror of the py SDK's "run tests against the built artifacts", in npm
+      # terms: pack every non-private package, install the tarballs together into
+      # a clean dir with the real resolver (no `overrides: file:.`), and import
+      # the core entry points. This proves the packed tarball is complete
+      # (`files`/`exports`, dist present), the code imports at runtime, and the
+      # shim -> core dependency range resolves against the just-built core -- all
+      # BEFORE publish, so a bad build blocks the release instead of shipping and
+      # alerting after. Shims target FaaS runtimes and aren't imported under Node;
+      # packing + installing them is what exercises their packaging and dep range.
+      - name: verify built artifacts install and import
+        run: |
+          work=$(mktemp -d)
+          tarballs=""
+          for dir in . packages/*; do
+            [ -f "$dir/package.json" ] || continue
+            private=$(node -p "!!require('./$dir/package.json').private")
+            [ "$private" = true ] && continue
+            tgz=$(cd "$dir" && npm pack --silent --pack-destination "$work" | tail -1)
+            tarballs="$tarballs $work/$tgz"
+          done
+          (cd "$work" && npm init -y >/dev/null && npm install $tarballs)
+          (cd "$work" && node --input-type=module -e "
+            await import('@resonatehq/sdk');
+            await import('@resonatehq/sdk/async');
+            console.log('core entry points import cleanly from the packed tarballs');
+          ")
+
       # Root first (shims depend on it), then every packages/* discovered on
       # disk -- a new shim is covered the day it lands, no name hardcoded.
       # npm has no skip-existing: check the registry per package. An unchanged
