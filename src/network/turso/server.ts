@@ -342,6 +342,11 @@ export class OriginServer {
   private async createPromise(req: PromiseCreateReq): Promise<Outcome> {
     const { id, timeoutAt, param, tags } = req.data;
 
+    // Validation precedes the lookup: the server validates on deserialize, so a
+    // malformed request is a 400 whether or not the promise happens to exist.
+    const invalid = validateCreate(id, timeoutAt, tags ?? {});
+    if (invalid) return { kind: "promise.create", status: 400, data: invalid };
+
     const existing = await this.getPromise(id);
     if (existing) {
       return {
@@ -350,9 +355,6 @@ export class OriginServer {
         data: { promise: toPromiseRecord(project(existing, this.now)) },
       };
     }
-
-    const invalid = validateCreate(id, timeoutAt, tags ?? {});
-    if (invalid) return { kind: "promise.create", status: 400, data: invalid };
 
     const cols = tagColumns(tags ?? {});
 
@@ -547,12 +549,12 @@ export class OriginServer {
     }
     if (ttl <= 0) return { kind, status: 400, data: "TTL must be a positive integer" };
 
+    const invalid = validateCreate(a.id, a.timeoutAt, a.tags);
+    if (invalid) return { kind, status: 400, data: invalid };
+
     const existing = await this.getPromise(a.id);
 
     if (!existing) {
-      const invalid = validateCreate(a.id, a.timeoutAt, a.tags);
-      if (invalid) return { kind, status: 400, data: invalid };
-
       const cols = tagColumns(a.tags);
 
       if (a.timeoutAt > this.now) {
@@ -1289,9 +1291,17 @@ export function expandPromiseId(template: string, scheduleId: string, timestamp:
   return template.replaceAll("{{.id}}", scheduleId).replaceAll("{{.timestamp}}", String(timestamp));
 }
 
-/** The next cron instant strictly after `after`. */
+/**
+ * The next cron instant strictly after `after`.
+ *
+ * Pinned to UTC: a schedule is fired by whichever process sweeps it first, and
+ * those processes need not share a timezone. Interpreting the expression in
+ * local time would make the same schedule fire at different instants depending
+ * on which machine woke up — and would put this SDK at odds with the Python one
+ * in a mixed fleet.
+ */
 export function nextCron(cron: string, after: number): number {
-  return CronExpressionParser.parse(cron, { currentDate: new Date(after) })
+  return CronExpressionParser.parse(cron, { currentDate: new Date(after), tz: "UTC" })
     .next()
     .getTime();
 }

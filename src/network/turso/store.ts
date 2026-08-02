@@ -200,10 +200,15 @@ export class TursoStore {
     }
   }
 
-  async close(): Promise<void> {
-    this.closed = true;
+  /**
+   * Close every open connection, leaving the store usable — the next access
+   * reopens. Distinct from `close`, which also marks the store shut down so a
+   * late flush cannot resurrect it.
+   */
+  async discard(): Promise<void> {
     const conns = [...this.origins.values()];
     this.origins.clear();
+    this.locks.clear();
     const tenant = this.tenantConn;
     this.tenantConn = undefined;
     for (const conn of [...conns, tenant]) {
@@ -213,6 +218,11 @@ export class TursoStore {
         /* already closed */
       }
     }
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    await this.discard();
   }
 }
 

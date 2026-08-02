@@ -557,7 +557,7 @@ export class TursoNetwork implements Network {
     // Origin databases are created on demand and never enumerated, so only the
     // ones this process has open can be cleared. A caller wanting a clean slate
     // across processes should point the driver at a fresh directory or prefix.
-    await this.store.close();
+    await this.store.discard();
   }
 
   private async snap(origin: string, now: number): Promise<Outcome> {

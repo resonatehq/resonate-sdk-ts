@@ -58,6 +58,13 @@ export interface TursoDriver {
 // =============================================================================
 
 /**
+ * How long a connection waits for the write lock before giving up. Several
+ * processes may share one origin database, and a request is a short
+ * transaction, so queueing beats failing.
+ */
+export const BUSY_TIMEOUT_MS = 5000;
+
+/**
  * Map a logical database name to a filesystem path.
  *
  * Origins are validated by the protocol (`resonate:origin` must not contain a
@@ -111,7 +118,14 @@ export function tursoLocalDriver(cfg: TursoLocalDriverConfig): TursoDriver {
       const mod: any = await import("@tursodatabase/database");
       const connect = mod.connect ?? mod.default?.connect;
       const path = cfg.dir === ":memory:" ? ":memory:" : databasePath(cfg.dir, name, cfg.suffix);
-      return wrapDatabasePromise(await connect(path));
+      const conn = wrapDatabasePromise(await connect(path));
+      // WAL so readers do not block the writer, and a busy timeout so two
+      // processes sharing the directory queue for the write lock instead of
+      // failing outright — the same pragmas the Resonate Server's SQLite
+      // backend sets.
+      if (path !== ":memory:") await conn.execute("PRAGMA journal_mode = WAL");
+      await conn.execute(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+      return conn;
     },
   };
 }
@@ -164,6 +178,9 @@ export function tursoSyncDriver(cfg: TursoSyncDriverConfig): TursoDriver {
         longPollTimeoutMs: cfg.longPollTimeoutMs,
       });
       const conn = wrapDatabasePromise(db);
+      // Only the busy timeout: the sync engine owns this database's journal
+      // mode, so setting it here would fight the replica machinery.
+      await conn.execute(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
       conn.pull = async () => await db.pull();
       conn.push = async () => {
         await db.push();

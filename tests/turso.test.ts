@@ -871,6 +871,66 @@ describe("partitioning", () => {
     }
   });
 
+  test("a second process picks up work it never created", async () => {
+    // The whole point of the tenant-global database: a worker that has never
+    // heard of this workflow finds it through the message index, opens the
+    // origin database the id names, and claims the task.
+    const dir = mkdtempSync(join(tmpdir(), "resonate-turso-"));
+    const creator = new TursoNetwork({
+      driver: tursoLocalDriver({ dir }),
+      prefix: "shared-",
+      group: "creators",
+      tickMs: 5,
+    });
+    const worker = new TursoNetwork({
+      driver: tursoLocalDriver({ dir }),
+      prefix: "shared-",
+      group: "workers",
+      tickMs: 5,
+    });
+    try {
+      await creator.init();
+      await worker.init();
+      const box = inbox(worker);
+
+      // Targeted at the worker group, so only the worker may claim it.
+      ok(
+        await creator.send({
+          kind: "promise.create",
+          head: head(),
+          data: {
+            id: "handoff",
+            timeoutAt: Date.now() + 60_000,
+            param: { data: "payload" },
+            tags: { "resonate:target": creator.match("workers") },
+          },
+        }),
+      );
+
+      const msg = await box.next((m) => m.kind === "execute");
+      expect(msg).toEqual({ kind: "execute", head: {}, data: { task: { id: "handoff", version: 0 } } });
+
+      // The worker opens the origin database for the first time and claims it.
+      const acquired = ok(
+        await worker.send({
+          kind: "task.acquire",
+          head: head(),
+          data: { id: "handoff", version: 0, pid: "worker-1", ttl: 30_000 },
+        }),
+      );
+      expect(acquired.data.promise.param.data).toBe("payload");
+
+      // And the creator sees the claim, because both read the same database.
+      const seen = ok(await creator.send({ kind: "task.get", head: head(), data: { id: "handoff" } }));
+      expect(seen.data.task.state).toBe("acquired");
+      expect(seen.data.task.pid).toBe("worker-1");
+    } finally {
+      await creator.stop();
+      await worker.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("promises in different origins do not see each other", async () => {
     const net = tracked();
     await net.init();
