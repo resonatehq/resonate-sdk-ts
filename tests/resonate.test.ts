@@ -551,6 +551,7 @@ describe("Resonate usage tests", () => {
     await resonate.stop();
     expect((await resonate.promises.get("f.0")).tags).toEqual({
       "resonate:branch": "f.0",
+      "resonate:external": "true",
       "resonate:origin": "f",
       "resonate:prefix": "f",
       "resonate:parent": "f",
@@ -576,6 +577,7 @@ describe("Resonate usage tests", () => {
     await resonate.stop();
     expect((await resonate.promises.get("f.0")).tags).toEqual({
       "resonate:branch": "f.0",
+      "resonate:external": "true",
       "resonate:origin": "f",
       "resonate:prefix": "f",
       "resonate:parent": "f",
@@ -603,6 +605,7 @@ describe("Resonate usage tests", () => {
     expect(durable.timeoutAt).toBeLessThan(time + 5 * util.HOUR + 1000);
     expect(durable.tags).toEqual({
       "resonate:branch": "f.0",
+      "resonate:external": "true",
       "resonate:origin": "f",
       "resonate:prefix": "f",
       "resonate:parent": "f",
