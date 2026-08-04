@@ -739,6 +739,16 @@ export class AsyncContext implements Context {
         "resonate:origin": this.originId,
         // Prefix is set at the top and propagates down unchanged forever.
         "resonate:prefix": this.prefixId,
+        // A latent promise has no function behind it: nothing inside the
+        // system can ever settle it, only an out-of-band actor calling
+        // `promises.resolve`. That is the definition of an external promise,
+        // and marking it so is what entitles it to an armed timeout and to
+        // having awaiters at all — a server implementing the specification
+        // refuses a callback on a promise that is not external, because an
+        // internal promise's deadline is projection-only and its awaiter
+        // could be stranded forever. Placed before the caller's tags so an
+        // explicit tag still wins.
+        "resonate:external": "true",
         ...tags,
       },
     });

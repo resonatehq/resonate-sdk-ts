@@ -442,11 +442,43 @@ describe("Resonate usage tests", () => {
     expect(await h.result()).toBe("myValue");
     expect((await resonate.promises.get("hitl-1.0")).tags).toEqual({
       "resonate:branch": "hitl-1.0",
+      "resonate:external": "true",
       "resonate:origin": "hitl-1",
       "resonate:prefix": "hitl-1",
       "resonate:parent": "hitl-1",
       "resonate:scope": "global",
     });
+  });
+
+  test("A latent promise is external, and a caller's tags still win", async () => {
+    resonate = new Resonate({ group: "default", pid: "0", ttl: 50_000 });
+
+    // Nothing inside the system can settle a latent promise — only an
+    // out-of-band `promises.resolve`. The specification lets only external
+    // promises have awaiters and carry an armed timeout (an internal promise's
+    // deadline is projection-only, so its awaiter could be stranded), so a
+    // server implementing that rule refuses to register a callback against an
+    // untagged one. Awaiting the promise below is the whole point of the API,
+    // so it has to be marked.
+    const wf = async (ctx: Context): Promise<[string, string]> => {
+      const plain = ctx.promise<string>();
+      const tagged = ctx.promise<string>({ tags: { mine: "yes" } });
+      return [await plain, await tagged];
+    };
+    resonate.register("extwf", wf);
+
+    const h = await resonate.run("ext-1", wf);
+    await sleep(100);
+
+    expect((await resonate.promises.get("ext-1.0")).tags["resonate:external"]).toBe("true");
+
+    const withOwn = (await resonate.promises.get("ext-1.1")).tags;
+    expect(withOwn["resonate:external"]).toBe("true");
+    expect(withOwn.mine).toBe("yes"); // a caller's own tags are not clobbered
+
+    await resonate.promises.resolve("ext-1.0", { data: codec.encode("a").data });
+    await resonate.promises.resolve("ext-1.1", { data: codec.encode("b").data });
+    expect(await h.result()).toEqual(["a", "b"]);
   });
 
   test("Correctly sets timeout", async () => {
@@ -469,6 +501,7 @@ describe("Resonate usage tests", () => {
     expect(durable.timeoutAt).toBeLessThan(time + 5 * util.HOUR + 1000);
     expect(durable.tags).toEqual({
       "resonate:branch": "timeout-1.0",
+      "resonate:external": "true",
       "resonate:origin": "timeout-1",
       "resonate:prefix": "timeout-1",
       "resonate:parent": "timeout-1",

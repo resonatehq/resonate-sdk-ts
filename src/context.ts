@@ -761,6 +761,13 @@ export class InnerContext implements Context {
           // Prefix is set at the top and propagates down unchanged forever,
           // independent of origin (which detached/explicit-id may break).
           "resonate:prefix": this.prefixId,
+          // A latent promise has no function behind it: only an out-of-band
+          // actor calling `promises.resolve` can ever settle it, which is the
+          // definition of an external promise. Marking it so is what entitles
+          // it to an armed timeout and to having awaiters — a server
+          // implementing the specification refuses a callback on a promise
+          // that is not external. Before the caller's tags, so theirs win.
+          "resonate:external": "true",
           ...tags,
         },
       },
