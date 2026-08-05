@@ -26,6 +26,17 @@ export {
   type SnapshotStore,
 } from "./network/server/log.js";
 export {
+  isWrongLastSequence,
+  jetStreamLogBinding,
+  jetStreamTimerBinding,
+  resonateStreamConfig,
+} from "./network/server/nats-binding.js";
+export {
+  JetStreamTimerService,
+  type JsTimerBinding,
+  originFromScheduler,
+} from "./network/server/nats-timer.js";
+export {
   CollectingTransport,
   OriginRuntime,
   originOf,
