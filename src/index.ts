@@ -5,6 +5,7 @@ export type { Context } from "./context.js";
 export { Core } from "./core.js";
 export { type Encryptor, NoopEncryptor } from "./encryptor.js";
 export { ResonateTimeoutException } from "./exceptions.js";
+export { type HandlerAuth, ResonateHandler, type ResonateHandlerOptions } from "./handler.js";
 export { AsyncHeartbeat, NoopHeartbeat } from "./heartbeat.js";
 export { ConsoleLogger, type Logger, type LogLevel } from "./logger.js";
 export { type HttpAdapter, HttpNetwork, PollMessageSource } from "./network/http.js";
