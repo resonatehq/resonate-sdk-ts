@@ -114,7 +114,11 @@ export interface Schedule {
 // =============================================================================
 
 export type Change =
-  | { kind: "promise.set"; promise: PromiseRecord }
+  // `callbacks` and `listeners` travel with the promise they hang off so that a
+  // `promise.set` is a *complete* statement about that promise. Without them
+  // the change log is lossy — the awaiter graph cannot be reconstructed from it
+  // — and a durable implementation could not treat the log as the commit unit.
+  | { kind: "promise.set"; promise: PromiseRecord; callbacks: string[]; listeners: string[] }
   | { kind: "task.set"; task: TaskRecord }
   | { kind: "schedule.set"; schedule: ScheduleRecord }
   | { kind: "schedule.del"; id: string }
@@ -124,7 +128,16 @@ export type Change =
   | { kind: "ttimeout.del"; id: string }
   | { kind: "stimeout.set"; timeout: { id: string; timeout: number } }
   | { kind: "stimeout.del"; id: string }
-  | { kind: "message.send"; address: string; message: Message };
+  | { kind: "message.send"; address: string; message: Message }
+  // Emitted by the runtime once a request's messages have been handed to the
+  // log. In a log-backed deployment the log *is* the outbox — `message.send`
+  // entries are durable — so retaining them in materialized state as well would
+  // grow without bound. Clearing is a state transition like any other, so it is
+  // described by the log and replay stays faithful.
+  | { kind: "outbox.clear" }
+  // Emitted by debug.reset. Test-only, but the log must still describe it or
+  // replay would diverge from a server that has been reset.
+  | { kind: "reset" };
 
 // =============================================================================
 // CONSTANTS
@@ -156,6 +169,16 @@ export class Server {
 
   constructor(opts: { timeoutMode?: TimeoutMode } = {}) {
     this.timeoutMode = opts.timeoutMode ?? "eager";
+  }
+
+  /**
+   * Drop every message from materialized state, returning the change that
+   * describes it. Used by the log-backed runtime after a request's messages
+   * have been committed to the log; see the `outbox.clear` change.
+   */
+  clearOutbox(): Change {
+    this.outgoing = [];
+    return { kind: "outbox.clear" };
   }
 
   apply(now: number, req: Request): { response: Response; changes: Change[] } {
@@ -1081,7 +1104,7 @@ export class Server {
     this.pTimeouts = [];
     this.tTimeouts = [];
     this.sTimeouts = [];
-    return { response: this.response("debug.reset", 200, {}), changes: [] };
+    return { response: this.response("debug.reset", 200, {}), changes: [{ kind: "reset" }] };
   }
 
   private debugSnap(): { response: DebugSnapRes; changes: Change[] } {
@@ -1104,7 +1127,22 @@ export class Server {
   }
 
   private debugTick(req: DebugTickReq): { response: DebugTickRes; changes: Change[] } {
-    const now = req.data.time;
+    // debug.tick is a test-facing wrapper over the machine's internal timeout
+    // transition. Deployed runtimes call `tick` directly and never expose a
+    // debug request kind on the wire.
+    return { response: this.response("debug.tick", 200, []), changes: this.tick(req.data.time) };
+  }
+
+  /**
+   * Fire every timeout due at `now`, returning the resulting changes.
+   *
+   * This is the machine's internal timeout transition: promises past their
+   * deadline settle, expired task leases return to pending, pending tasks are
+   * re-dispatched, and due schedules create their next promise. It is a state
+   * transition like any other — fully described by the changes it returns — so
+   * a durable runtime commits it through the same log as a client request.
+   */
+  tick(now: number): Change[] {
     const changes: Change[] = [];
     const actions: DebugTickAction[] = [];
 
@@ -1258,7 +1296,7 @@ export class Server {
       changes.push(this.setSchedule(schedule));
     }
 
-    return { response: this.response("debug.tick", 200, []), changes };
+    return changes;
   }
 
   private debugStop(): { response: DebugStopRes; changes: Change[] } {
@@ -1503,7 +1541,14 @@ export class Server {
 
   private setPromise(p: Promise): Change {
     this.promises.set(p.id, p);
-    return { kind: "promise.set", promise: this.toPromiseRecord(p) };
+    return {
+      kind: "promise.set",
+      promise: this.toPromiseRecord(p),
+      // Snapshot the sets at emit time: `p.callbacks` is mutated in place by
+      // later handlers, so the change must not alias it.
+      callbacks: [...p.callbacks],
+      listeners: [...p.listeners],
+    };
   }
 
   private setTask(t: Task): Change {
