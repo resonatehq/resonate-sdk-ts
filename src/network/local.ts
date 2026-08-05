@@ -172,6 +172,28 @@ export class Server {
   }
 
   /**
+   * The earliest deadline anywhere in this lineage, or undefined if it has no
+   * pending work.
+   *
+   * This is the lineage's single timer. Rather than tracking one broker
+   * schedule per promise and per task, a runtime arms one schedule per origin
+   * at this instant and re-arms it on every commit: firing early is free
+   * (`tick` finds nothing due and commits nothing), so one timer per lineage
+   * loses nothing and collapses the registration bookkeeping to a single
+   * upsert.
+   */
+  nextDue(): number | undefined {
+    let earliest: number | undefined;
+    const consider = (t: number) => {
+      if (earliest === undefined || t < earliest) earliest = t;
+    };
+    for (const pt of this.pTimeouts) consider(pt.timeout);
+    for (const tt of this.tTimeouts) consider(tt.timeout);
+    for (const st of this.sTimeouts) consider(st.timeout);
+    return earliest;
+  }
+
+  /**
    * Drop every message from materialized state, returning the change that
    * describes it. Used by the log-backed runtime after a request's messages
    * have been committed to the log; see the `outbox.clear` change.

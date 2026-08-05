@@ -4,10 +4,18 @@
 // A `Network` whose server runs in this process, against a durable log.
 //
 // This is the "library version" of the Resonate server: the protocol machine,
-// the commit path, the timeout sweeper and the message transport all live in
-// the SDK, and the only external dependency is whatever backs the
-// {@link OriginLog}. Swap `MemoryLog` for a JetStream-backed log and the same
-// code becomes a distributed deployment with no separate server binary.
+// the commit path, the timer registry and the message transport all live in the
+// SDK, and the only external dependencies are whatever back the
+// {@link OriginLog} and {@link TimerService}. Swap the in-memory defaults for
+// broker-backed ones and the same code becomes a distributed deployment with no
+// separate server binary.
+//
+// Liveness comes from armed deadlines, never from a scan. Every recovery path in
+// the protocol bottoms out in a timer, so each lineage registers a single
+// deadline with an always-running component, armed *before* the commit that
+// needs it. Firing early is free; firing late or not at all hangs a workflow
+// forever. The O(all origins) `sweep` remains available as an operator-facing
+// reconciliation pass, but nothing depends on it and it is off by default.
 //
 // Compare the other implementations:
 //   - `LocalNetwork`    — same machine, no durability, single process.
@@ -26,6 +34,7 @@ import { assert } from "../util.js";
 import type { Network } from "./network.js";
 import { MemoryLog, type OriginLog, type SnapshotStore } from "./server/log.js";
 import { OriginRuntime, type Transport } from "./server/runtime.js";
+import { MemoryTimerService, type TimerService } from "./server/timer.js";
 import { isResponse, type Message, type Request, type Response } from "./types.js";
 
 export interface DurableNetworkConfig {
@@ -35,7 +44,21 @@ export interface DurableNetworkConfig {
   snapshots?: SnapshotStore;
   pid?: string;
   group?: string;
-  /** How often to fire due timeouts, in milliseconds. */
+  /**
+   * Registers each lineage's deadline. Defaults to an in-process timer.
+   *
+   * This is the liveness root: it is the only thing that restarts a stalled
+   * lineage. A broker-backed implementation makes deadlines durable and fires
+   * them with no application process running; the in-process default does not
+   * survive process death, and relies on the re-arm that happens whenever a
+   * lineage is materialized.
+   */
+  timers?: TimerService;
+  /**
+   * Interval for the reconciliation sweep, in milliseconds. Disabled by
+   * default: the sweep is an O(all origins) scan and must not be the mechanism
+   * liveness depends on. Enable it only as a slow backstop.
+   */
   sweepInterval?: number;
   /** Wall clock, injectable so tests can drive time deterministically. */
   now?: () => number;
@@ -47,6 +70,7 @@ export class DurableNetwork implements Network {
 
   private readonly runtime: OriginRuntime;
   private readonly log: OriginLog;
+  private readonly timers: TimerService;
   private readonly group: string;
   private readonly pid: string;
   private readonly sweepInterval: number;
@@ -61,7 +85,8 @@ export class DurableNetwork implements Network {
     snapshots,
     pid = randomUUID().replace(/-/g, ""),
     group = "default",
-    sweepInterval = 1000,
+    timers,
+    sweepInterval = 0,
     now = () => Date.now(),
   }: DurableNetworkConfig = {}) {
     this.group = group;
@@ -75,7 +100,15 @@ export class DurableNetwork implements Network {
       publish: async (address, message) => this.deliver(address, message),
     };
     this.log = log;
-    this.runtime = new OriginRuntime({ log, snapshots, transport });
+    // The timer fires the lineage's tick directly: no scan, no discovery. The
+    // deadline was armed before the commit that needed it, so a fire can be
+    // spurious but never missing.
+    this.timers =
+      timers ??
+      new MemoryTimerService((origin, at) => {
+        void this.runtime.tick(origin, Math.max(at, this.now())).catch(() => {});
+      }, now);
+    this.runtime = new OriginRuntime({ log, snapshots, transport, timers: this.timers });
   }
 
   match(target: string): string {
@@ -85,16 +118,19 @@ export class DurableNetwork implements Network {
   async init(): Promise<void> {
     if (this.started) return;
     this.started = true;
-    this.sweepTimer = setInterval(() => {
-      // Sweep failures must not take down the process; the next sweep retries,
-      // and nothing is lost because due timeouts stay due.
-      void this.runtime.sweep(this.now()).catch(() => {});
-    }, this.sweepInterval);
+    if (this.sweepInterval > 0) {
+      // Optional backstop only. Liveness comes from armed deadlines; this exists
+      // for operators who want a belt-and-braces reconciliation pass.
+      this.sweepTimer = setInterval(() => {
+        void this.runtime.sweep(this.now()).catch(() => {});
+      }, this.sweepInterval);
+    }
     // Republish anything a previous process committed but never delivered.
     await this.recoverAll();
   }
 
   async stop(): Promise<void> {
+    if (this.timers instanceof MemoryTimerService) this.timers.stop();
     if (this.sweepTimer) clearInterval(this.sweepTimer);
     this.sweepTimer = undefined;
     this.subscribers = [];

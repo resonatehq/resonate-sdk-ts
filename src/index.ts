@@ -35,6 +35,7 @@ export {
   type Transport,
 } from "./network/server/runtime.js";
 export { emptySnapshot, fold, hydrate, type Snapshot, snapshot } from "./network/server/state.js";
+export { MemoryTimerService, RecordingTimerService, type TimerService } from "./network/server/timer.js";
 export * from "./network/types.js";
 export { OptionsBuilder } from "./options.js";
 export { Registry } from "./registry.js";

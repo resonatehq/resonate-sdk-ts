@@ -24,6 +24,7 @@ import type { Change, Server, TimeoutMode } from "../local.js";
 import type { Message, Request, Response } from "../types.js";
 import { ConflictError, type OriginLog, type SnapshotStore } from "./log.js";
 import { fold, hydrate, snapshot } from "./state.js";
+import type { TimerService } from "./timer.js";
 
 /** Where an outgoing message goes. */
 export interface Transport {
@@ -42,6 +43,8 @@ export interface RuntimeOptions {
   log: OriginLog;
   snapshots?: SnapshotStore;
   transport?: Transport;
+  /** Registers each lineage's deadline with an always-running component. */
+  timers?: TimerService;
   timeoutMode?: TimeoutMode;
   /** Attempts before an append is abandoned. Matches the Go server's 5. */
   maxAttempts?: number;
@@ -115,6 +118,7 @@ export class OriginRuntime {
   private readonly log: OriginLog;
   private readonly snapshots?: SnapshotStore;
   private readonly transport?: Transport;
+  private readonly timers?: TimerService;
   private readonly timeoutMode?: TimeoutMode;
   private readonly maxAttempts: number;
   private readonly snapshotEvery: number;
@@ -129,6 +133,7 @@ export class OriginRuntime {
     this.log = opts.log;
     this.snapshots = opts.snapshots;
     this.transport = opts.transport;
+    this.timers = opts.timers;
     this.timeoutMode = opts.timeoutMode;
     this.maxAttempts = opts.maxAttempts ?? 5;
     this.snapshotEvery = opts.snapshotEvery ?? 64;
@@ -171,6 +176,11 @@ export class OriginRuntime {
         if (changes.length === 0) return 0;
 
         const batch = messagesOf(changes).length > 0 ? [...changes, entry.server.clearOutbox()] : changes;
+
+        // Same discipline as a client request: arm before, relax after.
+        const due = entry.server.nextDue();
+        if (due !== undefined) await this.timers?.armNoLaterThan(o, due);
+
         try {
           entry.seq = await this.log.append(o, batch, entry.seq);
         } catch (err) {
@@ -179,6 +189,7 @@ export class OriginRuntime {
           throw err;
         }
         entry.sinceSnapshot += 1;
+        await this.timers?.setDeadline(o, due);
         await this.flush(o, entry);
         await this.maybeSnapshot(o, entry);
         return changes.length;
@@ -228,6 +239,15 @@ export class OriginRuntime {
       // carries messages the log already holds.
       const batch = messagesOf(changes).length > 0 ? [...changes, entry.server.clearOutbox()] : changes;
 
+      // ARM BEFORE COMMIT. The machine has already applied the transition, so
+      // `nextDue` is the deadline the about-to-be-committed state needs. Arming
+      // first can only over-approximate — if the append fails, a timer fires for
+      // a transition that never happened and `tick` no-ops. Arming *after* would
+      // leave a window where committed state has no timer, which is precisely
+      // how a lineage goes permanently dark.
+      const due = entry.server.nextDue();
+      if (due !== undefined) await this.timers?.armNoLaterThan(origin, due);
+
       let seq: number;
       try {
         seq = await this.log.append(origin, batch, entry.seq);
@@ -244,6 +264,10 @@ export class OriginRuntime {
 
       entry.seq = seq;
       entry.sinceSnapshot += 1;
+      // RELAX ONLY AFTER COMMIT. Now that the state is durable, the deadline can
+      // be moved later or cleared: doing so before the append landed could have
+      // discarded the timer protecting state that was still live.
+      await this.timers?.setDeadline(origin, due);
       await this.flush(origin, entry);
       await this.maybeSnapshot(origin, entry);
       return response;
@@ -276,6 +300,11 @@ export class OriginRuntime {
       sinceSnapshot: tail.length,
     };
     this.cache.set(origin, entry);
+    // A lineage rebuilt from durable state re-asserts its deadline. This is the
+    // repair path: if a registration was ever lost, materializing the origin —
+    // which any request, tick or recovery does — puts it back.
+    const due = entry.server.nextDue();
+    if (due !== undefined) await this.timers?.armNoLaterThan(origin, due);
     return entry;
   }
 
