@@ -42,7 +42,21 @@ export interface JsBinding {
   fetch(subject: string, fromSeq: number): Promise<{ seq: number; payload: Uint8Array }[]>;
   /** The subject's head sequence, or 0 when it holds no messages. */
   lastSeq(subject: string): Promise<number>;
-  /** Delete messages on `subject` at or below `throughSeq`. */
+  /**
+   * Delete messages on `subject` at or below `throughSeq`, **always retaining
+   * the newest message on the subject**.
+   *
+   * The retention is load-bearing, not an optimization. An empty subject is
+   * invisible to {@link subjects}, and an origin the sweeper cannot enumerate
+   * is a lineage whose timers can never fire again — permanently dead, with no
+   * error anywhere. Keeping one message also preserves the subject's head
+   * sequence for the conditional append.
+   *
+   * The retained message is always at or below the snapshot the trim was taken
+   * against, so `read(origin, snapshotSeq)` excludes it and replay never
+   * double-applies it. With `@nats-io/jetstream` this is `purge` with
+   * `{ filter: subject, keep: 1 }`.
+   */
   purgeUpTo(subject: string, throughSeq: number): Promise<void>;
   /** Subjects with at least one message under `prefix`. */
   subjects(prefix: string): Promise<string[]>;

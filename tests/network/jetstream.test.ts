@@ -1,8 +1,8 @@
 import { describe, expect, test } from "@jest/globals";
 import type { Change } from "../../src/network/local.js";
 import { JetStreamLog, type JsBinding } from "../../src/network/server/jetstream.js";
-import { ConflictError } from "../../src/network/server/log.js";
-import { OriginRuntime } from "../../src/network/server/runtime.js";
+import { ConflictError, MemorySnapshotStore } from "../../src/network/server/log.js";
+import { CollectingTransport, OriginRuntime } from "../../src/network/server/runtime.js";
 import { snapshot } from "../../src/network/server/state.js";
 import { isSuccess, type Request } from "../../src/network/types.js";
 import { VERSION } from "../../src/util.js";
@@ -50,7 +50,10 @@ class FakeJetStream implements JsBinding {
   }
 
   async purgeUpTo(subject: string, throughSeq: number): Promise<void> {
-    this.messages = this.messages.filter((m) => !(m.subject === subject && m.seq <= throughSeq));
+    // Models `purge({ filter: subject, keep: 1 })`: the newest message on the
+    // subject always survives, so the subject never disappears.
+    const newest = this.heads.get(subject) ?? 0;
+    this.messages = this.messages.filter((m) => !(m.subject === subject && m.seq <= throughSeq && m.seq !== newest));
   }
 
   async subjects(prefix: string): Promise<string[]> {
@@ -147,7 +150,8 @@ describe("JetStreamLog", () => {
     expect(js.count()).toBe(5);
 
     await log.trim("root", seq);
-    expect(js.count()).toBe(0);
+    // One message is retained on purpose; see JsBinding.purgeUpTo.
+    expect(js.count()).toBe(1);
     // The head is unchanged, so the next append still has to present it.
     expect(await log.head("root")).toBe(seq);
     await expect(log.append("root", change("after"), 0)).rejects.toThrow(ConflictError);
@@ -212,5 +216,84 @@ describe("runtime over JetStreamLog", () => {
     const state = snapshot(await new OriginRuntime({ log }).inspect("root"));
     expect(state.tasks.root.state).toBe("suspended");
     expect(state.callbacks["root.child"]).toEqual(["root"]);
+  });
+});
+
+describe("timer discoverability", () => {
+  test("an origin stays discoverable after its log is trimmed", async () => {
+    const js = new FakeJetStream();
+    const log = new JetStreamLog(js);
+
+    let seq = 0;
+    for (let i = 0; i < 3; i++) seq = await log.append("root", change(`p${i}`), seq);
+    expect(await log.origins()).toEqual(["root"]);
+
+    // A snapshot lets the runtime reclaim history. The origin must remain
+    // visible afterwards: the sweeper finds work by enumerating origins, so an
+    // invisible origin is a lineage whose timers can never fire again.
+    await log.trim("root", seq);
+    expect(await log.origins()).toEqual(["root"]);
+  });
+});
+
+describe("timer liveness across total shutdown", () => {
+  // Timers are the only thing that restarts a stalled lineage: every recovery
+  // path in the protocol — a lost execute, a dead worker's lease, an unsettled
+  // promise, a due schedule — bottoms out in one. So the property that matters
+  // is that a timer survives *everything*: snapshotting, trimming, and every
+  // process going away.
+  test("a due timeout still fires after snapshot, trim and total process loss", async () => {
+    const js = new FakeJetStream();
+    const log = new JetStreamLog(js);
+    const snapshots = new MemorySnapshotStore();
+    const transport = new CollectingTransport();
+    const start = 1_000_000;
+
+    // Phase 1: a lineage with a deadline, plus enough traffic to force a
+    // snapshot and trim of its log.
+    const first = new OriginRuntime({ log, snapshots, transport, snapshotEvery: 3 });
+    await first.apply(start, {
+      kind: "promise.create",
+      head: head(),
+      data: { id: "root", timeoutAt: start + 10_000, param: {}, tags: {} },
+    });
+    for (let i = 0; i < 8; i++) {
+      await first.apply(start, createReq(`root.c${i}`, start));
+    }
+    const snapshotTaken = await snapshots.load("root");
+    expect(snapshotTaken).toBeDefined();
+
+    // Phase 2: every process is gone. Nothing is cached anywhere; the only
+    // surviving state is the trimmed log plus the snapshot.
+    const revived = new OriginRuntime({ log, snapshots, transport: new CollectingTransport() });
+
+    // The origin must still be enumerable, or the sweeper will never look at it.
+    expect(await log.origins()).toContain("root");
+
+    // Phase 3: time has passed while nothing was running. The sweep must catch
+    // up and settle the promise that expired in the meantime.
+    const fired = await revived.sweep(start + 60_000);
+    expect(fired).toBeGreaterThan(0);
+
+    const state = snapshot(await revived.inspect("root"));
+    expect(state.promises.root.state).toBe("rejected_timedout");
+  });
+
+  test("a lineage whose log is fully trimmed is still swept", async () => {
+    const js = new FakeJetStream();
+    const log = new JetStreamLog(js);
+    const snapshots = new MemorySnapshotStore();
+    const start = 1_000_000;
+
+    const rt = new OriginRuntime({ log, snapshots, transport: new CollectingTransport(), snapshotEvery: 1 });
+    await rt.apply(start, {
+      kind: "promise.create",
+      head: head(),
+      data: { id: "solo", timeoutAt: start + 5_000, param: {}, tags: {} },
+    });
+
+    // Aggressive trimming must not make the origin invisible.
+    expect(await log.origins()).toContain("solo");
+    expect(await new OriginRuntime({ log, snapshots }).sweep(start + 60_000)).toBeGreaterThan(0);
   });
 });
