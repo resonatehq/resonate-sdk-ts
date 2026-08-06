@@ -107,6 +107,38 @@ A driver maps a logical database name to physical storage. Three ship:
 All three are optional peer dependencies, imported dynamically. Implement
 `TursoDriver` for anything else — it has one method, `open(name)`.
 
+`libsqlDriver` is **known broken** — a workflow driven through it stalls
+part way with no error, even on a single node. It is kept only because a
+`file:` libSQL database *is* multi-process capable where the Turso local driver
+is not, which makes it the right shape for a same-machine fleet once the stall
+is understood.
+
+
+## Running more than one node
+
+**Only the single-node arrangement is verified.** Within one process this
+works: workflows run to completion, and one abandoned mid-flight is recovered
+off the timeout index. A fleet is a different story, and the honest state is:
+
+| Driver | Multiple processes |
+|--------|--------------------|
+| `TursoLocalDriver` | **Impossible.** Turso takes an exclusive file lock on open; the second process fails with `File is locked by another process`. A shared directory is not a way to run a fleet. |
+| `TursoSyncDriver` | **The intended arrangement, never run against a real remote.** Each node holds its own replica files and they converge through Turso Cloud, so there is no shared file to contend on — but this has not been tested. |
+
+Two further things a fleet will meet, both real:
+
+* **The tenant database is the fleet's one global write bottleneck.** Every
+  origin publishes its timers there, so every node writes the same file.
+  `TursoStore.flush` now skips the write entirely when an origin's timers have
+  not moved, which removes most of the traffic, but the bottleneck is
+  structural.
+
+* **Work migrates to whoever swept the timer.** Because `resonate:target` is
+  advisory (see above), a workflow resumed by a timeout is resumed *on the
+  sweeping node*. With several nodes and short timers, a single workflow can
+  bounce between them, and every bounce is contention on that workflow's
+  database.
+
 ## What the schema follows
 
 The schema and transitions follow
@@ -159,7 +191,7 @@ Resonate Server's SQLite schema and the two are not interchangeable.
   to the local client like any other message, but nothing makes the HTTP call —
   there is no server to make it. Treat these as unsupported.
 
-## Concurrency
+## Concurrency (superseded — see above)
 
 A task lease already gives a workflow one writer at a time, which is the
 arrangement this design is built for. Within a process, requests against an

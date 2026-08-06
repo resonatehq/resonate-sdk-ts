@@ -92,6 +92,23 @@ function toRows(rows: unknown): TursoRow[] {
   return Array.isArray(rows) ? (rows as TursoRow[]) : [];
 }
 
+/**
+ * A gate that runs one operation at a time, in call order.
+ *
+ * Cross-process contention is SQLite's business — that is what `busy_timeout`
+ * is for. *In-process* contention on a single connection is ours: a second
+ * `BEGIN` on a connection that already has one open is not a wait, it is an
+ * error.
+ */
+function onePerConnection(): <T>(fn: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(fn: () => Promise<T>): Promise<T> => {
+    const run = tail.then(fn, fn);
+    tail = run.catch(() => {});
+    return run;
+  };
+}
+
 // =============================================================================
 // LOCAL DRIVER (@tursodatabase/database)
 // =============================================================================
@@ -101,6 +118,8 @@ export interface TursoLocalDriverConfig {
    * Directory holding one file per database. Pass `":memory:"` to keep every
    * database in memory — each name still gets its own isolated database, which
    * is what tests want.
+   *
+   * Only one process may use a given directory: see `tursoLocalDriver`.
    */
   dir: string;
   /** File suffix for on-disk databases. Default ".db". */
@@ -109,8 +128,12 @@ export interface TursoLocalDriverConfig {
 
 /**
  * A driver backed by `@tursodatabase/database`: embedded, local-only, no
- * replication. This is the single-node arrangement — several processes on one
- * machine sharing a directory of databases — and the one tests use.
+ * replication.
+ *
+ * ONE PROCESS ONLY. Turso takes an exclusive file lock when it opens a
+ * database, so a second process opening the same file fails outright with
+ * "File is locked by another process" — a shared directory is not a way to run
+ * a fleet. Use it for a single node, for tests, and for `:memory:`.
  */
 export function tursoLocalDriver(cfg: TursoLocalDriverConfig): TursoDriver {
   return {
@@ -119,12 +142,11 @@ export function tursoLocalDriver(cfg: TursoLocalDriverConfig): TursoDriver {
       const connect = mod.connect ?? mod.default?.connect;
       const path = cfg.dir === ":memory:" ? ":memory:" : databasePath(cfg.dir, name, cfg.suffix);
       const conn = wrapDatabasePromise(await connect(path));
-      // WAL so readers do not block the writer, and a busy timeout so two
-      // processes sharing the directory queue for the write lock instead of
-      // failing outright — the same pragmas the Resonate Server's SQLite
-      // backend sets.
-      if (path !== ":memory:") await conn.execute("PRAGMA journal_mode = WAL");
+      // Busy timeout first: switching to WAL takes an exclusive lock of its
+      // own, so arming the timeout afterwards leaves that very statement
+      // unprotected against a concurrent opener.
       await conn.execute(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+      if (path !== ":memory:") await conn.execute("PRAGMA journal_mode = WAL");
       return conn;
     },
   };
@@ -222,33 +244,57 @@ export function libsqlDriver(cfg: LibsqlDriverConfig): TursoDriver {
         ...(cfg.syncUrl ? { syncUrl: cfg.syncUrl(name) } : {}),
       });
 
+      // Serialize everything on this client. A libSQL client holds one
+      // connection, so two overlapping write transactions on it do not queue —
+      // the second `BEGIN` fails with SQLITE_BUSY immediately, without ever
+      // consulting the busy timeout. That is easy to hit: a node flushing
+      // several origins at once issues concurrent transactions against the one
+      // tenant database. The Turso drivers get this serialization from
+      // `transactionAsync`, which owns the connection for the whole window;
+      // here it has to be explicit.
+      const serialize = onePerConnection();
+
       const conn: TursoConnection = {
-        async execute(sql: string, args: unknown[] = []): Promise<TursoRow[]> {
-          const rs = await client.execute({ sql, args: args as any[] });
-          // libSQL rows are array-like with named properties; copy the named
-          // half so callers see a plain object regardless of client version.
-          return (rs.rows ?? []).map((row: any) => ({ ...row }));
+        execute(sql: string, args: unknown[] = []): Promise<TursoRow[]> {
+          return serialize(async () => {
+            const rs = await client.execute({ sql, args: args as any[] });
+            // libSQL rows are array-like with named properties; copy the named
+            // half so callers see a plain object regardless of client version.
+            return (rs.rows ?? []).map((row: any) => ({ ...row }));
+          });
         },
-        async transaction<T>(fn: (tx: TursoExecutor) => Promise<T>): Promise<T> {
-          const tx = await client.transaction("write");
-          try {
-            const result = await fn({
-              async execute(sql: string, args: unknown[] = []) {
-                const rs = await tx.execute({ sql, args: args as any[] });
-                return (rs.rows ?? []).map((row: any) => ({ ...row }));
-              },
-            });
-            await tx.commit();
-            return result;
-          } catch (err) {
-            await tx.rollback().catch(() => {});
-            throw err;
-          }
+        transaction<T>(fn: (tx: TursoExecutor) => Promise<T>): Promise<T> {
+          return serialize(async () => {
+            const tx = await client.transaction("write");
+            try {
+              const result = await fn({
+                async execute(sql: string, args: unknown[] = []) {
+                  const rs = await tx.execute({ sql, args: args as any[] });
+                  return (rs.rows ?? []).map((row: any) => ({ ...row }));
+                },
+              });
+              await tx.commit();
+              return result;
+            } catch (err) {
+              await tx.rollback().catch(() => {});
+              throw err;
+            }
+          });
         },
         async close(): Promise<void> {
           client.close();
         },
       };
+      // Busy timeout first, then WAL: the WAL switch takes an exclusive lock
+      // of its own. Unlike the Turso drivers this one really is shared across
+      // processes — a `file:` libSQL database uses ordinary SQLite locking — so
+      // without the timeout concurrent nodes get SQLITE_BUSY rather than
+      // queueing for the write lock.
+      await conn.execute(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+      if (urlFor(name).startsWith("file:")) {
+        await conn.execute("PRAGMA journal_mode = WAL");
+      }
+
       if (typeof client.sync === "function") {
         conn.pull = async () => {
           await client.sync();
