@@ -2,6 +2,8 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "@jest/globals";
+import { type Context as AsyncContext, Resonate as AsyncResonate } from "../src/async/index.js";
+import { type Context, Resonate } from "../src/index.js";
 import { originOf, TursoNetwork, tursoLocalDriver } from "../src/network/turso/index.js";
 import type { Message, Request, Response } from "../src/network/types.js";
 import { VERSION } from "../src/util.js";
@@ -1135,4 +1137,100 @@ describe("schedules", () => {
     expect(promise.data.promise.param.data).toBe("tick");
     expect(promise.data.promise.tags["resonate:schedule"]).toBe("every-minute");
   });
+});
+
+// =============================================================================
+// END TO END
+// =============================================================================
+//
+// Everything above drives the network directly at the protocol level. These
+// drive the SDK: a registered function, invoked durably, running to completion
+// against Turso databases with no server anywhere.
+
+describe("end to end", () => {
+  test("a generator workflow runs to completion and can be re-attached to", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "resonate-e2e-"));
+    const network = () => new TursoNetwork({ driver: tursoLocalDriver({ dir }), prefix: "e2e-", tickMs: 20 });
+
+    const resonate = new Resonate({ network: network() });
+    resonate.register("order", function* (ctx: Context, customer: string, amount: number): any {
+      const ref = yield* ctx.run(async () => `CH-${amount}`);
+      yield* ctx.sleep(30);
+      return `${customer}:${ref}`;
+    });
+
+    let other: Resonate | undefined;
+    try {
+      expect(await resonate.run("order-1", "order", "acme", 100)).toBe("acme:CH-100");
+
+      // A second client over the same databases sees the settled result.
+      other = new Resonate({ network: network() });
+      expect(await (await other.get("order-1")).result()).toBe("acme:CH-100");
+    } finally {
+      await other?.stop();
+      await resonate.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("a workflow abandoned mid-flight is finished by another process", async () => {
+    // The recovery claim, end to end: A dies while its workflow is asleep, and
+    // B — which has never seen this workflow — picks it up off the tenant
+    // timeout index and runs it to completion.
+    const dir = mkdtempSync(join(tmpdir(), "resonate-recover-"));
+    const worker = (pid: string) => {
+      const r = new Resonate({
+        pid,
+        network: new TursoNetwork({
+          driver: tursoLocalDriver({ dir }),
+          prefix: "rec-",
+          pid,
+          tickMs: 20,
+          retryTimeout: 300,
+        }),
+      });
+      r.register("job", function* (ctx: Context): any {
+        const a = yield* ctx.run(async () => "step1");
+        yield* ctx.sleep(200);
+        const b = yield* ctx.run(async () => "step2");
+        return `${a}+${b}`;
+      });
+      return r;
+    };
+
+    const a = worker("proc-a");
+    let b: Resonate | undefined;
+    try {
+      await a.beginRun("job-1", "job");
+      await new Promise((r) => setTimeout(r, 120));
+      await a.stop();
+
+      b = worker("proc-b");
+      expect(await (await b.get("job-1")).result()).toBe("step1+step2");
+    } finally {
+      await b?.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("an async-engine workflow runs to completion", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "resonate-async-"));
+    const resonate = new AsyncResonate({
+      network: new TursoNetwork({ driver: tursoLocalDriver({ dir }), prefix: "as-", tickMs: 20 }),
+    });
+    resonate.register("pipeline", async (ctx: AsyncContext, n: number) => {
+      const doubled = await ctx.run(async () => n * 2);
+      const plus = await ctx.run(async () => doubled + 1);
+      await ctx.sleep(30);
+      return `${n} -> ${plus}`;
+    });
+
+    try {
+      const handle = await resonate.run("p-1", "pipeline", 21);
+      expect(await handle.result()).toBe("21 -> 43");
+    } finally {
+      await resonate.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
