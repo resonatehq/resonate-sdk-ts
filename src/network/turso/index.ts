@@ -69,10 +69,13 @@
 // Two structural notes. Fleet-wide write traffic concentrates on the tenant
 // database, since every origin publishes its timers there; `TursoStore.flush`
 // skips the write when an origin's timers have not moved, which removes most of
-// it, but the bottleneck remains. And embedded-replica sync is not
-// linearizable, while the version fences assume it is — a deployment where two
-// nodes can work one workflow at once should use the client's remote-writes
-// mode, where the remote serializes.
+// it, but the bottleneck remains. And the fenced actions are real
+// compare-and-swaps — read, compare, write, inside one `BEGIN IMMEDIATE` — so
+// they are atomic against whichever database applies them; what decides
+// soundness is where the write lands. Default embedded-replica mode applies it
+// to each node's own copy and merges later, so `tursoSyncDriver` takes
+// `remoteWrites` to send writes to the remote instead. Partitioning by workflow
+// means that serializes per workflow, not globally.
 
 import type { Logger } from "../../logger.js";
 import { randomUUID } from "../../platform.js";

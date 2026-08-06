@@ -153,11 +153,26 @@ Two more things a fleet meets:
   origin's timers have not moved, which removes most of the traffic, but the
   bottleneck is structural.
 
-* **Embedded-replica sync is not linearizable.** The protocol's version fences
-  assume a linearizable store. Two nodes writing the same origin through
-  separate replicas converge by row-level merge, which is not the same thing. A
-  fleet that can have two nodes on one workflow at once should use the client's
-  remote-writes mode, where writes are serialized by the remote.
+* **Compare-and-swap works — point the writes at one place.** Every fenced
+  action (`task.acquire` and friends) is a read-compare-write inside a single
+  `BEGIN IMMEDIATE` transaction. That is a genuine CAS, atomic against whichever
+  database applies it, and `busy_timeout` makes competing writers queue rather
+  than fail.
+
+  What breaks it is not the database, it is *where the write lands*. In the
+  default embedded-replica mode each node applies its CAS to its own local
+  replica and the copies merge afterwards, so two nodes can both win the same
+  acquire and both believe they hold the task. Set `remoteWrites: true` on
+  `tursoSyncDriver` and writes execute on the remote instead — one serialization
+  point, and the fence is sound again.
+
+  And because state is partitioned one database per workflow, that serialization
+  is *per workflow*, not global: two different workflows never contend for the
+  same writer. The partition is what buys linearizable CAS without a global
+  lock.
+
+  Leave `remoteWrites` off only when a workflow has exactly one writer. It is
+  off by default because the flag is still marked experimental upstream.
 
 ## What the schema follows
 

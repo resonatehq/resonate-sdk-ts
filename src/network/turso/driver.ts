@@ -174,6 +174,25 @@ export interface TursoSyncDriverConfig {
   clientName?: string;
   /** Long-poll timeout (ms) for `pull()`. */
   longPollTimeoutMs?: number;
+  /**
+   * Execute writes on the remote rather than on the local replica.
+   *
+   * THIS IS WHAT MAKES THE PROTOCOL'S COMPARE-AND-SWAP SOUND ACROSS NODES.
+   * `task.acquire` and every other fenced action is a read-compare-write inside
+   * one transaction — a genuine CAS, atomic against whichever database applies
+   * it. With local writes each node applies that CAS to *its own replica* and
+   * the copies merge afterwards, so two nodes can both win the same acquire and
+   * both believe they hold the task. Sending writes to the remote restores the
+   * single serialization point the fence needs.
+   *
+   * Because state is partitioned one database per workflow, this serializes
+   * *per workflow*, not globally — two different workflows never contend.
+   *
+   * Leave it off only when a workflow has exactly one writer (a single node, or
+   * a fleet where nothing steals work). Default false, because the underlying
+   * flag is still marked experimental upstream.
+   */
+  remoteWrites?: boolean;
   /** Extra options forwarded verbatim to `@tursodatabase/sync`'s `connect`. */
   options?: Record<string, unknown>;
 }
@@ -198,8 +217,9 @@ export function tursoSyncDriver(cfg: TursoSyncDriverConfig): TursoDriver {
         authToken: cfg.authToken,
         clientName: cfg.clientName,
         longPollTimeoutMs: cfg.longPollTimeoutMs,
+        remoteWritesExperimental: cfg.remoteWrites,
       });
-      const conn = wrapDatabasePromise(db);
+      const conn = wrapDatabasePromise(db, cfg.remoteWrites === true);
       // Only the busy timeout: the sync engine owns this database's journal
       // mode, so setting it here would fight the replica machinery.
       await conn.execute(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
@@ -313,19 +333,39 @@ export function libsqlDriver(cfg: LibsqlDriverConfig): TursoDriver {
 /**
  * Adapt a `@tursodatabase/*` `DatabasePromise` to `TursoConnection`.
  *
- * `transactionAsync` is used rather than the deprecated `transaction`: it
- * holds the connection for the whole BEGIN..COMMIT window, so a concurrent
- * request cannot interleave its statements into another request's
- * transaction. That is load-bearing — a request is one transaction, and the
- * fencing guards are only sound if it is an isolated one.
+ * A request is one transaction, and the protocol's compare-and-swap guards are
+ * only sound if that transaction is isolated. Two paths get there:
+ *
+ *   Local writes (default) — `transactionAsync` owns the connection for the
+ *   whole BEGIN..COMMIT window, so nothing can interleave.
+ *
+ *   Remote writes — `transactionAsync` is not supported in that mode (the
+ *   transaction runs on the remote and has no local connection to hand out),
+ *   so the deprecated `transaction` wrapper is used and isolation comes from
+ *   our own gate in-process plus the remote's serialization across processes.
  */
-function wrapDatabasePromise(db: any): TursoConnection {
-  return {
-    async execute(sql: string, args: unknown[] = []): Promise<TursoRow[]> {
+function wrapDatabasePromise(db: any, remoteWrites = false): TursoConnection {
+  const gate = onePerConnection();
+
+  /** Statements issued straight at `db`, bypassing the gate that already holds it. */
+  const direct: TursoExecutor = {
+    async execute(sql: string, args: unknown[] = []) {
       const stmt = await db.prepare(sql);
       return toRows(await stmt.all(...args));
     },
+  };
+
+  return {
+    async execute(sql: string, args: unknown[] = []): Promise<TursoRow[]> {
+      return remoteWrites ? await gate(() => direct.execute(sql, args)) : await direct.execute(sql, args);
+    },
     async transaction<T>(fn: (tx: TursoExecutor) => Promise<T>): Promise<T> {
+      if (remoteWrites) {
+        return await gate(async () => {
+          const run = db.transaction(async () => await fn(direct));
+          return (await run.immediate()) as T;
+        });
+      }
       const run = db.transactionAsync(async (txn: any) => {
         return await fn({
           async execute(sql: string, args: unknown[] = []) {
