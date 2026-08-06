@@ -8,6 +8,7 @@ import { ConflictError } from "../../src/network/server/log.js";
 import {
   isWrongLastSequence,
   jetStreamLogBinding,
+  jetStreamTickSource,
   jetStreamTimerBinding,
   resonateStreamConfig,
 } from "../../src/network/server/nats-binding.js";
@@ -447,5 +448,80 @@ d("live NATS", () => {
       await n2.stop();
       expect(executions).toBe(1);
     }, 60_000);
+  });
+
+  describe("liveness closes without external help", () => {
+    beforeAll(freshStream);
+
+    function liveNetwork(group = "default") {
+      return new DurableNetwork({
+        log: makeLog(),
+        timers: makeTimers(),
+        ticks: jetStreamTickSource(js, jsm, STREAM, { tickPrefix: TICK_PREFIX, timerPrefix: TIMER_PREFIX }),
+        group,
+      });
+    }
+
+    test("a fired deadline is consumed and committed with nobody touching the lineage", async () => {
+      // Regression for a gap that made the timer inert: the broker fired on
+      // time, the tick sat in the stream unconsumed, and the lineage hung.
+      //
+      // The check reads the LOG head rather than the promise. Reading a promise
+      // would itself materialize the timeout (eager mode), repairing the very
+      // thing under test — so it can only be observed out of band.
+      const net = liveNetwork();
+      const log = makeLog();
+      await net.init();
+      try {
+        const now = Date.now();
+        await net.send({
+          kind: "promise.create",
+          head: head(),
+          data: { id: "selfheal", timeoutAt: now + 2000, param: {}, tags: {} },
+        });
+        const afterCreate = await log.head("selfheal");
+
+        await sleep(9000);
+
+        // A further commit appeared that nothing in this test asked for: the
+        // broker fired, the tick source consumed it, the machine ran its
+        // timeout transition and committed the result.
+        expect(await log.head("selfheal")).toBeGreaterThan(afterCreate);
+      } finally {
+        await net.stop();
+      }
+    }, 40_000);
+
+    test("an orphaned task is re-dispatched by its retry timer", async () => {
+      // The liveness case that matters most, end to end and unaided: a task is
+      // dispatched, nobody ever acquires it, and only the retry timer can bring
+      // it back. Nothing touches the lineage for the whole wait.
+      const net = liveNetwork();
+      const executes: number[] = [];
+      net.recv((m) => {
+        if (m.kind === "execute") executes.push(m.data.task.version);
+      });
+      await net.init();
+      try {
+        await net.send({
+          kind: "promise.create",
+          head: head(),
+          data: {
+            id: "orphaned",
+            timeoutAt: Date.now() + 600_000,
+            param: {},
+            tags: { "resonate:target": TARGET },
+          },
+        });
+        expect(executes).toHaveLength(1);
+
+        // The task retry TTL is 30s; wait past it without interacting at all.
+        await sleep(40_000);
+
+        expect(executes.length).toBeGreaterThanOrEqual(2);
+      } finally {
+        await net.stop();
+      }
+    }, 90_000);
   });
 });

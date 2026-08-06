@@ -33,6 +33,7 @@ import { randomUUID } from "../platform.js";
 import { assert } from "../util.js";
 import type { Network } from "./network.js";
 import { MemoryLog, type OriginLog, type SnapshotStore } from "./server/log.js";
+import type { TickSource } from "./server/nats-binding.js";
 import { OriginRuntime, type Transport } from "./server/runtime.js";
 import { MemoryTimerService, type TimerService } from "./server/timer.js";
 import { isResponse, type Message, type Request, type Response } from "./types.js";
@@ -55,6 +56,14 @@ export interface DurableNetworkConfig {
    */
   timers?: TimerService;
   /**
+   * Delivers ticks fired by the timer service, closing the liveness loop.
+   *
+   * Without one, a fired deadline is recorded and never acted on: the broker
+   * wakes up on time and the lineage still hangs. The in-process default timer
+   * calls back directly and needs no source; a broker-backed timer does.
+   */
+  ticks?: TickSource;
+  /**
    * Interval for the reconciliation sweep, in milliseconds. Disabled by
    * default: the sweep is an O(all origins) scan and must not be the mechanism
    * liveness depends on. Enable it only as a slow backstop.
@@ -71,6 +80,7 @@ export class DurableNetwork implements Network {
   private readonly runtime: OriginRuntime;
   private readonly log: OriginLog;
   private readonly timers: TimerService;
+  private readonly ticks?: TickSource;
   private readonly group: string;
   private readonly pid: string;
   private readonly sweepInterval: number;
@@ -86,6 +96,7 @@ export class DurableNetwork implements Network {
     pid = randomUUID().replace(/-/g, ""),
     group = "default",
     timers,
+    ticks,
     sweepInterval = 0,
     now = () => Date.now(),
   }: DurableNetworkConfig = {}) {
@@ -108,6 +119,7 @@ export class DurableNetwork implements Network {
       new MemoryTimerService((origin, at) => {
         void this.runtime.tick(origin, Math.max(at, this.now())).catch(() => {});
       }, now);
+    this.ticks = ticks;
     this.runtime = new OriginRuntime({ log, snapshots, transport, timers: this.timers });
   }
 
@@ -125,11 +137,17 @@ export class DurableNetwork implements Network {
         void this.runtime.sweep(this.now()).catch(() => {});
       }, this.sweepInterval);
     }
+    // Consume ticks the timer service fires. This is what turns an armed
+    // deadline into an actual transition; without it the timer is inert.
+    await this.ticks?.start(async (origin) => {
+      await this.runtime.tick(origin, this.now());
+    });
     // Republish anything a previous process committed but never delivered.
     await this.recoverAll();
   }
 
   async stop(): Promise<void> {
+    await this.ticks?.stop();
     if (this.timers instanceof MemoryTimerService) this.timers.stop();
     if (this.sweepTimer) clearInterval(this.sweepTimer);
     this.sweepTimer = undefined;

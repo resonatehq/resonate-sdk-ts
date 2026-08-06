@@ -28,8 +28,10 @@ export {
 export {
   isWrongLastSequence,
   jetStreamLogBinding,
+  jetStreamTickSource,
   jetStreamTimerBinding,
   resonateStreamConfig,
+  type TickSource,
 } from "./network/server/nats-binding.js";
 export {
   JetStreamTimerService,

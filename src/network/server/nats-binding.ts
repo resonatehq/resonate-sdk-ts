@@ -13,7 +13,7 @@
 import type { JsBinding } from "./jetstream.js";
 import { ConflictError } from "./log.js";
 import type { JsTimerBinding } from "./nats-timer.js";
-import { SCHEDULE_HEADER } from "./nats-timer.js";
+import { originFromScheduler, SCHEDULE_HEADER, SCHEDULER_HEADER } from "./nats-timer.js";
 
 /** Error code nats-server returns when a publish expectation fails. */
 export const WRONG_LAST_SEQUENCE = 10071;
@@ -146,5 +146,115 @@ export function resonateStreamConfig(name: string, logPrefix: string, timerPrefi
     // Broker-side message schedules; the reason no scheduler process is needed.
     allow_msg_schedules: true,
     storage: "file",
+  };
+}
+
+// =============================================================================
+// TICK CONSUMPTION — closing the liveness loop
+// =============================================================================
+//
+// A fired schedule lands in the stream and stays there. Something has to consume
+// it and drive the machine's timeout transition, or the timer accomplishes
+// nothing: the broker wakes up on time and the lineage still hangs.
+//
+// The consumer is durable and shared. Any library process may take any tick —
+// `tick` is idempotent and version-guarded, so redundant delivery is harmless
+// and no ownership or leader election is required. Because the consumer is
+// durable, ticks that fire while every process is down are still delivered when
+// one returns.
+
+/** Drives lineage ticks fired by the broker. */
+export interface TickSource {
+  start(onTick: (origin: string) => Promise<void>): Promise<void>;
+  stop(): Promise<void>;
+}
+
+export interface JsConsumerLike {
+  consumers: {
+    get(stream: string, durable: string): Promise<{ consume(): Promise<ConsumerMessages> }>;
+  };
+}
+
+/**
+ * The handle `consume()` returns. `stop()` matters: a source that only flips a
+ * flag keeps its iterator attached to the shared durable and goes on taking
+ * messages it will never process, so ticks vanish into a stopped consumer.
+ */
+export interface ConsumerMessages extends AsyncIterable<TickMsg> {
+  stop?(): void;
+  close?(): Promise<unknown>;
+}
+
+export interface TickMsg {
+  subject: string;
+  headers?: { get(k: string): string };
+  ack(): void;
+  nak(): void;
+}
+
+/**
+ * A {@link TickSource} over a durable JetStream consumer on the tick subjects.
+ *
+ * The origin is recovered from the `Nats-Scheduler` header the server stamps on
+ * a fired message, which names the schedule subject it came from.
+ */
+export function jetStreamTickSource(
+  js: JsConsumerLike,
+  jsm: JsmLike,
+  stream: string,
+  opts: { tickPrefix: string; timerPrefix: string; durable?: string },
+): TickSource {
+  const durable = opts.durable ?? "resonate-ticks";
+  let stopped = false;
+  let messages: ConsumerMessages | undefined;
+
+  return {
+    async start(onTick) {
+      stopped = false;
+      await jsm.consumers.add(stream, {
+        durable_name: durable,
+        filter_subject: `${opts.tickPrefix}.>`,
+        ack_policy: "explicit",
+        // Ticks are cheap and idempotent; a modest window keeps redelivery
+        // bounded without serializing the whole stream.
+        max_ack_pending: 32,
+      });
+      const consumer = await js.consumers.get(stream, durable);
+      messages = await consumer.consume();
+
+      void (async () => {
+        for await (const msg of messages!) {
+          if (stopped) return;
+          try {
+            const scheduler = msg.headers?.get(SCHEDULER_HEADER);
+            const origin = scheduler ? originFromScheduler(scheduler, opts.timerPrefix) : undefined;
+            if (origin === undefined) {
+              // Not a message this source understands; drop it rather than
+              // redeliver it forever.
+              msg.ack();
+              continue;
+            }
+            await onTick(origin);
+            msg.ack();
+          } catch {
+            // Leave it unacked: the tick is still due, and redelivery retries.
+            msg.nak();
+          }
+        }
+      })();
+    },
+
+    async stop() {
+      stopped = true;
+      // Detach from the durable so no further messages are delivered here.
+      // Without this the iterator keeps pulling and dropping ticks.
+      try {
+        messages?.stop?.();
+        await messages?.close?.();
+      } catch {
+        /* already closed */
+      }
+      messages = undefined;
+    },
   };
 }
