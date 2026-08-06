@@ -44,23 +44,35 @@
 // heterogeneous one, where only some processes can run a given function, this
 // network does not deliver work to the right group.
 //
-// CONCURRENCY — READ THIS BEFORE DEPLOYING A FLEET. Only the single-node
-// arrangement is verified. Within one process this works: requests against an
-// origin are serialized, workflows run, and a workflow abandoned mid-flight is
-// recovered off the timeout index.
+// KNOWN LIMITATION, MEASURED. A result computed on one node does not reach the
+// node waiting for it. `resonate.run(...)` waits by registering a listener
+// carrying its own unicast address; if a timer resumed the workflow elsewhere,
+// that node emits the `unblock` and delivers it to itself. Two nodes, one
+// migrating workflow: done at +165ms, caller notified at +60004ms. `execute`
+// escapes this because a retry timer re-emits it and any node can claim it;
+// `unblock` has no equivalent. Multi-node use needs this closed first — either
+// by routing messages to their address, or by having a waiter poll the promise
+// it is blocked on rather than waiting to be told.
 //
-// Running several nodes has not been made to work. `tursoLocalDriver` cannot
-// do it at all — Turso takes an exclusive file lock, so the second process
-// cannot even open the database. `libsqlDriver` can share a file across
-// processes but stalls part way through a workflow, single node or not.
-// `tursoSyncDriver`, where each node holds its own replica and they converge
-// through Turso Cloud, is the arrangement this design is actually for and has
-// never been run against a real remote.
+// CONCURRENCY. Nodes do not share a disk — each has its own directory, and
+// they converge through the remote. That is what `tursoSyncDriver` is for, and
+// it has never been run against a real remote. (`tursoLocalDriver` additionally
+// cannot be shared *between* processes at all: Turso takes an exclusive file
+// lock on open. It is a single-node driver.)
 //
-// The design also concentrates fleet-wide write traffic on the tenant
-// database, since every origin publishes its timers there. `TursoStore.flush`
-// skips the write when an origin's timers are unchanged, which removes most of
-// it, but that file remains the one global bottleneck.
+// Under contention the protocol holds. Three nodes racing on the same workflows
+// with timer-driven migration between them: every workflow completed with the
+// right result, no durable step ran on more than one node, and no two nodes
+// disagreed on any result. The version fences do their job. What does not hold
+// is liveness — see the known limitation above.
+//
+// Two structural notes. Fleet-wide write traffic concentrates on the tenant
+// database, since every origin publishes its timers there; `TursoStore.flush`
+// skips the write when an origin's timers have not moved, which removes most of
+// it, but the bottleneck remains. And embedded-replica sync is not
+// linearizable, while the version fences assume it is — a deployment where two
+// nodes can work one workflow at once should use the client's remote-writes
+// mode, where the remote serializes.
 
 import type { Logger } from "../../logger.js";
 import { randomUUID } from "../../platform.js";

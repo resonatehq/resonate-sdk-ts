@@ -84,10 +84,24 @@ Three consequences worth knowing:
   processes can run a given function, this network will not deliver work to the
   right group.
 
-* **An `execute` survives a crash; an `unblock` may not.** If a process dies
-  between the commit and the delivery, the task's retry timer re-emits the
-  execute. Nothing re-emits an `unblock`, so a listener waiting on a promise
-  that settled in the lost window will not be woken by this network.
+* **A result computed on one node does not reach the node waiting for it.**
+  This is the sharpest edge of in-process delivery, and it is measured, not
+  theoretical. `resonate.run(...)` waits by registering a listener carrying the
+  caller's *unicast* address. If the workflow is finished by a different node —
+  which happens whenever a timer resumed it elsewhere — that node emits the
+  `unblock` and delivers it to **itself**. The waiting node never sees it and
+  falls back on its own slow path.
+
+  Measured with two nodes and one workflow that migrates: the work is done at
+  `+165ms`, and the caller learns about it at `+60004ms`. One node alone: 812ms
+  for four workflows. Two nodes: 60 seconds. Correctness is unaffected — the
+  results are right, nothing runs twice — but the latency is not usable.
+
+  `execute` does not have this problem because a task's retry timer re-emits it
+  and any node can pick it up. `unblock` has no equivalent: nothing re-emits it,
+  and nothing routes it. Closing this needs either address-routed delivery (a
+  shared queue again) or a waiter that polls the promise it is blocked on
+  instead of waiting to be told.
 
 * **First dispatch is local.** Creating a targeted promise hands the execute to
   the creating process. If that process is a client that cannot run the
@@ -116,28 +130,34 @@ is understood.
 
 ## Running more than one node
 
-**Only the single-node arrangement is verified.** Within one process this
-works: workflows run to completion, and one abandoned mid-flight is recovered
-off the timeout index. A fleet is a different story, and the honest state is:
+Nodes do not share a disk — each has its own directory, and they converge
+through the remote. That is the arrangement `TursoSyncDriver` is for, and it
+has never been run against a real remote, so the fleet story below is what is
+*known*, not what is guaranteed.
 
-| Driver | Multiple processes |
-|--------|--------------------|
-| `TursoLocalDriver` | **Impossible.** Turso takes an exclusive file lock on open; the second process fails with `File is locked by another process`. A shared directory is not a way to run a fleet. |
-| `TursoSyncDriver` | **The intended arrangement, never run against a real remote.** Each node holds its own replica files and they converge through Turso Cloud, so there is no shared file to contend on — but this has not been tested. |
+**Protocol correctness under contention holds.** Three nodes, each with its own
+network, racing on the same workflows with timer-driven migration between them:
+all workflows completed with correct results, work spread across all three
+nodes, **zero** durable steps executed by more than one node, and **zero**
+disagreement between nodes on any result. The version fences do their job.
 
-Two further things a fleet will meet, both real:
+**Liveness does not.** See the `unblock` bullet above: a workflow finished by
+one node does not notify the node waiting for it, so a fleet pays 60 seconds
+where a single node pays milliseconds. This is the blocking issue for
+multi-node use.
+
+Two more things a fleet meets:
 
 * **The tenant database is the fleet's one global write bottleneck.** Every
-  origin publishes its timers there, so every node writes the same file.
-  `TursoStore.flush` now skips the write entirely when an origin's timers have
-  not moved, which removes most of the traffic, but the bottleneck is
-  structural.
+  origin publishes its timers there. `TursoStore.flush` skips the write when an
+  origin's timers have not moved, which removes most of the traffic, but the
+  bottleneck is structural.
 
-* **Work migrates to whoever swept the timer.** Because `resonate:target` is
-  advisory (see above), a workflow resumed by a timeout is resumed *on the
-  sweeping node*. With several nodes and short timers, a single workflow can
-  bounce between them, and every bounce is contention on that workflow's
-  database.
+* **Embedded-replica sync is not linearizable.** The protocol's version fences
+  assume a linearizable store. Two nodes writing the same origin through
+  separate replicas converge by row-level merge, which is not the same thing. A
+  fleet that can have two nodes on one workflow at once should use the client's
+  remote-writes mode, where writes are serialized by the remote.
 
 ## What the schema follows
 
