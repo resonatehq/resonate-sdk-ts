@@ -5,22 +5,17 @@
 // Connection management and the bridge between the two kinds of database.
 //
 // An origin database is the authority for one workflow. The tenant database
-// holds indexes over all of them — due timers and undelivered messages — so a
-// process can find work without opening every workflow it has never heard of.
+// indexes the due timers across all of them, so a process can find work in a
+// workflow it has never heard of without opening every database in the tenant.
 // Nothing in the tenant database is trusted: `flush` rebuilds it from the
 // origin after every commit, and every consumer re-validates against the
 // origin before acting.
 //
 // `flush` runs after the request's transaction has committed, never inside it:
 // a single transaction cannot span two databases, so the mirror is
-// deliberately eventual. The failure modes it admits are the ones the protocol
-// already tolerates:
-//
-//   * Crash after commit, before flush — the origin holds the truth, and the
-//     next flush (or the next request touching this origin) republishes it.
-//   * Crash after publishing a message, before clearing the outbox — the
-//     message is republished, collapsing onto the same `msg_key`. Delivery is
-//     at-least-once, and a stale execute loses the version fence.
+// deliberately eventual. Crash after commit but before flush and the origin
+// still holds the truth — the next flush, or the next request touching this
+// origin, republishes it.
 
 import type { Logger } from "../../logger.js";
 import type { TursoConnection, TursoDriver, TursoExecutor } from "./driver.js";
@@ -40,15 +35,6 @@ export interface TursoStoreConfig {
   /** How many origin databases to keep open. Least-recently-used are closed. */
   maxOpenDatabases: number;
   logger?: Logger;
-}
-
-/** A message read out of an origin outbox, on its way to the tenant index. */
-interface OutboxRow {
-  seq: number;
-  msg_key: string;
-  address: string;
-  payload: string;
-  created_at: number;
 }
 
 /** The tenant index's timeout kinds, widening the origin database's encoding. */
@@ -151,7 +137,7 @@ export class TursoStore {
   // ---------------------------------------------------------------------------
 
   /**
-   * Publish an origin's outbox and timers to the tenant database.
+   * Publish an origin's armed timers to the tenant index.
    *
    * Called after every committed write against an origin. Reading the whole
    * timeout set and replacing the origin's slice of the index — rather than
@@ -162,25 +148,14 @@ export class TursoStore {
   async flush(origin: string, conn: TursoConnection): Promise<void> {
     if (this.closed) return;
 
-    // Local writes first: the tenant index must never advertise work that the
-    // remote cannot yet serve to whoever picks it up.
+    // Local writes first: the tenant index must never advertise a timer whose
+    // origin database the remote cannot yet serve to whoever picks it up.
     await conn.push?.();
 
-    const { messages, timeouts } = await conn.transaction(async (tx) => ({
-      messages: (await tx.execute("SELECT * FROM outbox ORDER BY seq ASC")) as unknown as OutboxRow[],
-      timeouts: await readTimeouts(tx),
-    }));
+    const timeouts = await conn.transaction((tx) => readTimeouts(tx));
 
     const tenant = await this.tenant();
     await tenant.transaction(async (tx) => {
-      for (const msg of messages) {
-        await tx.execute(
-          `INSERT INTO messages (msg_key, origin, address, payload, created_at) VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT (msg_key) DO UPDATE SET origin = excluded.origin, address = excluded.address,
-             payload = excluded.payload, created_at = excluded.created_at`,
-          [msg.msg_key, origin, msg.address, msg.payload, msg.created_at],
-        );
-      }
       await tx.execute("DELETE FROM timeouts WHERE origin = ?", [origin]);
       for (const t of timeouts) {
         await tx.execute(
@@ -190,14 +165,6 @@ export class TursoStore {
       }
     });
     await tenant.push?.();
-
-    if (messages.length > 0) {
-      const highest = messages[messages.length - 1].seq;
-      await conn.transaction(async (tx) => {
-        await tx.execute("DELETE FROM outbox WHERE seq <= ?", [highest]);
-      });
-      await conn.push?.();
-    }
   }
 
   /**
@@ -263,5 +230,12 @@ async function migrate(conn: TursoConnection, statements: string[]): Promise<voi
     throw new Error(
       `Turso database is at schema version ${found}, newer than this SDK understands (${SCHEMA_VERSION})`,
     );
+  }
+  if (found < SCHEMA_VERSION) {
+    // Every version so far has only added or dropped tables, and the DDL above
+    // is idempotent, so catching up is just restamping. A table this version no
+    // longer uses is left in place rather than dropped — an older SDK sharing
+    // the database still reads it.
+    await conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", [String(SCHEMA_VERSION)]);
   }
 }

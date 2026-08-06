@@ -40,8 +40,8 @@ storage too. That is what makes each database small enough for a process to
 hold as an embedded replica.
 
 An origin database holds everything about one workflow: its promises, the
-callbacks and listeners registered against them, its tasks, the armed timeouts,
-and an outbox the transition relation appends messages to.
+callbacks and listeners registered against them, its tasks, and the armed
+timeouts.
 
 ## One tenant-global timeout database
 
@@ -51,23 +51,48 @@ workflow owns:
 | Table | Purpose |
 |-------|---------|
 | `timeouts` | `(origin, id, kind, timeout_at)` — the index of armed timers across every origin, so a sweeper can find due work without opening every workflow |
-| `messages` | undelivered `execute` / `unblock` messages, so a process can find work addressed to it without opening every workflow |
 | `schedules` | schedules, which are tenant-scoped by definition — a schedule's promise id is a template, so the promises it fires belong to many origins |
 
-Both indexes are **mirrors, never the authority**. The origin database is the
-authority for both timers and messages; `TursoStore.flush` republishes the
-origin's slice of each index after every commit. Nothing trusts the index:
+The timeout table is a **mirror, never the authority**. The origin database
+holds the armed timers; `TursoStore.flush` republishes the origin's slice after
+every commit. Nothing trusts the index: every timeout transition re-reads its
+own armed time from the origin database and refuses an early firing (the spec's
+NOT BEFORE rule), so a stale entry costs a wasted database open and nothing
+else. A *missing* entry only delays work — the origin still holds the truth,
+and the next flush restores it.
 
-* Every timeout transition re-reads its own armed time from the origin database
-  and refuses an early firing (the spec's NOT BEFORE rule), so a stale index
-  entry costs a wasted database open and nothing else.
-* Message delivery is at-least-once, and a duplicate `execute` loses the
-  version fence.
-* A *missing* index entry only delays work — the origin still holds the truth,
-  and the next flush restores it.
+## Messages are not stored
 
-This is what lets a fresh process pick up a workflow it has never seen: it
-polls `messages` for its own address and sweeps `timeouts` for expired timers.
+When a transition emits an `execute` or `unblock`, the message is handed to the
+local Resonate client as soon as the transaction commits. No outbox, no queue,
+no routing table. Delivery is deferred by one turn of the event loop so the
+response reaches the caller first and a subscriber cannot re-enter the call
+that produced its message — the same ordering `LocalNetwork` gives.
+
+Reaching a **different** process therefore goes through time, not through a
+queue. A dispatched task carries a durable retry timer; if nobody claims it,
+the timer comes due, and whichever process sweeps the tenant timeout index
+re-emits the execute and delivers it to its own client. Recovery is the timer —
+which is exactly why the timeout database is the one thing shared.
+
+Three consequences worth knowing:
+
+* **`resonate:target` is advisory.** The address is recorded on the promise and
+  echoed in the message, but nothing routes by it: a message goes to whoever
+  did the work. In a homogeneous fleet — every process registering the same
+  functions — that is what you want. In a heterogeneous one, where only some
+  processes can run a given function, this network will not deliver work to the
+  right group.
+
+* **An `execute` survives a crash; an `unblock` may not.** If a process dies
+  between the commit and the delivery, the task's retry timer re-emits the
+  execute. Nothing re-emits an `unblock`, so a listener waiting on a promise
+  that settled in the lost window will not be woken by this network.
+
+* **First dispatch is local.** Creating a targeted promise hands the execute to
+  the creating process. If that process is a client that cannot run the
+  function, the task simply stays pending until its retry timer hands it to a
+  sweeper that can.
 
 ## Drivers
 
@@ -130,10 +155,9 @@ Resonate Server's SQLite schema and the two are not interchangeable.
 * **Tenant-wide `debug.snap`** answers `501` for the same reason; set the
   `resonate:origin` header to snapshot one workflow.
 
-* **`http://` listener addresses** are recorded and their `unblock` messages
-  are queued, but nothing in this network delivers them — there is no server to
-  make the call. They expire after `messageTtl` (default 24h). Poll addresses
-  (`poll://uni@…`, `poll://any@…`) are delivered normally.
+* **`http://` listener addresses.** An `unblock` for one is emitted and handed
+  to the local client like any other message, but nothing makes the HTTP call —
+  there is no server to make it. Treat these as unsupported.
 
 ## Concurrency
 

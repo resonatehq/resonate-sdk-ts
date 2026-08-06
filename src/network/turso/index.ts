@@ -20,12 +20,29 @@
 // what makes each one small enough for a process to hold as a local replica.
 //
 // One database is shared: `<prefix><timeoutDatabase>`, the tenant database.
-// It holds what no single workflow owns — the index of armed timers across
-// all origins, the index of undelivered messages, and schedules. Both indexes
-// are mirrors, republished from the origin databases after every commit and
-// re-validated against them before use. The tenant database is how a process
-// finds work in a workflow it has never seen: it polls the message index for
-// its own address, and it sweeps the timeout index for expired timers.
+// It holds what no single workflow owns — the index of armed timers across all
+// origins, and schedules. The timer index is a mirror, republished from the
+// origin databases after every commit and re-validated against them before
+// use. It is how a process finds work in a workflow it has never seen.
+//
+// MESSAGES ARE NOT STORED. When a transition emits an `execute` or `unblock`,
+// the message is handed to the local Resonate client as soon as the
+// transaction commits — no outbox, no queue, no routing table. This is the
+// whole of message transport, and it means delivery is in-process: the node
+// that ran the transition is the node that gets the message.
+//
+// Reaching a *different* process therefore goes through time, not through a
+// queue. A dispatched task carries a durable retry timer; if nobody claims it,
+// the timer comes due, and whichever process sweeps the tenant timeout index
+// re-emits the execute and delivers it to its own client. Recovery is the
+// timer, which is exactly why the timeout database is the one thing shared.
+//
+// The consequence to know: `resonate:target` is advisory here. The address is
+// recorded on the promise and echoed in the message, but nothing routes by it
+// — a message goes to whoever did the work. In a homogeneous fleet, where
+// every process registers the same functions, that is what you want. In a
+// heterogeneous one, where only some processes can run a given function, this
+// network does not deliver work to the right group.
 //
 // CONCURRENCY. A task lease already gives a workflow one writer at a time,
 // which is the arrangement this design is built for. Within a process,
@@ -48,6 +65,7 @@ import {
   nextCron,
   OriginServer,
   type Outcome,
+  type OutgoingMessage,
   originOf,
   ScheduleStore,
   toScheduleRecord,
@@ -80,15 +98,15 @@ export interface TursoNetworkConfig {
    */
   prefix?: string;
   /**
-   * Unprefixed name of the tenant-global database holding the timeout index,
-   * the message index, and schedules. Default `"timeouts"`.
+   * Unprefixed name of the tenant-global database holding the timeout index
+   * and schedules. Default `"timeouts"`.
    */
   timeoutDatabase?: string;
   /** Worker group; a task targets the group (anycast). Default `"default"`. */
   group?: string;
   /** This process's id; a callback or listener targets it (unicast). */
   pid?: string;
-  /** How often to poll for messages and sweep due timers, in ms. Default 250. */
+  /** How often to sweep due timers and schedules, in ms. Default 250. */
   tickMs?: number;
   /**
    * How long a dispatched task may go unclaimed before it is redispatched, in
@@ -97,15 +115,8 @@ export interface TursoNetworkConfig {
   retryTimeout?: number;
   /** Origin databases to keep open at once; least-recently-used are closed. Default 64. */
   maxOpenDatabases?: number;
-  /** Messages per poll. Default 100. */
+  /** Due timers swept per tick. Default 100. */
   batchSize?: number;
-  /**
-   * How long an undeliverable message may sit in the tenant index before it is
-   * dropped, in ms. Default 86400000 (24h). Messages addressed to this process
-   * are claimed on every poll; messages addressed elsewhere — an `http://`
-   * listener, or a group with no live member — would otherwise accumulate.
-   */
-  messageTtl?: number;
   logger?: Logger;
 }
 
@@ -126,7 +137,6 @@ export class TursoNetwork implements Network {
   private readonly tickMs: number;
   private readonly retryTimeout: number;
   private readonly batchSize: number;
-  private readonly messageTtl: number;
   private readonly logger?: Logger;
 
   private readonly callbacks: Array<(msg: Message) => void> = [];
@@ -140,7 +150,6 @@ export class TursoNetwork implements Network {
     this.tickMs = cfg.tickMs ?? 250;
     this.retryTimeout = cfg.retryTimeout ?? DEFAULT_RETRY_TIMEOUT;
     this.batchSize = cfg.batchSize ?? 100;
-    this.messageTtl = cfg.messageTtl ?? 86_400_000;
     this.logger = cfg.logger;
     this.store = new TursoStore({
       driver: cfg.driver,
@@ -317,20 +326,52 @@ export class TursoNetwork implements Network {
   // ---------------------------------------------------------------------------
 
   /**
-   * Run one transaction against an origin database, then publish what it
-   * produced. The flush is outside the transaction because it writes a
-   * different database; see `TursoStore.flush` for why that is safe.
+   * Run one transaction against an origin database, publish its timers, and
+   * hand the messages it emitted to the client.
+   *
+   * Both follow-ups are outside the transaction. The flush writes a different
+   * database, which a transaction cannot span (see `TursoStore.flush`). The
+   * delivery must not happen until the state change is durable, and must not
+   * happen while this origin's lock is held — a subscriber is free to call
+   * back into `send` for the same workflow, and would deadlock against the
+   * lock its own message was delivered under.
    */
   private async inOrigin<T>(origin: string, now: number, fn: (server: OriginServer) => Promise<T>): Promise<T> {
-    return await this.store.withLock(origin, async () => {
+    let outgoing: OutgoingMessage[] = [];
+    const result = await this.store.withLock(origin, async () => {
       const conn = await this.store.origin(origin);
-      const result = await conn.transaction((tx) => fn(new OriginServer(tx, now, this.retryTimeout)));
+      const value = await conn.transaction(async (tx) => {
+        const server = new OriginServer(tx, now, this.retryTimeout);
+        const v = await fn(server);
+        // Read inside the transaction, delivered after it commits: a
+        // rolled-back transaction throws before reaching the dispatch below,
+        // so no message is ever delivered for a state change that did not land.
+        outgoing = server.takeMessages();
+        return v;
+      });
       await this.store.flush(origin, conn);
-      // Messages this process produced for itself are delivered on the next
-      // tick; nudge it so a local hand-off does not wait out the interval.
-      this.nudge();
-      return result;
+      return value;
     });
+    this.dispatch(outgoing);
+    return result;
+  }
+
+  /**
+   * Hand messages to the local Resonate client.
+   *
+   * Deferred by a turn of the event loop so a subscriber that reacts by
+   * issuing another request cannot re-enter the call that produced its
+   * message. This is the whole of message transport: nothing is stored, and
+   * nothing is routed anywhere else.
+   */
+  private dispatch(messages: OutgoingMessage[]): void {
+    if (messages.length === 0 || this.callbacks.length === 0) return;
+    setTimeout(() => {
+      if (this.stopped) return;
+      for (const { message } of messages) {
+        for (const cb of this.callbacks) cb(message);
+      }
+    }, 0);
   }
 
   private async inTenant<T>(fn: (tx: TursoExecutor) => Promise<T>): Promise<T> {
@@ -341,20 +382,19 @@ export class TursoNetwork implements Network {
   }
 
   // ---------------------------------------------------------------------------
-  // TICK: message delivery, timer sweep, schedule firing
+  // TICK: timer sweep and schedule firing
   // ---------------------------------------------------------------------------
+  //
+  // Messages are not ticked — they go straight to the client when the
+  // transaction that produced them commits. What the tick does is fire due
+  // timers, and that is also how work reaches a *different* process: an
+  // unclaimed task's retry timer is durable and indexed tenant-wide, so
+  // whichever process sweeps it re-emits the execute and delivers it locally.
 
   private schedule(): void {
     if (this.stopped) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.tick(), this.tickMs);
-  }
-
-  /** Run a tick soon rather than waiting out the interval. */
-  private nudge(): void {
-    if (this.stopped || this.ticking) return;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.tick(), 0);
   }
 
   private async tick(now = Date.now()): Promise<void> {
@@ -363,7 +403,6 @@ export class TursoNetwork implements Network {
     try {
       await this.sweepTimeouts(now);
       await this.fireSchedules(now);
-      await this.deliver(now);
     } catch (err) {
       if (!this.stopped) {
         this.logger?.warn({ component: "network", error: String(err) }, "turso tick failed");
@@ -371,49 +410,6 @@ export class TursoNetwork implements Network {
     } finally {
       this.ticking = false;
       this.schedule();
-    }
-  }
-
-  /**
-   * Claim messages addressed to this process and hand them to subscribers.
-   *
-   * The claim is destructive and transactional, so two processes in the same
-   * group split the anycast stream rather than both running the task. If this
-   * process dies between claiming and acting, the task's retry timer
-   * redispatches it — delivery is at-least-once, and the version fence makes
-   * the duplicate harmless.
-   */
-  private async deliver(now: number): Promise<void> {
-    const tenant = await this.store.tenant();
-    await tenant.pull?.();
-
-    const rows = await tenant.transaction(async (tx) => {
-      const claimed = await tx.execute(
-        `DELETE FROM messages WHERE seq IN (
-           SELECT seq FROM messages WHERE address IN (?, ?) ORDER BY seq ASC LIMIT ?
-         ) RETURNING payload`,
-        [this.unicast, this.anycast, this.batchSize],
-      );
-      // Bound the table: a message addressed to an http:// listener or to a
-      // group with no live member is nobody's to claim.
-      await tx.execute("DELETE FROM messages WHERE created_at < ? AND address NOT IN (?, ?)", [
-        now - this.messageTtl,
-        this.unicast,
-        this.anycast,
-      ]);
-      return claimed;
-    });
-    if (rows.length > 0) await tenant.push?.();
-
-    for (const row of rows) {
-      let msg: Message;
-      try {
-        msg = JSON.parse(row.payload as string);
-      } catch {
-        this.logger?.warn({ component: "network" }, "turso dropped an undecodable message");
-        continue;
-      }
-      for (const cb of this.callbacks) cb(msg);
     }
   }
 
@@ -550,7 +546,7 @@ export class TursoNetwork implements Network {
   /** Empty every database this network has open. Test support only. */
   private async reset(): Promise<void> {
     await this.inTenant(async (tx) => {
-      for (const table of ["messages", "timeouts", "schedules"]) {
+      for (const table of ["timeouts", "schedules"]) {
         await tx.execute(`DELETE FROM ${table}`);
       }
     });
@@ -580,7 +576,6 @@ export class TursoNetwork implements Network {
           "SELECT awaited_id, awaiter_id FROM callbacks ORDER BY awaiter_id, awaited_id",
         );
         const listeners = await tx.execute("SELECT promise_id, address FROM listeners ORDER BY promise_id, address");
-        const outbox = await tx.execute("SELECT address, payload FROM outbox ORDER BY seq");
 
         return {
           kind: "debug.snap" as const,
@@ -596,10 +591,9 @@ export class TursoNetwork implements Network {
               type: Number(r.kind),
               timeout: Number(r.timeout_at),
             })),
-            messages: outbox.map((r) => ({
-              address: r.address as string,
-              message: JSON.parse(r.payload as string) as Message,
-            })),
+            // Always empty: messages are handed to the client on commit and
+            // never held, so there is no pending set to snapshot.
+            messages: [],
           },
         };
       });

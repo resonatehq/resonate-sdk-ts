@@ -474,14 +474,16 @@ describe("tasks", () => {
     const suspended = ok(await net.send({ kind: "task.get", head: head(), data: { id: "wf" } }));
     expect(suspended.data.task.state).toBe("suspended");
 
-    box.messages.length = 0;
     await net.send({
       kind: "promise.settle",
       head: head(),
       data: { id: "wf.child", state: "resolved", value: { data: "child" } },
     });
 
-    const msg = await box.next((m) => m.kind === "execute");
+    // Match the resumed version rather than "any execute": the create-time
+    // dispatch of version 0 is also in this inbox, and messages are handed over
+    // a turn of the event loop after their commit, so the two can interleave.
+    const msg = await box.next((m) => m.kind === "execute" && m.data.task.version === 1);
     expect(msg).toEqual({ kind: "execute", head: {}, data: { task: { id: "wf", version: 1 } } });
 
     const resumed = ok(await net.send({ kind: "task.get", head: head(), data: { id: "wf" } }));
@@ -871,29 +873,32 @@ describe("partitioning", () => {
     }
   });
 
-  test("a second process picks up work it never created", async () => {
-    // The whole point of the tenant-global database: a worker that has never
-    // heard of this workflow finds it through the message index, opens the
-    // origin database the id names, and claims the task.
+  test("a second process picks up work it never created, through the timeout index", async () => {
+    // This is the whole recovery story now that messages are not queued. The
+    // creator delivers the execute to itself and does nothing with it. The task
+    // stays pending, its retry timer comes due, and the worker — which has never
+    // heard of this workflow — finds it in the tenant timeout index, opens the
+    // origin database the id names, and gets the execute delivered locally.
     const dir = mkdtempSync(join(tmpdir(), "resonate-turso-"));
     const creator = new TursoNetwork({
       driver: tursoLocalDriver({ dir }),
       prefix: "shared-",
-      group: "creators",
-      tickMs: 5,
+      // Nothing swept by the creator, so the worker is the only sweeper.
+      tickMs: 60_000,
+      retryTimeout: 100,
     });
     const worker = new TursoNetwork({
       driver: tursoLocalDriver({ dir }),
       prefix: "shared-",
-      group: "workers",
       tickMs: 5,
+      retryTimeout: 100,
     });
     try {
       await creator.init();
       await worker.init();
-      const box = inbox(worker);
+      const workerBox = inbox(worker);
+      const creatorBox = inbox(creator);
 
-      // Targeted at the worker group, so only the worker may claim it.
       ok(
         await creator.send({
           kind: "promise.create",
@@ -902,13 +907,18 @@ describe("partitioning", () => {
             id: "handoff",
             timeoutAt: Date.now() + 60_000,
             param: { data: "payload" },
-            tags: { "resonate:target": creator.match("workers") },
+            tags: { "resonate:target": creator.match("default") },
           },
         }),
       );
 
-      const msg = await box.next((m) => m.kind === "execute");
-      expect(msg).toEqual({ kind: "execute", head: {}, data: { task: { id: "handoff", version: 0 } } });
+      // The creating process gets its own message, immediately and in process.
+      const local = await creatorBox.next((m) => m.kind === "execute");
+      expect(local).toEqual({ kind: "execute", head: {}, data: { task: { id: "handoff", version: 0 } } });
+
+      // The worker gets it too, once the retry timer it swept comes due.
+      const swept = await workerBox.next((m) => m.kind === "execute");
+      expect(swept).toEqual({ kind: "execute", head: {}, data: { task: { id: "handoff", version: 0 } } });
 
       // The worker opens the origin database for the first time and claims it.
       const acquired = ok(
@@ -929,6 +939,37 @@ describe("partitioning", () => {
       await worker.stop();
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("a message reaches the client without any table backing it", async () => {
+    const net = tracked({ tickMs: 60_000 });
+    await net.init();
+    const box = inbox(net);
+
+    await net.send({
+      kind: "promise.create",
+      head: head(),
+      data: {
+        id: "wf",
+        timeoutAt: Date.now() + 60_000,
+        param: {},
+        tags: { "resonate:target": TARGET },
+      },
+    });
+
+    // Delivered with no tick in between — the network's tick interval is set
+    // past the life of this test, so nothing but the commit could have done it.
+    await box.next((m) => m.kind === "execute");
+
+    // And the snapshot confirms nothing is queued anywhere.
+    const snap = ok(
+      await net.send({
+        kind: "debug.snap",
+        head: head({ "resonate:origin": "wf" }),
+        data: {},
+      }),
+    );
+    expect(snap.data.messages).toEqual([]);
   });
 
   test("promises in different origins do not see each other", async () => {

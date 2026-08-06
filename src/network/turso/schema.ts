@@ -6,25 +6,27 @@
 //
 //   ORIGIN database — one per workflow. Everything the protocol reads or
 //   writes while advancing a single workflow lives here: its promises, the
-//   callbacks and listeners registered against them, its tasks, the armed
-//   timeouts, and the outbox the transition relation appends messages to.
-//   Every request is served by exactly one origin database, which is what
-//   makes a request a single-database transaction.
+//   callbacks and listeners registered against them, its tasks, and the armed
+//   timeouts. Every request is served by exactly one origin database, which is
+//   what makes a request a single-database transaction.
 //
 //   TENANT database — one per tenant, shared by every origin. It holds the
 //   things no single workflow owns: the timeout index (so a sweeper can find
-//   due timers without opening every origin database), the message index (so
-//   a process can find messages addressed to it without opening every origin
-//   database), and schedules (which are tenant-scoped by definition — their
-//   promise ids are templates, so a schedule belongs to no one origin).
+//   due timers without opening every origin database) and schedules (which are
+//   tenant-scoped by definition — their promise ids are templates, so a
+//   schedule belongs to no one origin).
 //
-// The tenant tables are *indexes*, never the authority. The origin database
-// is the authority for both timers and messages; the tenant rows are
-// mirrored from it after each commit. A stale index entry is harmless: every
-// timeout transition re-checks its own due time against the origin database
-// before acting (the spec's NOT BEFORE rule), and a duplicated message is
-// refused by the version fence. A *missing* index entry only delays work —
-// the origin database still holds the truth, and the next flush restores it.
+// MESSAGES ARE NOT STORED. `execute` and `unblock` are handed to the local
+// Resonate client the moment the transaction that produced them commits; they
+// never touch a table. Recovery does not depend on them: an undelivered
+// execute is re-emitted by the task's own retry timer, which *is* durable, and
+// the timeout index is what lets any process in the tenant find that timer.
+//
+// The timeout table is an *index*, never the authority. The origin database
+// holds the armed timers; the tenant rows are mirrored from it after each
+// commit. A stale entry is harmless — every timeout transition re-checks its
+// own due time against the origin database before acting (the spec's NOT
+// BEFORE rule). A missing entry only delays work; the next flush restores it.
 //
 // Turso does not support generated columns without an experimental flag, so
 // the tag-derived columns (`target`, `branch`, `timer`, `external`) are
@@ -32,7 +34,7 @@
 // spec's `PromiseObject.external`: explicitly tagged, targeted, or a timer.
 
 /** Bumped when the physical layout changes in a way old rows cannot satisfy. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const ORIGIN_SCHEMA: string[] = [
   `CREATE TABLE IF NOT EXISTS meta (
@@ -111,19 +113,6 @@ export const ORIGIN_SCHEMA: string[] = [
      PRIMARY KEY (id, kind)
    )`,
   `CREATE INDEX IF NOT EXISTS idx_task_timeouts_due ON task_timeouts (timeout_at, id)`,
-
-  // Messages the transition relation emitted, durable because they are
-  // written in the same transaction as the state change that produced them.
-  // `msg_key` implements the spec's collapse-on-set: an execute message is
-  // keyed by task id (a newer dispatch supersedes an older one), an unblock
-  // message by promise and address.
-  `CREATE TABLE IF NOT EXISTS outbox (
-     seq INTEGER PRIMARY KEY AUTOINCREMENT,
-     msg_key TEXT NOT NULL UNIQUE,
-     address TEXT NOT NULL,
-     payload TEXT NOT NULL,
-     created_at INTEGER NOT NULL
-   )`,
 ];
 
 export const TENANT_SCHEMA: string[] = [
@@ -143,19 +132,6 @@ export const TENANT_SCHEMA: string[] = [
      PRIMARY KEY (origin, id, kind)
    )`,
   `CREATE INDEX IF NOT EXISTS idx_timeouts_due ON timeouts (timeout_at, origin)`,
-
-  // The tenant-global message index. Receivers poll this table instead of
-  // opening every origin database; rows are forwarded here from the origin
-  // outboxes after commit and claimed destructively by the receiver.
-  `CREATE TABLE IF NOT EXISTS messages (
-     seq INTEGER PRIMARY KEY AUTOINCREMENT,
-     msg_key TEXT NOT NULL UNIQUE,
-     origin TEXT NOT NULL,
-     address TEXT NOT NULL,
-     payload TEXT NOT NULL,
-     created_at INTEGER NOT NULL
-   )`,
-  `CREATE INDEX IF NOT EXISTS idx_messages_address ON messages (address, seq)`,
 
   // Schedules are tenant-scoped: a schedule's promise id is a template, so
   // the promises it fires may land in many origins.

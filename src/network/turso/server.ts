@@ -107,6 +107,12 @@ interface ResumeReq {
   awaiter: string;
 }
 
+/** A message a transition emitted, waiting to be handed to the client. */
+export interface OutgoingMessage {
+  address: string;
+  message: Message;
+}
+
 /** What a handler returns before the network stamps the response head. */
 export interface Outcome {
   kind: Response["kind"];
@@ -258,6 +264,8 @@ function messageKey(address: string, msg: Message): string {
 
 export class OriginServer {
   private readonly deferred: ResumeReq[] = [];
+  /** Messages this transaction emitted, keyed for collapse-on-set. */
+  private readonly outgoing = new Map<string, OutgoingMessage>();
 
   constructor(
     private readonly tx: TursoExecutor,
@@ -384,7 +392,7 @@ export class OriginServer {
           await this.setTaskTimeout(id, 0, delay);
         } else {
           await this.setTaskTimeout(id, 0, this.now + this.retryTimeout);
-          await this.setMessage(cols.target, {
+          this.setMessage(cols.target, {
             kind: "execute",
             head: {},
             data: { task: { id, version: 0 } },
@@ -903,7 +911,7 @@ export class OriginServer {
 
     const settled: PromiseRow = { ...row, state: settledState, settled_at: row.timeout_at };
     for (const address of listeners) {
-      await this.setMessage(address, {
+      this.setMessage(address, {
         kind: "unblock",
         head: {},
         data: { promise: toPromiseRecord(settled) },
@@ -1049,7 +1057,7 @@ export class OriginServer {
     };
 
     for (const address of listeners) {
-      await this.setMessage(address, {
+      this.setMessage(address, {
         kind: "unblock",
         head: {},
         data: { promise: toPromiseRecord(settled) },
@@ -1063,7 +1071,7 @@ export class OriginServer {
   /** Emit the execute message for a task whose promise carries a target. */
   private async dispatch_(promise: PromiseRow, task: TaskRow): Promise<void> {
     if (promise.target === null) return;
-    await this.setMessage(promise.target, {
+    this.setMessage(promise.target, {
       kind: "execute",
       head: {},
       data: { task: { id: task.id, version: task.version } },
@@ -1237,16 +1245,29 @@ export class OriginServer {
   }
 
   /**
-   * Append to the outbox, collapsing on the message key: a newer execute for
-   * a task supersedes the older one, so a receiver never sees a stale version.
+   * Record a message the transition emitted, collapsing on the message key: a
+   * newer execute for a task supersedes the older one, so the client never sees
+   * a stale version.
+   *
+   * Messages are held in memory for the duration of the transaction and handed
+   * to the client once it commits — they are not state, so nothing writes them
+   * to a table.
    */
-  private async setMessage(address: string, msg: Message): Promise<void> {
-    await this.tx.execute(
-      `INSERT INTO outbox (msg_key, address, payload, created_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT (msg_key) DO UPDATE SET address = excluded.address,
-         payload = excluded.payload, created_at = excluded.created_at`,
-      [messageKey(address, msg), address, JSON.stringify(msg), this.now],
-    );
+  private setMessage(address: string, msg: Message): void {
+    this.outgoing.set(messageKey(address, msg), { address, message: msg });
+  }
+
+  /**
+   * Take the messages this transaction produced, in emission order.
+   *
+   * Called by the network *after* the commit: a rolled-back transaction never
+   * reaches here, so a message is only ever delivered for a state change that
+   * actually landed.
+   */
+  takeMessages(): OutgoingMessage[] {
+    const messages = [...this.outgoing.values()];
+    this.outgoing.clear();
+    return messages;
   }
 }
 
