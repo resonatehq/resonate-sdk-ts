@@ -139,10 +139,23 @@ export function jetStreamTimerBinding(js: JsLike, jsm: JsmLike, stream: string):
 }
 
 /** Stream configuration the log and timer require. */
-export function resonateStreamConfig(name: string, logPrefix: string, timerPrefix: string, tickPrefix: string) {
+export function resonateStreamConfig(
+  name: string,
+  logPrefix: string,
+  timerPrefix: string,
+  tickPrefix: string,
+  msgPrefix?: string,
+) {
   return {
     name,
-    subjects: [`${logPrefix}.>`, `${timerPrefix}.>`, `${tickPrefix}.>`],
+    subjects: [
+      `${logPrefix}.>`,
+      `${timerPrefix}.>`,
+      // A schedule's fire target must be a stream subject — nats-server rejects
+      // anything else — so the tick subjects belong to the stream.
+      `${tickPrefix}.>`,
+      ...(msgPrefix ? [`${msgPrefix}.>`] : []),
+    ],
     // Broker-side message schedules; the reason no scheduler process is needed.
     allow_msg_schedules: true,
     storage: "file",
@@ -150,22 +163,31 @@ export function resonateStreamConfig(name: string, logPrefix: string, timerPrefi
 }
 
 // =============================================================================
-// TICK CONSUMPTION — closing the liveness loop
+// ONE CONSUMER — worker messages and broker ticks together
 // =============================================================================
 //
-// A fired schedule lands in the stream and stays there. Something has to consume
-// it and drive the machine's timeout transition, or the timer accomplishes
-// nothing: the broker wakes up on time and the lineage still hangs.
+// A broker-fired schedule must land in a stream: nats-server rejects a schedule
+// whose target is not a stream subject ("message schedules target is invalid"),
+// so it can never be delivered straight to a core subscription. Getting it out
+// therefore requires a consumer — but not a *second* one.
 //
-// The consumer is durable and shared. Any library process may take any tick —
-// `tick` is idempotent and version-guarded, so redundant delivery is harmless
-// and no ownership or leader election is required. Because the consumer is
-// durable, ticks that fire while every process is down are still delivered when
-// one returns.
+// A process already needs a consumer to receive `execute` and `unblock`, so the
+// tick rides on it. One durable consumer per process filters both the tick
+// subjects and this process's message subjects, and dispatches on subject:
+//
+//   {tickPrefix}.>  -> runtime.tick(origin)      (server-side work)
+//   {msgPrefix}.>   -> recv callbacks            (worker-side work)
+//
+// Both are server and worker in the same process, which is what makes a single
+// channel correct here rather than merely convenient.
+//
+// The consumer is durable, so ticks that fire while every process is down are
+// delivered once one returns; and shared, so any process may take any tick —
+// `tick` is idempotent and version-guarded, needing no ownership or election.
 
-/** Drives lineage ticks fired by the broker. */
-export interface TickSource {
-  start(onTick: (origin: string) => Promise<void>): Promise<void>;
+/** Delivers everything a process consumes from NATS. */
+export interface NatsMessageSource {
+  start(handlers: { onTick: (origin: string) => Promise<void>; onMessage: (raw: Uint8Array) => void }): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -177,67 +199,70 @@ export interface JsConsumerLike {
 
 /**
  * The handle `consume()` returns. `stop()` matters: a source that only flips a
- * flag keeps its iterator attached to the shared durable and goes on taking
- * messages it will never process, so ticks vanish into a stopped consumer.
+ * flag keeps its iterator attached to the durable and goes on taking messages
+ * it will never process, so work vanishes into a stopped consumer.
  */
-export interface ConsumerMessages extends AsyncIterable<TickMsg> {
+export interface ConsumerMessages extends AsyncIterable<InboundMsg> {
   stop?(): void;
   close?(): Promise<unknown>;
 }
 
-export interface TickMsg {
+export interface InboundMsg {
   subject: string;
+  data: Uint8Array;
   headers?: { get(k: string): string };
   ack(): void;
   nak(): void;
 }
 
 /**
- * A {@link TickSource} over a durable JetStream consumer on the tick subjects.
+ * A single durable JetStream consumer serving both roles.
  *
- * The origin is recovered from the `Nats-Scheduler` header the server stamps on
- * a fired message, which names the schedule subject it came from.
+ * `durable` should be per worker-group, so group members share the queue and a
+ * tick or an anycast message is taken by exactly one of them.
  */
-export function jetStreamTickSource(
+export function jetStreamMessageSource(
   js: JsConsumerLike,
   jsm: JsmLike,
   stream: string,
-  opts: { tickPrefix: string; timerPrefix: string; durable?: string },
-): TickSource {
-  const durable = opts.durable ?? "resonate-ticks";
+  opts: { tickPrefix: string; timerPrefix: string; msgPrefix: string; durable: string },
+): NatsMessageSource {
   let stopped = false;
   let messages: ConsumerMessages | undefined;
 
   return {
-    async start(onTick) {
+    async start({ onTick, onMessage }) {
       stopped = false;
       await jsm.consumers.add(stream, {
-        durable_name: durable,
-        filter_subject: `${opts.tickPrefix}.>`,
+        durable_name: opts.durable,
+        // One consumer, both concerns. `filter_subjects` (plural) needs
+        // server 2.10+, which the 2.12 schedule floor already implies.
+        filter_subjects: [`${opts.tickPrefix}.>`, `${opts.msgPrefix}.>`],
         ack_policy: "explicit",
-        // Ticks are cheap and idempotent; a modest window keeps redelivery
-        // bounded without serializing the whole stream.
-        max_ack_pending: 32,
+        max_ack_pending: 64,
       });
-      const consumer = await js.consumers.get(stream, durable);
+      const consumer = await js.consumers.get(stream, opts.durable);
       messages = await consumer.consume();
 
       void (async () => {
         for await (const msg of messages!) {
           if (stopped) return;
           try {
-            const scheduler = msg.headers?.get(SCHEDULER_HEADER);
-            const origin = scheduler ? originFromScheduler(scheduler, opts.timerPrefix) : undefined;
-            if (origin === undefined) {
-              // Not a message this source understands; drop it rather than
-              // redeliver it forever.
-              msg.ack();
-              continue;
+            if (msg.subject.startsWith(`${opts.tickPrefix}.`)) {
+              const scheduler = msg.headers?.get(SCHEDULER_HEADER);
+              const origin = scheduler ? originFromScheduler(scheduler, opts.timerPrefix) : undefined;
+              if (origin === undefined) {
+                // Nothing this source can route; drop rather than redeliver forever.
+                msg.ack();
+                continue;
+              }
+              await onTick(origin);
+            } else {
+              onMessage(msg.data);
             }
-            await onTick(origin);
             msg.ack();
           } catch {
-            // Leave it unacked: the tick is still due, and redelivery retries.
+            // Still due: leave it unacked so redelivery retries.
             msg.nak();
           }
         }
@@ -246,8 +271,6 @@ export function jetStreamTickSource(
 
     async stop() {
       stopped = true;
-      // Detach from the durable so no further messages are delivered here.
-      // Without this the iterator keeps pulling and dropping ticks.
       try {
         messages?.stop?.();
         await messages?.close?.();

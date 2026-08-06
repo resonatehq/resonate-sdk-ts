@@ -8,7 +8,7 @@ import { ConflictError } from "../../src/network/server/log.js";
 import {
   isWrongLastSequence,
   jetStreamLogBinding,
-  jetStreamTickSource,
+  jetStreamMessageSource,
   jetStreamTimerBinding,
   resonateStreamConfig,
 } from "../../src/network/server/nats-binding.js";
@@ -40,6 +40,7 @@ const STREAM = "RESONATE_TEST";
 const LOG_PREFIX = "rt.log";
 const TIMER_PREFIX = "rt.timers";
 const TICK_PREFIX = "rt.ticks";
+const MSG_PREFIX = "rt.msg";
 
 const head = () => ({ corrId: "c", version: VERSION });
 const TARGET = "local://any@default";
@@ -72,7 +73,7 @@ d("live NATS", () => {
     } catch {
       /* absent */
     }
-    await jsm.streams.add(resonateStreamConfig(STREAM, LOG_PREFIX, TIMER_PREFIX, TICK_PREFIX));
+    await jsm.streams.add(resonateStreamConfig(STREAM, LOG_PREFIX, TIMER_PREFIX, TICK_PREFIX, MSG_PREFIX));
   }
 
   function makeLog() {
@@ -457,7 +458,13 @@ d("live NATS", () => {
       return new DurableNetwork({
         log: makeLog(),
         timers: makeTimers(),
-        ticks: jetStreamTickSource(js, jsm, STREAM, { tickPrefix: TICK_PREFIX, timerPrefix: TIMER_PREFIX }),
+        // One consumer for this group, serving ticks and worker messages alike.
+        messages: jetStreamMessageSource(js, jsm, STREAM, {
+          tickPrefix: TICK_PREFIX,
+          timerPrefix: TIMER_PREFIX,
+          msgPrefix: MSG_PREFIX,
+          durable: `w-${group}`,
+        }),
         group,
       });
     }
