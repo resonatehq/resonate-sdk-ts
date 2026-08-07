@@ -15,7 +15,9 @@ const resonate = Resonate.remote({
   network: new TursoNetwork({
     driver: tursoSyncDriver({
       dir: "/var/lib/resonate",
-      url: "libsql://acme-",          // remote database is `acme-<origin>`
+      // A Turso Cloud database lives at `<name>-<org>.<region>.turso.io`,
+      // so the flat prefix form cannot address it — pass a function.
+      url: (name) => `libsql://${name}-acme.aws-us-west-2.turso.io`,
       authToken: process.env.TURSO_AUTH_TOKEN,
     }),
     prefix: "acme-",                  // local database is `acme-<origin>`
@@ -112,6 +114,50 @@ Three consequences worth knowing:
   function, the task simply stays pending until its retry timer hands it to a
   sweeper that can.
 
+## Turso Cloud provisioning (measured)
+
+"One database per workflow" meets Turso Cloud on these terms, all measured
+against a real account (`aws-us-west-2`, free plan, August 2026):
+
+* **Databases are not auto-created.** A sync connect to a name that does not
+  exist fails with `status=404, body=Host not found`. Every origin database —
+  and the tenant database — must exist before `tursoSyncDriver` can open it,
+  created via the platform API (`POST /v1/organizations/<org>/databases`) or
+  the `turso` CLI.
+* **Creation is cheap and immediate.** API creation took 359–558ms per
+  database (median 384ms over 16 creates), and a fresh database accepted a
+  sync connect 528ms after the create call, first attempt. A create-if-missing
+  hook fits inside the driver's function-form `url` (or use Turso's
+  `@tursodatabase/sdk-experimental`, whose `resolve()` provisions on first
+  use), at the price of ~400ms and one platform round trip on a workflow's
+  first touch.
+* **The hostname is not `<prefix><origin>`.** A database lives at
+  `<name>-<org>.<region>.turso.io` (the region-less `<name>-<org>.turso.io`
+  form also works, but takes seconds to become resolvable after creation).
+  A flat string prefix cannot produce that shape, so a Turso Cloud deployment
+  must pass the function form:
+
+  ```ts
+  tursoSyncDriver({
+    dir,
+    url: (name) => `libsql://${name}-${org}.${region}.turso.io`,
+    authToken,
+  })
+  ```
+
+* **Plan limits are the real constraint, not mechanics.** The free plan caps
+  an organization at 100 databases; paid plans advertise unlimited databases
+  and meter storage, rows, and sync traffic instead. Sync traffic is the axis
+  this design leans on — every replica bootstrap, push, and pull counts — so
+  a busy fleet should assume the sync allowance, not the database count, is
+  what it exhausts first.
+
+For a deployment where per-workflow creation is unacceptable, the fallbacks
+remain what they were: a pool of N pre-created databases with origins hashed
+into them (`hashOrigin` is exported for exactly this), or one database per
+tenant with an `origin` column — each giving up some of the isolation that
+makes per-workflow CAS cheap.
+
 ## Drivers
 
 A driver maps a logical database name to physical storage. Three ship:
@@ -182,6 +228,28 @@ Nodes do not share a disk for their origins — each has its own directory. What
 they must share is the timer index, since that is the one place a node learns
 that work exists at all.
 
+**Convergence through a real remote works — measured.** Two nodes, separate
+replica directories, one Turso Cloud remote (`aws-us-west-2`, ~100ms push RTT
+from the test machine), tick 100ms:
+
+* **Timer visibility lag** — a committed write is visible to another replica's
+  pull in **~190–220ms median** (n=30 across three runs; p90 270–400ms, worst
+  observed 1.1s). The push itself is ~100ms of that. This bounds how fast the
+  fleet can learn that work exists.
+* **Cross-node pickup end to end** — a workflow parked on a 4s durable sleep
+  by node 0, which then stopped: node 1 discovered it through the tenant
+  index, resumed it, and completed it at **+5985ms total (~2s overhead over
+  the sleep**, of which ~1.1s was the initial `beginRun` round trips and
+  ~0.9s the sweep-and-resume itself).
+* **Crash recovery across process generations** — workflows abandoned by
+  earlier killed processes were picked up by later, unrelated nodes off their
+  stale timers in the shared index and completed correctly.
+* **Index integrity at quiescence** — after all of the above (two nodes
+  rewriting four origins' slices, including the multi-writer flushes the
+  `published` fingerprint cache was suspected to mishandle), the tenant index
+  exactly matched the union of origin databases: no missing entries, no stale
+  entries. The suspected stale-skip did not produce divergence.
+
 **Protocol correctness under contention holds.** Three nodes, each with its own
 network, racing on the same workflows with timer-driven migration between them:
 all workflows completed with correct results, work spread across all three
@@ -208,26 +276,32 @@ Two more things a fleet meets:
   origin's timers have not moved, which removes most of the traffic, but the
   bottleneck is structural.
 
-* **Compare-and-swap works — point the writes at one place.** Every fenced
-  action (`task.acquire` and friends) is a read-compare-write inside a single
-  `BEGIN IMMEDIATE` transaction. That is a genuine CAS, atomic against whichever
-  database applies it, and `busy_timeout` makes competing writers queue rather
-  than fail.
+* **Compare-and-swap does not survive replication — measured, and worse than
+  feared.** Every fenced action (`task.acquire` and friends) is a
+  read-compare-write inside a single `BEGIN IMMEDIATE` transaction. That is a
+  genuine CAS — against the one database that applies it. Across nodes it is
+  not a CAS at all:
 
-  What breaks it is not the database, it is *where the write lands*. In the
-  default embedded-replica mode each node applies its CAS to its own local
-  replica and the copies merge afterwards, so two nodes can both win the same
-  acquire and both believe they hold the task. Set `remoteWrites: true` on
-  `tursoSyncDriver` and writes execute on the remote instead — one serialization
-  point, and the fence is sound again.
+  * **Default (local writes):** two nodes racing `task.acquire` for the same
+    `{id, version: 0}` through the same Turso Cloud remote both won **50 times
+    out of 50** (~250ms per acquire). Not "may both win" — with each CAS
+    applied to its own replica there is nothing to contend with, so a
+    simultaneous race *always* double-wins.
 
-  And because state is partitioned one database per workflow, that serialization
-  is *per workflow*, not global: two different workflows never contend for the
-  same writer. The partition is what buys linearizable CAS without a global
-  lock.
+  * **`remoteWrites: true` does not fix it:** both nodes still won **50 out of
+    50**, now at 11–13 seconds per acquire. A follow-up probe shows why: both
+    nodes returned `200` with `version 1, acquired`, while an independent
+    fresh replica read the remote as still `version 0, pending, pid null` —
+    under `@tursodatabase/sync` 0.7.2 the remote-writes path neither
+    serializes the transaction remotely nor even lands its writes. The
+    previous revision of this document recommended the flag; that
+    recommendation was wrong and is withdrawn. Do not use `remoteWrites`.
 
-  Leave `remoteWrites` off only when a workflow has exactly one writer. It is
-  off by default because the flag is still marked experimental upstream.
+  The conclusion is stark but simple: **there is no multi-writer story.** The
+  only sound arrangement is one writer per workflow — static sharding with
+  `shard`/`ownerOf`, where routing and sweeping agree on a single owner and
+  the CAS runs on the one replica that ever writes that origin. That was
+  already the recommended deployment; it is now the only correct one.
 
 ## What the schema follows
 
@@ -281,15 +355,52 @@ Resonate Server's SQLite schema and the two are not interchangeable.
   to the local client like any other message, but nothing makes the HTTP call —
   there is no server to make it. Treat these as unsupported.
 
-## Concurrency (superseded — see above)
+## When the cloud is written: `pushOn`
 
-A task lease already gives a workflow one writer at a time, which is the
-arrangement this design is built for. Within a process, requests against an
-origin are serialized. Across processes writing the same origin concurrently
-through embedded replicas, the sync engine resolves at the row level and the
-protocol's version fences reject the loser's stale writes — but a caller who
-needs strict linearizability across concurrent writers to one workflow should
-enable the client's remote-writes mode.
+A task lease gives a workflow one writer for the span of a tenure, which makes
+per-request uploads mostly wasted motion: nobody else may read the workflow's
+intermediate steps before the tenure ends. `pushOn` on `TursoNetwork` makes
+that explicit:
+
+* `"boundary"` (default) — writes stay on the local replica until a moment
+  another process could ever need to read from: the task fulfills, suspends,
+  releases, or halts; work becomes visible to the fleet (`task.create`, a root
+  or targeted `promise.create`); or the root promise settles. Sweep-driven
+  recovery transitions always push. The trade is recovery granularity: a node
+  that crashes mid-tenure is recovered from its last boundary, and the durable
+  steps since then are re-executed — at-least-once per tenure segment instead
+  of per step.
+
+* `"request"` — the old behavior: push after every committed write. Recovery
+  loses at most one request; the cloud sees every durable step as it lands.
+
+A timer index entry may briefly advertise state the remote cannot serve yet
+(the entry is published before the boundary push). That is safe by the same
+rule that makes every index entry safe: a consumer re-validates against the
+origin database and treats "not armed yet" like any stale entry — it costs a
+wasted open per sweep until the boundary push lands, and nothing else.
+
+## Turso Cloud operational gotchas (all paid for)
+
+* **Set `UV_THREADPOOL_SIZE`.** The sync engine's blocking native calls run on
+  libuv's threadpool, which defaults to 4 threads. A process holding several
+  sync databases — one tenant index plus a few origins is already enough —
+  can park all four slots in long-poll pulls and pushes, at which point the
+  entire process freezes: every pending operation waits for a slot that will
+  never free. Observed twice as a total wedge (all replicas' files untouched
+  for minutes, every timer silent); `UV_THREADPOOL_SIZE=64` resolved it.
+  Budget roughly one slot per concurrently-open sync database.
+
+* **`close()` on a sync database can hang** when a pull is in flight, which
+  makes `network.stop()` (and so `resonate.stop()`) hang with it. `stop()`
+  marks the network stopped and clears the tick timer *before* it closes
+  connections, so the node is already inert when the hang happens — a caller
+  that needs to exit promptly should race `stop()` against a timeout.
+
+* **A swept origin can lose its connection mid-fire** (`database must be
+  connected` in a `turso timeout sweep failed` warning) when the store evicts
+  it. The sweep retries next tick and the fleet self-heals; the warning is
+  noise unless it repeats for the same origin indefinitely.
 
 ## Tests
 

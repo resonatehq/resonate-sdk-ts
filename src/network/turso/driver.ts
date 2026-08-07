@@ -163,9 +163,11 @@ export interface TursoSyncDriverConfig {
   suffix?: string;
   /**
    * The remote database for a given name. Pass a string to use it as a URL
-   * prefix (`${url}${name}`), or a function for full control — a Turso Cloud
-   * deployment typically names one remote database per workflow, so the
-   * prefix form is usually enough.
+   * prefix (`${url}${name}`), or a function for full control. A Turso Cloud
+   * database lives at `<name>-<org>.<region>.turso.io` — a shape no flat
+   * prefix can produce — so a Turso Cloud deployment needs the function form:
+   * `` (name) => `libsql://${name}-${org}.${region}.turso.io` ``. The database
+   * must already exist; Turso Cloud does not create one on first connect.
    */
   url: string | ((name: string) => string);
   /** Auth token, or a function producing a short-lived one per request. */
@@ -177,20 +179,16 @@ export interface TursoSyncDriverConfig {
   /**
    * Execute writes on the remote rather than on the local replica.
    *
-   * THIS IS WHAT MAKES THE PROTOCOL'S COMPARE-AND-SWAP SOUND ACROSS NODES.
-   * `task.acquire` and every other fenced action is a read-compare-write inside
-   * one transaction — a genuine CAS, atomic against whichever database applies
-   * it. With local writes each node applies that CAS to *its own replica* and
-   * the copies merge afterwards, so two nodes can both win the same acquire and
-   * both believe they hold the task. Sending writes to the remote restores the
-   * single serialization point the fence needs.
+   * DO NOT USE. This was believed to restore the single serialization point
+   * the protocol's compare-and-swap fences need across nodes. Measured against
+   * Turso Cloud (`@tursodatabase/sync` 0.7.2) it does not: two nodes racing
+   * `task.acquire` for the same `{id, version: 0}` both won 50 times out of
+   * 50 with the flag on (at 11-13s per acquire), and an independent replica
+   * then read the remote as untouched — the remote-writes path neither
+   * serialized the transaction nor landed its writes. See turso.md.
    *
-   * Because state is partitioned one database per workflow, this serializes
-   * *per workflow*, not globally — two different workflows never contend.
-   *
-   * Leave it off only when a workflow has exactly one writer (a single node, or
-   * a fleet where nothing steals work). Default false, because the underlying
-   * flag is still marked experimental upstream.
+   * Kept only so the flag can be re-evaluated against a future client. The
+   * sound arrangement is one writer per workflow (static sharding).
    */
   remoteWrites?: boolean;
   /** Extra options forwarded verbatim to `@tursodatabase/sync`'s `connect`. */

@@ -178,6 +178,24 @@ export interface TursoNetworkConfig {
    * Unset (the default) means this node owns everything.
    */
   shard?: { index: number; count: number };
+  /**
+   * When to upload an origin database to the remote, on drivers that
+   * replicate.
+   *
+   * `"boundary"` (the default) pushes at the points another process could
+   * ever need to read from: a task ends its tenure (fulfill, suspend,
+   * release, halt), work becomes visible to the fleet (`task.create`, a root
+   * or targeted `promise.create`), or the root promise settles. The
+   * intermediate durable steps a task records while it holds the lease stay
+   * on the local replica — the lease already guarantees one writer, so nobody
+   * else can need them before the boundary. The trade: a crash mid-tenure
+   * recovers from the last boundary, not the last step.
+   *
+   * `"request"` pushes after every committed write, the most conservative
+   * cadence: recovery loses at most one request, and the remote is never
+   * more than one commit behind the tenant index.
+   */
+  pushOn?: "boundary" | "request";
   logger?: Logger;
 }
 
@@ -199,6 +217,7 @@ export class TursoNetwork implements Network {
   private readonly retryTimeout: number;
   private readonly batchSize: number;
   private readonly shard?: { index: number; count: number };
+  private readonly pushOn: "boundary" | "request";
   private readonly logger?: Logger;
 
   private readonly callbacks: Array<(msg: Message) => void> = [];
@@ -212,6 +231,7 @@ export class TursoNetwork implements Network {
     this.tickMs = cfg.tickMs ?? 250;
     this.retryTimeout = cfg.retryTimeout ?? DEFAULT_RETRY_TIMEOUT;
     this.batchSize = cfg.batchSize ?? 100;
+    this.pushOn = cfg.pushOn ?? "boundary";
     if (cfg.shard) {
       const { index, count } = cfg.shard;
       if (!Number.isInteger(count) || count < 1 || !Number.isInteger(index) || index < 0 || index >= count) {
@@ -298,7 +318,7 @@ export class TursoNetwork implements Network {
         });
 
       case "origin":
-        return await this.inOrigin(route.origin, now, (server) => server.apply(req));
+        return await this.inOrigin(route.origin, now, (server) => server.apply(req), this.pushNow(req));
 
       case "multi": {
         // Only `task.heartbeat` fans out: its task list may span workflows, so
@@ -406,7 +426,12 @@ export class TursoNetwork implements Network {
    * back into `send` for the same workflow, and would deadlock against the
    * lock its own message was delivered under.
    */
-  private async inOrigin<T>(origin: string, now: number, fn: (server: OriginServer) => Promise<T>): Promise<T> {
+  private async inOrigin<T>(
+    origin: string,
+    now: number,
+    fn: (server: OriginServer) => Promise<T>,
+    pushOrigin = true,
+  ): Promise<T> {
     let outgoing: OutgoingMessage[] = [];
     const result = await this.store.withLock(origin, async () => {
       const conn = await this.store.origin(origin);
@@ -419,11 +444,39 @@ export class TursoNetwork implements Network {
         outgoing = server.takeMessages();
         return v;
       });
-      await this.store.flush(origin, conn);
+      await this.store.flush(origin, conn, pushOrigin);
       return value;
     });
     this.dispatch(outgoing);
     return result;
+  }
+
+  /**
+   * Should this request's flush upload the origin database to the remote?
+   *
+   * Under `pushOn: "boundary"`, only at the points another process could ever
+   * need to read from — see `TursoNetworkConfig.pushOn`. The child creates and
+   * settles that record a task's intermediate durable steps stay local until
+   * the task's next boundary; the lease guarantees nobody else is writing this
+   * workflow in the meantime, and the sweep transitions (which do not come
+   * through here) always push.
+   */
+  private pushNow(req: Request): boolean {
+    if (this.pushOn === "request") return true;
+    switch (req.kind) {
+      case "task.create":
+      case "task.fulfill":
+      case "task.suspend":
+      case "task.release":
+      case "task.halt":
+        return true;
+      case "promise.create":
+        return req.data.id === originOf(req.data.id) || req.data.tags?.["resonate:target"] !== undefined;
+      case "promise.settle":
+        return req.data.id === originOf(req.data.id);
+      default:
+        return false;
+    }
   }
 
   /**
