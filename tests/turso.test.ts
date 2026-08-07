@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "@jest/globals";
 import { type Context as AsyncContext, Resonate as AsyncResonate } from "../src/async/index.js";
 import { type Context, Resonate } from "../src/index.js";
-import { originOf, TursoNetwork, tursoLocalDriver } from "../src/network/turso/index.js";
+import { hashOrigin, originOf, ownerOf, TursoNetwork, tursoLocalDriver } from "../src/network/turso/index.js";
 import type { Message, Request, Response } from "../src/network/types.js";
 import { VERSION } from "../src/util.js";
 
@@ -79,6 +79,41 @@ describe("originOf", () => {
     expect(originOf("foo.1")).toBe("foo");
     expect(originOf("foo.1.2")).toBe("foo");
     expect(originOf("")).toBe("");
+  });
+});
+
+describe("hashOrigin", () => {
+  // Pinned, not computed. Every node in a fleet must agree on this — including
+  // nodes running the Python SDK, whose `hash_origin` asserts the same vector —
+  // so a change that quietly reshuffles ownership has to fail here first.
+  test("matches the fixed vector shared with the Python SDK", () => {
+    expect(hashOrigin("order-0")).toBe(713018330);
+    expect(hashOrigin("order-1")).toBe(729795949);
+    expect(hashOrigin("order-2")).toBe(679463092);
+    expect(hashOrigin("acme")).toBe(1174237615);
+    expect(hashOrigin("x.y")).toBe(3335537014);
+    expect(hashOrigin("")).toBe(2166136261);
+  });
+
+  test("ownerOf spreads origins over the fleet and is stable", () => {
+    expect(ownerOf("order-0", 2)).toBe(0);
+    expect(ownerOf("order-1", 2)).toBe(1);
+    const owners = new Set(["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => ownerOf(id, 3)));
+    expect(owners.size).toBeGreaterThan(1);
+  });
+});
+
+describe("shard configuration", () => {
+  test("rejects a shard that cannot be an index into the fleet", () => {
+    for (const shard of [
+      { index: 2, count: 2 },
+      { index: -1, count: 2 },
+      { index: 0, count: 0 },
+      { index: 0.5, count: 2 },
+    ]) {
+      expect(() => network({ shard })).toThrow(/Invalid shard/);
+    }
+    expect(() => network({ shard: { index: 1, count: 2 } })).not.toThrow();
   });
 });
 
@@ -940,6 +975,96 @@ describe("partitioning", () => {
       await creator.stop();
       await worker.stop();
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a sharded node sweeps only the timers of the origins it owns", async () => {
+    // The point of `shard`. Both nodes read one timeout index holding both
+    // slices; each must act on its own and leave the other's alone, or two
+    // nodes end up driving one workflow.
+    const dir = mkdtempSync(join(tmpdir(), "resonate-turso-"));
+    const ids = ["alpha", "beta", "gamma", "delta"];
+    const mine = ids.filter((id) => ownerOf(id, 2) === 0);
+    const theirs = ids.filter((id) => ownerOf(id, 2) === 1);
+    // A useless test if the hash happens to send everything one way.
+    expect(mine.length).toBeGreaterThan(0);
+    expect(theirs.length).toBeGreaterThan(0);
+
+    // Creates the work but never sweeps, so every execute below is swept.
+    const creator = new TursoNetwork({
+      driver: tursoLocalDriver({ dir }),
+      prefix: "shard-",
+      tickMs: 60_000,
+      retryTimeout: 50,
+    });
+    const node0 = new TursoNetwork({
+      driver: tursoLocalDriver({ dir }),
+      prefix: "shard-",
+      tickMs: 5,
+      retryTimeout: 50,
+      shard: { index: 0, count: 2 },
+    });
+    try {
+      await creator.init();
+      await node0.init();
+      const box = inbox(node0);
+
+      for (const id of ids) {
+        ok(
+          await creator.send({
+            kind: "promise.create",
+            head: head(),
+            data: {
+              id,
+              timeoutAt: Date.now() + 60_000,
+              param: {},
+              tags: { "resonate:target": creator.match("default") },
+            },
+          }),
+        );
+      }
+
+      // Everything this node owns arrives...
+      for (const id of mine) await box.next((m) => m.kind === "execute" && (m.data as any).task.id === id);
+      // ...and nothing else ever does, though its timer is equally overdue.
+      await new Promise((r) => setTimeout(r, 300));
+      const seen = box.messages.filter((m) => m.kind === "execute").map((m) => (m.data as any).task.id);
+      expect([...new Set(seen)].sort()).toEqual([...mine].sort());
+      for (const id of theirs) expect(seen).not.toContain(id);
+    } finally {
+      await node0.stop();
+      await creator.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the tenant database can live on a driver of its own", async () => {
+    // A fleet shares the timeout index but not its origins, so the two sides
+    // must be able to point at different storage.
+    const origins = mkdtempSync(join(tmpdir(), "resonate-turso-o-"));
+    const timers = mkdtempSync(join(tmpdir(), "resonate-turso-t-"));
+    const net = new TursoNetwork({
+      driver: tursoLocalDriver({ dir: origins }),
+      timeoutDriver: tursoLocalDriver({ dir: timers }),
+      prefix: "split-",
+      timeoutDatabase: "timers",
+      tickMs: 60_000,
+    });
+    try {
+      await net.init();
+      ok(
+        await net.send({
+          kind: "promise.create",
+          head: head(),
+          data: { id: "wf", timeoutAt: Date.now() + 60_000, param: {}, tags: {} },
+        }),
+      );
+      expect(readdirSync(origins).filter((f) => f.endsWith(".db"))).toEqual(["split-wf.db"]);
+      expect(readdirSync(timers).filter((f) => f.endsWith(".db"))).toEqual(["split-timers.db"]);
+    } finally {
+      await net.stop();
+      rmSync(origins, { recursive: true, force: true });
+      rmSync(timers, { recursive: true, force: true });
     }
   });
 

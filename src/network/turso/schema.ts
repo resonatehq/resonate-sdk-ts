@@ -34,7 +34,7 @@
 // spec's `PromiseObject.external`: explicitly tagged, targeted, or a timer.
 
 /** Bumped when the physical layout changes in a way old rows cannot satisfy. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const ORIGIN_SCHEMA: string[] = [
   `CREATE TABLE IF NOT EXISTS meta (
@@ -124,14 +124,20 @@ export const TENANT_SCHEMA: string[] = [
   // The tenant-global timeout index. `kind` widens the origin database's own
   // encoding so promise and task timers share one due-time ordering:
   //   0 = promise timeout, 1 = task retry, 2 = task lease.
+  //
+  // `origin_hash` is `hashOrigin(origin)`, stored so a sharded fleet can select
+  // its own slice in SQL — `WHERE origin_hash % count = index` — rather than
+  // reading every due timer and discarding most of them. It is a property of
+  // the origin alone, so it stays valid when the fleet is resized.
   `CREATE TABLE IF NOT EXISTS timeouts (
      origin TEXT NOT NULL,
+     origin_hash INTEGER NOT NULL,
      id TEXT NOT NULL,
      kind INTEGER NOT NULL,
      timeout_at INTEGER NOT NULL,
      PRIMARY KEY (origin, id, kind)
    )`,
-  `CREATE INDEX IF NOT EXISTS idx_timeouts_due ON timeouts (timeout_at, origin)`,
+  `CREATE INDEX IF NOT EXISTS idx_timeouts_due ON timeouts (timeout_at, origin_hash)`,
 
   // Schedules are tenant-scoped: a schedule's promise id is a template, so
   // the promises it fires may land in many origins.

@@ -138,6 +138,31 @@ export function originOf(id: string): string {
   return dot === -1 ? id : id.slice(0, dot);
 }
 
+/**
+ * The hash a sharded fleet partitions origins by: 32-bit FNV-1a over the origin
+ * string.
+ *
+ * Every node — and anything routing requests at them — must compute this
+ * identically, so it is specified here rather than left to the caller: FNV-1a,
+ * 32-bit, offset basis 2166136261, prime 16777619, over the UTF-16 code units
+ * of the origin, returned unsigned. The Python SDK's `hash_origin` is the same
+ * function.
+ */
+export function hashOrigin(origin: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < origin.length; i++) {
+    hash ^= origin.charCodeAt(i);
+    // 32-bit FNV prime multiply, via shifts to stay inside int32.
+    hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+/** Which node of `count` owns an origin. */
+export function ownerOf(origin: string, count: number): number {
+  return hashOrigin(origin) % count;
+}
+
 /** A deliverable address: an HTTP callback, or a poll address naming a group. */
 export function addressValid(address: string): boolean {
   return (

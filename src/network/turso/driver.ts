@@ -315,7 +315,14 @@ export function libsqlDriver(cfg: LibsqlDriverConfig): TursoDriver {
         await conn.execute("PRAGMA journal_mode = WAL");
       }
 
-      if (typeof client.sync === "function") {
+      // Only an embedded replica can pull, and only `syncUrl` makes one. The
+      // method is present on every client regardless — calling it on a plain
+      // `file:` or `libsql:` client throws `SyncNotSupported` — so presence is
+      // not the test. Getting this wrong is quiet and total: `sweepTimeouts`
+      // pulls before it reads, so every tick would die before looking at a
+      // single timer, and a fleet with a broken sweeper is indistinguishable
+      // from a fleet with no work to do.
+      if (cfg.syncUrl && typeof client.sync === "function") {
         conn.pull = async () => {
           await client.sync();
           return true;

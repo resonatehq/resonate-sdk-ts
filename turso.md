@@ -103,6 +103,10 @@ Three consequences worth knowing:
   shared queue again) or a waiter that polls the promise it is blocked on
   instead of waiting to be told.
 
+  **Static sharding avoids it** — see below. If every workflow has one owner and
+  callers are routed to that owner, the node that finishes a workflow is the node
+  that was waiting on it, and the message never has to cross a process.
+
 * **First dispatch is local.** Creating a targeted promise hands the execute to
   the creating process. If that process is a client that cannot run the
   function, the task simply stays pending until its retry timer hands it to a
@@ -121,19 +125,62 @@ A driver maps a logical database name to physical storage. Three ship:
 All three are optional peer dependencies, imported dynamically. Implement
 `TursoDriver` for anything else — it has one method, `open(name)`.
 
-`libsqlDriver` is **known broken** — a workflow driven through it stalls
-part way with no error, even on a single node. It is kept only because a
-`file:` libSQL database *is* multi-process capable where the Turso local driver
-is not, which makes it the right shape for a same-machine fleet once the stall
-is understood.
+The three differ in what they can share, and that is usually what picks one:
 
+* `tursoLocalDriver` takes an **exclusive file lock** on open. A second process
+  opening the same file fails outright with `File is locked by another process`.
+  It is a single-process driver — right for a node's own origin databases, wrong
+  for anything the fleet shares.
+* `libsqlDriver` with a `file:` URL uses ordinary SQLite locking, so several
+  processes on one machine really do share a database. (It was previously
+  documented here as broken; the actual fault was in this SDK — see
+  `libsqlDriver` in `driver.ts` — and is fixed.)
+* `tursoSyncDriver` shares through a remote, which is the only option across
+  machines.
+
+Origins and the tenant database need not use the same driver. `timeoutDriver`
+opens the tenant database when it lives elsewhere:
+
+```ts
+new TursoNetwork({
+  driver: tursoLocalDriver({ dir: "/var/lib/resonate/node-0" }),  // mine alone
+  timeoutDriver: libsqlDriver({ url: "file:/var/lib/resonate/shared/" }),
+})
+```
+
+## Sharding a fleet
+
+`shard: { index, count }` gives a node a fixed slice of the workflows:
+
+```ts
+new TursoNetwork({ driver, shard: { index: 0, count: 2 } })
+```
+
+The node then sweeps only timers whose origin it owns —
+`hashOrigin(origin) % count === index` — filtered in SQL against the shared
+index, not in memory after reading everyone's.
+
+This turns "any node may pick up any workflow" into "every workflow has exactly
+one owner", which buys three things: a workflow stops migrating mid-flight, one
+owner means one writer (which is what the CAS fences want), and the `unblock`
+problem below stops mattering, because the node that finishes a workflow is the
+node that was waiting on it.
+
+The caller must route requests to the owning node using the same function —
+`ownerOf(originOf(id), count)`, exported for exactly this. The hash lives in the
+SDK rather than in the caller so that routing and sweeping cannot disagree; the
+Python SDK's `hash_origin` computes the same values, and both suites pin the
+same vector.
+
+`examples/turso-fleet/node.ts` is a runnable two-node fleet: an HTTP front door
+with `/invoke` and `/get`, per-node origin storage, a shared timer index, and
+forwarding for workflows a node does not own.
 
 ## Running more than one node
 
-Nodes do not share a disk — each has its own directory, and they converge
-through the remote. That is the arrangement `TursoSyncDriver` is for, and it
-has never been run against a real remote, so the fleet story below is what is
-*known*, not what is guaranteed.
+Nodes do not share a disk for their origins — each has its own directory. What
+they must share is the timer index, since that is the one place a node learns
+that work exists at all.
 
 **Protocol correctness under contention holds.** Three nodes, each with its own
 network, racing on the same workflows with timer-driven migration between them:
@@ -141,10 +188,18 @@ all workflows completed with correct results, work spread across all three
 nodes, **zero** durable steps executed by more than one node, and **zero**
 disagreement between nodes on any result. The version fences do their job.
 
-**Liveness does not.** See the `unblock` bullet above: a workflow finished by
-one node does not notify the node waiting for it, so a fleet pays 60 seconds
-where a single node pays milliseconds. This is the blocking issue for
-multi-node use.
+**Sharded, a fleet works end to end.** Two nodes, `shard 0/2` and `shard 1/2`,
+each with its own origin directory and both on one `file:` timer index: six
+workflows submitted entirely to node 0, three forwarded to node 1 by hash, every
+one parked on a durable 8-second sleep and resumed by its owner, no warnings.
+Each node fired exactly its own six timers out of the twelve in the shared
+table.
+
+**Unsharded, liveness does not hold.** See the `unblock` bullet above: a
+workflow finished by one node does not notify the node waiting for it, so a
+fleet pays 60 seconds where a single node pays milliseconds. Static sharding
+sidesteps it rather than fixing it — the owner is the waiter — so a fleet that
+rebalances or steals work still meets it.
 
 Two more things a fleet meets:
 

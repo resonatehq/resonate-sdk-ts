@@ -107,7 +107,7 @@ export type {
   TursoSyncDriverConfig,
 } from "./driver.js";
 export { databasePath, libsqlDriver, tursoLocalDriver, tursoSyncDriver } from "./driver.js";
-export { originOf } from "./server.js";
+export { hashOrigin, originOf, ownerOf } from "./server.js";
 
 export interface TursoNetworkConfig {
   /**
@@ -116,6 +116,23 @@ export interface TursoNetworkConfig {
    * supply your own.
    */
   driver: TursoDriver;
+  /**
+   * Opens the tenant database, if it lives somewhere other than the origins.
+   * Defaults to `driver`.
+   *
+   * The two databases have opposite access patterns, and a deployment may need
+   * to honour that. Origin databases are owned — under static sharding exactly
+   * one node ever touches a given workflow — whereas the timeout index is
+   * written by every node in the fleet, because that is the whole point of it.
+   * A driver that is fine for the first can be wrong for the second:
+   * `tursoLocalDriver` takes an exclusive file lock on open, so a fleet sharing
+   * one directory for its timer index simply fails to start.
+   *
+   * Splitting them lets each side use what fits — per-node local files for the
+   * origins, something genuinely shared (a `file:` libSQL database, or an
+   * embedded replica of one remote) for the index.
+   */
+  timeoutDriver?: TursoDriver;
   /**
    * Prefix for every database name this network creates. An origin database
    * is `<prefix><origin>`; the tenant database is `<prefix><timeoutDatabase>`.
@@ -142,6 +159,25 @@ export interface TursoNetworkConfig {
   maxOpenDatabases?: number;
   /** Due timers swept per tick. Default 100. */
   batchSize?: number;
+  /**
+   * This node's slice of a sharded fleet: `{ index, count }` with
+   * `0 <= index < count`.
+   *
+   * Set it and the node sweeps only the timers of origins it owns —
+   * `hashOrigin(origin) % count === index`. Every node must agree on `count`
+   * and on the hash, which is why the hash ships here as `hashOrigin` rather
+   * than being left to the caller.
+   *
+   * This is what turns "any node may pick up any workflow" into "each workflow
+   * has exactly one owner". That is worth having: a workflow stops migrating
+   * between nodes mid-flight, so it stops contending with itself, and one owner
+   * means one writer — which is what the protocol's compare-and-swap wants.
+   * The caller is responsible for routing requests to the owning node; use
+   * `ownerOf` for that, so routing and sweeping agree.
+   *
+   * Unset (the default) means this node owns everything.
+   */
+  shard?: { index: number; count: number };
   logger?: Logger;
 }
 
@@ -162,6 +198,7 @@ export class TursoNetwork implements Network {
   private readonly tickMs: number;
   private readonly retryTimeout: number;
   private readonly batchSize: number;
+  private readonly shard?: { index: number; count: number };
   private readonly logger?: Logger;
 
   private readonly callbacks: Array<(msg: Message) => void> = [];
@@ -175,9 +212,17 @@ export class TursoNetwork implements Network {
     this.tickMs = cfg.tickMs ?? 250;
     this.retryTimeout = cfg.retryTimeout ?? DEFAULT_RETRY_TIMEOUT;
     this.batchSize = cfg.batchSize ?? 100;
+    if (cfg.shard) {
+      const { index, count } = cfg.shard;
+      if (!Number.isInteger(count) || count < 1 || !Number.isInteger(index) || index < 0 || index >= count) {
+        throw new Error(`Invalid shard ${index}/${count}: need integers with 0 <= index < count`);
+      }
+      this.shard = cfg.shard;
+    }
     this.logger = cfg.logger;
     this.store = new TursoStore({
       driver: cfg.driver,
+      timeoutDriver: cfg.timeoutDriver,
       prefix: cfg.prefix ?? "resonate-",
       timeoutDatabase: cfg.timeoutDatabase ?? "timeouts",
       maxOpenDatabases: cfg.maxOpenDatabases ?? 64,
@@ -449,9 +494,13 @@ export class TursoNetwork implements Network {
     const tenant = await this.store.tenant();
     await tenant.pull?.();
 
+    // A sharded node takes only its own slice, in SQL, so a crowded index does
+    // not fill its batch with timers belonging to someone else.
+    const shardFilter = this.shard ? " AND origin_hash % ? = ?" : "";
+    const shardArgs = this.shard ? [this.shard.count, this.shard.index] : [];
     const due = await tenant.execute(
-      "SELECT origin, id, kind FROM timeouts WHERE timeout_at <= ? ORDER BY timeout_at ASC LIMIT ?",
-      [now, this.batchSize],
+      `SELECT origin, id, kind FROM timeouts WHERE timeout_at <= ?${shardFilter} ORDER BY timeout_at ASC LIMIT ?`,
+      [now, ...shardArgs, this.batchSize],
     );
     if (due.length === 0) return;
 
