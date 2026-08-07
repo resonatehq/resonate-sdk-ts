@@ -37,7 +37,7 @@
 
 import { mkdirSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { ConsoleLogger, type Context, Resonate } from "../../src/index.js";
+import { Codec, ConsoleLogger, type Context, NoopEncryptor, Resonate } from "../../src/index.js";
 import { libsqlDriver, originOf, ownerOf, TursoNetwork, tursoLocalDriver } from "../../src/network/turso/index.js";
 
 // -- config -----------------------------------------------------------------
@@ -111,6 +111,9 @@ resonate.register("order", function* (ctx: Context, amount: number): any {
 
 // -- HTTP -------------------------------------------------------------------
 
+/** Matches the client's default, so `/get` can decode a value it did not encode. */
+const codec = new Codec(new NoopEncryptor());
+
 function owns(id: string): boolean {
   return ownerOf(originOf(id), shardCount) === shardIndex;
 }
@@ -180,16 +183,22 @@ const server = createServer(async (req, res) => {
         });
       }
 
-      const promise = await resonate.promises.get(id);
+      // Read the promise and decode it in place. Deliberately not
+      // `resonate.get(id).result()`: that registers a listener and waits to be
+      // told, which is the one thing this network does not do well across
+      // processes. A read is enough — the promise record already carries the
+      // settled value, and a Turso read is side-effect free by projection, so
+      // polling this route costs nothing a push would have saved.
+      const promise = await resonate.promises.get(id).catch(() => undefined);
+      if (!promise) {
+        return send(res, 404, { id, owner: me, error: "no such workflow" });
+      }
       if (promise.state === "pending") {
         return send(res, 200, { id, owner: me, state: "pending" });
       }
-      const handle = await resonate.get(id);
-      try {
-        return send(res, 200, { id, owner: me, state: promise.state, result: await handle.result() });
-      } catch (err) {
-        return send(res, 200, { id, owner: me, state: promise.state, error: String(err) });
-      }
+      const value = codec.decode(promise.value);
+      const key = promise.state === "resolved" ? "result" : "error";
+      return send(res, 200, { id, owner: me, state: promise.state, [key]: value ?? null });
     }
 
     return send(res, 404, { error: "not found" });
