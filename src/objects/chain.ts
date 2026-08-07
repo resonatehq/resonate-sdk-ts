@@ -352,6 +352,28 @@ export class ChainObjects {
         appendOp({ o: def.name, k: key, m: method, a: args }),
       read: (): DurablePromise<{ state: S | undefined; deleted: boolean; seq: number }> =>
         ctx.run(async (_: Info) => this.readState(def, key)),
+      // Alarm from inside a handler/workflow: the leaf's own id makes the
+      // alarm id deterministic, so replays and retries adopt the same alarm
+      // instead of scheduling twice. The alarm promise is detached (own
+      // lifetime, delayed dispatch) and appends to the mailbox on fire — it
+      // must NOT hold a mailbox slot in the meantime, or it would block
+      // every later message until it fires.
+      sendLater: (method: string, args: any[], delayMs: number): DurablePromise<string> =>
+        ctx.run(async (info: Info) => {
+          const alarmId = `${this.baseId(def.name, key)}/alarm/${info.id}`;
+          const env: Envelope = { o: def.name, k: key, m: method, a: args, ik: alarmId };
+          await createPromise(this.network.send, this.codec, {
+            id: alarmId,
+            timeoutAt: Date.now() + delayMs + timeout,
+            data: { func: this.alarmName, args: [env, timeout], version: 1 },
+            tags: {
+              "resonate:target": this.network.anycast,
+              "resonate:scope": "global",
+              "resonate:delay": String(Date.now() + delayMs),
+            },
+          });
+          return alarmId;
+        }),
     };
   }
 

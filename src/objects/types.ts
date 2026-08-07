@@ -99,6 +99,13 @@ export interface CtxObjectHandle<S> {
   send(method: string, ...args: any[]): DurablePromise<string>;
   /** Durable snapshot read (wrapped as a durable operation of the caller). */
   read(): DurablePromise<{ state: S | undefined; deleted: boolean; seq: number }>;
+  /**
+   * Durable delayed one-way send (an alarm): fires `delayMs` from now without
+   * occupying a mailbox position until it does. Self-targeting is the alarm
+   * idiom (`ctx.object(def, ctx.key).sendLater(...)`). Chain runtime only for
+   * now; loop/serial would add the same alarm indirection.
+   */
+  sendLater?(method: string, args: any[], delayMs: number): DurablePromise<string>;
 }
 
 // ---------------------------------------------------------------------------
