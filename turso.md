@@ -297,11 +297,32 @@ Two more things a fleet meets:
     previous revision of this document recommended the flag; that
     recommendation was wrong and is withdrawn. Do not use `remoteWrites`.
 
-  The conclusion is stark but simple: **there is no multi-writer story.** The
+  The conclusion: **the sync driver has no multi-writer story.** On it, the
   only sound arrangement is one writer per workflow — static sharding with
   `shard`/`ownerOf`, where routing and sweeping agree on a single owner and
-  the CAS runs on the one replica that ever writes that origin. That was
-  already the recommended deployment; it is now the only correct one.
+  the CAS runs on the one replica that ever writes that origin.
+
+  **A sound CAS does exist one driver over — measured.** The same Turso Cloud
+  database also serves Hrana v3, the server-side transaction protocol, and a
+  `BEGIN IMMEDIATE` read-compare-write raced from two clients there yields
+  **exactly one winner, 20/20**, with the loser observing the winner's write —
+  via `@libsql/client` `transaction("write")` (median 150ms per winning
+  acquire) and equally via `@tursodatabase/serverless` sessions (median
+  190ms; Hrana pipeline with batons, plain `fetch`, no native code). See
+  `experiments/exp-c.ts`. Two consequences:
+
+  * Zero new code today: point `libsqlDriver` at the same hostnames
+    (`url: (name) => \`libsql://${name}-<org>.<region>.turso.io\``) and every
+    origin transaction is server-side and linearizable — a fleet is sound in
+    any topology, no sharding required, at ~150ms per transition instead of
+    local-disk latency. Sharding becomes a latency optimization rather than a
+    correctness requirement.
+  * The replica-first design can keep its local reads and gain a sound fence
+    by routing writes — at minimum the fenced transitions — through a
+    server-side transaction and never pushing from replicas (pull-only), so
+    the WAL-merge path that breaks the fence is never exercised. That is
+    "remote writes" done right, and it is buildable against what Turso Cloud
+    serves today.
 
 ## What the schema follows
 
