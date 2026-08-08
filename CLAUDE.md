@@ -71,6 +71,7 @@ a workspace member). Run `npm install` at the root; build core first
 | `src/promises.ts` | Durable promise primitives |
 | `src/schedules.ts` | Schedule API |
 | `src/network/` | HTTP networking (remote server communication), shared by both engines |
+| `src/network/s3/` | Decentralized network over S3 (`@resonatehq/sdk/s3`): no server, one document per workflow (ETag CAS), time-bucketed wakeup entries in a shared timeout bucket — see [s3.md](./s3.md) |
 | `src/async/` | Async engine source (`@resonatehq/sdk/async`): `resonate.ts` (`Resonate`), `context.ts` (eager ops, `DurablePromise`), `core.ts` (task driver) |
 | `tests/` | Jest unit and integration tests (`tests/async/` for the async engine, `tests/equivalence/` for cross-engine differential tests) |
 | `sim/` | Deterministic simulation (DST) for chaos/reliability testing |
