@@ -2,6 +2,37 @@
 
 `TursoNetwork` is a `Network` with no server behind it.
 
+## Production readiness (reviewed 2026-08-08)
+
+An adversarial review — seven independent dimensions over both SDKs, every
+finding re-verified against the code by a refuter before it counted — preceded
+this release. Twelve findings were confirmed (two critical); all are fixed on
+this branch, with regression tests for the criticals. Status by concern:
+
+| Concern | Status |
+|---|---|
+| Single-node correctness (full suites, both engines) | ✅ tested |
+| Sharded fleet — one owner per workflow | ✅ measured, locally and through Turso Cloud |
+| Convergence through Turso Cloud (timer visibility ~200ms, cross-node pickup, crash recovery) | ✅ measured |
+| Turso Cloud provisioning (no auto-create; API create ~384ms; region-qualified hostnames) | ✅ measured |
+| Boundary uploads (`pushOn: "boundary"`) | ✅ implemented, reviewed, tested |
+| Origin routing (`resonate:origin` header normalized and validated) | ✅ fixed under review, regression-tested |
+| **Cross-node CAS without sharding** | ❓ **open question** — the sync driver is measured unsound (50/50 double-wins) and `remoteWrites` is measured broken upstream; server-side Hrana transactions are measured sound (20/20, ~150ms) but not yet integrated as a driver |
+| Detached (re-rooted) lineages — `ctx.detached` | ✖ unsupported by design (see below) |
+
+Deployment checklist:
+
+* **Shard the fleet** (`shard`, route with `ownerOf`). One writer per workflow
+  is the correctness boundary until the CAS question closes.
+* **Set `UV_THREADPOOL_SIZE`** to at least the number of concurrently open
+  sync databases; `tursoSyncDriver` warns at construction when it looks low.
+* **Create databases before first connect** — Turso Cloud does not auto-create;
+  pre-create via the platform API or wrap the driver with create-on-open.
+* Failures are reported through a default `ConsoleLogger("warn")`; pass your
+  own `Logger` to integrate with your logging stack.
+* Group tokens expire; `authToken` accepts an async function for short-lived
+  token minting.
+
 Every other network in this SDK is a transport: it carries a request to a
 Resonate Server and carries the response back. This one is not. The SDK *is*
 the server — it carries the protocol's transition relation and runs it locally
@@ -375,6 +406,14 @@ Resonate Server's SQLite schema and the two are not interchangeable.
 * **`http://` listener addresses.** An `unblock` for one is emitted and handed
   to the local client like any other message, but nothing makes the HTTP call —
   there is no server to make it. Treat these as unsupported.
+
+* **Detached (re-rooted) lineages.** `ctx.detached` creates a child whose
+  `resonate:origin` tag is its own dotted id, re-rooting the lineage. The
+  origin partition cannot represent a root whose id contains `.` — database
+  selection is `originOf(id)`, which would split the detached workflow and its
+  children across databases — so `promise.create` refuses the tag with a 400
+  naming this limitation. Start detached work as a genuine root instead
+  (`beginRun` with a fresh un-dotted id).
 
 ## When the cloud is written: `pushOn`
 

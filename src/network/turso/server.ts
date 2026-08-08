@@ -291,6 +291,15 @@ export class OriginServer {
   private readonly deferred: ResumeReq[] = [];
   /** Messages this transaction emitted, keyed for collapse-on-set. */
   private readonly outgoing = new Map<string, OutgoingMessage>();
+  /**
+   * True when this transaction changed state that a *different* process may
+   * need before the current tenure's next boundary: settling an external
+   * promise (the public resolve/reject API — the caller holds no lease, so no
+   * boundary of theirs will ever push it) or waking a suspended task. Under
+   * `pushOn: "boundary"` the network pushes when this is set, regardless of
+   * the request kind.
+   */
+  private syncNeeded = false;
 
   constructor(
     private readonly tx: TursoExecutor,
@@ -1015,6 +1024,9 @@ export class OriginServer {
       await this.addResume(req.awaiter, req.awaited);
       await this.setTaskTimeout(req.awaiter, 0, this.now + this.retryTimeout);
       await this.dispatch_(promise, task);
+      // A suspended task re-entered circulation: any node may claim it, so
+      // the state it resumes from must be servable from the remote.
+      this.syncNeeded = true;
       return;
     }
 
@@ -1057,6 +1069,10 @@ export class OriginServer {
     const listeners = await this.getListeners(row.id);
     const callbacks = await this.getCallbacks(row.id);
     const [headers, data] = encodeValue(value);
+
+    // An external promise may be settled by a process holding no lease (the
+    // public resolve/reject API); nothing in that caller's future pushes.
+    if (row.external) this.syncNeeded = true;
 
     await this.tx.execute(
       "UPDATE promises SET state = ?, value_headers = ?, value_data = ?, settled_at = ? WHERE id = ?",
@@ -1294,6 +1310,13 @@ export class OriginServer {
     this.outgoing.clear();
     return messages;
   }
+
+  /** Whether this transaction requires a boundary push — see `syncNeeded`. */
+  takeSyncNeeded(): boolean {
+    const value = this.syncNeeded;
+    this.syncNeeded = false;
+    return value;
+  }
 }
 
 // =============================================================================
@@ -1509,7 +1532,8 @@ export function validateCreate(id: string, timeoutAt: number, tags: Record<strin
 
   const origin = tags["resonate:origin"];
   if (origin !== undefined) {
-    if (origin.includes(".")) return "resonate:origin must not contain '.'";
+    if (origin.includes("."))
+      return "resonate:origin must not contain '.': re-rooted (detached) lineages are not supported by TursoNetwork — the origin partition cannot represent them";
     if (id !== origin && !id.startsWith(`${origin}.`)) return "Promise ID must be prefixed by resonate:origin";
   }
 

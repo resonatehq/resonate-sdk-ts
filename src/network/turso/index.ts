@@ -77,7 +77,7 @@
 // `remoteWrites` to send writes to the remote instead. Partitioning by workflow
 // means that serializes per workflow, not globally.
 
-import type { Logger } from "../../logger.js";
+import { ConsoleLogger, type Logger } from "../../logger.js";
 import { randomUUID } from "../../platform.js";
 import { VERSION } from "../../util.js";
 import type { Network } from "../network.js";
@@ -204,6 +204,7 @@ type Route =
   | { kind: "origin"; origin: string }
   | { kind: "tenant" }
   | { kind: "multi"; origins: string[] }
+  | { kind: "invalid"; reason: string }
   | { kind: "unsupported"; reason: string };
 
 export class TursoNetwork implements Network {
@@ -218,7 +219,7 @@ export class TursoNetwork implements Network {
   private readonly batchSize: number;
   private readonly shard?: { index: number; count: number };
   private readonly pushOn: "boundary" | "request";
-  private readonly logger?: Logger;
+  private readonly logger: Logger;
 
   private readonly callbacks: Array<(msg: Message) => void> = [];
   private timer?: ReturnType<typeof setTimeout>;
@@ -239,14 +240,16 @@ export class TursoNetwork implements Network {
       }
       this.shard = cfg.shard;
     }
-    this.logger = cfg.logger;
+    // A silent sweeper is indistinguishable from a fleet with no work to do,
+    // so failures must go somewhere by default; pass a Logger to redirect.
+    this.logger = cfg.logger ?? new ConsoleLogger("warn");
     this.store = new TursoStore({
       driver: cfg.driver,
       timeoutDriver: cfg.timeoutDriver,
       prefix: cfg.prefix ?? "resonate-",
       timeoutDatabase: cfg.timeoutDatabase ?? "timeouts",
       maxOpenDatabases: cfg.maxOpenDatabases ?? 64,
-      logger: cfg.logger,
+      logger: this.logger,
     });
 
     // A task targets the group; a callback or listener targets this process.
@@ -300,6 +303,9 @@ export class TursoNetwork implements Network {
       case "unsupported":
         return { kind: req.kind, status: 501, data: route.reason };
 
+      case "invalid":
+        return { kind: req.kind, status: 400, data: route.reason };
+
       case "tenant":
         return await this.inTenant(async (tx) => {
           const schedules = new ScheduleStore(tx, now);
@@ -328,7 +334,12 @@ export class TursoNetwork implements Network {
         if (req.kind !== "task.heartbeat") return { kind: req.kind, status: 501, data: "Not implemented" };
         for (const origin of route.origins) {
           const tasks = req.data.tasks.filter((t) => originOf(t.id) === origin);
-          await this.inOrigin(origin, now, (server) => server.apply({ ...req, data: { ...req.data, tasks } }));
+          await this.inOrigin(
+            origin,
+            now,
+            (server) => server.apply({ ...req, data: { ...req.data, tasks } }),
+            this.pushNow(req),
+          );
         }
         return { kind: "task.heartbeat", status: 200, data: {} };
       }
@@ -346,17 +357,35 @@ export class TursoNetwork implements Network {
   private route(req: Request): Route {
     const declared = req.head["resonate:origin"];
 
+    // The header may carry a full promise or task id rather than a bare
+    // origin — the engine cores stamp it with the task's id — so it is
+    // normalized through `originOf` before use. For a request that also
+    // names an id, a header that disagrees with that id's origin is refused
+    // outright: honoring it would write one workflow's state into another
+    // workflow's database, and silently splitting a workflow across two
+    // databases is the one thing the partition must never do.
+    const resolve = (id: string): Route => {
+      const origin = originOf(id);
+      if (declared !== undefined && originOf(declared) !== origin) {
+        return {
+          kind: "invalid",
+          reason: `resonate:origin ${JSON.stringify(declared)} does not match the origin of id ${JSON.stringify(id)}`,
+        };
+      }
+      return { kind: "origin", origin };
+    };
+
     switch (req.kind) {
       case "promise.get":
       case "promise.create":
       case "promise.settle":
-        return { kind: "origin", origin: declared ?? originOf(req.data.id) };
+        return resolve(req.data.id);
 
       case "promise.register_callback":
-        return { kind: "origin", origin: declared ?? originOf(req.data.awaited) };
+        return resolve(req.data.awaited);
 
       case "promise.register_listener":
-        return { kind: "origin", origin: declared ?? originOf(req.data.awaited) };
+        return resolve(req.data.awaited);
 
       case "promise.search": {
         const origin = declared ?? req.data.tags?.["resonate:origin"];
@@ -367,7 +396,7 @@ export class TursoNetwork implements Network {
               "Tenant-wide promise search is not supported: promises are partitioned by origin. Narrow the search with a resonate:origin tag.",
           };
         }
-        return { kind: "origin", origin };
+        return { kind: "origin", origin: originOf(origin) };
       }
 
       case "task.get":
@@ -378,13 +407,14 @@ export class TursoNetwork implements Network {
       case "task.continue":
       case "task.fulfill":
       case "task.fence":
-        return { kind: "origin", origin: declared ?? originOf(req.data.id) };
+        return resolve(req.data.id);
 
       case "task.create":
-        return { kind: "origin", origin: declared ?? originOf(req.data.action.data.id) };
+        return resolve(req.data.action.data.id);
 
       case "task.heartbeat": {
-        if (declared !== undefined) return { kind: "origin", origin: declared };
+        // Always fan out by each task's own origin: a declared header cannot
+        // be trusted to cover a list that may span workflows.
         const origins = [...new Set(req.data.tasks.map((t) => originOf(t.id)))];
         return { kind: "multi", origins };
       }
@@ -397,7 +427,7 @@ export class TursoNetwork implements Network {
               "Tenant-wide task search is not supported: tasks are partitioned by origin. Set the resonate:origin request header.",
           };
         }
-        return { kind: "origin", origin: declared };
+        return { kind: "origin", origin: originOf(declared) };
       }
 
       case "schedule.get":
@@ -433,6 +463,7 @@ export class TursoNetwork implements Network {
     pushOrigin = true,
   ): Promise<T> {
     let outgoing: OutgoingMessage[] = [];
+    let syncNeeded = false;
     const result = await this.store.withLock(origin, async () => {
       const conn = await this.store.origin(origin);
       const value = await conn.transaction(async (tx) => {
@@ -442,9 +473,10 @@ export class TursoNetwork implements Network {
         // rolled-back transaction throws before reaching the dispatch below,
         // so no message is ever delivered for a state change that did not land.
         outgoing = server.takeMessages();
+        syncNeeded = server.takeSyncNeeded();
         return v;
       });
-      await this.store.flush(origin, conn, pushOrigin);
+      await this.store.flush(origin, conn, pushOrigin || syncNeeded);
       return value;
     });
     this.dispatch(outgoing);
@@ -469,10 +501,17 @@ export class TursoNetwork implements Network {
       case "task.suspend":
       case "task.release":
       case "task.halt":
+      // `task.continue` is release's mirror — a halted task re-enters
+      // circulation with a fresh retry timer, outside any lease tenure — so
+      // it is a boundary for exactly the reason release is.
+      case "task.continue":
         return true;
       case "promise.create":
         return req.data.id === originOf(req.data.id) || req.data.tags?.["resonate:target"] !== undefined;
       case "promise.settle":
+        // Root settles are always boundaries; a settle of an external child
+        // (the public resolve/reject API) is caught by the server's
+        // syncNeeded flag, which sees the promise row's external bit.
         return req.data.id === originOf(req.data.id);
       default:
         return false;

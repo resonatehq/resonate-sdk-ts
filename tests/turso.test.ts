@@ -1359,3 +1359,41 @@ describe("end to end", () => {
     }
   }, 30_000);
 });
+
+// =============================================================================
+// REVIEW REGRESSIONS
+// =============================================================================
+
+describe("declared origin header", () => {
+  test("a header carrying a full id is normalized to its origin", async () => {
+    // The engine cores stamp resonate:origin with the full task id, not its
+    // origin; routing must normalize it, or a dotted id becomes the name of a
+    // phantom database and every such acquire answers 404.
+    const net = tracked();
+    await net.init();
+    await net.send({
+      kind: "promise.create",
+      head: head(),
+      data: { id: "wf", timeoutAt: Date.now() + 60_000, param: {}, tags: { "resonate:target": TARGET } },
+    });
+    const acquired = await net.send({
+      kind: "task.acquire",
+      head: head({ "resonate:origin": "wf.some.dotted.task" }),
+      data: { id: "wf", version: 0, pid: "p1", ttl: 30_000 },
+    });
+    expect(acquired.head.status).toBe(200);
+  });
+
+  test("a header that contradicts the id's origin is refused", async () => {
+    // Honoring it would write one workflow's state into another workflow's
+    // database — the one thing the partition must never do.
+    const net = tracked();
+    await net.init();
+    const res = await net.send({
+      kind: "promise.get",
+      head: head({ "resonate:origin": "other" }),
+      data: { id: "wf" },
+    });
+    expect(res.head.status).toBe(400);
+  });
+});

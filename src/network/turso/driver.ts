@@ -202,7 +202,23 @@ export interface TursoSyncDriverConfig {
  * working on, reads and writes it at local-disk latency, and converges with
  * everyone else through the remote.
  */
+let warnedThreadpool = false;
+
 export function tursoSyncDriver(cfg: TursoSyncDriverConfig): TursoDriver {
+  // The sync engine's blocking native calls run on libuv's threadpool
+  // (default 4 threads). A process holding a handful of sync databases can
+  // park every slot in pulls and pushes, freezing the whole process — see
+  // turso.md's operational gotchas. Warn once, at construction, while the
+  // operator is still looking at a terminal.
+  const slots = Number(process.env.UV_THREADPOOL_SIZE ?? 4);
+  if (!warnedThreadpool && (!Number.isFinite(slots) || slots < 16)) {
+    warnedThreadpool = true;
+    console.warn(
+      `[resonate] tursoSyncDriver: UV_THREADPOOL_SIZE is ${process.env.UV_THREADPOOL_SIZE ?? "unset (4)"}; ` +
+        "the sync engine's blocking calls can exhaust libuv's threadpool and freeze the process. " +
+        "Set UV_THREADPOOL_SIZE to at least the number of concurrently open sync databases (e.g. 64).",
+    );
+  }
   const urlFor = typeof cfg.url === "function" ? cfg.url : (name: string) => `${cfg.url}${name}`;
   return {
     async open(name: string): Promise<TursoConnection> {
