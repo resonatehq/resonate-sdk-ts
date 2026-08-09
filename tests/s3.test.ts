@@ -1026,15 +1026,17 @@ describe("storage shape", () => {
     expect(statuses).toEqual([200, 409]);
   });
 
-  test("a landed write of unknown fate is recognized through the journal, even after a rival builds on it", async () => {
+  test("a landed acquire of unknown fate is recognized by its pid and version, even after a rival builds on it", async () => {
     // The hazard, found by the linearizability checker under an adversarial
     // store: A's conditional PUT lands but the answer is lost; before A can
     // re-read, B lands another write on top. A's bytes are gone from the
     // store, so byte-recognition fails — and disowning the write would
     // re-decide an acquire that actually won, answering 409 for a state
-    // transition that no response then explains. The journal keeps the
-    // evidence: A's nonce is in the document B built on, so A must report
-    // its own success.
+    // transition that no response then explains. The acquire carries its own
+    // evidence: versions are monotone and only an acquire bumps them,
+    // stamping the request's pid — so `(acquired, v+1, pid = mine)` is a
+    // state reachable through A's acquire alone, and A must report its own
+    // success.
     const shared = buckets();
     let lie: (() => Promise<void>) | undefined;
     const lying = {
@@ -1085,6 +1087,64 @@ describe("storage shape", () => {
     // Both processes agree on the outcome: the acquire took effect once.
     const seen = ok(await b.send({ kind: "task.get", head: head(), data: { id: "wf" } }));
     expect(seen.data.task.state).toBe("acquired");
+    expect(seen.data.task.version).toBe(1);
+  });
+
+  test("an unattributable landed write answers 500 rather than a guessed verdict", async () => {
+    // The same lie against `task.release`, whose success erases the writer's
+    // identity (pid nulled; a lease expiry produces the identical shape).
+    // With the answer lost and a rival's write moving the bytes, no evidence
+    // can settle whether the release applied — and the machine has no
+    // "either 200 or 409" transition, so a faithful implementation answers
+    // neither: it surfaces a 500, and the state (the release DID land)
+    // remains the single source of truth for whoever reads it.
+    const shared = buckets();
+    let lie: (() => Promise<void>) | undefined;
+    const lying = {
+      get: (key: string) => shared.workflows.get(key),
+      delete: (key: string) => shared.workflows.delete(key),
+      list: (prefix: string, opts?: { startAfter?: string; limit?: number }) => shared.workflows.list(prefix, opts),
+      async put(key: string, body: string, condition: Parameters<typeof shared.workflows.put>[2]) {
+        const result = await shared.workflows.put(key, body, condition);
+        if (lie && result.kind === "landed") {
+          const rival = lie;
+          lie = undefined;
+          await rival();
+          return { kind: "unknown" as const, error: "test: answer lost after landing" };
+        }
+        return result;
+      },
+    };
+    const a = tracked({ workflows: lying, timeouts: shared.timeouts, tickMs: 60_000 });
+    const b = tracked({ ...shared, tickMs: 60_000 });
+    await a.init();
+    await b.init();
+
+    ok(
+      await b.send({
+        kind: "promise.create",
+        head: head(),
+        data: { id: "wf", timeoutAt: Date.now() + 60_000, param: {}, tags: { "resonate:target": TARGET } },
+      }),
+    );
+    ok(await a.send({ kind: "task.acquire", head: head(), data: { id: "wf", version: 0, pid: "pa", ttl: 30_000 } }));
+
+    lie = async () => {
+      ok(
+        await b.send({
+          kind: "promise.create",
+          head: head(),
+          data: { id: "wf.rival", timeoutAt: Date.now() + 60_000, param: {}, tags: {} },
+        }),
+      );
+    };
+    const released = await a.send({ kind: "task.release", head: head(), data: { id: "wf", version: 1 } });
+    expect(released.head.status).toBe(500);
+
+    // The release landed; the document is the truth, and the retry timer it
+    // armed durably is what redelivers the work.
+    const seen = ok(await b.send({ kind: "task.get", head: head(), data: { id: "wf" } }));
+    expect(seen.data.task.state).toBe("pending");
     expect(seen.data.task.version).toBe(1);
   });
 

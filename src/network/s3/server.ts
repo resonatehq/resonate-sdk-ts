@@ -1159,6 +1159,123 @@ export class OriginServer {
 }
 
 // =============================================================================
+// AMBIGUITY
+// =============================================================================
+//
+// A conditional PUT can land while its answer is lost. The store then holds
+// three kinds of evidence, and a FAITHFUL implementation may act only on
+// proof — the specification's machine answers each request with exactly one
+// response, so a guessed verdict (re-deciding a landed fence op into a 409,
+// or fabricating a 200 from a plausible schedule) is not an implementation
+// of the machine at all. The rule: answer truthfully, or do not answer.
+//
+// `classifyAmbiguousAttempt` renders the verdict for an attempt whose PUT
+// reported an unknown outcome and whose bytes are no longer what the store
+// holds (byte equality — proof positive — is checked by the store first):
+//
+//   "landed"    — proof the attempt applied. Report the attempt's own,
+//                 already-computed response: it IS the machine's response
+//                 for that request at that step.
+//   "reapply"   — re-running the request is faithful: either the attempt
+//                 provably did not apply (a fresh application is simply the
+//                 request happening now), or the operation is response-
+//                 idempotent (both worlds yield byte-equal responses, so
+//                 re-application cannot misreport either of them).
+//   "ambiguous" — the outcome is unknowable. The network answers 500 —
+//                 the wire's representation of "no verdict" — and the
+//                 protocol's own machinery (retry timers, leases, the
+//                 timeout bucket) recovers, exactly as it does for a lost
+//                 HTTP response against a real server.
+//
+// The acquire proof rests on two properties of the machine, verified in the
+// specification (`spec/02-abstract`): task versions are MONOTONE (no
+// transition decreases one), and only the acquire-shaped transitions bump
+// them, each stamping the request's own pid. Hence at most one acquire at
+// version v ever applies, and `(acquired, v+1, pid = mine)` is a state
+// reachable through MY acquire alone — knowledge, not a guess.
+
+/** The verdict on an attempt whose PUT outcome was unknown and whose bytes have moved. */
+export type AmbiguityVerdict = "landed" | "reapply" | "ambiguous";
+
+/**
+ * Operations whose re-application provably answers what the landed
+ * application answered (create/settle serve the stored record either way;
+ * registrations and heartbeats are absorbing; reads never write at all).
+ */
+const REAPPLY_SAFE = new Set<Request["kind"]>([
+  "promise.get",
+  "promise.search",
+  "task.get",
+  "task.search",
+  "promise.create",
+  "promise.settle",
+  "promise.register_callback",
+  "promise.register_listener",
+  "task.heartbeat",
+]);
+
+export function classifyAmbiguousAttempt(
+  req: Request,
+  before: OriginDoc,
+  attempt: OriginDoc,
+  fresh: OriginDoc,
+): AmbiguityVerdict {
+  if (REAPPLY_SAFE.has(req.kind)) return "reapply";
+
+  const id =
+    req.kind === "task.create"
+      ? req.data.action.data.id
+      : "id" in req.data
+        ? (req.data as { id: string }).id
+        : undefined;
+  if (id === undefined) return "ambiguous";
+
+  const task = (doc: OriginDoc) => doc.tasks.find((t) => t.id === id) ?? null;
+  const same = (x: TaskDoc | null, y: TaskDoc | null) => JSON.stringify(x) === JSON.stringify(y);
+  const b = task(before);
+  const a = task(attempt);
+  const f = task(fresh);
+
+  switch (req.kind) {
+    case "task.acquire":
+    case "task.create": {
+      // The born-settled create writes a fulfilled task and answers the
+      // stored pair — response-idempotent like promise.create.
+      if (!a || a.state !== "acquired") return "reapply";
+      // Proof of landing: only my acquire at this version, with my pid,
+      // reaches this exact task (monotone versions, unique producer).
+      if (f && f.state === "acquired" && f.version === a.version && f.pid === a.pid) return "landed";
+      // Proof of not landing: the task is untouched, or the one acquire at
+      // this version went to a rival — mine cannot also have applied.
+      if (same(b, f)) return "reapply";
+      if (f && f.state === "acquired" && f.version === a.version && f.pid !== a.pid) return "reapply";
+      return "ambiguous";
+    }
+
+    case "task.release":
+    case "task.suspend":
+    case "task.fulfill":
+    case "task.halt":
+    case "task.continue":
+      // These transitions all mutate the task, so an untouched task proves
+      // the attempt did not apply. Anything else is unattributable — the
+      // post-states erase the writer's identity (release nulls the pid,
+      // and a lease expiry produces the same shape).
+      return same(b, f) ? "reapply" : "ambiguous";
+
+    case "task.fence":
+      // A fence never mutates its own task. With the guard's inputs
+      // untouched, re-application answers identically in both worlds: the
+      // fence check passes again and the inner create/settle is served
+      // idempotently from the stored child.
+      return same(b, f) ? "reapply" : "ambiguous";
+
+    default:
+      return "ambiguous";
+  }
+}
+
+// =============================================================================
 // SCHEDULES
 // =============================================================================
 //

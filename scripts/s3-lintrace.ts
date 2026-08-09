@@ -80,6 +80,7 @@ interface Row {
 
 const rows: Row[] = [];
 let corr = 0;
+let ambiguous = 0;
 const started = process.hrtime.bigint();
 
 function recorder(net: S3Network, client: number) {
@@ -92,19 +93,14 @@ function recorder(net: S3Network, client: number) {
       data,
     } as Extract<Request, { kind: K }>;
     const call = Number(process.hrtime.bigint() - started);
-    // A step that fails closed (chaos: the wakeup entry could not be made
-    // durable) lands nothing, so replaying the same request is what a real
-    // client does. Only the attempt that produced a response is recorded.
-    let res: Response | undefined;
-    for (let attempt = 0; attempt < 20 && res === undefined; attempt++) {
-      try {
-        res = (await net.send(req)) as Response;
-      } catch {
-        /* retry */
-      }
-    }
-    if (res === undefined) throw new Error(`request ${kind} failed 20 times under chaos`);
+    const res = (await net.send(req)) as Response;
     const ret = Number(process.hrtime.bigint() - started);
+    // A 500 is the network refusing to guess: the write may or may not have
+    // applied, and the machine has no transition answering 500 — so the op
+    // is really PENDING, which the spec's trace format cannot yet express.
+    // It is recorded (the file stays an honest tap) and counted; a trace
+    // containing any is not checkable until the format learns pending ops.
+    if (res.head.status === 500) ambiguous += 1;
     rows.push({ kind, now, req: data, res, client, call, return: ret });
     return res;
   };
@@ -348,4 +344,8 @@ for (const r of ndjson) {
 for (const r of history) {
   appendFileSync(`${out}.history`, `${JSON.stringify(r)}\n`);
 }
-console.log(`${rows.length} events (${mode}, ${CLIENTS} clients) -> ${out}.ndjson, ${out}.history`);
+console.log(
+  `${rows.length} events (${mode}, ${CLIENTS} clients, ambiguous=${ambiguous}) -> ${out}.ndjson, ${out}.history${
+    ambiguous > 0 ? "  [NOT CHECKABLE: contains pending ops the trace format cannot express]" : ""
+  }`,
+);

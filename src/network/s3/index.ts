@@ -79,7 +79,7 @@ import {
   toScheduleRecord,
   validateCreate,
 } from "./server.js";
-import { minDeadline, S3Store, type SweepEntry } from "./store.js";
+import { AmbiguousOutcomeError, minDeadline, S3Store, type SweepEntry } from "./store.js";
 
 export type { OriginDoc, PromiseDoc, TaskDoc } from "./document.js";
 export { TIMEOUT_PROMISE, TIMEOUT_SCHEDULE, TIMEOUT_TASK_LEASE, TIMEOUT_TASK_RETRY } from "./document.js";
@@ -230,7 +230,22 @@ export class S3Network implements Network {
     req: Extract<Request, { kind: K }>,
   ): Promise<Extract<Response, { kind: K }>> => {
     const now = req.head["resonate:debug_time"] ?? Date.now();
-    const outcome = await this.apply(req, now);
+    let outcome: Outcome;
+    try {
+      outcome = await this.apply(req, now);
+    } catch (err) {
+      // The machine answers every request with exactly one response; when
+      // this implementation cannot determine which (an ambiguous write), or
+      // cannot serve at all, the faithful answer is no verdict — a 500. The
+      // client treats it like any transport failure, and the protocol's
+      // retry and lease timers recover.
+      this.logger?.warn({ component: "network", kind: req.kind, error: String(err) }, "s3 request answered 500");
+      outcome = {
+        kind: req.kind,
+        status: 500,
+        data: err instanceof AmbiguousOutcomeError ? err.message : `internal error: ${String(err)}`,
+      };
+    }
     return this.respond(req.kind, req.head, outcome) as Extract<Response, { kind: K }>;
   };
 
@@ -249,7 +264,7 @@ export class S3Network implements Network {
         return await this.applySchedule(req, now);
 
       case "origin":
-        return await this.inOrigin(route.origin, now, (server) => server.apply(req));
+        return await this.inOrigin(route.origin, now, (server) => server.apply(req), req);
 
       case "multi": {
         // Only `task.heartbeat` fans out: its task list may span workflows, so
@@ -259,7 +274,8 @@ export class S3Network implements Network {
         if (req.kind !== "task.heartbeat") return { kind: req.kind, status: 501, data: "Not implemented" };
         for (const origin of route.origins) {
           const tasks = req.data.tasks.filter((t) => originOf(t.id) === origin);
-          await this.inOrigin(origin, now, (server) => server.apply({ ...req, data: { ...req.data, tasks } }));
+          const scoped = { ...req, data: { ...req.data, tasks } };
+          await this.inOrigin(origin, now, (server) => server.apply(scoped), scoped);
         }
         return { kind: "task.heartbeat", status: 200, data: {} };
       }
@@ -374,8 +390,8 @@ export class S3Network implements Network {
    * turn of the event loop, so a subscriber that reacts by issuing another
    * request cannot re-enter the call that produced its message.
    */
-  private async inOrigin<T>(origin: string, now: number, fn: (server: OriginServer) => T): Promise<T> {
-    const { value, messages } = await this.store.updateOrigin(origin, now, (server) => fn(server));
+  private async inOrigin<T>(origin: string, now: number, fn: (server: OriginServer) => T, req?: Request): Promise<T> {
+    const { value, messages } = await this.store.updateOrigin(origin, now, (server) => fn(server), req);
     this.dispatch(messages);
     return value;
   }
@@ -569,18 +585,17 @@ export class S3Network implements Network {
         this.logger?.warn({ component: "network", schedule: doc.id, error: invalid }, "s3 skipped a schedule firing");
         continue;
       }
-      await this.inOrigin(originOf(id), at, (server) =>
-        server.apply({
-          kind: "promise.create",
-          head: { corrId: randomUUID(), version: VERSION },
-          data: {
-            id,
-            timeoutAt: at + doc.promiseTimeout,
-            param: doc.promiseParam ?? {},
-            tags: { ...doc.promiseTags, "resonate:schedule": doc.id },
-          },
-        }),
-      );
+      const fire: Request = {
+        kind: "promise.create",
+        head: { corrId: randomUUID(), version: VERSION },
+        data: {
+          id,
+          timeoutAt: at + doc.promiseTimeout,
+          param: doc.promiseParam ?? {},
+          tags: { ...doc.promiseTags, "resonate:schedule": doc.id },
+        },
+      };
+      await this.inOrigin(originOf(id), at, (server) => server.apply(fire), fire);
     }
 
     const last = occurrences[occurrences.length - 1];

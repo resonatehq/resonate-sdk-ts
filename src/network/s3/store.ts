@@ -44,13 +44,26 @@
 // wakeups) — cost control is deletion discipline, not listing bounds.
 
 import type { Logger } from "../../logger.js";
-import { randomUUID } from "../../platform.js";
-import { armedTimers, decodeDoc, emptyDoc, encodeDoc, JOURNAL_CAP, type OriginDoc } from "./document.js";
-import type { PutResult, S3Bucket } from "./driver.js";
-import { hashOrigin, OriginServer, type OutgoingMessage, type ScheduleDoc } from "./server.js";
+import type { Request } from "../types.js";
+import { armedTimers, decodeDoc, emptyDoc, encodeDoc, type OriginDoc } from "./document.js";
+import type { S3Bucket } from "./driver.js";
+import {
+  classifyAmbiguousAttempt,
+  hashOrigin,
+  OriginServer,
+  type OutgoingMessage,
+  type ScheduleDoc,
+} from "./server.js";
 
 /** Re-decides allowed per step before giving up (bounded livelock). */
 const MAX_RETRIES = 64;
+
+/**
+ * The outcome of a step cannot be determined: the write may or may not have
+ * applied, and no available evidence settles it. The faithful response is no
+ * response — the network answers 500, and the protocol's timers recover.
+ */
+export class AmbiguousOutcomeError extends Error {}
 
 // =============================================================================
 // KEYS
@@ -169,19 +182,30 @@ export class S3Store {
    * to write); a conflicted attempt's messages are discarded with its
    * document, so a message is only ever delivered for a state change that
    * actually happened.
+   *
+   * `req` is the protocol request this step applies, when it applies one —
+   * it is what lets an attempt of unknown fate be classified faithfully
+   * (see AMBIGUITY in server.ts). A step with no request (a sweep tick, a
+   * snapshot) produces no response, so re-applying it is always faithful.
+   *
+   * Throws `AmbiguousOutcomeError` when the attempt's fate is unknowable:
+   * the machine's response for this request cannot be determined, so none
+   * is given — the network surfaces it as a 500, the wire's "no verdict".
    */
   async updateOrigin<T>(
     origin: string,
     now: number,
     fn: (server: OriginServer, doc: OriginDoc) => T,
+    req?: Request,
   ): Promise<StepResult<T>> {
-    return await this.withLock(origin, () => this.step(origin, now, fn));
+    return await this.withLock(origin, () => this.step(origin, now, fn, req));
   }
 
   private async step<T>(
     origin: string,
     now: number,
     fn: (server: OriginServer, doc: OriginDoc) => T,
+    req?: Request,
   ): Promise<StepResult<T>> {
     const key = workflowKey(origin);
     let current = await this.cfg.workflows.get(key);
@@ -194,19 +218,13 @@ export class S3Store {
       const value = fn(server, doc);
       const messages = server.takeMessages();
 
-      // The write law: a step that changed nothing writes nothing — judged
-      // with the journal held constant, or bookkeeping would turn every read
-      // into a write. A fresh, still-empty document is the same case.
-      const unchanged = encodeDoc(doc);
-      if ((current && unchanged === current.body) || (!current && unchanged === encodeDoc(emptyDoc()))) {
+      const next = encodeDoc(doc);
+
+      // The write law: a step that changed nothing writes nothing. A fresh,
+      // still-empty document is the same case — nothing to store.
+      if ((current && next === current.body) || (!current && next === encodeDoc(emptyDoc()))) {
         return { value, messages };
       }
-
-      // This attempt writes: stamp its nonce into the journal, so the write
-      // stays recognizable as ours even after rivals land on top of it.
-      const nonce = randomUUID();
-      doc.journal = [...(before.journal ?? []), nonce].slice(-JOURNAL_CAP);
-      const next = encodeDoc(doc);
 
       // THE COVERAGE LAW, enforced by phase order: if this step moved the
       // origin's earliest armed deadline, its wakeup entry must be durable
@@ -222,64 +240,46 @@ export class S3Store {
         next,
         current ? { kind: "replace", ifMatch: current.etag } : { kind: "create" },
       );
+      if (result.kind === "landed") return { value, messages };
 
-      const landed = await this.resolvePut(key, next, nonce, result);
-      if (landed === "landed") return { value, messages };
+      const fresh = await this.cfg.workflows.get(key);
 
-      // Conflict: someone else moved the document. Re-decide against theirs.
-      current = landed;
+      // Proof positive, cheapest first: the store holds exactly our bytes.
+      // Identical bytes are identical state, so the one false positive
+      // (someone else produced exactly our bytes) is an idempotent race
+      // whose correct response is the one we are already holding.
+      if (fresh && fresh.body === next) return { value, messages };
+
+      // A conflict is the store's own answer to exactly this attempt (the
+      // driver never retries underneath), so it is PROOF the attempt did
+      // not apply: re-deciding is a fresh application of the request.
+      if (result.kind === "conflict") {
+        current = fresh;
+        continue;
+      }
+
+      // The attempt's fate is unknown and its bytes have moved on. Act only
+      // on proof: report it landed when the evidence can belong to no other
+      // history, re-apply when that is provably faithful, and otherwise
+      // refuse to answer — a guessed verdict in either direction is a
+      // response the machine never produced.
+      const verdict = req
+        ? classifyAmbiguousAttempt(req, before, doc, fresh ? decodeDoc(fresh.body) : emptyDoc())
+        : // No request means no response channel to misreport (sweep ticks,
+          // snapshots): re-application is faithful by the write law.
+          "reapply";
+      this.cfg.logger?.warn({ component: "network", key, verdict, error: result.error }, "s3 put outcome unknown");
+      if (verdict === "landed") return { value, messages };
+      if (verdict === "reapply") {
+        current = fresh;
+        continue;
+      }
+      throw new AmbiguousOutcomeError(
+        `outcome of ${req?.kind ?? "step"} on origin ${JSON.stringify(origin)} is unknowable: ${result.error}`,
+      );
     }
 
     throw new Error(`conflict storm on origin ${JSON.stringify(origin)}: ${MAX_RETRIES} re-decides exhausted`);
-  }
-
-  /**
-   * Resolve a conditional PUT's report into "landed" or the fresher object to
-   * re-decide against.
-   *
-   * An `unknown` outcome (the bytes may or may not have reached the store) is
-   * resolved by re-reading and RECOGNIZING our own write, two ways:
-   *
-   *   * byte equality — the store holds exactly our bytes; identical bytes
-   *     are identical state, so the one false positive (someone else produced
-   *     exactly our bytes) is an idempotent race whose correct response is
-   *     the one we are already holding;
-   *   * the journal — the store has moved past our bytes, but the current
-   *     document's journal carries this attempt's nonce, which proves our
-   *     write landed and rivals built on it. Disowning it there and
-   *     re-deciding would repeat a step that already took effect — and
-   *     answer, say, 409 for an acquire that actually won (found by the
-   *     linearizability checker under an adversarial store).
-   *
-   * A `conflict` needs neither: the driver surfaces conflicts only as the
-   * store's own answer to exactly this attempt (no transport retries), so a
-   * conflicted attempt is known not to have landed.
-   */
-  private async resolvePut(
-    key: string,
-    intended: string,
-    nonce: string,
-    result: PutResult,
-  ): Promise<"landed" | { body: string; etag: string } | null> {
-    if (result.kind === "landed") return "landed";
-
-    const fresh = await this.cfg.workflows.get(key);
-    if (fresh && fresh.body === intended) return "landed";
-    if (result.kind === "conflict") return fresh;
-
-    if (fresh) {
-      try {
-        if (decodeDoc(fresh.body).journal?.includes(nonce)) return "landed";
-      } catch {
-        /* an undecodable rival document is a conflict to re-decide against */
-      }
-    }
-
-    // The attempt's fate was unknown and the store holds no evidence of it:
-    // treat it like a conflict and re-decide, which also covers the case
-    // where the write never left the building.
-    this.cfg.logger?.warn({ component: "network", key, error: result.error }, "s3 put outcome unknown, re-deciding");
-    return fresh;
   }
 
   /**

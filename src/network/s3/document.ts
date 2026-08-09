@@ -57,22 +57,8 @@ export interface TaskDoc {
 export const TASK_TIMEOUT_RETRY = 0;
 export const TASK_TIMEOUT_LEASE = 1;
 
-/** Landed-step nonces kept in a document for write recognition. */
-export const JOURNAL_CAP = 16;
-
 export interface OriginDoc {
   v: number;
-  /**
-   * The nonces of the last `JOURNAL_CAP` landed steps, oldest first.
-   *
-   * Byte equality recognizes a write of unknown fate only while the document
-   * still holds exactly our bytes; once a rival lands on top, the evidence
-   * is gone and a step that really executed would be disowned and re-decided
-   * — answering, say, 409 for an acquire that took effect, an effect no
-   * response then explains. The journal keeps the evidence: a step whose
-   * nonce appears in the current document landed, however many writes ago.
-   */
-  journal?: string[];
   promises: PromiseDoc[];
   /** Awaiters registered against an awaited promise, in registration order. */
   callbacks: { awaited: string; awaiter: string }[];
