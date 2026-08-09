@@ -20,9 +20,18 @@
 //                      for lincheck (does some schedule explain THIS order)
 //   <prefix>.history   + {client, call, return} in return order — for
 //                      conccheck (does some schedule explain SOME order
-//                      consistent with the real intervals). Clients are
-//                      lanes assigned so no lane overlaps itself, which is
-//                      what porcupine requires of a client.
+//                      consistent with the real intervals).
+//
+// The client of a row is its BRANCH. A branch is the sibling group one
+// executing invocation drives — a dispatched child starts its own branch
+// (its own executor), a local child rides its parent's — so branches are
+// the workload's real sequential threads, and labeling rows by them makes
+// a history readable per-execution. porcupine only requires that a client
+// not overlap itself (its search runs on the intervals, so the labels are
+// interpretability, not checking power), and a branch label CAN self-
+// overlap in wall time — the driver's reads interleave with the root's
+// executor, heartbeats belong to no branch — so rows are laned WITHIN
+// their label: `wf`, and `wf~2` for the rare spill.
 //
 // Sweep transitions never pass through `send`, so they are not in the file —
 // they are exactly the internal steps the checkers recover by search.
@@ -154,28 +163,68 @@ export class Recorder {
     return this.rows.filter((r) => r.res.head.status === 500).length;
   }
 
+  /**
+   * The branch a row belongs to — the executing invocation's sibling group.
+   *
+   * Creates carry it on the wire (`resonate:branch`), which seeds a map from
+   * id to branch; every other request is labeled by its primary id's entry.
+   * A task op on X is issued by X's executor, whose branch is X's own
+   * branch — for a dispatched X that is X itself, which is also exactly what
+   * X's create tag says, so the map answers for both promise and task rows.
+   * Heartbeats are pid-wide and belong to no branch.
+   */
+  private branchOf(): (r: Row) => string {
+    const branches = new Map<string, string>();
+    for (const r of [...this.rows].sort((a, b) => a.call - b.call)) {
+      const d = r.req as {
+        id?: string;
+        tags?: Record<string, string>;
+        action?: { data?: { id?: string; tags?: Record<string, string> } };
+      };
+      if (r.kind === "promise.create" && d.id !== undefined) {
+        branches.set(d.id, d.tags?.["resonate:branch"] ?? d.id);
+      }
+      if (r.kind === "task.create" && d.action?.data?.id !== undefined) {
+        branches.set(d.action.data.id, d.action.data.tags?.["resonate:branch"] ?? d.action.data.id);
+      }
+    }
+    return (r: Row): string => {
+      if (r.kind === "task.heartbeat") return "heartbeat";
+      const d = r.req as { id?: string; awaited?: string; action?: { data?: { id?: string } } };
+      const id = r.kind === "task.create" ? d.action?.data?.id : (d.id ?? d.awaited);
+      if (id === undefined) return "client";
+      return branches.get(id) ?? id;
+    };
+  }
+
   /** Write `<prefix>.ndjson` and `<prefix>.history`. */
   flush(prefix: string): void {
     const ndjson = [...this.rows].sort((a, b) => a.now - b.now || a.return - b.return);
     const history = [...this.rows].sort((a, b) => a.return - b.return);
 
-    // porcupine requires a client's operations not to overlap; the SDK's
-    // requests can (heartbeats, resumed work). Lanes are assigned greedily —
-    // each op takes the first lane free at its call time.
-    const lanes: number[] = [];
-    const client = (r: Row): number => {
-      for (let i = 0; i < lanes.length; i++) {
-        if (lanes[i] <= r.call) {
-          lanes[i] = r.return;
-          return i;
-        }
+    // Lane rows by branch; porcupine requires a client not to overlap
+    // itself, and a branch label can (driver reads interleaving the root's
+    // executor), so overlap spills into `<branch>~2`, `<branch>~3`, ....
+    const branch = this.branchOf();
+    const busyUntil = new Map<string, number>();
+    const laneOf = new Map<Row, string>();
+    let spills = 0;
+    for (const r of [...this.rows].sort((a, b) => a.call - b.call)) {
+      const label = branch(r);
+      let lane = label;
+      for (let k = 2; (busyUntil.get(lane) ?? 0) > r.call; k++) {
+        lane = `${label}~${k}`;
       }
-      lanes.push(r.return);
-      return lanes.length - 1;
-    };
-    const byCall = [...this.rows].sort((a, b) => a.call - b.call);
-    const laneOf = new Map<Row, number>();
-    for (const r of byCall) laneOf.set(r, client(r));
+      if (lane !== label) spills += 1;
+      busyUntil.set(lane, r.return);
+      laneOf.set(r, lane);
+    }
+    // conccheck's `client` field is numeric; the lane's name travels in a
+    // `lane` field the decoder ignores, for humans reading the file.
+    const laneIndex = new Map<string, number>();
+    for (const lane of laneOf.values()) {
+      if (!laneIndex.has(lane)) laneIndex.set(lane, laneIndex.size);
+    }
 
     writeFileSync(`${prefix}.ndjson`, "");
     writeFileSync(`${prefix}.history`, "");
@@ -183,13 +232,14 @@ export class Recorder {
       appendFileSync(`${prefix}.ndjson`, `${JSON.stringify({ kind: r.kind, now: r.now, req: r.req, res: r.res })}\n`);
     }
     for (const r of history) {
+      const lane = laneOf.get(r) ?? "client";
       appendFileSync(
         `${prefix}.history`,
-        `${JSON.stringify({ ...r, req: r.req, res: r.res, client: laneOf.get(r) ?? 0 })}\n`,
+        `${JSON.stringify({ ...r, req: r.req, res: r.res, client: laneIndex.get(lane) ?? 0, lane })}\n`,
       );
     }
     console.log(
-      `\ntrace           = ${this.rows.length} events, pending=${this.pending()} -> ${prefix}.ndjson, ${prefix}.history`,
+      `\ntrace           = ${this.rows.length} events, pending=${this.pending()}, lanes=${laneIndex.size} (${spills} overlap spills) -> ${prefix}.ndjson, ${prefix}.history`,
     );
   }
 }
