@@ -1026,6 +1026,68 @@ describe("storage shape", () => {
     expect(statuses).toEqual([200, 409]);
   });
 
+  test("a landed write of unknown fate is recognized through the journal, even after a rival builds on it", async () => {
+    // The hazard, found by the linearizability checker under an adversarial
+    // store: A's conditional PUT lands but the answer is lost; before A can
+    // re-read, B lands another write on top. A's bytes are gone from the
+    // store, so byte-recognition fails — and disowning the write would
+    // re-decide an acquire that actually won, answering 409 for a state
+    // transition that no response then explains. The journal keeps the
+    // evidence: A's nonce is in the document B built on, so A must report
+    // its own success.
+    const shared = buckets();
+    let lie: (() => Promise<void>) | undefined;
+    const lying = {
+      get: (key: string) => shared.workflows.get(key),
+      delete: (key: string) => shared.workflows.delete(key),
+      list: (prefix: string, opts?: { startAfter?: string; limit?: number }) => shared.workflows.list(prefix, opts),
+      async put(key: string, body: string, condition: Parameters<typeof shared.workflows.put>[2]) {
+        const result = await shared.workflows.put(key, body, condition);
+        if (lie && result.kind === "landed") {
+          const rival = lie;
+          lie = undefined;
+          await rival();
+          return { kind: "unknown" as const, error: "test: answer lost after landing" };
+        }
+        return result;
+      },
+    };
+    const a = tracked({ workflows: lying, timeouts: shared.timeouts, tickMs: 60_000 });
+    const b = tracked({ ...shared, tickMs: 60_000 });
+    await a.init();
+    await b.init();
+
+    ok(
+      await b.send({
+        kind: "promise.create",
+        head: head(),
+        data: { id: "wf", timeoutAt: Date.now() + 60_000, param: {}, tags: { "resonate:target": TARGET } },
+      }),
+    );
+
+    // While A's acquire is in flight (landed, answer lost), B lands a write
+    // on top of it — a child create, which appends to the journal.
+    lie = async () => {
+      ok(
+        await b.send({
+          kind: "promise.create",
+          head: head(),
+          data: { id: "wf.rival", timeoutAt: Date.now() + 60_000, param: {}, tags: {} },
+        }),
+      );
+    };
+    const acquired = ok(
+      await a.send({ kind: "task.acquire", head: head(), data: { id: "wf", version: 0, pid: "pa", ttl: 30_000 } }),
+    );
+    expect(acquired.data.task.version).toBe(1);
+    expect(acquired.data.task.pid).toBe("pa");
+
+    // Both processes agree on the outcome: the acquire took effect once.
+    const seen = ok(await b.send({ kind: "task.get", head: head(), data: { id: "wf" } }));
+    expect(seen.data.task.state).toBe("acquired");
+    expect(seen.data.task.version).toBe(1);
+  });
+
   test("a message reaches the client without any storage backing it", async () => {
     const net = tracked({ tickMs: 60_000 });
     await net.init();

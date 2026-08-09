@@ -44,7 +44,8 @@
 // wakeups) — cost control is deletion discipline, not listing bounds.
 
 import type { Logger } from "../../logger.js";
-import { armedTimers, decodeDoc, emptyDoc, encodeDoc, type OriginDoc } from "./document.js";
+import { randomUUID } from "../../platform.js";
+import { armedTimers, decodeDoc, emptyDoc, encodeDoc, JOURNAL_CAP, type OriginDoc } from "./document.js";
 import type { PutResult, S3Bucket } from "./driver.js";
 import { hashOrigin, OriginServer, type OutgoingMessage, type ScheduleDoc } from "./server.js";
 
@@ -193,13 +194,19 @@ export class S3Store {
       const value = fn(server, doc);
       const messages = server.takeMessages();
 
-      const next = encodeDoc(doc);
-
-      // The write law: a step that changed nothing writes nothing. A fresh,
-      // still-empty document is the same case — nothing to store.
-      if ((current && next === current.body) || (!current && next === encodeDoc(emptyDoc()))) {
+      // The write law: a step that changed nothing writes nothing — judged
+      // with the journal held constant, or bookkeeping would turn every read
+      // into a write. A fresh, still-empty document is the same case.
+      const unchanged = encodeDoc(doc);
+      if ((current && unchanged === current.body) || (!current && unchanged === encodeDoc(emptyDoc()))) {
         return { value, messages };
       }
+
+      // This attempt writes: stamp its nonce into the journal, so the write
+      // stays recognizable as ours even after rivals land on top of it.
+      const nonce = randomUUID();
+      doc.journal = [...(before.journal ?? []), nonce].slice(-JOURNAL_CAP);
+      const next = encodeDoc(doc);
 
       // THE COVERAGE LAW, enforced by phase order: if this step moved the
       // origin's earliest armed deadline, its wakeup entry must be durable
@@ -216,7 +223,7 @@ export class S3Store {
         current ? { kind: "replace", ifMatch: current.etag } : { kind: "create" },
       );
 
-      const landed = await this.resolvePut(key, next, result);
+      const landed = await this.resolvePut(key, next, nonce, result);
       if (landed === "landed") return { value, messages };
 
       // Conflict: someone else moved the document. Re-decide against theirs.
@@ -231,14 +238,27 @@ export class S3Store {
    * re-decide against.
    *
    * An `unknown` outcome (the bytes may or may not have reached the store) is
-   * resolved by re-reading and RECOGNIZING our own write by byte equality —
-   * identical bytes are identical state, so the one false positive (someone
-   * else produced exactly our bytes) is an idempotent race whose correct
-   * response is the one we are already holding.
+   * resolved by re-reading and RECOGNIZING our own write, two ways:
+   *
+   *   * byte equality — the store holds exactly our bytes; identical bytes
+   *     are identical state, so the one false positive (someone else produced
+   *     exactly our bytes) is an idempotent race whose correct response is
+   *     the one we are already holding;
+   *   * the journal — the store has moved past our bytes, but the current
+   *     document's journal carries this attempt's nonce, which proves our
+   *     write landed and rivals built on it. Disowning it there and
+   *     re-deciding would repeat a step that already took effect — and
+   *     answer, say, 409 for an acquire that actually won (found by the
+   *     linearizability checker under an adversarial store).
+   *
+   * A `conflict` needs neither: the driver surfaces conflicts only as the
+   * store's own answer to exactly this attempt (no transport retries), so a
+   * conflicted attempt is known not to have landed.
    */
   private async resolvePut(
     key: string,
     intended: string,
+    nonce: string,
     result: PutResult,
   ): Promise<"landed" | { body: string; etag: string } | null> {
     if (result.kind === "landed") return "landed";
@@ -247,7 +267,15 @@ export class S3Store {
     if (fresh && fresh.body === intended) return "landed";
     if (result.kind === "conflict") return fresh;
 
-    // The attempt's fate was unknown and the store does not hold our bytes:
+    if (fresh) {
+      try {
+        if (decodeDoc(fresh.body).journal?.includes(nonce)) return "landed";
+      } catch {
+        /* an undecodable rival document is a conflict to re-decide against */
+      }
+    }
+
+    // The attempt's fate was unknown and the store holds no evidence of it:
     // treat it like a conflict and re-decide, which also covers the case
     // where the write never left the building.
     this.cfg.logger?.warn({ component: "network", key, error: result.error }, "s3 put outcome unknown, re-deciding");
@@ -260,16 +288,21 @@ export class S3Store {
    * Entries are create-only: a key collision means an entry for this minute
    * and name already exists, which covers us just as well — the sweeper gates
    * on the bucket, not the body. An unknown outcome is resolved by reading
-   * the key back; only proven presence lets the step proceed.
+   * the key back; only proven presence lets the step proceed. The put is
+   * idempotent, so a transient failure is retried (bounded) before the step
+   * fails closed — no document put without a durable wakeup.
    */
   private async armEntry(key: string, body: { at: number; origin?: string; schedule?: string }): Promise<void> {
-    const result = await this.cfg.timeouts.put(key, JSON.stringify(body), { kind: "create" });
-    if (result.kind === "landed" || result.kind === "conflict") return;
-    const readBack = await this.cfg.timeouts.get(key);
-    if (readBack === null) {
-      // FAIL CLOSED: no document put without a durable wakeup.
-      throw new Error(`could not arm wakeup entry ${key}: ${result.error}`);
+    let error = "";
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const result = await this.cfg.timeouts.put(key, JSON.stringify(body), { kind: "create" });
+      if (result.kind === "landed" || result.kind === "conflict") return;
+      error = result.error;
+      const readBack = await this.cfg.timeouts.get(key);
+      if (readBack !== null) return;
     }
+    // FAIL CLOSED.
+    throw new Error(`could not arm wakeup entry ${key}: ${error}`);
   }
 
   /** Read an origin's document without stepping it. `null` when it has none. */
