@@ -51,6 +51,15 @@ export interface TursoConnection extends TursoExecutor {
  */
 export interface TursoDriver {
   open(name: string): Promise<TursoConnection>;
+  /**
+   * Whether the databases this driver opens sync with a remote.
+   *
+   * Declared on the driver rather than sniffed from a connection because the
+   * question is about the *origin* databases — the ones a fleet contends over
+   * — and the tenant database may be opened by a different driver entirely
+   * (`timeoutDriver`). A driver that omits it is treated as local.
+   */
+  replicates?: boolean;
 }
 
 // =============================================================================
@@ -85,6 +94,27 @@ export function databasePath(dir: string, name: string, suffix = ".db"): string 
   }
   const base = dir.endsWith("/") ? dir.slice(0, -1) : dir;
   return `${base}/${name}${suffix}`;
+}
+
+/**
+ * Reject a database name that would mean something other than itself once
+ * interpolated into a connection URL.
+ *
+ * A name carries an origin taken verbatim from a caller-supplied promise id,
+ * and the protocol only forbids `.` there — so a URL-building driver has to
+ * refuse the delimiters too. `libsql://acme-` + `jobs/admin` addresses
+ * database `acme-jobs` on a path, quietly running one tenant's workflow in
+ * another tenant's database; `?` and `#` truncate the name outright. Refused
+ * rather than escaped, because silently rewriting a name would make two
+ * distinct origins share one database.
+ *
+ * Stricter than `databasePath`, which only guards path traversal: a space is
+ * harmless in a filename and not worth breaking an existing deployment over.
+ */
+export function assertUrlSafeName(name: string): void {
+  if (name.length === 0 || name === "." || name === ".." || /[/\\\0?#[\]@:%\s]/.test(name)) {
+    throw new Error(`Invalid database name for a URL-addressed driver: ${JSON.stringify(name)}`);
+  }
 }
 
 /** Rows come back as objects from every supported client; normalize `undefined` away. */
@@ -221,7 +251,11 @@ export function tursoSyncDriver(cfg: TursoSyncDriverConfig): TursoDriver {
   }
   const urlFor = typeof cfg.url === "function" ? cfg.url : (name: string) => `${cfg.url}${name}`;
   return {
+    replicates: true,
     async open(name: string): Promise<TursoConnection> {
+      // The name reaches both a local path and a remote address here, so it
+      // must clear the stricter of the two checks.
+      assertUrlSafeName(name);
       const mod: any = await import("@tursodatabase/sync");
       const connect = mod.connect ?? mod.default?.connect;
       const db = await connect({
@@ -268,7 +302,12 @@ export interface LibsqlDriverConfig {
 export function libsqlDriver(cfg: LibsqlDriverConfig): TursoDriver {
   const urlFor = typeof cfg.url === "function" ? cfg.url : (name: string) => `${cfg.url}${name}`;
   return {
+    // Only an embedded replica syncs; a plain `file:` or `libsql:` client does not.
+    replicates: cfg.syncUrl !== undefined,
     async open(name: string): Promise<TursoConnection> {
+      // The name lands in a URL rather than a path here — same caller-supplied
+      // origin, different hazard. See `assertUrlSafeName`.
+      assertUrlSafeName(name);
       const mod: any = await import("@libsql/client");
       const createClient = mod.createClient ?? mod.default?.createClient;
       const client = createClient({

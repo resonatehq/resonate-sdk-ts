@@ -4,7 +4,14 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "@jest/globals";
 import { type Context as AsyncContext, Resonate as AsyncResonate } from "../src/async/index.js";
 import { type Context, Resonate } from "../src/index.js";
-import { hashOrigin, originOf, ownerOf, TursoNetwork, tursoLocalDriver } from "../src/network/turso/index.js";
+import {
+  assertUrlSafeName,
+  hashOrigin,
+  originOf,
+  ownerOf,
+  TursoNetwork,
+  tursoLocalDriver,
+} from "../src/network/turso/index.js";
 import type { Message, Request, Response } from "../src/network/types.js";
 import { VERSION } from "../src/util.js";
 
@@ -1395,5 +1402,97 @@ describe("declared origin header", () => {
       data: { id: "wf" },
     });
     expect(res.head.status).toBe(400);
+  });
+});
+
+describe("fleet guardrails", () => {
+  test("a sharded node refuses to join a fleet with a different shard count", async () => {
+    // Ownership is hashOrigin(origin) % count, so a count disagreement leaves
+    // some origins owned by nobody (their timers stay due forever, silently)
+    // and others owned by two nodes. Neither shows up as an error anywhere,
+    // which is why it is checked at startup.
+    const dir = mkdtempSync(join(tmpdir(), "resonate-turso-"));
+    const node0 = new TursoNetwork({
+      driver: tursoLocalDriver({ dir }),
+      prefix: "agree-",
+      tickMs: 60_000,
+      shard: { index: 0, count: 2 },
+    });
+    const wrong = new TursoNetwork({
+      driver: tursoLocalDriver({ dir }),
+      prefix: "agree-",
+      tickMs: 60_000,
+      shard: { index: 0, count: 3 },
+    });
+    try {
+      await node0.init();
+      await expect(wrong.init()).rejects.toThrow(/Shard count mismatch/);
+      // The same count is admitted.
+      const right = new TursoNetwork({
+        driver: tursoLocalDriver({ dir }),
+        prefix: "agree-",
+        tickMs: 60_000,
+        shard: { index: 1, count: 2 },
+      });
+      await right.init();
+      await right.stop();
+    } finally {
+      await node0.stop();
+      await wrong.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("database names", () => {
+  test("a URL-addressed driver refuses a name that would redirect the URL", () => {
+    // An origin comes verbatim from a caller-supplied promise id, and the
+    // protocol only forbids '.' there — so `libsql://acme-` + `jobs/admin`
+    // would silently address database `acme-jobs`, a different tenant's.
+    expect(() => assertUrlSafeName("jobs/admin")).toThrow(/Invalid database name/);
+    expect(() => assertUrlSafeName("wf?x=1")).toThrow(/Invalid database name/);
+    expect(() => assertUrlSafeName("wf#frag")).toThrow(/Invalid database name/);
+    expect(() => assertUrlSafeName("a@b")).toThrow(/Invalid database name/);
+    expect(() => assertUrlSafeName("")).toThrow(/Invalid database name/);
+    expect(() => assertUrlSafeName("order-42")).not.toThrow();
+  });
+});
+
+describe("search projection", () => {
+  test("search filters on the state it reports, for a promise that never converges", async () => {
+    // An internal promise arms no durable timeout, so its stored row stays
+    // 'pending' forever while its projected state is 'rejected_timedout'.
+    // Filtering on the stored column would return it under state='pending'
+    // reporting 'rejected_timedout', and never under its real state.
+    const net = tracked();
+    await net.init();
+    await net.send({
+      kind: "promise.create",
+      head: head(),
+      data: { id: "wf", timeoutAt: Date.now() + 60_000, param: {}, tags: {} },
+    });
+    // A child with a deadline already in the past: internal, so nothing ever
+    // converges the stored row.
+    await net.send({
+      kind: "promise.create",
+      head: head(),
+      data: { id: "wf.step", timeoutAt: Date.now() - 1000, param: {}, tags: {} },
+    });
+
+    const pending = ok(
+      await net.send({ kind: "promise.search", head: head({ "resonate:origin": "wf" }), data: { state: "pending" } }),
+    );
+    expect(pending.data.promises.map((p: any) => p.id)).not.toContain("wf.step");
+
+    const timedOut = ok(
+      await net.send({
+        kind: "promise.search",
+        head: head({ "resonate:origin": "wf" }),
+        data: { state: "rejected_timedout" },
+      }),
+    );
+    const found = timedOut.data.promises.find((p: any) => p.id === "wf.step");
+    expect(found).toBeDefined();
+    expect(found.state).toBe("rejected_timedout");
   });
 });

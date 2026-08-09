@@ -243,6 +243,19 @@ owner means one writer (which is what the CAS fences want), and the `unblock`
 problem below stops mattering, because the node that finishes a workflow is the
 node that was waiting on it.
 
+**The count is fleet state, not node config.** Ownership is
+`hashOrigin(origin) % count`, so a node using a different `count` from its peers
+is silently destructive in both directions: origins no node claims keep their
+timers due forever (parked workflows never resume, and nothing logs), and
+origins two nodes claim recreate the unsound multi-writer arrangement. A sharded
+node therefore stamps its count in the tenant database at startup and refuses to
+start if the fleet records a different one.
+
+Resharding is consequently not a rolling operation. Stop the fleet, relocate or
+share the origin databases if they are node-local (a resize moves workflows to
+nodes that hold no copy of them), start one node with `reshard: true` to claim
+the new count, then start the rest normally.
+
 The caller must route requests to the owning node using the same function —
 `ownerOf(originOf(id), count)`, exported for exactly this. The hash lives in the
 SDK rather than in the caller so that routing and sweeping cannot disagree; the
@@ -461,6 +474,18 @@ wasted open per sweep until the boundary push lands, and nothing else.
   connected` in a `turso timeout sweep failed` warning) when the store evicts
   it. The sweep retries next tick and the fleet self-heals; the warning is
   noise unless it repeats for the same origin indefinitely.
+
+* **A database name reaches a URL.** An origin comes verbatim from a
+  caller-supplied promise id, and the protocol only forbids `.` there. The
+  URL-addressed drivers reject names carrying URL delimiters rather than
+  escaping them (`libsql://acme-` + `jobs/admin` would otherwise address
+  `acme-jobs`, a different database entirely). If workflow ids come from
+  untrusted input, expect `Invalid database name for a URL-addressed driver`
+  and constrain the ids upstream.
+
+* **The store does not reopen after `stop()`.** Requests arriving after a stop
+  fail with `TursoStore is closed` rather than silently reopening databases
+  nothing will ever close. Build a new `TursoNetwork` to restart.
 
 ## Tests
 

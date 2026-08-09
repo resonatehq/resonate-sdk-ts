@@ -63,6 +63,44 @@ independently re-verified before it counted) confirmed 12 defects — 2 critical
 - Heartbeats no longer upload every origin database per beat; connections are
   closed when schema migration fails mid-open.
 
+## Second review pass
+
+The 21 lower-severity findings the first pass triaged out were then verified
+individually. Three were refuted on inspection (an eviction/reopen race that
+cannot occur because both connections are serialized by the same lock; `pull()`
+outside the connection gate, which both Turso clients are designed to allow),
+one was already fixed, and the rest are fixed here:
+
+- **Fleet guardrail.** A sharded node now stamps its shard count in the tenant
+  database and refuses to start if the fleet records a different one — a count
+  mismatch otherwise leaves some workflows owned by nobody (their timers due
+  forever, silently) and others owned by two. Deliberate resizes go through
+  `reshard: true`. A replicating node running unsharded warns at startup.
+- **Names reaching URLs.** URL-addressed drivers reject origins carrying URL
+  delimiters instead of interpolating them, so a caller-chosen id like
+  `jobs/admin` can no longer address a different tenant's database.
+- **Shutdown.** `stop()` waits for an in-flight tick; sweeps abandon their
+  batch once stopped; connections close behind their per-origin locks; and the
+  store refuses to reopen after close instead of leaking connections.
+- **Messages survive a failed mirror write.** A committed transaction's
+  messages are dispatched even when the subsequent tenant-index flush throws —
+  an `unblock` has nothing to re-emit it, so dropping one stalled a waiter
+  until its own timeout.
+- **The mirror cache expires.** The "nothing moved, skip the write" fingerprint
+  now ages out after 60s, bounding a strand if an origin's slice disappears
+  from the index by any route this process cannot see.
+- **Searches filter on the state they report.** `promise.search` and
+  `task.search` now apply the same projection to the filter as to the payload;
+  an internal promise past its deadline was previously returned under
+  `state=pending` while reporting `rejected_timedout`, forever.
+- **Cron parity (Python).** Day-of-week `7` is now a legal value inside the
+  field's range, so `5-7` means Fri–Sun instead of silently matching nothing.
+- **Bounded memory.** The per-origin lock and fingerprint maps no longer grow
+  once per workflow ever seen.
+- **Malformed tags (Python).** `resonate:delay` parses ASCII digits only,
+  matching the TypeScript SDK, instead of accepting non-ASCII digits and
+  raising on superscripts.
+
 ## Known Issues
 
 - **Cross-node CAS without sharding: open question.** The sync driver's

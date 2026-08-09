@@ -56,9 +56,11 @@
 //
 // CONCURRENCY. Nodes do not share a disk — each has its own directory, and
 // they converge through the remote. That is what `tursoSyncDriver` is for, and
-// it has never been run against a real remote. (`tursoLocalDriver` additionally
-// cannot be shared *between* processes at all: Turso takes an exclusive file
-// lock on open. It is a single-node driver.)
+// it is measured: through Turso Cloud, a committed write is visible to another
+// replica in ~200ms median, and a workflow abandoned by one node is recovered
+// off the tenant index and completed by another. (`tursoLocalDriver`
+// additionally cannot be shared *between* processes at all: Turso takes an
+// exclusive file lock on open. It is a single-node driver.)
 //
 // Under contention the protocol holds. Three nodes racing on the same workflows
 // with timer-driven migration between them: every workflow completed with the
@@ -69,20 +71,24 @@
 // Two structural notes. Fleet-wide write traffic concentrates on the tenant
 // database, since every origin publishes its timers there; `TursoStore.flush`
 // skips the write when an origin's timers have not moved, which removes most of
-// it, but the bottleneck remains. And the fenced actions are real
-// compare-and-swaps — read, compare, write, inside one `BEGIN IMMEDIATE` — so
-// they are atomic against whichever database applies them; what decides
-// soundness is where the write lands. Default embedded-replica mode applies it
-// to each node's own copy and merges later, so `tursoSyncDriver` takes
-// `remoteWrites` to send writes to the remote instead. Partitioning by workflow
-// means that serializes per workflow, not globally.
+// it, but the bottleneck remains.
+//
+// And the fenced actions are real compare-and-swaps — read, compare, write,
+// inside one `BEGIN IMMEDIATE` — atomic against whichever database applies
+// them. Across nodes that is not enough, and this is the design's open
+// question: with embedded replicas each node applies the CAS to its own copy
+// and the copies merge afterwards, so two nodes racing one `task.acquire` BOTH
+// win — measured 50 times out of 50. `remoteWrites` was supposed to fix it and
+// does not (measured equally broken upstream; see `driver.ts`). Until a
+// server-side-transaction driver lands, a fleet MUST shard: one writer per
+// workflow, `shard` plus `ownerOf`. See turso.md.
 
 import { ConsoleLogger, type Logger } from "../../logger.js";
 import { randomUUID } from "../../platform.js";
 import { VERSION } from "../../util.js";
 import type { Network } from "../network.js";
 import type { Message, PromiseRecord, Request, RequestHead, Response, TaskRecord } from "../types.js";
-import type { TursoDriver, TursoExecutor } from "./driver.js";
+import type { TursoConnection, TursoDriver, TursoExecutor } from "./driver.js";
 import {
   cronOccurrences,
   DEFAULT_RETRY_TIMEOUT,
@@ -106,7 +112,7 @@ export type {
   TursoRow,
   TursoSyncDriverConfig,
 } from "./driver.js";
-export { databasePath, libsqlDriver, tursoLocalDriver, tursoSyncDriver } from "./driver.js";
+export { assertUrlSafeName, databasePath, libsqlDriver, tursoLocalDriver, tursoSyncDriver } from "./driver.js";
 export { hashOrigin, originOf, ownerOf } from "./server.js";
 
 export interface TursoNetworkConfig {
@@ -179,6 +185,21 @@ export interface TursoNetworkConfig {
    */
   shard?: { index: number; count: number };
   /**
+   * Claim this node's `shard.count` as the fleet's, overwriting what the
+   * tenant database records.
+   *
+   * Ownership is `hashOrigin(origin) % count`, so changing `count` changes
+   * which node owns which workflow — it is not a rolling operation, and a node
+   * whose count disagrees with the fleet's refuses to start. This flag is how
+   * a deliberate resize gets through: stop every node, start one with
+   * `reshard: true`, then start the rest on the new count.
+   *
+   * Note that with node-local origin storage a resize also *moves* workflows
+   * to nodes that hold no copy of their databases; relocate or share them
+   * before resharding.
+   */
+  reshard?: boolean;
+  /**
    * When to upload an origin database to the remote, on drivers that
    * replicate.
    *
@@ -219,11 +240,16 @@ export class TursoNetwork implements Network {
   private readonly batchSize: number;
   private readonly shard?: { index: number; count: number };
   private readonly pushOn: "boundary" | "request";
+  private readonly reshard: boolean;
+  /** Whether this node's ORIGIN driver syncs with a remote; see `warnIfUnshardedReplica`. */
+  private readonly replicates: boolean;
   private readonly logger: Logger;
 
   private readonly callbacks: Array<(msg: Message) => void> = [];
   private timer?: ReturnType<typeof setTimeout>;
   private ticking = false;
+  /** The tick currently running, if any, so `stop()` can wait for it. */
+  private inflight?: Promise<void>;
   private stopped = false;
 
   constructor(cfg: TursoNetworkConfig) {
@@ -233,6 +259,8 @@ export class TursoNetwork implements Network {
     this.retryTimeout = cfg.retryTimeout ?? DEFAULT_RETRY_TIMEOUT;
     this.batchSize = cfg.batchSize ?? 100;
     this.pushOn = cfg.pushOn ?? "boundary";
+    this.reshard = cfg.reshard === true;
+    this.replicates = cfg.driver.replicates === true;
     if (cfg.shard) {
       const { index, count } = cfg.shard;
       if (!Number.isInteger(count) || count < 1 || !Number.isInteger(index) || index < 0 || index >= count) {
@@ -266,9 +294,77 @@ export class TursoNetwork implements Network {
   // ---------------------------------------------------------------------------
 
   async init(): Promise<void> {
-    await this.store.tenant();
+    const tenant = await this.store.tenant();
+    await this.checkShardAgreement(tenant);
+    this.warnIfUnshardedReplica();
     this.schedule();
-    this.logger?.info({ component: "network", group: this.group, pid: this.pid }, "turso network initialized");
+    this.logger.info({ component: "network", group: this.group, pid: this.pid }, "turso network initialized");
+  }
+
+  /**
+   * Refuse to join a fleet that disagrees about how many shards there are.
+   *
+   * Ownership is `hashOrigin(origin) % count`, so `count` is not a local
+   * setting — it is a property of the fleet, and a node using the wrong one is
+   * silently destructive in both directions: origins no node claims keep their
+   * timers due forever (parked workflows never resume, crash recovery never
+   * runs, nothing logs), and origins two nodes claim recreate the unsound
+   * multi-writer arrangement. Neither shows up as an error anywhere, which is
+   * exactly why this is checked rather than documented.
+   *
+   * Only *sharded* nodes take part. An unsharded node owns everything, which
+   * is right for a single node and for a process that submits work without
+   * claiming any (a client, an HTTP front door), and wrong next to a sharded
+   * fleet — but the SDK cannot tell those apart from configuration, so that
+   * case gets `warnIfUnshardedReplica` rather than a refusal to start.
+   *
+   * Resharding is therefore deliberately not a rolling operation: stop the
+   * fleet, `DELETE FROM meta WHERE key = 'shard_count'` in the tenant
+   * database, start it on the new count.
+   */
+  private async checkShardAgreement(tenant: TursoConnection): Promise<void> {
+    if (!this.shard) return;
+    const count = String(this.shard.count);
+    if (this.reshard) {
+      // Deliberate resize: claim the new count for the fleet. The operator is
+      // asserting that every other node is stopped.
+      await tenant.execute(
+        "INSERT INTO meta (key, value) VALUES ('shard_count', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        [count],
+      );
+      return;
+    }
+    await tenant.execute("INSERT INTO meta (key, value) VALUES ('shard_count', ?) ON CONFLICT (key) DO NOTHING", [
+      count,
+    ]);
+    const rows = await tenant.execute("SELECT value FROM meta WHERE key = 'shard_count'");
+    const agreed = rows.length > 0 ? String(rows[0].value) : count;
+    if (agreed !== count) {
+      throw new Error(
+        `Shard count mismatch: this node is configured for ${count} shard(s), but the tenant database ` +
+          `records a fleet of ${agreed}. Every node must agree — ownership is hashOrigin(origin) % count, ` +
+          `so a disagreement leaves some workflows owned by nobody and others by two nodes. To reshard: ` +
+          `stop the fleet, start one node with \`reshard: true\`, then start the rest on the new count.`,
+      );
+    }
+  }
+
+  /**
+   * Warn when this node replicates but claims every origin.
+   *
+   * One node owning everything is a perfectly good single-node deployment —
+   * hence a warning and not an error. But a *second* node deployed the same
+   * way is the arrangement measured to let two nodes both win one
+   * `task.acquire`, 50 times out of 50, and the config gives no hint of it:
+   * `shard` reads like an optimization.
+   */
+  private warnIfUnshardedReplica(): void {
+    if (this.shard || !this.replicates) return;
+    this.logger.warn(
+      { component: "network", pid: this.pid },
+      "turso network is replicating but unsharded: safe for a single node, but a second node sharing this " +
+        "tenant will double-execute fenced actions (measured). Set `shard` and route with `ownerOf` — see turso.md.",
+    );
   }
 
   async stop(): Promise<void> {
@@ -276,6 +372,13 @@ export class TursoNetwork implements Network {
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     this.callbacks.length = 0;
+    // Let a tick already in flight finish before the connections go away.
+    // Closing underneath it would kill its open transaction, and — because a
+    // sweep loops over origins — the next iteration would reopen databases
+    // after the store was closed and write redispatch timers into a network
+    // that is nominally stopped. The tick itself checks `stopped` between
+    // origins, so this is a short wait, not a drain of the whole sweep.
+    await this.inflight?.catch(() => {});
     await this.store.close();
   }
 
@@ -476,7 +579,19 @@ export class TursoNetwork implements Network {
         syncNeeded = server.takeSyncNeeded();
         return v;
       });
-      await this.store.flush(origin, conn, pushOrigin || syncNeeded);
+      // The transaction has committed. Its messages describe durable state and
+      // are owed to the client whether or not the mirror write lands — the
+      // index is eventual by construction, and the next flush on this origin
+      // republishes it, whereas a dropped `unblock` has nothing to re-emit it
+      // (settlement already deleted the listener rows). So dispatch first,
+      // then let the flush failure surface to the caller.
+      try {
+        await this.store.flush(origin, conn, pushOrigin || syncNeeded);
+      } catch (err) {
+        this.dispatch(outgoing);
+        outgoing = [];
+        throw err;
+      }
       return value;
     });
     this.dispatch(outgoing);
@@ -562,17 +677,22 @@ export class TursoNetwork implements Network {
   private async tick(now = Date.now()): Promise<void> {
     if (this.stopped || this.ticking) return;
     this.ticking = true;
-    try {
-      await this.sweepTimeouts(now);
-      await this.fireSchedules(now);
-    } catch (err) {
-      if (!this.stopped) {
-        this.logger?.warn({ component: "network", error: String(err) }, "turso tick failed");
+    const run = (async () => {
+      try {
+        await this.sweepTimeouts(now);
+        await this.fireSchedules(now);
+      } catch (err) {
+        if (!this.stopped) {
+          this.logger.warn({ component: "network", error: String(err) }, "turso tick failed");
+        }
+      } finally {
+        this.ticking = false;
+        this.schedule();
       }
-    } finally {
-      this.ticking = false;
-      this.schedule();
-    }
+    })();
+    // Published so `stop()` can wait for it — see there.
+    this.inflight = run;
+    await run;
   }
 
   /**
@@ -605,6 +725,10 @@ export class TursoNetwork implements Network {
     }
 
     for (const [origin, timers] of byOrigin) {
+      // Abandon the rest of the batch once stopped: the timers stay due and
+      // the next node to sweep picks them up, whereas continuing would race
+      // `stop()`'s close and write into a network that is shutting down.
+      if (this.stopped) return;
       try {
         await this.inOrigin(origin, now, async (server) => {
           // Promise timeouts first: they settle promises, which fulfils tasks,
@@ -619,7 +743,7 @@ export class TursoNetwork implements Network {
           }
         });
       } catch (err) {
-        this.logger?.warn({ component: "network", origin, error: String(err) }, "turso timeout sweep failed");
+        this.logger.warn({ component: "network", origin, error: String(err) }, "turso timeout sweep failed");
       }
     }
   }
@@ -643,7 +767,7 @@ export class TursoNetwork implements Network {
       try {
         occurrences = cronOccurrences(record.cron, schedule.last_run_at ?? schedule.next_run_at - 1, now);
       } catch (err) {
-        this.logger?.warn(
+        this.logger.warn(
           { component: "network", schedule: schedule.id, error: String(err) },
           "turso skipped a schedule with an unparseable cron expression",
         );

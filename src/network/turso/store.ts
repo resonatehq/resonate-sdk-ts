@@ -45,6 +45,12 @@ export interface TursoStoreConfig {
 }
 
 /** The tenant index's timeout kinds, widening the origin database's encoding. */
+/**
+ * How long a "nothing moved, skip the tenant write" decision stays good.
+ * See `TursoStore.published`.
+ */
+export const REPUBLISH_AFTER_MS = 60_000;
+
 export const TIMEOUT_PROMISE = 0;
 export const TIMEOUT_TASK_RETRY = 1;
 export const TIMEOUT_TASK_LEASE = 2;
@@ -56,6 +62,8 @@ export class TursoStore {
   private readonly origins = new Map<string, Promise<TursoConnection>>();
   /** Serializes work per origin so a request and a flush never interleave. */
   private readonly locks = new Map<string, Promise<unknown>>();
+  /** How many holders/waiters each origin's lock chain has, so it can be dropped at zero. */
+  private readonly holders = new Map<string, number>();
   /**
    * The timer set this process last published per origin.
    *
@@ -69,8 +77,18 @@ export class TursoStore {
    * underneath us. That is the same class of drift the index already tolerates:
    * consumers re-validate against the origin database before acting, and the
    * next real change here republishes the whole slice.
+   *
+   * The entry carries when it was published, because "unchanged" is not a safe
+   * answer forever: if this origin's slice goes missing from the index by any
+   * route this process cannot see (operator tooling, a maintenance job), the
+   * fingerprint still matches, the republish is skipped, and — since the sweep
+   * finds work only through the index — the origin's timers never fire, so its
+   * timer set never changes, so the fingerprint never changes. That is a
+   * permanent strand from a transient cause. Expiring the entry bounds it to
+   * `REPUBLISH_AFTER_MS`. Per-entry rather than a global clear, so republishes
+   * stagger instead of stampeding.
    */
-  private readonly published = new Map<string, string>();
+  private readonly published = new Map<string, { fingerprint: string; at: number }>();
   private closed = false;
 
   constructor(cfg: TursoStoreConfig) {
@@ -82,6 +100,7 @@ export class TursoStore {
   // ---------------------------------------------------------------------------
 
   tenant(): Promise<TursoConnection> {
+    if (this.closed) throw new Error("TursoStore is closed");
     if (!this.tenantConn) {
       const driver = this.cfg.timeoutDriver ?? this.cfg.driver;
       this.tenantConn = driver.open(`${this.cfg.prefix}${this.cfg.timeoutDatabase}`).then(async (conn) => {
@@ -102,6 +121,10 @@ export class TursoStore {
   }
 
   origin(origin: string): Promise<TursoConnection> {
+    // Total, not just checked in `flush`: reopening after close would leak a
+    // connection nothing will ever close, and would let a request that raced
+    // `stop()` commit writes the mirror never learns about.
+    if (this.closed) throw new Error("TursoStore is closed");
     const existing = this.origins.get(origin);
     if (existing) {
       // Refresh recency.
@@ -131,6 +154,12 @@ export class TursoStore {
       if (oldest.done) return;
       const conn = this.origins.get(oldest.value);
       this.origins.delete(oldest.value);
+      // `flush` only ever runs against a connection from `origin()`, so an
+      // origin is open whenever it publishes: dropping the fingerprint here
+      // bounds `published` by `maxOpenDatabases` instead of letting it grow
+      // once per origin ever touched. The cost of a dropped entry is one
+      // redundant republish, which the mirror already tolerates.
+      this.published.delete(oldest.value);
       // Evict behind the per-origin lock so an in-flight transaction is never
       // closed out from under itself.
       await this.withLock(oldest.value, async () => {
@@ -158,10 +187,24 @@ export class TursoStore {
     const prev = this.locks.get(origin) ?? Promise.resolve();
     const next = prev.then(fn, fn);
     // Keep the chain alive but never let a rejection escape into the next link.
-    this.locks.set(
-      origin,
-      next.catch(() => {}),
-    );
+    const tail = next.catch(() => {});
+    this.locks.set(origin, tail);
+    // One database per workflow means one map entry per workflow *ever seen*,
+    // which is unbounded in a process that runs short-lived workflows — the
+    // LRU bounds connections, not this. Drop the entry once nothing is queued
+    // on it: identity only has to be stable while a holder or waiter exists,
+    // and a later request for a quiet origin can safely start a fresh chain.
+    this.holders.set(origin, (this.holders.get(origin) ?? 0) + 1);
+    void tail.then(() => {
+      const remaining = (this.holders.get(origin) ?? 1) - 1;
+      if (remaining > 0) {
+        this.holders.set(origin, remaining);
+        return;
+      }
+      this.holders.delete(origin);
+      // Only if no one re-chained in the meantime.
+      if (this.locks.get(origin) === tail) this.locks.delete(origin);
+    });
     return next;
   }
 
@@ -200,7 +243,8 @@ export class TursoStore {
       .map((t) => `${t.id} ${t.kind} ${t.timeout_at}`)
       .sort()
       .join("");
-    if (this.published.get(origin) === fingerprint) return;
+    const last = this.published.get(origin);
+    if (last?.fingerprint === fingerprint && Date.now() - last.at < REPUBLISH_AFTER_MS) return;
 
     const tenant = await this.tenant();
     await tenant.transaction(async (tx) => {
@@ -217,7 +261,7 @@ export class TursoStore {
     });
     await tenant.push?.();
     // Recorded only after the write lands, so a failed publish is retried.
-    this.published.set(origin, fingerprint);
+    this.published.set(origin, { fingerprint, at: Date.now() });
   }
 
   /**
@@ -226,18 +270,31 @@ export class TursoStore {
    * late flush cannot resurrect it.
    */
   async discard(): Promise<void> {
-    const conns = [...this.origins.values()];
+    const entries = [...this.origins.entries()];
     this.origins.clear();
-    this.locks.clear();
     this.published.clear();
+    // The locks map is deliberately NOT cleared. A request may be queued on a
+    // chain right now; handing a later request a fresh lock for the same
+    // origin would let the two run their transaction-and-flush pairs
+    // concurrently — the exact interleaving the lock exists to prevent.
+    for (const [origin, conn] of entries) {
+      // Behind the per-origin lock, for the same reason eviction is: an
+      // in-flight transaction must never be closed out from under itself.
+      await this.withLock(origin, async () => {
+        try {
+          await (await conn)?.close();
+        } catch {
+          /* already closed */
+        }
+      });
+    }
+    // Tenant last: an origin's closing flush may still publish to it.
     const tenant = this.tenantConn;
     this.tenantConn = undefined;
-    for (const conn of [...conns, tenant]) {
-      try {
-        await (await conn)?.close();
-      } catch {
-        /* already closed */
-      }
+    try {
+      await (await tenant)?.close();
+    } catch {
+      /* already closed */
     }
   }
 

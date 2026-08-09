@@ -238,6 +238,14 @@ function tagColumns(tags: Record<string, string>): {
  * otherwise — stamped at the deadline, so the projected record is identical
  * to the one the timeout transition eventually writes.
  */
+/**
+ * `project()` expressed in SQL, so a search can filter on the state it will
+ * actually report. Binds one parameter: `now`. Keep the two in step.
+ */
+const PROJECTED_PROMISE_STATE = `(CASE WHEN state = 'pending' AND ? >= timeout_at
+     THEN (CASE WHEN timer = 1 THEN 'resolved' ELSE 'rejected_timedout' END)
+     ELSE state END)`;
+
 function project(row: PromiseRow, now: number): PromiseRow {
   if (row.state !== "pending" || now < row.timeout_at) return row;
   return {
@@ -539,8 +547,15 @@ export class OriginServer {
     const args: unknown[] = [];
 
     if (state !== undefined) {
-      where.push("state = ?");
-      args.push(state);
+      // Filter on the PROJECTED state, the same function the returned records
+      // are mapped through below. Filtering on the stored column instead would
+      // make the result contradict the query — a pending row past its deadline
+      // would come back reporting `rejected_timedout` — and for an internal
+      // promise, permanently: no durable timeout is armed for one, so its
+      // stored row never converges. Done in SQL rather than after the fact so
+      // LIMIT and the cursor still paginate correctly.
+      where.push(`${PROJECTED_PROMISE_STATE} = ?`);
+      args.push(this.now, state);
     }
     if (cursor !== undefined) {
       where.push("id > ?");
@@ -889,21 +904,31 @@ export class OriginServer {
     const where: string[] = [];
     const args: unknown[] = [];
     if (state !== undefined) {
-      where.push("state = ?");
-      args.push(state);
+      // A task bound to a logically dead promise is `fulfilled` by projection
+      // — which is what `task.get` reports — so the filter has to say the same
+      // thing, or a search and a get disagree about one task. `t.state` is
+      // qualified because the promise join brings a second `state` into scope.
+      where.push(`(CASE WHEN p.state = 'pending' AND ? < p.timeout_at THEN t.state ELSE 'fulfilled' END) = ?`);
+      args.push(this.now, state);
     }
     if (cursor !== undefined) {
-      where.push("id > ?");
+      where.push("t.id > ?");
       args.push(cursor);
     }
     const clause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
-    const rows = (await this.tx.execute(`SELECT * FROM tasks ${clause} ORDER BY id ASC LIMIT ?`, [
-      ...args,
-      size,
-    ])) as TaskRow[];
+    const rows = (await this.tx.execute(
+      `SELECT t.* FROM tasks t JOIN promises p ON p.id = t.id ${clause} ORDER BY t.id ASC LIMIT ?`,
+      [...args, size],
+    )) as TaskRow[];
 
     const tasks: TaskRecord[] = [];
-    for (const row of rows) tasks.push(toTaskRecord(row, await this.countResumes(row.id)));
+    for (const row of rows) {
+      // Project each row too, so the payload matches the filter.
+      const promise = await this.getPromise(row.id);
+      if (!promise) continue;
+      const { row: projected, resumes } = projectTask(row, promise, this.now);
+      tasks.push(toTaskRecord(projected, resumes < 0 ? await this.countResumes(row.id) : resumes));
+    }
     const data: { tasks: TaskRecord[]; cursor?: string } = { tasks };
     if (rows.length === size) data.cursor = rows[rows.length - 1].id;
     return { kind: "task.search", status: 200, data };
