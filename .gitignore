@@ -44,3 +44,6 @@ bun.lockb
 
 # docs
 docs/
+
+# linearizability CI output (uploaded as workflow artifacts, never committed)
+traces/
