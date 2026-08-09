@@ -96,10 +96,9 @@ function recorder(net: S3Network, client: number) {
     const res = (await net.send(req)) as Response;
     const ret = Number(process.hrtime.bigint() - started);
     // A 500 is the network refusing to guess: the write may or may not have
-    // applied, and the machine has no transition answering 500 — so the op
-    // is really PENDING, which the spec's trace format cannot yet express.
-    // It is recorded (the file stays an honest tap) and counted; a trace
-    // containing any is not checkable until the format learns pending ops.
+    // applied. The checkers treat such an op as PENDING — either branch is
+    // explored, the verdict leaves it free — and report the count, since a
+    // trace's LINEARIZABLE is only as strong as its pending count is low.
     if (res.head.status === 500) ambiguous += 1;
     rows.push({ kind, now, req: data, res, client, call, return: ret });
     return res;
@@ -256,13 +255,19 @@ function chaotic(bucket: S3Bucket, rand: () => number): S3Bucket {
     async put(key, body, condition) {
       const roll = rand();
       if (roll < 0.15) {
-        // Landed, but the store's answer is lost: the caller must re-read
-        // and recognize its own bytes.
-        await bucket.put(key, body, condition);
-        return { kind: "unknown", error: "chaos: answer lost after landing" };
+        // Landed, but the store's answer is lost — and lost SLOWLY: the
+        // delay is the transport timeout during which rivals can land on
+        // top, which is what makes the ambiguity unattributable.
+        const result = await bucket.put(key, body, condition);
+        if (result.kind === "landed") {
+          await new Promise((r) => setTimeout(r, 1 + Math.floor(rand() * 20)));
+          return { kind: "unknown", error: "chaos: answer lost after landing" };
+        }
+        return result;
       }
       if (roll < 0.25) {
         // Never landed, and the caller cannot tell that either.
+        await new Promise((r) => setTimeout(r, 1 + Math.floor(rand() * 10)));
         return { kind: "unknown", error: "chaos: request lost before landing" };
       }
       return bucket.put(key, body, condition);
@@ -345,7 +350,5 @@ for (const r of history) {
   appendFileSync(`${out}.history`, `${JSON.stringify(r)}\n`);
 }
 console.log(
-  `${rows.length} events (${mode}, ${CLIENTS} clients, ambiguous=${ambiguous}) -> ${out}.ndjson, ${out}.history${
-    ambiguous > 0 ? "  [NOT CHECKABLE: contains pending ops the trace format cannot express]" : ""
-  }`,
+  `${rows.length} events (${mode}, ${CLIENTS} clients, ambiguous=${ambiguous}) -> ${out}.ndjson, ${out}.history`,
 );
