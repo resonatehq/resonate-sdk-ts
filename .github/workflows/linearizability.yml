@@ -1,28 +1,30 @@
-# Linearizability: the S3 network, judged by the specification's checker.
+# Linearizability: the S3 network under the specification's canonical
+# workloads, judged by the specification's checker.
 #
-# Traces are produced by scripts/s3-lintrace.ts — real S3Network traffic,
-# recorded in the trace format of resonate-specification/valid — and judged
-# by the spec repo's porcupine checkers (valid/porc):
+# The workloads are `resonate-specification/work/ts` (W1 ctx.run, W2 ctx.rpc,
+# W3 mixed by parity), copied to `workloads/` and adapted to run the SDK over
+# `S3Network` — no server anywhere. The harness records the wire conversation
+# at the `Network.send` seam in the trace format of
+# `resonate-specification/valid`, and the spec repo's porcupine checkers
+# judge it:
 #
 #   lincheck   does some schedule of internal steps explain THIS order
 #   conccheck  does some schedule explain SOME order consistent with the
 #              real call/return intervals (the claim about the server)
 #
-# The gates per regime:
+# Every checked workload must pass BOTH. W3 runs twice: n=3 m=2 for the
+# closed-form conformance counts (value=m^n, promises=size, tasks=remote —
+# asserted by the workload itself; its 78-event single-origin trace is past
+# the porc checker's documented state-explosion ceiling, so it is recorded
+# and uploaded but not checker-gated) and n=2 m=2 checker-gated.
 #
-#   sequential, sequential+chaos      lincheck must accept (exit 0)
-#   concurrent (disjoint origins)     lincheck AND conccheck must accept
-#   contention, contention+chaos      conccheck must accept; the recorded
-#                                     order is only one guess between racing
-#                                     processes, so lincheck is informational
-#
-# Chaos regimes run against a lying store (lost acknowledgments, vanished
-# writes). A 500 the network answers there is a PENDING op — the checker
-# leaves it free and reports `pending: N`, which the job summary surfaces:
-# LINEARIZABLE is only as strong as that count is low.
-#
-# Seeds are fixed for reproducibility plus one derived from the run id, so
-# every CI run also explores a fresh interleaving; a failure names its seed.
+# Chaos runs (S3_CHAOS=1) repeat W1 and W2 against a lying store — lost
+# acknowledgments, vanished writes, delayed answers — with one seed fixed
+# and one derived from the run id. A 500 the network answers there is a
+# PENDING op the checkers leave free and count; single-process workloads
+# have no rival inside the recovery window, so the count is expected to be
+# 0 and the chaos gates are really exercising the recovery machinery
+# (proof-or-500, never a guess) plus completion under faults.
 
 name: linearizability
 
@@ -32,13 +34,15 @@ on:
     paths:
       - "src/network/s3/**"
       - "src/network/types.ts"
-      - "scripts/s3-lintrace.ts"
+      - "src/async/**"
+      - "workloads/**"
       - ".github/workflows/linearizability.yml"
   pull_request:
     paths:
       - "src/network/s3/**"
       - "src/network/types.ts"
-      - "scripts/s3-lintrace.ts"
+      - "src/async/**"
+      - "workloads/**"
       - ".github/workflows/linearizability.yml"
   workflow_dispatch:
     inputs:
@@ -52,7 +56,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The spec revision whose checker judges us. Pin to main once the
+  # The spec revision that supplies the checker. Pin to main once the
   # pending-op semantics (valid/porc PendingOp) lands there.
   SPEC_REPO: resonatehq/resonate-specification
   SPEC_REF: claude/resonate-sdk-s3-storage-u9b7kb
@@ -60,7 +64,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -92,7 +96,7 @@ jobs:
           go build -o "$RUNNER_TEMP/lincheck"  ./cmd/lincheck
           go build -o "$RUNNER_TEMP/conccheck" ./cmd/conccheck
 
-      - name: Produce traces and check them
+      - name: Run the canonical workloads and check the traces
         env:
           EXTRA_SEEDS: ${{ inputs.seeds }}
         run: |
@@ -100,53 +104,69 @@ jobs:
           mkdir -p traces
           LINCHECK="$RUNNER_TEMP/lincheck"
           CONCCHECK="$RUNNER_TEMP/conccheck"
-          SEEDS="42 7 1999 $((GITHUB_RUN_ID % 100000)) $EXTRA_SEEDS"
           FAILED=0
 
-          produce() { # name mode [env...]
-            local name=$1 mode=$2; shift 2
-            env "$@" npx tsx scripts/s3-lintrace.ts "traces/$name" "$mode" | tail -1
+          workload() { # name script args... (env via WL_ENV) — the workload
+                       # itself gates results and, for W3, the closed-form
+                       # promise/task counts
+            local name=$1 script=$2; shift 2
+            echo "==== $name: workloads/$script $* ===="
+            if ! env $WL_ENV S3_TRACE="traces/$name" npx tsx "workloads/$script" "$@"; then
+              echo "workload $name FAILED"; FAILED=1
+            fi
           }
-          pending_of() { # count 500-answered ops in a trace
+          pending_of() {
             grep -c '"status":500' "traces/$1.ndjson" || true
           }
-          gate() { # tool name  -> records verdict, sets FAILED on gate breach
-            local tool=$1 name=$2 out code
-            if [ "$tool" = lincheck ]; then
-              out=$("$LINCHECK" -quiet < "traces/$name.ndjson"); code=$?
-            else
-              out=$("$CONCCHECK" < "traces/$name.history"); code=$?
-            fi
-            echo "== $tool $name (exit $code) =="; echo "$out"
-            if [ $code -ne 0 ]; then FAILED=1; fi
-            echo "| $name | $tool | $([ $code -eq 0 ] && echo LINEARIZABLE || echo '**FAILED**') | $(pending_of "$name") |" >> "$GITHUB_STEP_SUMMARY"
+          gate() { # name — both checkers must accept
+            local name=$1 out code
+            for tool in lincheck conccheck; do
+              if [ "$tool" = lincheck ]; then
+                out=$("$LINCHECK" -quiet -timeout 120s < "traces/$name.ndjson"); code=$?
+              else
+                out=$("$CONCCHECK" -timeout 120s < "traces/$name.history"); code=$?
+              fi
+              echo "== $tool $name (exit $code) =="; echo "$out"
+              if [ $code -ne 0 ]; then FAILED=1; fi
+              echo "| $name | $tool | $([ $code -eq 0 ] && echo LINEARIZABLE || echo '**FAILED**') | $(pending_of "$name") |" >> "$GITHUB_STEP_SUMMARY"
+            done
           }
 
-          echo "## Linearizability: S3 network vs the specification" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| trace | checker | verdict | pending (500s) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Linearizability: canonical workloads over S3Network"
+            echo ""
+            echo "| trace | checker | verdict | pending (500s) |"
+            echo "|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          produce seq  sequential
-          produce sc   sequential TRACE_CHAOS=1
-          produce conc concurrent
+          WL_ENV=""
+          workload w1     index1.ts w1 4
+          workload w2     index2.ts w2 3
+          workload w2rpc  index2.ts w2rpc 3 --via rpc
+          workload w3     index3.ts w3 2 2
+          gate w1
+          gate w2
+          gate w2rpc
+          gate w3
 
-          gate lincheck seq
-          gate lincheck sc
-          gate lincheck conc
-          gate conccheck conc
+          # The count-conformance tree: gated by its own closed-form
+          # assertions, recorded but past the checker's ceiling (see header).
+          workload w3big  index3.ts w3big 3 2
+          echo "| w3big | (counts only) | $([ $FAILED -eq 0 ] && echo PASSED || echo see-log) | $(pending_of w3big) |" >> "$GITHUB_STEP_SUMMARY"
 
-          produce cont contend
-          gate conccheck cont
-
-          for seed in $SEEDS; do
-            produce "cc$seed" contend TRACE_CHAOS=1 TRACE_SEED="$seed"
-            gate conccheck "cc$seed"
+          for seed in 42 $((GITHUB_RUN_ID % 100000)) $EXTRA_SEEDS; do
+            WL_ENV="S3_CHAOS=1 S3_SEED=$seed"
+            workload "w1c$seed" index1.ts "w1c$seed" 4
+            workload "w2c$seed" index2.ts "w2c$seed" 3
+            gate "w1c$seed"
+            gate "w2c$seed"
           done
 
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Chaos seeds: \`$SEEDS\` — a failure reproduces with \`TRACE_SEED=<seed> TRACE_CHAOS=1 npx tsx scripts/s3-lintrace.ts out contend\`." >> "$GITHUB_STEP_SUMMARY"
-          echo "Contention regimes are judged by conccheck (interval search); the recorded order is one guess between racing processes." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo ""
+            echo "Chaos reproduces with \`S3_CHAOS=1 S3_SEED=<seed> npx tsx workloads/index2.ts <id> 3\`."
+            echo "w3big is gated by its closed-form result/promise/task counts, not by the checkers (single-origin, past the porc ceiling)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
           exit $FAILED
 

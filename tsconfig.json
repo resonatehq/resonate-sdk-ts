@@ -4,5 +4,5 @@
     "types": ["node", "jest"],
     "noEmit": true
   },
-  "include": ["src/**/*", "tests/**/*", "sim/**/*", "examples/**/*"]
+  "include": ["src/**/*", "tests/**/*", "sim/**/*", "examples/**/*", "workloads/**/*"]
 }
