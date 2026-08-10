@@ -1405,45 +1405,6 @@ describe("declared origin header", () => {
   });
 });
 
-describe("fleet guardrails", () => {
-  test("a sharded node refuses to join a fleet with a different shard count", async () => {
-    // Ownership is hashOrigin(origin) % count, so a count disagreement leaves
-    // some origins owned by nobody (their timers stay due forever, silently)
-    // and others owned by two nodes. Neither shows up as an error anywhere,
-    // which is why it is checked at startup.
-    const dir = mkdtempSync(join(tmpdir(), "resonate-turso-"));
-    const node0 = new TursoNetwork({
-      driver: tursoLocalDriver({ dir }),
-      prefix: "agree-",
-      tickMs: 60_000,
-      shard: { index: 0, count: 2 },
-    });
-    const wrong = new TursoNetwork({
-      driver: tursoLocalDriver({ dir }),
-      prefix: "agree-",
-      tickMs: 60_000,
-      shard: { index: 0, count: 3 },
-    });
-    try {
-      await node0.init();
-      await expect(wrong.init()).rejects.toThrow(/Shard count mismatch/);
-      // The same count is admitted.
-      const right = new TursoNetwork({
-        driver: tursoLocalDriver({ dir }),
-        prefix: "agree-",
-        tickMs: 60_000,
-        shard: { index: 1, count: 2 },
-      });
-      await right.init();
-      await right.stop();
-    } finally {
-      await node0.stop();
-      await wrong.stop();
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("database names", () => {
   test("a URL-addressed driver refuses a name that would redirect the URL", () => {
     // An origin comes verbatim from a caller-supplied promise id, and the

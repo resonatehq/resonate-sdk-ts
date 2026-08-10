@@ -243,18 +243,14 @@ owner means one writer (which is what the CAS fences want), and the `unblock`
 problem below stops mattering, because the node that finishes a workflow is the
 node that was waiting on it.
 
-**The count is fleet state, not node config.** Ownership is
-`hashOrigin(origin) % count`, so a node using a different `count` from its peers
-is silently destructive in both directions: origins no node claims keep their
-timers due forever (parked workflows never resume, and nothing logs), and
-origins two nodes claim recreate the unsound multi-writer arrangement. A sharded
-node therefore stamps its count in the tenant database at startup and refuses to
-start if the fleet records a different one.
-
-Resharding is consequently not a rolling operation. Stop the fleet, relocate or
-share the origin databases if they are node-local (a resize moves workflows to
-nodes that hold no copy of them), start one node with `reshard: true` to claim
-the new count, then start the rest normally.
+**Every node must be started with the same `count`.** Ownership is
+`hashOrigin(origin) % count`, so a node using a different one leaves some
+workflows owned by nobody (their timers stay due, and nothing logs) and others
+owned by two. Nothing enforces this — the count comes from your deployment
+config, and resizing means stopping the fleet and starting it again with the
+new `count` everywhere. Note that a resize also *moves* workflows between
+nodes, so origin databases must be shared (or reachable) rather than
+node-local, or a workflow resurfaces on a node holding no copy of it.
 
 The caller must route requests to the owning node using the same function —
 `ownerOf(originOf(id), count)`, exported for exactly this. The hash lives in the

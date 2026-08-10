@@ -71,11 +71,10 @@ cannot occur because both connections are serialized by the same lock; `pull()`
 outside the connection gate, which both Turso clients are designed to allow),
 one was already fixed, and the rest are fixed here:
 
-- **Fleet guardrail.** A sharded node now stamps its shard count in the tenant
-  database and refuses to start if the fleet records a different one — a count
-  mismatch otherwise leaves some workflows owned by nobody (their timers due
-  forever, silently) and others owned by two. Deliberate resizes go through
-  `reshard: true`. A replicating node running unsharded warns at startup.
+- **Fleet guardrail.** A replicating node running unsharded warns at startup:
+  safe for a single node, but a second node sharing the tenant double-executes
+  fenced actions. Shard count itself stays deployment config — start every node
+  with the same `count`, and resize by restarting the fleet.
 - **Names reaching URLs.** URL-addressed drivers reject origins carrying URL
   delimiters instead of interpolating them, so a caller-chosen id like
   `jobs/admin` can no longer address a different tenant's database.

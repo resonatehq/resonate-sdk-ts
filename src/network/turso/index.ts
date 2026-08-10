@@ -185,21 +185,6 @@ export interface TursoNetworkConfig {
    */
   shard?: { index: number; count: number };
   /**
-   * Claim this node's `shard.count` as the fleet's, overwriting what the
-   * tenant database records.
-   *
-   * Ownership is `hashOrigin(origin) % count`, so changing `count` changes
-   * which node owns which workflow — it is not a rolling operation, and a node
-   * whose count disagrees with the fleet's refuses to start. This flag is how
-   * a deliberate resize gets through: stop every node, start one with
-   * `reshard: true`, then start the rest on the new count.
-   *
-   * Note that with node-local origin storage a resize also *moves* workflows
-   * to nodes that hold no copy of their databases; relocate or share them
-   * before resharding.
-   */
-  reshard?: boolean;
-  /**
    * When to upload an origin database to the remote, on drivers that
    * replicate.
    *
@@ -240,7 +225,6 @@ export class TursoNetwork implements Network {
   private readonly batchSize: number;
   private readonly shard?: { index: number; count: number };
   private readonly pushOn: "boundary" | "request";
-  private readonly reshard: boolean;
   /** Whether this node's ORIGIN driver syncs with a remote; see `warnIfUnshardedReplica`. */
   private readonly replicates: boolean;
   private readonly logger: Logger;
@@ -259,7 +243,6 @@ export class TursoNetwork implements Network {
     this.retryTimeout = cfg.retryTimeout ?? DEFAULT_RETRY_TIMEOUT;
     this.batchSize = cfg.batchSize ?? 100;
     this.pushOn = cfg.pushOn ?? "boundary";
-    this.reshard = cfg.reshard === true;
     this.replicates = cfg.driver.replicates === true;
     if (cfg.shard) {
       const { index, count } = cfg.shard;
@@ -294,59 +277,10 @@ export class TursoNetwork implements Network {
   // ---------------------------------------------------------------------------
 
   async init(): Promise<void> {
-    const tenant = await this.store.tenant();
-    await this.checkShardAgreement(tenant);
+    await this.store.tenant();
     this.warnIfUnshardedReplica();
     this.schedule();
     this.logger.info({ component: "network", group: this.group, pid: this.pid }, "turso network initialized");
-  }
-
-  /**
-   * Refuse to join a fleet that disagrees about how many shards there are.
-   *
-   * Ownership is `hashOrigin(origin) % count`, so `count` is not a local
-   * setting — it is a property of the fleet, and a node using the wrong one is
-   * silently destructive in both directions: origins no node claims keep their
-   * timers due forever (parked workflows never resume, crash recovery never
-   * runs, nothing logs), and origins two nodes claim recreate the unsound
-   * multi-writer arrangement. Neither shows up as an error anywhere, which is
-   * exactly why this is checked rather than documented.
-   *
-   * Only *sharded* nodes take part. An unsharded node owns everything, which
-   * is right for a single node and for a process that submits work without
-   * claiming any (a client, an HTTP front door), and wrong next to a sharded
-   * fleet — but the SDK cannot tell those apart from configuration, so that
-   * case gets `warnIfUnshardedReplica` rather than a refusal to start.
-   *
-   * Resharding is therefore deliberately not a rolling operation: stop the
-   * fleet, `DELETE FROM meta WHERE key = 'shard_count'` in the tenant
-   * database, start it on the new count.
-   */
-  private async checkShardAgreement(tenant: TursoConnection): Promise<void> {
-    if (!this.shard) return;
-    const count = String(this.shard.count);
-    if (this.reshard) {
-      // Deliberate resize: claim the new count for the fleet. The operator is
-      // asserting that every other node is stopped.
-      await tenant.execute(
-        "INSERT INTO meta (key, value) VALUES ('shard_count', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-        [count],
-      );
-      return;
-    }
-    await tenant.execute("INSERT INTO meta (key, value) VALUES ('shard_count', ?) ON CONFLICT (key) DO NOTHING", [
-      count,
-    ]);
-    const rows = await tenant.execute("SELECT value FROM meta WHERE key = 'shard_count'");
-    const agreed = rows.length > 0 ? String(rows[0].value) : count;
-    if (agreed !== count) {
-      throw new Error(
-        `Shard count mismatch: this node is configured for ${count} shard(s), but the tenant database ` +
-          `records a fleet of ${agreed}. Every node must agree — ownership is hashOrigin(origin) % count, ` +
-          `so a disagreement leaves some workflows owned by nobody and others by two nodes. To reshard: ` +
-          `stop the fleet, start one node with \`reshard: true\`, then start the rest on the new count.`,
-      );
-    }
   }
 
   /**
