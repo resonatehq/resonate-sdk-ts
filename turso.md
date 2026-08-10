@@ -17,7 +17,7 @@ this branch, with regression tests for the criticals. Status by concern:
 | Turso Cloud provisioning (no auto-create; API create ~384ms; region-qualified hostnames) | ✅ measured |
 | Boundary uploads (`pushOn: "boundary"`) | ✅ implemented, reviewed, tested |
 | Origin routing (`resonate:origin` header normalized and validated) | ✅ fixed under review, regression-tested |
-| **Cross-node CAS without sharding** | ❓ **open question** — the sync driver is measured unsound (50/50 double-wins) and `remoteWrites` is measured broken upstream; server-side Hrana transactions are measured sound (20/20, ~150ms) but not yet integrated as a driver |
+| **Cross-node CAS without sharding** | ⚠️ **answered, not yet shipped** — a guard trigger makes the push a real CAS (measured 20/20 single-winner unsharded, through the protocol); needs server-side provisioning, a replica-reset path, and a push per write. Static sharding remains the shipped recommendation. |
 | Detached (re-rooted) lineages — `ctx.detached` | ✖ unsupported by design (see below) |
 
 Deployment checklist:
@@ -341,10 +341,56 @@ Two more things a fleet meets:
     previous revision of this document recommended the flag; that
     recommendation was wrong and is withdrawn. Do not use `remoteWrites`.
 
-  The conclusion: **the sync driver has no multi-writer story.** On it, the
-  only sound arrangement is one writer per workflow — static sharding with
-  `shard`/`ownerOf`, where routing and sweeping agree on a single owner and
-  the CAS runs on the one replica that ever writes that origin.
+  **A guard trigger makes the push itself the compare-and-swap — measured.**
+  The mechanism (from the Turso team) is a version row whose trigger rejects
+  any update that is not exactly +1:
+
+  ```sql
+  CREATE TABLE cas_table (key TEXT PRIMARY KEY, value);
+  CREATE TRIGGER cas_table_conflict
+  BEFORE UPDATE ON cas_table
+  WHEN CAST(NEW.value AS INTEGER) != CAST(OLD.value AS INTEGER) + 1
+  BEGIN SELECT RAISE(ROLLBACK, 'unexpected existing row state'); END;
+  ```
+
+  A writer bumps the row inside its transaction and pushes. The remote applies
+  pushes one at a time, so a node that staked version *v+1* while another
+  already landed it trips the trigger, and the push is rejected with
+  `SQLITE_CONSTRAINT`. That converts the replica's local commit into a
+  *proposal* and makes the push the real commit point.
+
+  It holds end to end. Two `TursoNetwork` nodes, separate replicas, one
+  remote, **no sharding**, racing `task.acquire` for the same
+  `{id, version: 0}` — the arrangement measured at 50/50 double wins — give
+  **exactly one winner, 20 times out of 20**, at ~1.1s per winning acquire
+  (`experiments/exp-e.ts`). The rejection is atomic over the whole push: the
+  loser's other writes do not land either.
+
+  Three things to know before building on it:
+
+  * **The trigger must be installed server-side**, at provisioning time, over
+    Hrana or the CLI. DDL pushed from a replica does *not* register a trigger
+    on the remote — `sqlite_master` there comes back with no triggers at all,
+    and the guard then silently does nothing (which is exactly how the first
+    run of this experiment produced 8/8 double wins). `TursoStore.migrate`
+    runs its DDL through the driver, so it cannot install this.
+  * **A rejected push wedges the replica.** It still holds the rejected
+    change, and every later `pull` fails with `failed to replay local change
+    after remote apply`; retrying does not clear it and neither does
+    `checkpoint()`. The client exposes no revert. The only way back is to
+    close the database, delete its local files, and re-bootstrap — ~420ms for
+    a small database, after which the node works normally.
+  * **It costs a remote round trip per write.** The fence is only sound if the
+    push happens with the fenced action, so guarded mode and `pushOn:
+    "boundary"` are in tension: batching uploads to task boundaries delays
+    arbitration past the point where user code has already run.
+
+  So there are now two sound arrangements, and they trade the same thing in
+  opposite directions. **Static sharding** keeps writes at local-disk latency
+  and pays for it with a fixed owner per workflow. **A guard trigger** lets any
+  node write any workflow and pays a round trip per write. Sharding remains
+  the default recommendation; the guard is what makes work-stealing, rebalancing,
+  and unsharded fleets possible at all.
 
   **A sound CAS does exist one driver over — measured.** The same Turso Cloud
   database also serves Hrana v3, the server-side transaction protocol, and a

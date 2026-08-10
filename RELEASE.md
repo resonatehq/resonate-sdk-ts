@@ -103,12 +103,21 @@ one was already fixed, and the rest are fixed here:
 
 ## Known Issues
 
-- **Cross-node CAS without sharding: open question.** The sync driver's
-  embedded-replica CAS is measured unsound (simultaneous `task.acquire` races
-  double-win 50/50), and the upstream `remoteWrites` flag is measured broken
-  (`@tursodatabase/sync` 0.7.2). Server-side Hrana transactions measure sound
-  (20/20 single-winner) but are not yet integrated as a driver. **Deploy
-  sharded: one writer per workflow.**
+- **Cross-node CAS without sharding: answered, not yet shipped.** The sync
+  driver's embedded-replica CAS is measured unsound on its own (simultaneous
+  `task.acquire` races double-win 50/50) and the upstream `remoteWrites` flag
+  is measured broken (`@tursodatabase/sync` 0.7.2). A guard table with a
+  `BEFORE UPDATE` trigger rejecting any non-+1 version bump *does* make the
+  push a real compare-and-swap: two unsharded nodes racing `task.acquire`
+  produce exactly one winner, 20/20, through the full protocol
+  (`experiments/exp-e.ts`), with the loser's other writes rejected atomically
+  alongside. Shipping it needs three things this release does not have:
+  server-side trigger installation at provisioning (replica-pushed DDL does
+  not register a trigger on the remote), a replica-reset path for the loser
+  (a rejected push wedges the local replica; only deleting its files and
+  re-bootstrapping recovers it, ~420ms), and a push per fenced write (~1.1s
+  per acquire), which conflicts with `pushOn: "boundary"`. **Until then,
+  deploy sharded: one writer per workflow.**
 - `unblock` does not cross nodes; unsharded fleets pay a slow-path latency
   penalty on cross-node completion (documented in `turso.md`).
 - Detached (re-rooted) lineages (`ctx.detached`) are unsupported by design.
