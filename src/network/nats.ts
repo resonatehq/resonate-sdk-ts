@@ -32,10 +32,10 @@ const REPLY_HEADER = "Resonate-Reply-To";
 // ROUTING HELPERS
 // =============================================================================
 
-// Return the lineage origin: the substring before the first `.`.
+// Return the lineage origin (promiseId): the substring before the first `:`.
 function idToOrigin(id: string): string {
-  const dot = id.indexOf(".");
-  return dot === -1 ? id : id.slice(0, dot);
+  const sep = id.indexOf(":");
+  return sep === -1 ? id : id.slice(0, sep);
 }
 
 // Derive the routing origin from a request, mirroring the server's client.

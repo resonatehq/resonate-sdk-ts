@@ -324,7 +324,7 @@ export class InnerContext implements Context {
     // (resonate.run/rpc) and propagated down unchanged forever -- through every
     // child AND across detached re-roots -- never tracking the (diverging)
     // lineage origin. Bounds recursive detached ids: each level mints
-    // `${prefixId}.d${hash}` off this fixed prefix. Mirrors the Python SDK's
+    // `${prefixId}:d${hash}` off this fixed prefix. Mirrors the Python SDK's
     // `Context.prefix_id`.
     this.prefixId = prId;
     this.branchId = bId;
@@ -596,7 +596,7 @@ export class InnerContext implements Context {
       // detached ids stay bounded NOT via origin but via resonate:prefix, which
       // is propagated down unchanged (set in remoteCreateReq = this.prefixId) and
       // is what `util.detachedId(this.prefixId, ...)` roots the id on. So each
-      // level mints `${prefix}.d${hash}` off the same fixed prefix instead of
+      // level mints `${prefix}:d${hash}` off the same fixed prefix instead of
       // off its own grown id. Mirrors the Python SDK (detached origin = its id,
       // prefix carried forward).
       this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, breaksLineage: true }),
@@ -794,6 +794,11 @@ export class InnerContext implements Context {
   }
 
   seqid(): string {
-    return `${this.id}.${this.seq}`;
+    // `<promiseId>:<lineage>`: a single `:` separates the promiseId (lineage
+    // origin) from the lineage, and `.` separates lineage segments. The first
+    // segment minted off a bare promiseId (id === originId) uses `:`; deeper
+    // segments use `.` (`root:1` -> `root:1.1`).
+    const sep = this.id === this.originId ? ":" : ".";
+    return `${this.id}${sep}${this.seq}`;
   }
 }

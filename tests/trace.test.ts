@@ -452,7 +452,7 @@ describe("Trace", () => {
       const { computation, effects } = await buildComputation(registry);
 
       // Pre-settle the child promise
-      await presettle(effects, "foo.1.0", 42);
+      await presettle(effects, "foo.1:0", 42);
 
       const rootPromise = createRootPromise("foo.1", "main", []);
       const res = await computation.executeUntilBlocked(rootPromise);

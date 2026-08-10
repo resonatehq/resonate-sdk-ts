@@ -191,7 +191,7 @@ describe("Coroutine", () => {
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1:1", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
@@ -211,14 +211,14 @@ describe("Coroutine", () => {
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(2);
 
-    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1:1", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1:0", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], effects);
 
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
@@ -274,7 +274,7 @@ describe("Coroutine", () => {
     expect(suspended.todo.remote).toHaveLength(1);
 
     // Settle the remote promise
-    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1:1", { kind: "value", value: 42 });
 
     // Second execution: everything resolved → done
     r = await exec("foo.1", foo, [], effects);
@@ -319,7 +319,7 @@ describe("Coroutine", () => {
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(effects, "foo.1.0", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1:0", { kind: "value", value: 42 });
     r = await exec("foo.1", foo, [], effects);
 
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 99 } });
@@ -342,14 +342,14 @@ describe("Coroutine", () => {
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(2);
 
-    await completePromise(effects, `${id}.0`, { kind: "value", value: 42 });
+    await completePromise(effects, `${id}:0`, { kind: "value", value: 42 });
     r = await exec(id, foo, [], effects);
 
     expect(r.type).toBe("suspended");
     r = r as Suspended;
     expect(r.todo.remote).toHaveLength(1);
 
-    await completePromise(effects, util.detachedId(id, `${id}.1`), { kind: "value", value: 42 });
+    await completePromise(effects, util.detachedId(id, `${id}:1`), { kind: "value", value: 42 });
     r = await exec(id, foo, [], effects);
 
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
@@ -359,10 +359,10 @@ describe("Coroutine", () => {
     // A detached workflow runs as its own root: resonate:origin is reset to its
     // own id (a fresh lineage). Recursive detached ids stay bounded NOT via
     // origin but via resonate:prefix, propagated unchanged across re-roots. Were
-    // the id minted off the (grown) origin, each level would add a `.d${hash}`
+    // the id minted off the (grown) origin, each level would add a `:d${hash}`
     // segment without bound; rooting it on the pinned prefix keeps it at
-    // `${prefix}.d${hash}` -- one segment past the prefix, at every depth.
-    const grownId = "top.deadbeefdeadbe"; // a workflow already several detached levels deep
+    // `${prefix}:d${hash}` -- one segment past the prefix, at every depth.
+    const grownId = "top:deadbeefdeadbe"; // a workflow already several detached levels deep
     const ctx = new InnerContext({
       id: grownId,
       oId: grownId, // detached re-roots origin to its own (grown) id
@@ -381,9 +381,9 @@ describe("Coroutine", () => {
 
     // The detached id is rooted at the pinned PREFIX "top", exactly one segment
     // past it -- NOT the grown id (which would add a segment per level).
-    expect(rfi.id).toBe(util.detachedId("top", `${grownId}.0`));
-    expect(rfi.id.startsWith("top.d")).toBe(true);
-    expect(rfi.id.split(".")).toHaveLength(2);
+    expect(rfi.id).toBe(util.detachedId("top", `${grownId}:0`));
+    expect(rfi.id.startsWith("top:d")).toBe(true);
+    expect(rfi.id.split(":")).toHaveLength(2);
 
     // The prefix carries forward unchanged, bounding the next level; the child's
     // lineage origin is its OWN id (a fresh lineage root).
@@ -396,10 +396,10 @@ describe("Coroutine", () => {
     // re-rooting each child exactly as production does -- a detached promise
     // executes as its own root with oId = its resonate:origin tag (its own id)
     // and prId = its resonate:prefix tag (computation.ts). The id is
-    // `${prefix}.d${cyrb53(seqid).padStart(14)}`: the hash flattens the
+    // `${prefix}:d${cyrb53(seqid).padStart(14)}`: the hash flattens the
     // (ever-growing) seqid to a constant 14 chars, and the prefix tag keeps the
     // prefix pinned to the top, so it never grows. Net: every detached id at
-    // every depth is exactly `${top}.d${14hex}` -- bounded regardless of depth.
+    // every depth is exactly `${top}:d${14hex}` -- bounded regardless of depth.
     const makeCtx = (id: string, oId: string, prId: string) =>
       new InnerContext({
         id,
@@ -445,9 +445,9 @@ describe("Coroutine", () => {
       frontier = next;
     }
 
-    // Bounded: a single length across all depths, exactly `${top}.d${14hex}`.
+    // Bounded: a single length across all depths, exactly `${top}:d${14hex}`.
     expect(lengths.size).toBe(1);
-    expect([...lengths][0]).toBe(TOP.length + ".d".length + 14);
+    expect([...lengths][0]).toBe(TOP.length + ":d".length + 14);
     // ...and no collisions: every node in the tree got a distinct id.
     expect(ids.size).toBe((FANOUT ** (DEPTH + 1) - FANOUT) / (FANOUT - 1));
   });
@@ -499,7 +499,7 @@ describe("Coroutine", () => {
     const suspended = r as Suspended;
     expect(suspended.todo.remote).toHaveLength(1);
 
-    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1:1", { kind: "value", value: 42 });
 
     r = await exec("foo.1", foo, [], effects);
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 84 } });
@@ -632,7 +632,7 @@ describe("Coroutine", () => {
     expect(suspended.todo.remote).toHaveLength(1);
 
     // Settle the remote promise that the child was waiting on
-    await completePromise(effects, "foo.1.0.0", { kind: "value", value: 21 });
+    await completePromise(effects, "foo.1:0.0", { kind: "value", value: 21 });
 
     // Second execution: child completes → parent completes
     r = await exec("foo.1", parent, [], effects);
@@ -658,7 +658,7 @@ describe("Coroutine", () => {
     expect(r.type).toBe("suspended");
 
     // Settle remote
-    await completePromise(effects, "foo.1.1", { kind: "value", value: 42 });
+    await completePromise(effects, "foo.1:1", { kind: "value", value: 42 });
 
     // Re-execution: local promise already settled (fast-forward), completes
     r = await exec("foo.1", foo, [], effects);
@@ -698,8 +698,8 @@ describe("Coroutine", () => {
     expect(suspended.todo.remote.length).toBeGreaterThanOrEqual(2);
 
     // Settle both remote promises
-    await completePromise(effects, "p.1.0", { kind: "value", value: 5 });
-    await completePromise(effects, "p.1.1.0", { kind: "value", value: 3 });
+    await completePromise(effects, "p.1:0", { kind: "value", value: 5 });
+    await completePromise(effects, "p.1:1.0", { kind: "value", value: 3 });
 
     // Second execution: everything settled → done
     r = await exec("p.1", parent, [], effects);
@@ -730,7 +730,7 @@ describe("Coroutine", () => {
     expect(suspended.todo.remote).toHaveLength(1); // only remoteParent
 
     // Settle the remote
-    await completePromise(effects, "p.1.0", { kind: "value", value: 8 });
+    await completePromise(effects, "p.1:0", { kind: "value", value: 8 });
 
     // Second execution: bar's durable promise was settled on first run → replay fast-path
     r = await exec("p.1", parent, [], effects);

@@ -174,8 +174,8 @@ describe("Resonate — async/await engine", () => {
 
     await (await resonate.run("createorder", fanout)).result();
 
-    const children = recording.creates.filter((id) => id.startsWith("createorder."));
-    expect(children).toEqual(["createorder.0", "createorder.1", "createorder.2", "createorder.3"]);
+    const children = recording.creates.filter((id) => id.startsWith("createorder:"));
+    expect(children).toEqual(["createorder:0", "createorder:1", "createorder:2", "createorder:3"]);
   });
 
   test("hang model: a suspending pass never enters the surrounding try/catch", async () => {
@@ -286,8 +286,8 @@ describe("Resonate — async/await engine", () => {
     resonate.register("dpcwf", wf);
 
     const handle = await resonate.run("dpc-1", wf);
-    await sleep(100); // ensure the latent promise dpc-1.0 has been created
-    await resonate.promises.resolve("dpc-1.0", { data: codec.encode("signal").data });
+    await sleep(100); // ensure the latent promise dpc-1:0 has been created
+    await resonate.promises.resolve("dpc-1:0", { data: codec.encode("signal").data });
 
     expect(await handle.result()).toBe("signal");
   });
@@ -323,10 +323,10 @@ describe("Resonate — async/await engine", () => {
     await (await resonate.run("prefix-1", wf)).result();
 
     expect(recording.tags.get("prefix-1")?.["resonate:prefix"]).toBe("prefix-1"); // root
-    expect(recording.tags.get("prefix-1.0")?.["resonate:prefix"]).toBe("prefix-1"); // local child
-    expect(recording.tags.get("prefix-1.1")?.["resonate:prefix"]).toBe("prefix-1"); // sleep timer
-    const detachedId = recording.creates.find((id) => id.startsWith("prefix-1.d"));
-    expect(detachedId).toMatch(/^prefix-1\.d[0-9a-f]{14}$/);
+    expect(recording.tags.get("prefix-1:0")?.["resonate:prefix"]).toBe("prefix-1"); // local child
+    expect(recording.tags.get("prefix-1:1")?.["resonate:prefix"]).toBe("prefix-1"); // sleep timer
+    const detachedId = recording.creates.find((id) => id.startsWith("prefix-1:d"));
+    expect(detachedId).toMatch(/^prefix-1:d[0-9a-f]{14}$/);
     expect(recording.tags.get(detachedId as string)?.["resonate:prefix"]).toBe("prefix-1");
   });
 
@@ -352,8 +352,8 @@ describe("Resonate — async/await engine", () => {
     // Every level keeps the top-level root as its id-generation prefix, so each
     // detached id is exactly one `.d` segment past it — bounded at any depth.
     for (const s of seen) expect(s.prefixId).toBe("nest-root");
-    expect(seen[1].id).toMatch(/^nest-root\.d[0-9a-f]{14}$/);
-    expect(seen[2].id).toMatch(/^nest-root\.d[0-9a-f]{14}$/);
+    expect(seen[1].id).toMatch(/^nest-root:d[0-9a-f]{14}$/);
+    expect(seen[2].id).toMatch(/^nest-root:d[0-9a-f]{14}$/);
     // The detached re-root breaks lineage: origin resets to its own id.
     expect(seen[1].originId).toBe(seen[1].id);
   });
@@ -420,7 +420,7 @@ describe("Resonate — async/await engine", () => {
 
     // Neither the root nor the (created) child promise settles.
     expect((await resonate.promises.get("panic-3")).state).toBe("pending");
-    expect((await resonate.promises.get("panic-3.0")).state).toBe("pending");
+    expect((await resonate.promises.get("panic-3:0")).state).toBe("pending");
   });
 
   test("ctx.panic(false) and ctx.assert(true) do not abort", async () => {

@@ -88,7 +88,7 @@ export interface Context extends Info {
    * Creates a latent durable promise (DPC) with no associated function, intended
    * to be resolved out of band (human-in-the-loop / external signal) via
    * `resonate.promises.resolve(id)`. Awaiting it suspends the parent until the
-   * promise is settled externally. The id is `${ctx.id}.${seq}`.
+   * promise is settled externally. The id is `${ctx.id}:${seq}` (or `.${seq}` when nested).
    */
   promise<T>(opts?: { timeout?: number; data?: any; tags?: { [key: string]: string } }): DurablePromise<T>;
 
@@ -762,7 +762,12 @@ export class AsyncContext implements Context {
   }
 
   private seqid(): string {
-    return `${this.id}.${this.seq}`;
+    // `<promiseId>:<lineage>`: a single `:` separates the promiseId (lineage
+    // origin) from the lineage, and `.` separates lineage segments. The first
+    // segment minted off a bare promiseId (id === originId) uses `:`
+    // (`root` -> `root:1`); deeper segments use `.` (`root:1` -> `root:1.1`).
+    const sep = this.id === this.originId ? ":" : ".";
+    return `${this.id}${sep}${this.seq}`;
   }
 }
 

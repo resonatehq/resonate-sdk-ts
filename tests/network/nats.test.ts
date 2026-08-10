@@ -196,7 +196,7 @@ describe("NatsNetwork.send()", () => {
     await net.init();
 
     // origin is the lineage root: substring before the first dot of the id.
-    await net.send(promiseGetReq("foo.bar.baz", "c1"));
+    await net.send(promiseGetReq("foo:bar.baz", "c1"));
 
     const token = Buffer.from("foo", "utf8").toString("base64url");
     const reqPublish = fake.published.find((p) => p.subject.startsWith("resonate.requests."));
@@ -230,7 +230,7 @@ describe("NatsNetwork.send()", () => {
         action: {
           kind: "promise.create",
           head: { corrId: "c1", version: VERSION },
-          data: { id: "root.child.1", timeoutAt: 1, param: {}, tags: {} },
+          data: { id: "root:child.1", timeoutAt: 1, param: {}, tags: {} },
         },
       },
     };

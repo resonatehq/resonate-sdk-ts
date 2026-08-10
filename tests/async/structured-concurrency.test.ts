@@ -127,8 +127,8 @@ describe("async engine structured concurrency", () => {
       expect(status.kind).toBe("done");
       if (status.kind !== "done") return;
       expect(status.value).toBe("done");
-      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-fire.0");
-      const rec = await getPromise(network, "sc-fire.0");
+      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-fire:0");
+      const rec = await getPromise(network, "sc-fire:0");
       expect(rec?.state).toBe("resolved");
       expect(rec?.value?.data).toBe("side-effect");
     } finally {
@@ -142,10 +142,10 @@ describe("async engine structured concurrency", () => {
       const leafA = async (_i: Info) => "a";
       const leafB = async (_i: Info, x: string) => `b:${x}`;
       const wf = async (ctx: Context) => {
-        const timer = ctx.sleep(60_000); // sc-local.0 — pending remote, ends the pass
+        const timer = ctx.sleep(60_000); // sc-local:0 — pending remote, ends the pass
         const chained = (async () => {
-          const x = await ctx.run<string>("leafA"); // sc-local.1
-          return ctx.run<string>("leafB", x); // sc-local.2 — starts mid-drain
+          const x = await ctx.run<string>("leafA"); // sc-local:1
+          return ctx.run<string>("leafB", x); // sc-local:2 — starts mid-drain
         })();
         await Promise.all([timer, chained]);
         return "done";
@@ -156,13 +156,13 @@ describe("async engine structured concurrency", () => {
       // The pass suspends on the timer only; the chained locals both completed.
       expect(status.kind).toBe("suspended");
       if (status.kind !== "suspended") return;
-      expect(status.awaited).toEqual(["sc-local.0"]);
+      expect(status.awaited).toEqual(["sc-local:0"]);
 
       // The chained run finished INSIDE the pass: its return event is in the
       // trace (not emitted after getTrace) and its durable promise is settled
       // before executeUntilBlocked returned (no settle racing task.suspend).
-      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-local.2");
-      const rec = await getPromise(network, "sc-local.2");
+      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-local:2");
+      const rec = await getPromise(network, "sc-local:2");
       expect(rec?.state).toBe("resolved");
       expect(rec?.value?.data).toBe("b:a");
     } finally {
@@ -175,10 +175,10 @@ describe("async engine structured concurrency", () => {
     try {
       const leafA = async (_i: Info) => "a";
       const wf = async (ctx: Context) => {
-        const timer = ctx.sleep(60_000); // sc-remote.0
+        const timer = ctx.sleep(60_000); // sc-remote:0
         const chained = (async () => {
-          await ctx.run<string>("leafA"); // sc-remote.1
-          return ctx.rpc<string>("remoteB"); // sc-remote.2 — remote, pending
+          await ctx.run<string>("leafA"); // sc-remote:1
+          return ctx.rpc<string>("remoteB"); // sc-remote:2 — remote, pending
         })();
         await Promise.all([timer, chained]);
       };
@@ -189,7 +189,7 @@ describe("async engine structured concurrency", () => {
       // todo was lost (self-healing on resume, but a missed callback).
       expect(status.kind).toBe("suspended");
       if (status.kind !== "suspended") return;
-      expect([...status.awaited].sort()).toEqual(["sc-remote.0", "sc-remote.2"]);
+      expect([...status.awaited].sort()).toEqual(["sc-remote:0", "sc-remote:2"]);
     } finally {
       await network.stop();
     }
@@ -201,13 +201,13 @@ describe("async engine structured concurrency", () => {
       const leafA = async (_i: Info) => "a";
       const leafB = async (_i: Info) => "b";
       const wf = async (ctx: Context) => {
-        const timer = ctx.sleep(60_000); // sc-hops.0
+        const timer = ctx.sleep(60_000); // sc-hops:0
         const chained = (async () => {
-          await ctx.run<string>("leafA"); // sc-hops.1
+          await ctx.run<string>("leafA"); // sc-hops:1
           await null; // non-durable microtask hops between durable ops
           await null;
           await null;
-          return ctx.run<string>("leafB"); // sc-hops.2
+          return ctx.run<string>("leafB"); // sc-hops:2
         })();
         await Promise.all([timer, chained]);
       };
@@ -216,9 +216,9 @@ describe("async engine structured concurrency", () => {
 
       expect(status.kind).toBe("suspended");
       if (status.kind !== "suspended") return;
-      expect(status.awaited).toEqual(["sc-hops.0"]);
-      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-hops.2");
-      expect((await getPromise(network, "sc-hops.2"))?.state).toBe("resolved");
+      expect(status.awaited).toEqual(["sc-hops:0"]);
+      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-hops:2");
+      expect((await getPromise(network, "sc-hops:2"))?.state).toBe("resolved");
     } finally {
       await network.stop();
     }
@@ -238,7 +238,7 @@ describe("async engine structured concurrency", () => {
             leaked = e;
           }
         })();
-        await ctx.sleep(60_000); // sc-zombie.0 — the pass suspends here
+        await ctx.sleep(60_000); // sc-zombie:0 — the pass suspends here
       };
 
       const status = await runRoot(network, { "sc-zombie": wf, leafA }, "sc-zombie");
@@ -247,7 +247,7 @@ describe("async engine structured concurrency", () => {
       await delay(120);
       expect(String(leaked)).toContain("after the pass ended");
       // The panicked op never reached the server: no child promise was created.
-      expect(await getPromise(network, "sc-zombie.1")).toBeUndefined();
+      expect(await getPromise(network, "sc-zombie:1")).toBeUndefined();
     } finally {
       await network.stop();
     }
@@ -276,7 +276,7 @@ describe("async engine structured concurrency", () => {
 
       await delay(120);
       expect(String(leaked)).toContain("after the pass ended");
-      expect(await getPromise(network, "sc-done.0")).toBeUndefined();
+      expect(await getPromise(network, "sc-done:0")).toBeUndefined();
     } finally {
       await network.stop();
     }
