@@ -33,3 +33,6 @@ export {
   uniqueTerminal,
 } from "./trace.js";
 export type { Effects, Func } from "./types.js";
+// The protocol version an external Network implementation must stamp on the
+// responses it produces, so a library outside this package can speak it.
+export { VERSION } from "./util.js";

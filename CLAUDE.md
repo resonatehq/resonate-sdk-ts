@@ -22,8 +22,7 @@ Requires Node >= 22.
 ## Test
 
 ```shell
-npm test             # runs Jest (jest.config.cjs), then the Turso suite
-npm run test:turso   # Turso suite only (needs --experimental-vm-modules; jest.turso.config.cjs)
+npm test             # runs Jest (jest.config.cjs)
 npm run dst          # runs the deterministic simulation (sim/main.ts)
 npm run dst:diff     # differential test: async engine vs generator engine (see diff-testing.md)
 ```
@@ -72,7 +71,6 @@ a workspace member). Run `npm install` at the root; build core first
 | `src/promises.ts` | Durable promise primitives |
 | `src/schedules.ts` | Schedule API |
 | `src/network/` | Networking (remote server communication), shared by both engines |
-| `src/network/turso/` | `TursoNetwork` (`@resonatehq/sdk/turso`) — decentralized: no server, protocol runs in the SDK against one Turso database per workflow plus a tenant-global timeout database (see [turso.md](./turso.md)) |
 | `src/async/` | Async engine source (`@resonatehq/sdk/async`): `resonate.ts` (`Resonate`), `context.ts` (eager ops, `DurablePromise`), `core.ts` (task driver) |
 | `tests/` | Jest unit and integration tests (`tests/async/` for the async engine, `tests/equivalence/` for cross-engine differential tests) |
 | `sim/` | Deterministic simulation (DST) for chaos/reliability testing |

@@ -35,11 +35,6 @@
       "import": "./dist/src/network/postgres.js",
       "default": "./dist/src/network/postgres.js"
     },
-    "./turso": {
-      "types": "./dist/src/network/turso/index.d.ts",
-      "import": "./dist/src/network/turso/index.js",
-      "default": "./dist/src/network/turso/index.js"
-    },
     "./package.json": "./package.json"
   },
   "repository": {
@@ -64,8 +59,7 @@
     "fmt": "biome format ./ --write",
     "prepare": "npm run build",
     "release": "tsx scripts/release.ts",
-    "test": "jest --config jest.config.cjs && npm run test:turso",
-    "test:turso": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.turso.config.cjs",
+    "test": "jest --config jest.config.cjs",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -73,23 +67,11 @@
     "eventsource": "^4.0.0"
   },
   "peerDependencies": {
-    "@libsql/client": "^0.17.0",
     "@nats-io/transport-node": "^3.0.0",
-    "@tursodatabase/database": "^0.7.0",
-    "@tursodatabase/sync": "^0.7.0",
     "pg": "^8.11.0"
   },
   "peerDependenciesMeta": {
-    "@libsql/client": {
-      "optional": true
-    },
     "@nats-io/transport-node": {
-      "optional": true
-    },
-    "@tursodatabase/database": {
-      "optional": true
-    },
-    "@tursodatabase/sync": {
       "optional": true
     },
     "pg": {
@@ -99,11 +81,8 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.10",
     "@jest/globals": "^30.0.0",
-    "@libsql/client": "^0.17.4",
     "@nats-io/nats-core": "^3.4.0",
     "@nats-io/transport-node": "^3.4.0",
-    "@tursodatabase/database": "^0.7.2",
-    "@tursodatabase/sync": "^0.7.2",
     "@types/jest": "30.0.0",
     "@types/node": "^25.9.5",
     "@types/pg": "^8.11.10",
