@@ -84,7 +84,6 @@ workflow owns:
 | Table | Purpose |
 |-------|---------|
 | `timeouts` | `(origin, id, kind, timeout_at)` — the index of armed timers across every origin, so a sweeper can find due work without opening every workflow |
-| `schedules` | schedules, which are tenant-scoped by definition — a schedule's promise id is a template, so the promises it fires belong to many origins |
 
 The timeout table is a **mirror, never the authority**. The origin database
 holds the armed timers; `TursoStore.flush` republishes the origin's slice after
@@ -457,6 +456,11 @@ Resonate Server's SQLite schema and the two are not interchangeable.
 
 * **Tenant-wide `debug.snap`** answers `501` for the same reason; set the
   `resonate:origin` header to snapshot one workflow.
+
+* **Schedules.** `schedule.create`, `schedule.get`, `schedule.search` and
+  `schedule.delete` answer 501. They are the one tenant-scoped part of the
+  protocol, and rather than half-implement them they are left out; a database
+  created by an older build may still carry an unused `schedules` table.
 
 * **`http://` listener addresses.** An `unblock` for one is emitted and handed
   to the local client like any other message, but nothing makes the HTTP call —

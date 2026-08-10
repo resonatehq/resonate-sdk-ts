@@ -1196,78 +1196,24 @@ describe("partitioning", () => {
 // =============================================================================
 
 describe("schedules", () => {
-  test("create is idempotent, get reads it back, delete removes it", async () => {
-    const net = tracked({ tickMs: 60_000 });
+  test("every schedule request answers 501", async () => {
+    // Schedules are the one tenant-scoped part of the protocol and are not
+    // implemented here; they answer 501 rather than half-working.
+    const net = tracked();
     await net.init();
-
-    const created = ok(
-      await net.send({
+    const kinds = [
+      {
         kind: "schedule.create",
-        head: head(),
-        data: {
-          id: "nightly",
-          cron: "0 0 * * *",
-          promiseId: "job.{{.timestamp}}",
-          promiseTimeout: 60_000,
-          promiseParam: {},
-          promiseTags: { "resonate:target": TARGET },
-        },
-      }),
-    );
-    expect(created.data.schedule.id).toBe("nightly");
-    expect(created.data.schedule.nextRunAt).toBeGreaterThan(Date.now());
-
-    const got = ok(await net.send({ kind: "schedule.get", head: head(), data: { id: "nightly" } }));
-    expect(got.data.schedule.cron).toBe("0 0 * * *");
-
-    ok(await net.send({ kind: "schedule.delete", head: head(), data: { id: "nightly" } }));
-    const gone = await net.send({ kind: "schedule.get", head: head(), data: { id: "nightly" } });
-    expect(gone.head.status).toBe(404);
-  });
-
-  test("a schedule without a target is refused", async () => {
-    const net = tracked({ tickMs: 60_000 });
-    await net.init();
-    const res = await net.send({
-      kind: "schedule.create",
-      head: head(),
-      data: {
-        id: "bad",
-        cron: "* * * * *",
-        promiseId: "job.{{.timestamp}}",
-        promiseTimeout: 60_000,
-        promiseParam: {},
-        promiseTags: {},
+        data: { id: "s", cron: "* * * * *", promiseId: "wf.{{.timestamp}}", promiseTimeout: 1000 },
       },
-    });
-    expect(res.head.status).toBe(400);
-  });
-
-  test("a due schedule fires its promise into the origin its id names", async () => {
-    const net = tracked({ tickMs: 60_000 });
-    await net.init();
-
-    ok(
-      await net.send({
-        kind: "schedule.create",
-        head: head(),
-        data: {
-          id: "every-minute",
-          cron: "* * * * *",
-          promiseId: "job.{{.id}}",
-          promiseTimeout: 3_600_000,
-          promiseParam: { data: "tick" },
-          promiseTags: { "resonate:target": TARGET },
-        },
-      }),
-    );
-
-    // Two minutes on, the schedule is due.
-    await net.send({ kind: "debug.tick", head: head(), data: { time: Date.now() + 120_000 } });
-
-    const promise = ok(await net.send({ kind: "promise.get", head: head(), data: { id: "job.every-minute" } }));
-    expect(promise.data.promise.param.data).toBe("tick");
-    expect(promise.data.promise.tags["resonate:schedule"]).toBe("every-minute");
+      { kind: "schedule.get", data: { id: "s" } },
+      { kind: "schedule.search", data: {} },
+      { kind: "schedule.delete", data: { id: "s" } },
+    ] as const;
+    for (const { kind, data } of kinds) {
+      const res = await net.send({ kind, head: head(), data } as any);
+      expect(res.head.status).toBe(501);
+    }
   });
 });
 

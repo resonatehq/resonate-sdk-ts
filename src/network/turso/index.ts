@@ -21,7 +21,7 @@
 //
 // One database is shared: `<prefix><timeoutDatabase>`, the tenant database.
 // It holds what no single workflow owns — the index of armed timers across all
-// origins, and schedules. The timer index is a mirror, republished from the
+// origins. The timer index is a mirror, republished from the
 // origin databases after every commit and re-validated against them before
 // use. It is how a process finds work in a workflow it has never seen.
 //
@@ -90,16 +90,11 @@ import type { Network } from "../network.js";
 import type { Message, PromiseRecord, Request, RequestHead, Response, TaskRecord } from "../types.js";
 import type { TursoConnection, TursoDriver, TursoExecutor } from "./driver.js";
 import {
-  cronOccurrences,
   DEFAULT_RETRY_TIMEOUT,
-  expandPromiseId,
-  nextCron,
   OriginServer,
   type Outcome,
   type OutgoingMessage,
   originOf,
-  ScheduleStore,
-  toScheduleRecord,
 } from "./server.js";
 import { TIMEOUT_PROMISE, TIMEOUT_TASK_LEASE, TIMEOUT_TASK_RETRY, TursoStore } from "./store.js";
 
@@ -146,15 +141,15 @@ export interface TursoNetworkConfig {
    */
   prefix?: string;
   /**
-   * Unprefixed name of the tenant-global database holding the timeout index
-   * and schedules. Default `"timeouts"`.
+   * Unprefixed name of the tenant-global database holding the timeout index.
+   * Default `"timeouts"`.
    */
   timeoutDatabase?: string;
   /** Worker group; a task targets the group (anycast). Default `"default"`. */
   group?: string;
   /** This process's id; a callback or listener targets it (unicast). */
   pid?: string;
-  /** How often to sweep due timers and schedules, in ms. Default 250. */
+  /** How often to sweep due timers, in ms. Default 250. */
   tickMs?: number;
   /**
    * How long a dispatched task may go unclaimed before it is redispatched, in
@@ -208,7 +203,6 @@ export interface TursoNetworkConfig {
 /** The subset of a request that decides which database serves it. */
 type Route =
   | { kind: "origin"; origin: string }
-  | { kind: "tenant" }
   | { kind: "multi"; origins: string[] }
   | { kind: "invalid"; reason: string }
   | { kind: "unsupported"; reason: string };
@@ -343,23 +337,6 @@ export class TursoNetwork implements Network {
       case "invalid":
         return { kind: req.kind, status: 400, data: route.reason };
 
-      case "tenant":
-        return await this.inTenant(async (tx) => {
-          const schedules = new ScheduleStore(tx, now);
-          switch (req.kind) {
-            case "schedule.get":
-              return await schedules.get(req.data.id);
-            case "schedule.create":
-              return await schedules.create(req.data);
-            case "schedule.delete":
-              return await schedules.delete(req.data.id);
-            case "schedule.search":
-              return await schedules.search(req.data.tags, req.data.limit, req.data.cursor);
-            default:
-              return { kind: req.kind, status: 501, data: "Not implemented" };
-          }
-        });
-
       case "origin":
         return await this.inOrigin(route.origin, now, (server) => server.apply(req), this.pushNow(req));
 
@@ -386,10 +363,9 @@ export class TursoNetwork implements Network {
   /**
    * Pick the database that serves a request.
    *
-   * Almost everything routes by the origin of the id it names. The exceptions
-   * are the ones that are not about a single workflow: schedules are tenant
-   * scoped, and the two searches span workflows and so can only be served when
-   * the caller narrows them to one origin.
+   * Everything routes by the origin of the id it names, except the two
+   * searches, which span workflows and so can only be served when the caller
+   * narrows them to one origin.
    */
   private route(req: Request): Route {
     const declared = req.head["resonate:origin"];
@@ -471,7 +447,10 @@ export class TursoNetwork implements Network {
       case "schedule.create":
       case "schedule.delete":
       case "schedule.search":
-        return { kind: "tenant" };
+        return {
+          kind: "unsupported",
+          reason: "Schedules are not implemented by TursoNetwork.",
+        };
 
       default:
         return { kind: "unsupported", reason: "Not implemented" };
@@ -593,12 +572,12 @@ export class TursoNetwork implements Network {
   }
 
   // ---------------------------------------------------------------------------
-  // TICK: timer sweep and schedule firing
+  // TICK: timer sweep
   // ---------------------------------------------------------------------------
   //
   // Messages are not ticked — they go straight to the client when the
   // transaction that produced them commits. What the tick does is fire due
-  // timers, and that is also how work reaches a *different* process: an
+  // timers, which is also how work reaches a *different* process: an
   // unclaimed task's retry timer is durable and indexed tenant-wide, so
   // whichever process sweeps it re-emits the execute and delivers it locally.
 
@@ -614,7 +593,6 @@ export class TursoNetwork implements Network {
     const run = (async () => {
       try {
         await this.sweepTimeouts(now);
-        await this.fireSchedules(now);
       } catch (err) {
         if (!this.stopped) {
           this.logger.warn({ component: "network", error: String(err) }, "turso tick failed");
@@ -691,45 +669,6 @@ export class TursoNetwork implements Network {
    * re-firing after a crash finds the promise already there and writes
    * nothing, and the schedule is advanced only once every occurrence is in.
    */
-  private async fireSchedules(now: number): Promise<void> {
-    const tenant = await this.store.tenant();
-    const due = await new ScheduleStore(tenant, now).due();
-
-    for (const schedule of due) {
-      const record = toScheduleRecord(schedule);
-      let occurrences: number[];
-      try {
-        occurrences = cronOccurrences(record.cron, schedule.last_run_at ?? schedule.next_run_at - 1, now);
-      } catch (err) {
-        this.logger.warn(
-          { component: "network", schedule: schedule.id, error: String(err) },
-          "turso skipped a schedule with an unparseable cron expression",
-        );
-        continue;
-      }
-      if (occurrences.length === 0) continue;
-
-      for (const at of occurrences) {
-        const id = expandPromiseId(record.promiseId, record.id, at);
-        await this.inOrigin(originOf(id), at, (server) =>
-          server.apply({
-            kind: "promise.create",
-            head: { corrId: randomUUID(), version: VERSION },
-            data: {
-              id,
-              timeoutAt: at + record.promiseTimeout,
-              param: record.promiseParam,
-              tags: { ...record.promiseTags, "resonate:schedule": record.id },
-            },
-          }),
-        );
-      }
-
-      const last = occurrences[occurrences.length - 1];
-      await this.inTenant((tx) => new ScheduleStore(tx, now).advance(schedule.id, last, nextCron(record.cron, last)));
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // DEBUG
   // ---------------------------------------------------------------------------
@@ -770,9 +709,7 @@ export class TursoNetwork implements Network {
   /** Empty every database this network has open. Test support only. */
   private async reset(): Promise<void> {
     await this.inTenant(async (tx) => {
-      for (const table of ["timeouts", "schedules"]) {
-        await tx.execute(`DELETE FROM ${table}`);
-      }
+      await tx.execute("DELETE FROM timeouts");
     });
     // Origin databases are created on demand and never enumerated, so only the
     // ones this process has open can be cleared. A caller wanting a clean slate

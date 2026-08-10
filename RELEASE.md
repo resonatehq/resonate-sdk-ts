@@ -15,9 +15,10 @@ account; see `turso.md` for numbers and `experiments/` for the scripts.
 
 ## New Features
 
-- **`TursoNetwork`** — the protocol's full transition relation over Turso
+- **`TursoNetwork`** — the protocol's transition relation over Turso
   databases: promises, tasks with fenced leases, callbacks/listeners, durable
-  timers, schedules (cron), static fleet sharding (`shard` + `ownerOf`).
+  timers, static fleet sharding (`shard` + `ownerOf`). Schedules are not
+  implemented and answer 501.
 - **Three drivers**: `tursoLocalDriver` (embedded), `tursoSyncDriver`
   (embedded replica ↔ Turso Cloud), `libsqlDriver` (libSQL/Hrana); the
   `TursoDriver` interface is one method, `open(name)`.
@@ -92,8 +93,6 @@ one was already fixed, and the rest are fixed here:
   `task.search` now apply the same projection to the filter as to the payload;
   an internal promise past its deadline was previously returned under
   `state=pending` while reporting `rejected_timedout`, forever.
-- **Cron parity (Python).** Day-of-week `7` is now a legal value inside the
-  field's range, so `5-7` means Fri–Sun instead of silently matching nothing.
 - **Bounded memory.** The per-origin lock and fingerprint maps no longer grow
   once per workflow ever seen.
 - **Malformed tags (Python).** `resonate:delay` parses ASCII digits only,
