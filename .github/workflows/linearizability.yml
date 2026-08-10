@@ -12,11 +12,11 @@
 #   conccheck  does some schedule explain SOME order consistent with the
 #              real call/return intervals (the claim about the server)
 #
-# Every checked workload must pass BOTH. W3 runs twice: n=3 m=2 for the
-# closed-form conformance counts (value=m^n, promises=size, tasks=remote —
-# asserted by the workload itself; its 78-event single-origin trace is past
-# the porc checker's documented state-explosion ceiling, so it is recorded
-# and uploaded but not checker-gated) and n=2 m=2 checker-gated.
+# Every checked workload must pass BOTH — including W3's full n=3 m=2 tree
+# (78 single-origin events), which the checker handles since the cone-of-
+# influence reduction was ported to valid/porc; W3 additionally asserts the
+# closed-form conformance counts (value=m^n, promises=size, tasks=remote)
+# from the origin's own document.
 #
 # Chaos runs (S3_CHAOS=1) repeat W1 and W2 against a lying store — lost
 # acknowledgments, vanished writes, delayed answers — with one seed fixed
@@ -143,16 +143,11 @@ jobs:
           workload w1     index1.ts w1 4
           workload w2     index2.ts w2 3
           workload w2rpc  index2.ts w2rpc 3 --via rpc
-          workload w3     index3.ts w3 2 2
+          workload w3     index3.ts w3 3 2
           gate w1
           gate w2
           gate w2rpc
           gate w3
-
-          # The count-conformance tree: gated by its own closed-form
-          # assertions, recorded but past the checker's ceiling (see header).
-          workload w3big  index3.ts w3big 3 2
-          echo "| w3big | (counts only) | $([ $FAILED -eq 0 ] && echo PASSED || echo see-log) | $(pending_of w3big) |" >> "$GITHUB_STEP_SUMMARY"
 
           for seed in 42 $((GITHUB_RUN_ID % 100000)) $EXTRA_SEEDS; do
             WL_ENV="S3_CHAOS=1 S3_SEED=$seed"
@@ -165,7 +160,6 @@ jobs:
           {
             echo ""
             echo "Chaos reproduces with \`S3_CHAOS=1 S3_SEED=<seed> npx tsx workloads/index2.ts <id> 3\`."
-            echo "w3big is gated by its closed-form result/promise/task counts, not by the checkers (single-origin, past the porc ceiling)."
           } >> "$GITHUB_STEP_SUMMARY"
 
           exit $FAILED
