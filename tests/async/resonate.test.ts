@@ -819,7 +819,6 @@ describe("Resonate usage tests", () => {
       expect(await (await resonate.get<string>(id)).result()).toBe("bar");
     }
   });
-
 });
 
 describe("Resonate environment variable initialization", () => {

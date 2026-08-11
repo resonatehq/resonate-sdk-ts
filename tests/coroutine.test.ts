@@ -355,8 +355,6 @@ describe("Coroutine", () => {
     expect(r).toMatchObject({ type: "done", result: { kind: "value", value: 42 } });
   });
 
-
-
   test("detached breaks the origin lineage and starts a new one, even with an explicit id", () => {
     // "detached" is fire-and-forget and runs as its own root, so resonate:origin
     // is reset to its own id (origin == id == branch) -- a fresh lineage -- even

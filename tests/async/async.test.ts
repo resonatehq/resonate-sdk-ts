@@ -307,8 +307,6 @@ describe("Resonate — async/await engine", () => {
     expect(await (await resonate.get<number>(childId)).result()).toBe(50);
   });
 
-
-
   test("ctx.panic aborts the pass: execution stops and nothing settles", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     jest.spyOn(console, "warn").mockImplementation(() => {});

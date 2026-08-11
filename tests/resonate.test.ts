@@ -1032,7 +1032,6 @@ describe("Resonate usage tests", () => {
 
     await resonate.stop();
   });
-
 });
 
 describe("Context usage tests", () => {
