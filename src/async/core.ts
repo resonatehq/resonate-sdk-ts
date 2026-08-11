@@ -183,11 +183,6 @@ export class Core {
           {
             id: rootPromise.id,
             oId: rootPromise.tags["resonate:origin"] ?? rootPromise.id,
-            // The id-generation prefix, propagated unchanged across re-roots (a
-            // detached child resets origin to its own id but carries prefix
-            // forward), so recursive detached ids stay bounded. Falls back to
-            // the id like oId.
-            prId: rootPromise.tags["resonate:prefix"] ?? rootPromise.id,
             func: registered.func.name,
             clock: this.clock,
             registry: this.registry,

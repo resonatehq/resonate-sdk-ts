@@ -31,10 +31,6 @@ export interface Info {
   readonly id: string;
   readonly parentId: string;
   readonly originId: string;
-  /** The id-generation prefix (resonate:prefix). Set once at the top and
-   * propagated down unchanged — through every child AND across detached
-   * re-roots — so recursive detached ids stay bounded. */
-  readonly prefixId: string;
   readonly branchId: string;
   readonly timeoutAt: number;
   readonly attempt: number;
@@ -166,7 +162,6 @@ export class DurablePromise<T> implements Promise<T> {
 interface AsyncContextConfig {
   id: string;
   oId?: string;
-  prId?: string;
   bId?: string;
   pId?: string;
   func: string;
@@ -182,7 +177,6 @@ interface AsyncContextConfig {
 export class AsyncContext implements Context {
   readonly id: string;
   readonly originId: string;
-  readonly prefixId: string;
   readonly branchId: string;
   readonly parentId: string;
   readonly func: string;
@@ -219,7 +213,6 @@ export class AsyncContext implements Context {
   constructor(cfg: AsyncContextConfig, effects: Effects, trace: TraceCollector) {
     this.id = cfg.id;
     this.originId = cfg.oId ?? cfg.id;
-    this.prefixId = cfg.prId ?? cfg.id;
     this.branchId = cfg.bId ?? cfg.id;
     this.parentId = cfg.pId ?? cfg.id;
     this.func = cfg.func;
@@ -278,7 +271,6 @@ export class AsyncContext implements Context {
       {
         id: cfg.id,
         oId: this.originId,
-        prId: this.prefixId,
         bId: this.branchId,
         pId: this.id,
         func: cfg.func,
@@ -471,7 +463,7 @@ export class AsyncContext implements Context {
     // Detached ids are minted off the fixed id-generation prefix (NOT the grown
     // id or the diverging origin), so recursive detached stays bounded at one
     // segment past the prefix. Mirrors the generator engine (src/context.ts).
-    const id = idChanged ? (opts.id as string) : util.detachedId(this.prefixId, this.seqid());
+    const id = idChanged ? (opts.id as string) : util.detachedId(this.originId, this.seqid());
     this.seq++;
 
     const func = registered ? registered.name : (funcOrName as string);
@@ -658,9 +650,6 @@ export class AsyncContext implements Context {
         "resonate:branch": this.branchId,
         "resonate:parent": this.id,
         "resonate:origin": breaksLineage ? id : this.originId,
-        // Prefix is set at the top and propagates down unchanged forever,
-        // independent of origin (which detached/explicit-id may break).
-        "resonate:prefix": this.prefixId,
         ...opts.tags,
       },
     });
@@ -687,9 +676,6 @@ export class AsyncContext implements Context {
         "resonate:branch": id,
         "resonate:parent": this.id,
         "resonate:origin": breaksLineage ? id : this.originId,
-        // Prefix is set at the top and propagates down unchanged forever,
-        // independent of origin (which detached/explicit-id may break).
-        "resonate:prefix": this.prefixId,
         ...opts.tags,
       },
     });
@@ -708,9 +694,6 @@ export class AsyncContext implements Context {
         "resonate:branch": id,
         "resonate:parent": this.id,
         "resonate:origin": id,
-        // Prefix carries forward unchanged across the detached re-root (origin
-        // breaks, prefix does not) — this is what keeps recursive ids bounded.
-        "resonate:prefix": this.prefixId,
         ...opts.tags,
       },
     });
@@ -737,8 +720,6 @@ export class AsyncContext implements Context {
         "resonate:branch": id,
         "resonate:parent": this.id,
         "resonate:origin": this.originId,
-        // Prefix is set at the top and propagates down unchanged forever.
-        "resonate:prefix": this.prefixId,
         ...tags,
       },
     });
@@ -754,8 +735,6 @@ export class AsyncContext implements Context {
         "resonate:branch": id,
         "resonate:parent": this.id,
         "resonate:origin": this.originId,
-        // Prefix is set at the top and propagates down unchanged forever.
-        "resonate:prefix": this.prefixId,
         "resonate:timer": "true",
       },
     });

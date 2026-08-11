@@ -118,7 +118,6 @@ describe("Resonate usage tests", () => {
     expect(await res(resonate.run("foo.1", foo))).toBe("hello");
     expect((await resonate.promises.get("foo.1")).tags).toEqual({
       "resonate:origin": "foo.1",
-      "resonate:prefix": "foo.1",
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
@@ -126,7 +125,6 @@ describe("Resonate usage tests", () => {
     });
     expect((await resonate.promises.get("foo.1:0")).tags).toEqual({
       "resonate:origin": "foo.1",
-      "resonate:prefix": "foo.1",
       "resonate:branch": "foo.1:0",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
@@ -134,7 +132,6 @@ describe("Resonate usage tests", () => {
     });
     expect((await resonate.promises.get("foo.1:0.0")).tags).toEqual({
       "resonate:origin": "foo.1",
-      "resonate:prefix": "foo.1",
       "resonate:branch": "foo.1:0.0",
       "resonate:parent": "foo.1:0",
       "resonate:scope": "global",
@@ -152,7 +149,6 @@ describe("Resonate usage tests", () => {
     expect(await res(f.run("foo.1"))).toBe("hello");
     expect((await resonate.promises.get("foo.1")).tags).toEqual({
       "resonate:origin": "foo.1",
-      "resonate:prefix": "foo.1",
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "global",
@@ -160,14 +156,12 @@ describe("Resonate usage tests", () => {
     });
     expect((await resonate.promises.get("foo.1:0")).tags).toEqual({
       "resonate:origin": "foo.1",
-      "resonate:prefix": "foo.1",
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1",
       "resonate:scope": "local",
     });
     expect((await resonate.promises.get("foo.1:0.0")).tags).toEqual({
       "resonate:origin": "foo.1",
-      "resonate:prefix": "foo.1",
       "resonate:branch": "foo.1",
       "resonate:parent": "foo.1:0",
       "resonate:scope": "local",
@@ -384,7 +378,6 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "noopts-1",
       "resonate:parent": "noopts-1",
       "resonate:origin": "noopts-1",
-      "resonate:prefix": "noopts-1",
     });
   });
 
@@ -443,7 +436,6 @@ describe("Resonate usage tests", () => {
     expect((await resonate.promises.get("hitl-1:0")).tags).toEqual({
       "resonate:branch": "hitl-1:0",
       "resonate:origin": "hitl-1",
-      "resonate:prefix": "hitl-1",
       "resonate:parent": "hitl-1",
       "resonate:scope": "global",
     });
@@ -470,7 +462,6 @@ describe("Resonate usage tests", () => {
     expect(durable.tags).toEqual({
       "resonate:branch": "timeout-1:0",
       "resonate:origin": "timeout-1",
-      "resonate:prefix": "timeout-1",
       "resonate:parent": "timeout-1",
       "resonate:scope": "global",
     });
@@ -496,7 +487,6 @@ describe("Resonate usage tests", () => {
       "resonate:timer": "true",
       "resonate:branch": "sleep-1:0",
       "resonate:origin": "sleep-1",
-      "resonate:prefix": "sleep-1",
       "resonate:parent": "sleep-1",
       "resonate:scope": "global",
     });
@@ -588,7 +578,6 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "tdef-1:0",
       "resonate:parent": "tdef-1",
       "resonate:origin": "tdef-1",
-      "resonate:prefix": "tdef-1",
       "resonate:target": "local://any@default",
     });
   });
@@ -610,7 +599,6 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "topt-1:0",
       "resonate:parent": "topt-1",
       "resonate:origin": "topt-1",
-      "resonate:prefix": "topt-1",
       "resonate:target": "local://any@remoteTarget",
     });
   });
@@ -632,7 +620,6 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "turl-1:0",
       "resonate:parent": "turl-1",
       "resonate:origin": "turl-1",
-      "resonate:prefix": "turl-1",
       "resonate:target": "http://faasurl.com",
     });
   });
@@ -654,7 +641,6 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "troot-1",
       "resonate:parent": "troot-1",
       "resonate:origin": "troot-1",
-      "resonate:prefix": "troot-1",
       "resonate:target": "http://faasurl.com",
     });
   });
@@ -675,7 +661,6 @@ describe("Resonate usage tests", () => {
       "resonate:branch": "troot-2",
       "resonate:parent": "troot-2",
       "resonate:origin": "troot-2",
-      "resonate:prefix": "troot-2",
       "resonate:target": "local://any@default",
     });
   });
@@ -835,42 +820,6 @@ describe("Resonate usage tests", () => {
     }
   });
 
-  test("Using prefix at Resonate class prefixes all the promises", async () => {
-    const prefix = "myPrefix";
-    resonate = new Resonate({ prefix });
-
-    const qux = async (info: Info): Promise<string> => {
-      expect(info.id.startsWith(prefix)).toBe(true);
-      expect(info.id.startsWith(`${prefix}:${prefix}`)).toBe(false);
-      return "qux";
-    };
-
-    const baz = async (ctx: Context): Promise<string> => {
-      expect(ctx.id.startsWith(prefix)).toBe(true);
-      expect(ctx.id.startsWith(`${prefix}:${prefix}`)).toBe(false);
-      await ctx.run(qux);
-      return "baz";
-    };
-
-    const bar = async (ctx: Context): Promise<string> => {
-      expect(ctx.id.startsWith(prefix)).toBe(true);
-      expect(ctx.id.startsWith(`${prefix}:${prefix}`)).toBe(false);
-      return "bar";
-    };
-
-    const foo = async (ctx: Context): Promise<string> => {
-      const p = ctx.run(bar);
-      await ctx.run(baz);
-      await ctx.run(qux);
-      await p;
-      return "ok";
-    };
-    const f = resonate.register("pfxfoo", foo);
-
-    const h = await f.run("fooId");
-    expect(h.id).toBe(`${prefix}:fooId`);
-    expect(await h.result()).toBe("ok");
-  });
 });
 
 describe("Resonate environment variable initialization", () => {

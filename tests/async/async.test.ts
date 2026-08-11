@@ -307,56 +307,7 @@ describe("Resonate — async/await engine", () => {
     expect(await (await resonate.get<number>(childId)).result()).toBe(50);
   });
 
-  test("resonate:prefix is set at the root and propagates to every child create", async () => {
-    const recording = new RecordingNetwork(new LocalNetwork({ pid: "default", group: "default" }));
-    resonate = new Resonate({ network: recording, ttl: Number.MAX_SAFE_INTEGER });
-    resonate.register("pchild", async (_info: Info, n: number): Promise<number> => n);
-    resonate.register("pdet", async (_info: Info): Promise<void> => {});
-    const wf = async (ctx: Context): Promise<number> => {
-      const v = await ctx.run<number>("pchild", 7);
-      await ctx.sleep(1);
-      await ctx.detached("pdet");
-      return v;
-    };
-    resonate.register("prefixwf", wf);
 
-    await (await resonate.run("prefix-1", wf)).result();
-
-    expect(recording.tags.get("prefix-1")?.["resonate:prefix"]).toBe("prefix-1"); // root
-    expect(recording.tags.get("prefix-1:0")?.["resonate:prefix"]).toBe("prefix-1"); // local child
-    expect(recording.tags.get("prefix-1:1")?.["resonate:prefix"]).toBe("prefix-1"); // sleep timer
-    const detachedId = recording.creates.find((id) => id.startsWith("prefix-1:d"));
-    expect(detachedId).toMatch(/^prefix-1:d[0-9a-f]{14}$/);
-    expect(recording.tags.get(detachedId as string)?.["resonate:prefix"]).toBe("prefix-1");
-  });
-
-  test("nested detached ids stay bounded via the fixed prefix", async () => {
-    resonate = newResonate();
-    const seen: { id: string; prefixId: string; originId: string }[] = [];
-    const deepest = Promise.withResolvers<void>();
-    const nest = async (ctx: Context, depth: number): Promise<void> => {
-      seen.push({ id: ctx.id, prefixId: ctx.prefixId, originId: ctx.originId });
-      if (depth >= 3) {
-        deepest.resolve();
-        return;
-      }
-      await ctx.detached("nest", depth + 1);
-    };
-    resonate.register("nest", nest);
-
-    await (await resonate.run("nest-root", nest, 1)).result();
-    await deepest.promise;
-
-    expect(seen).toHaveLength(3);
-    expect(seen[0].id).toBe("nest-root");
-    // Every level keeps the top-level root as its id-generation prefix, so each
-    // detached id is exactly one `.d` segment past it — bounded at any depth.
-    for (const s of seen) expect(s.prefixId).toBe("nest-root");
-    expect(seen[1].id).toMatch(/^nest-root:d[0-9a-f]{14}$/);
-    expect(seen[2].id).toMatch(/^nest-root:d[0-9a-f]{14}$/);
-    // The detached re-root breaks lineage: origin resets to its own id.
-    expect(seen[1].originId).toBe(seen[1].id);
-  });
 
   test("ctx.panic aborts the pass: execution stops and nothing settles", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});

@@ -16,9 +16,7 @@ describe("engine equivalence (generator vs async)", () => {
   test("sleep", () => expectEquivalent(sleep), 30_000);
   test("human-in-the-loop (DPC)", () => expectEquivalent(humanInTheLoop), 30_000);
 
-  // Detached id is hashed from prefixId (generator) vs originId (async). For a
-  // top-level parent those coincide, so this currently passes; a nested-detached
-  // variant would surface the divergence. Kept as a live test to catch a
-  // regression either way.
+  // Detached id is hashed from the lineage origin id in both engines, so they
+  // agree. Kept as a live test to catch a regression either way.
   test("detached", () => expectEquivalent(detached), 30_000);
 });

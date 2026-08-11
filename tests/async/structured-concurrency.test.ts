@@ -50,7 +50,7 @@ function newCore(registry: Registry, network: LocalNetwork): Core {
     registry,
     heartbeat: new NoopHeartbeat(),
     dependencies: new Map(),
-    optsBuilder: new OptionsBuilder({ match: (target: string) => target, idPrefix: "" }),
+    optsBuilder: new OptionsBuilder({ match: (target: string) => target }),
     logger: new ConsoleLogger("error"),
   });
 }

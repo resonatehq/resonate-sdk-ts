@@ -59,7 +59,7 @@ function buildCore(fns: Record<string, AnyFunc>): {
     registry,
     heartbeat: new NoopHeartbeat(),
     dependencies: new Map(),
-    optsBuilder: new OptionsBuilder({ match: (t: string) => t, idPrefix: "test-" }),
+    optsBuilder: new OptionsBuilder({ match: (t: string) => t }),
     logger: new ConsoleLogger("error"),
   });
 

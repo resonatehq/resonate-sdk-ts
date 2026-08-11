@@ -24,9 +24,7 @@ type Snap200 = Extract<DebugSnapRes, { head: { status: 200 } }>["data"];
 export type SnapMode = "wallclock" | "stepclock";
 
 /** Tags that legitimately differ between the engines and are excluded from the
- * canonical projection. Currently empty: `resonate:prefix` used to be excluded
- * (former divergence #5) but the async engine now sets and propagates it
- * identically, so it is compared like every other tag. */
+ * canonical projection. Currently empty. */
 const DEFAULT_STRIP_TAGS: string[] = [];
 
 export type CanonPromise = {

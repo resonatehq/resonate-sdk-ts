@@ -57,7 +57,6 @@ export class Resonate {
 
   private pid: string;
   private ttl: number;
-  private idPrefix;
 
   private core: Core;
   private codec: Codec;
@@ -94,8 +93,6 @@ export class Resonate {
    * @param options.logger - Custom logger implementation. Defaults to {@link ConsoleLogger}.
    * @param options.encryptor - Payload encryptor. Defaults to {@link NoopEncryptor}.
    * @param options.network - Custom network implementation. Defaults to `undefined`.
-   * @param options.prefix - ID prefix applied to generated IDs. Defaults to
-   *   `process.env.RESONATE_PREFIX` when set.
    */
   constructor({
     url = undefined,
@@ -109,7 +106,6 @@ export class Resonate {
     logger = undefined,
     encryptor = undefined,
     network = undefined,
-    prefix = undefined,
   }: {
     url?: string;
     group?: string;
@@ -122,14 +118,10 @@ export class Resonate {
     logger?: Logger;
     encryptor?: Encryptor;
     network?: Network;
-    prefix?: string;
   } = {}) {
     this.clock = new WallClock();
     this.ttl = ttl;
     this.codec = new Codec(encryptor ?? new NoopEncryptor());
-
-    const resolvedPrefix = prefix ?? getEnv("RESONATE_PREFIX");
-    this.idPrefix = resolvedPrefix ? `${resolvedPrefix}:` : "";
 
     // Resolve logger: explicit logger > ConsoleLogger with resolved level
     // logLevel takes precedence over verbose; verbose: true -> "debug"
@@ -182,7 +174,7 @@ export class Resonate {
     this.registry = new Registry();
     this.dependencies = new Map();
 
-    this.optsBuilder = new OptionsBuilder({ match: this.network.match.bind(this.network), idPrefix: this.idPrefix });
+    this.optsBuilder = new OptionsBuilder({ match: this.network.match.bind(this.network) });
 
     this.core = new Core({
       pid: this.pid,
@@ -310,8 +302,6 @@ export class Resonate {
       );
     }
 
-    id = `${this.idPrefix}${id}`;
-
     util.assert(registered.version > 0, "function version must be greater than zero");
     const { promise, task } = await this.taskCreate({
       kind: "task.create",
@@ -337,9 +327,6 @@ export class Resonate {
             tags: {
               ...opts.tags,
               "resonate:origin": id,
-              // A genuine top-level root is its own lineage origin AND its own
-              // id-generation prefix; the prefix then propagates down unchanged.
-              "resonate:prefix": id,
               "resonate:branch": id,
               "resonate:parent": id,
               "resonate:scope": "global",
@@ -387,8 +374,6 @@ export class Resonate {
       throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
-    id = `${this.idPrefix}${id}`;
-
     const func = registered ? registered.name : (funcOrName as string);
     const version = registered ? registered.version : opts.version || 1;
     const promise = await this.promiseCreate({
@@ -409,9 +394,6 @@ export class Resonate {
         tags: {
           ...opts.tags,
           "resonate:origin": id,
-          // A genuine top-level root is its own lineage origin AND its own
-          // id-generation prefix; the prefix then propagates down unchanged.
-          "resonate:prefix": id,
           "resonate:branch": id,
           "resonate:parent": id,
           "resonate:scope": "global",
@@ -475,7 +457,7 @@ export class Resonate {
       version: registered ? registered.version : opts.version || 1,
     });
 
-    await this.schedules.create(name, cron, `${this.idPrefix}{{.id}}.{{.timestamp}}`, opts.timeout, {
+    await this.schedules.create(name, cron, "{{.id}}.{{.timestamp}}", opts.timeout, {
       promiseHeaders: headers,
       promiseData: data,
       promiseTags: { ...opts.tags, "resonate:target": opts.target },
@@ -487,7 +469,6 @@ export class Resonate {
   }
 
   public async get<T = any>(id: string): Promise<ResonateHandle<T>> {
-    id = `${this.idPrefix}${id}`;
     const promise = await this.promiseGet({
       kind: "promise.get",
       head: { corrId: randomUUID(), version: util.VERSION },

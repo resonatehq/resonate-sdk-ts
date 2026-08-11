@@ -13,7 +13,7 @@ function makeCtx({
   timeout = Number.MAX_SAFE_INTEGER,
 } = {}) {
   const registry = new Registry();
-  const optsBuilder = new OptionsBuilder({ match: (t) => t, idPrefix: "" });
+  const optsBuilder = new OptionsBuilder({ match: (t) => t });
   return new InnerContext({
     id: "test",
     func: "testFunc",
