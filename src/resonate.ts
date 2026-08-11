@@ -82,8 +82,7 @@ export class Resonate {
    * @param options - Configuration options for the client.
    * @param options.url - Resonate server URL. Falls back to `process.env.RESONATE_URL`.
    *   If no URL is resolved, a local in-memory network is used.
-   * @param options.group - Worker group name. Defaults to
-   *   `process.env.RESONATE_GROUP` when set, otherwise `"default"`.
+   * @param options.group - Worker group name. Defaults to `"default"`.
    * @param options.pid - Process identifier for the client. Defaults to a random UUID.
    * @param options.ttl - Time-to-live (in seconds) for claimed tasks. Defaults to `1 * util.MIN`.
    * @param options.token - Bearer token for authentication. Passed through to HttpNetwork
@@ -100,7 +99,7 @@ export class Resonate {
    */
   constructor({
     url = undefined,
-    group = undefined,
+    group = "default",
     pid = undefined,
     ttl = 1 * util.MIN,
     token = undefined,
@@ -146,12 +145,6 @@ export class Resonate {
     // /token/timeout env var resolution is HttpNetwork's responsibility (3.7).
     const resolvedUrl = url ?? (getEnv("RESONATE_URL") || undefined);
 
-    // Determine the group: group arg > RESONATE_GROUP env var > "default".
-    // The env var lets a deployment place a worker in a group it was not
-    // written to know about — the Resonate server's modal:// transport, for
-    // one, assigns each sandbox its own group and passes it in this way.
-    const resolvedGroup = group ?? (getEnv("RESONATE_GROUP") || undefined) ?? "default";
-
     this.pid = pid ?? randomUUID().replace(/-/g, "");
 
     let heartbeat: boolean;
@@ -160,7 +153,7 @@ export class Resonate {
       heartbeat = true;
     } else if (resolvedUrl) {
       const adapter = new PollMessageSource({
-        url: `${resolvedUrl}/poll/${encodeURIComponent(resolvedGroup)}/${encodeURIComponent(this.pid)}`,
+        url: `${resolvedUrl}/poll/${encodeURIComponent(group)}/${encodeURIComponent(this.pid)}`,
         token,
         logger: this.logger,
       });
@@ -174,7 +167,7 @@ export class Resonate {
       });
       heartbeat = true;
     } else {
-      this.network = new LocalNetwork({ pid: this.pid, group: resolvedGroup });
+      this.network = new LocalNetwork({ pid: this.pid, group });
       heartbeat = false;
     }
 
