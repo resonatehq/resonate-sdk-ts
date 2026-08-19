@@ -5,7 +5,6 @@
     "noEmit": true,
     "paths": {
       "@resonatehq/base": ["./packages/base/src/index.ts"],
-      "@resonatehq/connector-http": ["./packages/connector-http/src/index.ts"],
       "@resonatehq/connector-nats": ["./packages/connector-nats/src/index.ts"],
       "@resonatehq/connector-pg": ["./packages/connector-pg/src/index.ts"]
     }
@@ -16,7 +15,6 @@
     "sim/**/*",
     "examples/**/*",
     "packages/base/src/**/*",
-    "packages/connector-http/src/**/*",
     "packages/connector-nats/src/**/*",
     "packages/connector-nats/tests/**/*",
     "packages/connector-pg/src/**/*"

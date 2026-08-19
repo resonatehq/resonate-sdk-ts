@@ -7,8 +7,9 @@ import {
   type Network,
   type Source,
 } from "@resonatehq/base";
-import { HttpConnection, SseConnection } from "@resonatehq/connector-http";
+import { HttpConnection } from "./http.js";
 import { LocalConnection } from "./local.js";
+import { SseConnection } from "./sse.js";
 
 // =============================================================================
 // Connection resolution

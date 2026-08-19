@@ -38,7 +38,7 @@
     "dist/src"
   ],
   "scripts": {
-    "build": "npm run build --workspace @resonatehq/base --workspace @resonatehq/connector-http && tsc -p tsconfig.build.json",
+    "build": "npm run build --workspace @resonatehq/base && tsc -p tsconfig.build.json",
     "build:packages": "npm run build --workspaces --if-present",
     "check": "biome check ./",
     "check:fix": "biome check ./ --write",
@@ -55,8 +55,8 @@
   },
   "dependencies": {
     "@resonatehq/base": "^0.1.0",
-    "@resonatehq/connector-http": "^0.1.0",
-    "cron-parser": "^5.3.0"
+    "cron-parser": "^5.3.0",
+    "eventsource": "^4.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.10",

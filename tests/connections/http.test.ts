@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import { ResonateTimeoutException } from "@resonatehq/base";
-import { HttpConnection } from "@resonatehq/connector-http";
+import { HttpConnection } from "../../src/connections/http.js";
 import { VERSION } from "../../src/util.js";
 
 // Helper: create a local HTTP server that responds on

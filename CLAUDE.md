@@ -49,7 +49,6 @@ independently:
 |---------|-----|---------|--------------|
 | core | `.` (root) | Node | `@resonatehq/sdk` |
 | base | `packages/base` | any | `@resonatehq/base` |
-| connector-http | `packages/connector-http` | any (fetch + EventSource) | `@resonatehq/connector-http` |
 | connector-nats | `packages/connector-nats` | Node | `@resonatehq/connector-nats` |
 | connector-pg | `packages/connector-pg` | Node | `@resonatehq/connector-pg` |
 | aws | `packages/aws` | Node (Lambda) | `@resonatehq/aws` |
@@ -60,11 +59,11 @@ independently:
 protocols defined in `@resonatehq/base` (`packages/base/src/connection.ts`):
 `Network` (request/response: `send`/`start`/`stop`) and `Source` (push:
 `recv`/`unicast`/`anycast`/`match`/`pid`/`group`/`start`/`stop`). Every
-implementation is a **connection**: `HttpConnection` (Network only) and
-`SseConnection` (Source only) live in `@resonatehq/connector-http`;
-`NatsConnection` and `PostgresConnection` (both) live in their own connector
-packages; the in-process `LocalConnection` (both) lives in core
-(`src/connections/local.ts`). A `Resonate` instance uses exactly one network
+implementation is a **connection**: `HttpConnection` (Network only),
+`SseConnection` (Source only), and the in-process `LocalConnection` (both)
+live in core (`src/connections/`) — HTTP + SSE are the SDK's default remote
+transport; `NatsConnection` and `PostgresConnection` (both) live in their own
+connector packages. A `Resonate` instance uses exactly one network
 and one or more sources — `sources[0]` is the primary source and owns the SDK
 identity. Resolution rules (url > network > env > local, dual-role defaults,
 fail-fast guards) are shared by both engines in `src/connections/resolve.ts`.
@@ -79,11 +78,10 @@ dev, the root `overrides` field (`"@resonatehq/sdk": "file:."`) symlinks that de
 to the local core so shims build against local source, not the registry — this
 is npm's stand-in for uv's `workspace = true` (npm won't self-link the root as
 a workspace member). Run `npm install` at the root. Build order matters:
-`npm run build` at the root builds `@resonatehq/base` and
-`@resonatehq/connector-http` first, then core; `npm run build:packages` builds
-every workspace package. Jest and the root `tsconfig.json` map
-`@resonatehq/base` / `@resonatehq/connector-*` to workspace *source*, so tests
-and `type-check` never require a package build.
+`npm run build` at the root builds `@resonatehq/base` first, then core;
+`npm run build:packages` builds every workspace package. Jest and the root
+`tsconfig.json` map `@resonatehq/base` / `@resonatehq/connector-*` to
+workspace *source*, so tests and `type-check` never require a package build.
 
 ## Key directories
 
@@ -92,7 +90,6 @@ and `type-check` never require a package build.
 | `src/` | Generator engine source (`@resonatehq/sdk`) |
 | `packages/` | Shared base, connectors, and platform FaaS shims (see Monorepo layout above) |
 | `packages/base/` | `@resonatehq/base`: wire protocol types, `Network`/`Source` interfaces, shared helpers |
-| `packages/connector-http/` | `HttpConnection` (Network) + `SseConnection` (Source) |
 | `packages/connector-nats/` | `NatsConnection` (Network + Source) |
 | `packages/connector-pg/` | `PostgresConnection` (Network + Source) |
 | `src/resonate.ts` | Main `Resonate` class — entry point for users |
@@ -101,7 +98,7 @@ and `type-check` never require a package build.
 | `src/coroutine.ts` | Generator coroutine driver |
 | `src/promises.ts` | Durable promise primitives |
 | `src/schedules.ts` | Schedule API |
-| `src/connections/` | `LocalConnection` (in-process server) and the shared network/sources resolution, used by both engines |
+| `src/connections/` | `HttpConnection`, `SseConnection`, `LocalConnection` (in-process server), and the shared network/sources resolution, used by both engines |
 | `src/async/` | Async engine source (`@resonatehq/sdk/async`): `resonate.ts` (`Resonate`), `context.ts` (eager ops, `DurablePromise`), `core.ts` (task driver) |
 | `tests/` | Jest unit and integration tests (`tests/async/` for the async engine, `tests/connections/` for connections/wiring, `tests/equivalence/` for cross-engine differential tests) |
 | `sim/` | Deterministic simulation (DST) for chaos/reliability testing |

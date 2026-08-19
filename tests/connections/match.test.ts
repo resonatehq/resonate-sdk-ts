@@ -8,8 +8,8 @@
  * 2. SseConnection.match   → `poll://any@<target>`
  */
 
-import { SseConnection } from "@resonatehq/connector-http";
 import { LocalConnection } from "../../src/connections/local.js";
+import { SseConnection } from "../../src/connections/sse.js";
 
 // ---------------------------------------------------------------------------
 // LocalConnection

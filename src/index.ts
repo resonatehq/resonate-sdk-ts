@@ -2,20 +2,15 @@ export type { Network, Recv, Send, Source } from "@resonatehq/base";
 // Wire protocol types, guards, connection protocol assertions, and shared
 // helpers all come from @resonatehq/base.
 export * from "@resonatehq/base";
-// Connections: HTTP/SSE ship in @resonatehq/connector-http (re-exported here
-// because they are the SDK's default remote transport); the in-process local
-// simulation lives in core. NATS and Postgres moved to their own packages
-// (@resonatehq/connector-nats, @resonatehq/connector-pg).
-export {
-  HttpConnection,
-  type HttpConnectionConfig,
-  SseConnection,
-  type SseConnectionConfig,
-} from "@resonatehq/connector-http";
 export { WallClock } from "./clock.js";
 export { Codec } from "./codec.js";
 export type { Status } from "./computation.js";
+// Connections: the SDK's default transport (HTTP + SSE) and the in-process
+// local simulation live in core. NATS and Postgres moved to their own packages
+// (@resonatehq/connector-nats, @resonatehq/connector-pg).
+export { HttpConnection, type HttpConnectionConfig } from "./connections/http.js";
 export { LocalConnection, Server } from "./connections/local.js";
+export { SseConnection, type SseConnectionConfig } from "./connections/sse.js";
 export type { Context } from "./context.js";
 export { Core } from "./core.js";
 export { type Encryptor, NoopEncryptor } from "./encryptor.js";

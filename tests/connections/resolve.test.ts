@@ -14,9 +14,10 @@
 
 import { afterEach, describe, expect, jest, test } from "@jest/globals";
 import type { Message, Network, Request, Response, Source } from "@resonatehq/base";
-import { HttpConnection, SseConnection } from "@resonatehq/connector-http";
+import { HttpConnection } from "../../src/connections/http.js";
 import { LocalConnection } from "../../src/connections/local.js";
 import { resolveConnections, uniqueConnections } from "../../src/connections/resolve.js";
+import { SseConnection } from "../../src/connections/sse.js";
 import type { Context } from "../../src/context.js";
 import { Resonate } from "../../src/resonate.js";
 
