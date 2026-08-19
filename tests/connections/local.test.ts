@@ -3,17 +3,17 @@
  * After Section 3.1, that logic moved into HttpNetwork.send() and HttpNetwork.recv().
  * The equivalent validation tests now live in http.test.ts.
  *
- * This file tests that LocalNetwork.send() also handles typed Request/Response correctly,
- * since LocalNetwork is another Network implementation.
+ * This file tests that LocalConnection.send() also handles typed Request/Response correctly,
+ * since LocalConnection is another Network implementation.
  */
 
 import { describe, expect, test } from "@jest/globals";
-import { LocalNetwork } from "../../src/network/local.js";
+import { LocalConnection } from "../../src/connections/local.js";
 import { VERSION } from "../../src/util.js";
 
-describe("LocalNetwork typed send", () => {
+describe("LocalConnection typed send", () => {
   test("send accepts typed Request and returns typed Response", async () => {
-    const network = new LocalNetwork();
+    const network = new LocalConnection();
 
     const req = {
       kind: "promise.create" as const,
@@ -37,7 +37,7 @@ describe("LocalNetwork typed send", () => {
   });
 
   test("send returns typed Response with correct kind", async () => {
-    const network = new LocalNetwork();
+    const network = new LocalConnection();
 
     // Create a promise first
     await network.send({
@@ -65,7 +65,7 @@ describe("LocalNetwork typed send", () => {
   });
 
   test("recv delivers typed Message objects", async () => {
-    const network = new LocalNetwork();
+    const network = new LocalConnection();
 
     const received: any[] = [];
     network.recv((msg) => {
@@ -92,7 +92,7 @@ describe("LocalNetwork typed send", () => {
       },
     });
 
-    // Allow the setTimeout(0) in LocalNetwork to fire
+    // Allow the setTimeout(0) in LocalConnection to fire
     await new Promise((r) => setTimeout(r, 50));
 
     // Messages should be typed objects, not strings

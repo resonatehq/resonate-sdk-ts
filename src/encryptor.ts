@@ -1,4 +1,4 @@
-import type { Value } from "./network/types.js";
+import type { Value } from "@resonatehq/base";
 
 export interface Encryptor {
   encrypt(plaintext: Value): Value;

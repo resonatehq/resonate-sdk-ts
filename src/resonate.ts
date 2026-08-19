@@ -1,13 +1,4 @@
-import { WallClock } from "./clock.js";
-import { Codec } from "./codec.js";
-import { Core } from "./core.js";
-import { type Encryptor, NoopEncryptor } from "./encryptor.js";
-import exceptions, { ResonateTimeoutException } from "./exceptions.js";
-import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
-import { ConsoleLogger, type Logger, type LogLevel } from "./logger.js";
-import { HttpNetwork, PollMessageSource } from "./network/http.js";
-import { LocalNetwork } from "./network/local.js";
-import type { Network } from "./network/network.js";
+import type { Network, Source } from "@resonatehq/base";
 import {
   isConflict,
   isSuccess,
@@ -18,9 +9,18 @@ import {
   type PromiseRegisterListenerReq,
   type TaskCreateReq,
   type TaskRecord,
-} from "./network/types.js";
+} from "@resonatehq/base";
+import { WallClock } from "./clock.js";
+import { Codec } from "./codec.js";
+import { resolveConnections, uniqueConnections } from "./connections/resolve.js";
+import { Core } from "./core.js";
+import { type Encryptor, NoopEncryptor } from "./encryptor.js";
+import exceptions, { ResonateTimeoutException } from "./exceptions.js";
+import { AsyncHeartbeat, type Heartbeat, NoopHeartbeat } from "./heartbeat.js";
+import { validateRootId } from "./ids.js";
+import { ConsoleLogger, type Logger, type LogLevel } from "./logger.js";
 import { type Options, OptionsBuilder } from "./options.js";
-import { delay, getEnv, randomUUID } from "./platform.js";
+import { delay, randomUUID } from "./platform.js";
 import { Promises } from "./promises.js";
 import { Registry } from "./registry.js";
 import { Schedules } from "./schedules.js";
@@ -57,11 +57,12 @@ export class Resonate {
 
   private pid: string;
   private ttl: number;
-  private idPrefix;
 
   private core: Core;
   private codec: Codec;
   private network: Network;
+  private sources: [Source, ...Source[]];
+  private primary: Source;
   private send: Send;
   private logger: Logger;
 
@@ -93,9 +94,11 @@ export class Resonate {
    * @param options.logLevel - Log level for the default ConsoleLogger. Defaults to `"warn"`. Takes precedence over `verbose`.
    * @param options.logger - Custom logger implementation. Defaults to {@link ConsoleLogger}.
    * @param options.encryptor - Payload encryptor. Defaults to {@link NoopEncryptor}.
-   * @param options.network - Custom network implementation. Defaults to `undefined`.
-   * @param options.prefix - ID prefix applied to generated IDs. Defaults to
-   *   `process.env.RESONATE_PREFIX` when set.
+   * @param options.network - Custom `Network` (request/response) connection. A dual-role
+   *   connection (also a `Source`) doubles as the sole source when `sources` is omitted.
+   * @param options.sources - Custom `Source` (push) connections. Requires `network`.
+   *   `sources[0]` is the primary source: its `pid`/`group` are the SDK identity, its
+   *   `unicast` is advertised for callbacks, and its `match` mints `resonate:target` tags.
    */
   constructor({
     url = undefined,
@@ -109,7 +112,7 @@ export class Resonate {
     logger = undefined,
     encryptor = undefined,
     network = undefined,
-    prefix = undefined,
+    sources = undefined,
   }: {
     url?: string;
     group?: string;
@@ -122,14 +125,11 @@ export class Resonate {
     logger?: Logger;
     encryptor?: Encryptor;
     network?: Network;
-    prefix?: string;
+    sources?: Source[];
   } = {}) {
     this.clock = new WallClock();
     this.ttl = ttl;
     this.codec = new Codec(encryptor ?? new NoopEncryptor());
-
-    const resolvedPrefix = prefix ?? getEnv("RESONATE_PREFIX");
-    this.idPrefix = resolvedPrefix ? `${resolvedPrefix}:` : "";
 
     // Resolve logger: explicit logger > ConsoleLogger with resolved level
     // logLevel takes precedence over verbose; verbose: true -> "debug"
@@ -138,41 +138,28 @@ export class Resonate {
 
     this.subscribeEvery = 60 * 1000; // make this configurable
 
-    // Determine the URL: url arg > RESONATE_URL env var
-    // Only used to decide between LocalNetwork and HttpNetwork.
-    // Full URL/bun fmt
-    // bun check
-    // /token/timeout env var resolution is HttpNetwork's responsibility (3.7).
-    const resolvedUrl = url ?? (getEnv("RESONATE_URL") || undefined);
-
-    this.pid = pid ?? randomUUID().replace(/-/g, "");
-
-    let heartbeat: boolean;
-    if (network) {
-      this.network = network;
-      heartbeat = true;
-    } else if (resolvedUrl) {
-      const adapter = new PollMessageSource({
-        url: `${resolvedUrl}/poll/${encodeURIComponent(group)}/${encodeURIComponent(this.pid)}`,
-        token,
-        logger: this.logger,
-      });
-      this.network = new HttpNetwork({
-        url: resolvedUrl,
-        token,
-        timeout,
-        headers: {},
-        adapter,
-        logger: this.logger,
-      });
-      heartbeat = true;
-    } else {
-      this.network = new LocalNetwork({ pid: this.pid, group });
-      heartbeat = false;
-    }
+    // Resolve the network (request/response) and sources (push). Precedence:
+    // url > network > RESONATE_URL env > local. See connections/resolve.ts.
+    const resolved = resolveConnections({
+      url,
+      group,
+      pid: pid ?? randomUUID().replace(/-/g, ""),
+      token,
+      timeout,
+      logger: this.logger,
+      network,
+      sources,
+    });
+    this.network = resolved.network;
+    this.sources = resolved.sources;
+    // The primary source owns the SDK identity: its pid/group, its unicast
+    // (advertised to promise.register_listener), its anycast, its resolver.
+    this.primary = resolved.sources[0];
+    this.pid = this.primary.pid;
 
     this.send = this.network.send;
 
+    const heartbeat = !resolved.local;
     if (heartbeat) {
       this.heartbeat = new AsyncHeartbeat(this.pid, ttl / 2, this.send, this.logger);
     } else {
@@ -182,7 +169,7 @@ export class Resonate {
     this.registry = new Registry();
     this.dependencies = new Map();
 
-    this.optsBuilder = new OptionsBuilder({ match: this.network.match.bind(this.network), idPrefix: this.idPrefix });
+    this.optsBuilder = new OptionsBuilder({ match: this.primary.match.bind(this.primary) });
 
     this.core = new Core({
       pid: this.pid,
@@ -200,14 +187,19 @@ export class Resonate {
     this.promises = new Promises(this.send);
     this.schedules = new Schedules(this.send);
 
-    // subscribe to network
-    this.network.recv(this.onMessage.bind(this));
-    this.network.init().catch((err) => {
-      this.logger.error(
-        { component: "resonate", error: err instanceof Error ? err.message : String(err) },
-        "Failed to start network",
-      );
-    });
+    // subscribe to every source (recv fans in; duplicate delivery is safe)
+    for (const source of this.sources) {
+      source.recv(this.onMessage.bind(this));
+    }
+    // start each distinct connection once (a dual-role connection starts once)
+    for (const conn of uniqueConnections([this.network, ...this.sources])) {
+      conn.start().catch((err) => {
+        this.logger.error(
+          { component: "resonate", error: err instanceof Error ? err.message : String(err) },
+          "Failed to start connection",
+        );
+      });
+    }
     // periodically refresh subscriptions
     this.intervalId = setInterval(async () => {
       for (const [id, sub] of this.subscriptions.entries()) {
@@ -217,7 +209,7 @@ export class Resonate {
             head: { corrId: randomUUID(), version: util.VERSION },
             data: {
               awaited: id,
-              address: this.network.unicast,
+              address: this.primary.unicast,
             },
           };
 
@@ -310,7 +302,11 @@ export class Resonate {
       );
     }
 
-    id = `${this.idPrefix}${id}`;
+    // Validated at the call site that named the workflow, rather than
+    // surfacing later as an opaque 400 from the server: the id becomes the
+    // origin of its whole lineage, so the reserved separators ('.' and ':')
+    // are rejected outright.
+    validateRootId(id);
 
     util.assert(registered.version > 0, "function version must be greater than zero");
     const { promise, task } = await this.taskCreate({
@@ -336,14 +332,14 @@ export class Resonate {
             },
             tags: {
               ...opts.tags,
+              // A genuine top-level root is its own lineage origin, so
+              // origin == branch == parent == id here. Every descendant id
+              // extends it as `{id}:{lineage}`.
               "resonate:origin": id,
-              // A genuine top-level root is its own lineage origin AND its own
-              // id-generation prefix; the prefix then propagates down unchanged.
-              "resonate:prefix": id,
               "resonate:branch": id,
               "resonate:parent": id,
               "resonate:scope": "global",
-              "resonate:target": this.network.anycast,
+              "resonate:target": this.primary.anycast,
             },
           },
         },
@@ -387,7 +383,7 @@ export class Resonate {
       throw exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version);
     }
 
-    id = `${this.idPrefix}${id}`;
+    validateRootId(id);
 
     const func = registered ? registered.name : (funcOrName as string);
     const version = registered ? registered.version : opts.version || 1;
@@ -408,10 +404,10 @@ export class Resonate {
         },
         tags: {
           ...opts.tags,
+          // A genuine top-level root is its own lineage origin, so
+          // origin == branch == parent == id here. Every descendant id
+          // extends it as `{id}:{lineage}`.
           "resonate:origin": id,
-          // A genuine top-level root is its own lineage origin AND its own
-          // id-generation prefix; the prefix then propagates down unchanged.
-          "resonate:prefix": id,
           "resonate:branch": id,
           "resonate:parent": id,
           "resonate:scope": "global",
@@ -475,7 +471,14 @@ export class Resonate {
       version: registered ? registered.version : opts.version || 1,
     });
 
-    await this.schedules.create(name, cron, `${this.idPrefix}{{.id}}.{{.timestamp}}`, opts.timeout, {
+    // Each firing creates a root promise named from this id, so the schedule
+    // name is bound by the same rules as a run/rpc id. The server stamps the
+    // *whole* templated id onto the fired promise's resonate:origin tag, so
+    // the template must join with a plain '-': a '.' would make every child
+    // of a scheduled run rejected (dot_in_origin) and a ':' would hide the
+    // timestamp below the origin, collapsing every firing onto one lineage.
+    validateRootId(name);
+    await this.schedules.create(name, cron, "{{.id}}-{{.timestamp}}", opts.timeout, {
       promiseHeaders: headers,
       promiseData: data,
       promiseTags: { ...opts.tags, "resonate:target": opts.target },
@@ -487,7 +490,8 @@ export class Resonate {
   }
 
   public async get<T = any>(id: string): Promise<ResonateHandle<T>> {
-    id = `${this.idPrefix}${id}`;
+    // get is a lookup, not a create: it takes any id, including a child's
+    // (e.g. "wf:1.2"), so it deliberately does NOT validate.
     const promise = await this.promiseGet({
       kind: "promise.get",
       head: { corrId: randomUUID(), version: util.VERSION },
@@ -539,12 +543,15 @@ export class Resonate {
   /**
    * Stops the Resonate client, releasing all resources.
    *
-   * This shuts down the underlying network transport and message source, stops the
-   * heartbeat loop, and clears the subscription refresh interval. After calling
-   * `stop()`, the client should not be used for further operations.
+   * This shuts down the underlying connections (sources before the network,
+   * each distinct connection stopped once), stops the heartbeat loop, and
+   * clears the subscription refresh interval. After calling `stop()`, the
+   * client should not be used for further operations.
    */
   public async stop(): Promise<void> {
-    await this.network.stop();
+    for (const conn of uniqueConnections([...this.sources, this.network])) {
+      await conn.stop();
+    }
     this.heartbeat.stop();
     clearInterval(this.intervalId);
   }
@@ -567,7 +574,7 @@ export class Resonate {
         head: { corrId: randomUUID(), version: util.VERSION },
         data: {
           awaited: req.data.action.data.id,
-          address: this.network.unicast,
+          address: this.primary.unicast,
         },
       });
       return { promise, task: undefined };
@@ -631,7 +638,7 @@ export class Resonate {
       head: { corrId: randomUUID(), version: util.VERSION },
       data: {
         awaited: promise.id,
-        address: this.network.unicast,
+        address: this.primary.unicast,
       },
     };
 

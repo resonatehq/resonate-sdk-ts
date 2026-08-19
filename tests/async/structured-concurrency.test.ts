@@ -14,14 +14,14 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, test } from "@jest/globals";
+import { isSuccess, type PromiseRecord, type TaskRecord } from "@resonatehq/base";
 import { Core } from "../../src/async/core.js";
 import type { Context, Info } from "../../src/async/index.js";
 import { WallClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
+import { LocalConnection } from "../../src/connections/local.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import { ConsoleLogger } from "../../src/logger.js";
-import { LocalNetwork } from "../../src/network/local.js";
-import { isSuccess, type PromiseRecord, type TaskRecord } from "../../src/network/types.js";
 import { OptionsBuilder } from "../../src/options.js";
 import { Registry } from "../../src/registry.js";
 import type { Trace } from "../../src/trace.js";
@@ -40,7 +40,7 @@ function registryOf(fns: Record<string, AnyFunc>): Registry {
   return r;
 }
 
-function newCore(registry: Registry, network: LocalNetwork): Core {
+function newCore(registry: Registry, network: LocalConnection): Core {
   return new Core({
     pid: PID,
     ttl: TTL,
@@ -50,13 +50,13 @@ function newCore(registry: Registry, network: LocalNetwork): Core {
     registry,
     heartbeat: new NoopHeartbeat(),
     dependencies: new Map(),
-    optsBuilder: new OptionsBuilder({ match: (target: string) => target, idPrefix: "" }),
+    optsBuilder: new OptionsBuilder({ match: (target: string) => target }),
     logger: new ConsoleLogger("error"),
   });
 }
 
 async function seedRoot(
-  network: LocalNetwork,
+  network: LocalConnection,
   id: string,
   func: string,
   args: unknown[],
@@ -88,7 +88,7 @@ async function seedRoot(
 
 /** Run a registered root (id == registered name) to its first done/suspend. */
 async function runRoot(
-  network: LocalNetwork,
+  network: LocalConnection,
   fns: Record<string, AnyFunc>,
   root: string,
   args: unknown[] = [],
@@ -98,7 +98,7 @@ async function runRoot(
   return core.executeUntilBlocked(task, promise, preload);
 }
 
-async function getPromise(network: LocalNetwork, id: string): Promise<PromiseRecord | undefined> {
+async function getPromise(network: LocalConnection, id: string): Promise<PromiseRecord | undefined> {
   const res = await network.send({
     kind: "promise.get",
     head: { corrId: randomUUID(), version: util.VERSION },
@@ -111,7 +111,7 @@ const returnsOf = (t: Trace) => t.filter((e) => e.kind === "return");
 
 describe("async engine structured concurrency", () => {
   test("a fire-and-forget local is drained and settled before the pass completes", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       const side = async (_i: Info) => "side-effect";
       const wf = async (ctx: Context) => {
@@ -127,8 +127,8 @@ describe("async engine structured concurrency", () => {
       expect(status.kind).toBe("done");
       if (status.kind !== "done") return;
       expect(status.value).toBe("done");
-      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-fire.0");
-      const rec = await getPromise(network, "sc-fire.0");
+      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-fire:0");
+      const rec = await getPromise(network, "sc-fire:0");
       expect(rec?.state).toBe("resolved");
       expect(rec?.value?.data).toBe("side-effect");
     } finally {
@@ -137,7 +137,7 @@ describe("async engine structured concurrency", () => {
   });
 
   test("a chained run started behind an earlier op's await is drained into the pass", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       const leafA = async (_i: Info) => "a";
       const leafB = async (_i: Info, x: string) => `b:${x}`;
@@ -156,13 +156,13 @@ describe("async engine structured concurrency", () => {
       // The pass suspends on the timer only; the chained locals both completed.
       expect(status.kind).toBe("suspended");
       if (status.kind !== "suspended") return;
-      expect(status.awaited).toEqual(["sc-local.0"]);
+      expect(status.awaited).toEqual(["sc-local:0"]);
 
       // The chained run finished INSIDE the pass: its return event is in the
       // trace (not emitted after getTrace) and its durable promise is settled
       // before executeUntilBlocked returned (no settle racing task.suspend).
-      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-local.2");
-      const rec = await getPromise(network, "sc-local.2");
+      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-local:2");
+      const rec = await getPromise(network, "sc-local:2");
       expect(rec?.state).toBe("resolved");
       expect(rec?.value?.data).toBe("b:a");
     } finally {
@@ -171,7 +171,7 @@ describe("async engine structured concurrency", () => {
   });
 
   test("a chained rpc started mid-drain contributes its remote todo to the suspend set", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       const leafA = async (_i: Info) => "a";
       const wf = async (ctx: Context) => {
@@ -189,14 +189,14 @@ describe("async engine structured concurrency", () => {
       // todo was lost (self-healing on resume, but a missed callback).
       expect(status.kind).toBe("suspended");
       if (status.kind !== "suspended") return;
-      expect([...status.awaited].sort()).toEqual(["sc-remote.0", "sc-remote.2"]);
+      expect([...status.awaited].sort()).toEqual(["sc-remote:0", "sc-remote:2"]);
     } finally {
       await network.stop();
     }
   });
 
   test("a continuation chained through non-durable microtask hops still lands in the pass", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       const leafA = async (_i: Info) => "a";
       const leafB = async (_i: Info) => "b";
@@ -216,16 +216,16 @@ describe("async engine structured concurrency", () => {
 
       expect(status.kind).toBe("suspended");
       if (status.kind !== "suspended") return;
-      expect(status.awaited).toEqual(["sc-hops.0"]);
-      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-hops.2");
-      expect((await getPromise(network, "sc-hops.2"))?.state).toBe("resolved");
+      expect(status.awaited).toEqual(["sc-hops:0"]);
+      expect(returnsOf(status.trace).map((e) => e.id)).toContain("sc-hops:2");
+      expect((await getPromise(network, "sc-hops:2"))?.state).toBe("resolved");
     } finally {
       await network.stop();
     }
   });
 
   test("an op started after a suspended pass ends panics and creates no durable promise", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       const leafA = async (_i: Info) => "a";
       let leaked: unknown;
@@ -247,14 +247,14 @@ describe("async engine structured concurrency", () => {
       await delay(120);
       expect(String(leaked)).toContain("after the pass ended");
       // The panicked op never reached the server: no child promise was created.
-      expect(await getPromise(network, "sc-zombie.1")).toBeUndefined();
+      expect(await getPromise(network, "sc-zombie:1")).toBeUndefined();
     } finally {
       await network.stop();
     }
   });
 
   test("an op started after a completed pass ends panics and creates no durable promise", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       let leaked: unknown;
       const wf = async (ctx: Context) => {
@@ -276,7 +276,7 @@ describe("async engine structured concurrency", () => {
 
       await delay(120);
       expect(String(leaked)).toContain("after the pass ended");
-      expect(await getPromise(network, "sc-done.0")).toBeUndefined();
+      expect(await getPromise(network, "sc-done:0")).toBeUndefined();
     } finally {
       await network.stop();
     }

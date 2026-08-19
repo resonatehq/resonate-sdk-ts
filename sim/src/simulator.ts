@@ -1,4 +1,4 @@
-import type { Request } from "../../src/network/types.js";
+import type { Request } from "@resonatehq/base";
 
 declare const document: any;
 

@@ -14,14 +14,14 @@
 
 import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "@jest/globals";
+import { isSuccess, type PromiseRecord, type TaskRecord } from "@resonatehq/base";
 import { Core } from "../../src/async/core.js";
 import type { Context, Info } from "../../src/async/index.js";
 import { WallClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
+import { LocalConnection } from "../../src/connections/local.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import { ConsoleLogger } from "../../src/logger.js";
-import { LocalNetwork } from "../../src/network/local.js";
-import { isSuccess, type PromiseRecord, type TaskRecord } from "../../src/network/types.js";
 import { OptionsBuilder } from "../../src/options.js";
 import { Registry } from "../../src/registry.js";
 import { Never } from "../../src/retries.js";
@@ -42,7 +42,7 @@ function registryOf(fns: Record<string, AnyFunc>): Registry {
   return r;
 }
 
-function newCore(registry: Registry, network: LocalNetwork): Core {
+function newCore(registry: Registry, network: LocalConnection): Core {
   return new Core({
     pid: PID,
     ttl: TTL,
@@ -52,7 +52,7 @@ function newCore(registry: Registry, network: LocalNetwork): Core {
     registry,
     heartbeat: new NoopHeartbeat(),
     dependencies: new Map(),
-    optsBuilder: new OptionsBuilder({ match: (target: string) => target, idPrefix: "" }),
+    optsBuilder: new OptionsBuilder({ match: (target: string) => target }),
     logger: new ConsoleLogger("error"),
   });
 }
@@ -60,7 +60,7 @@ function newCore(registry: Registry, network: LocalNetwork): Core {
 /** Seed the root promise + its acquired task in one shot (what the server does
  * when a root is created with a target). Returns the decoded root + the task. */
 async function seedRoot(
-  network: LocalNetwork,
+  network: LocalConnection,
   id: string,
   func: string,
   args: unknown[],
@@ -115,7 +115,7 @@ async function presettle(effects: Effects, id: string, value: unknown): Promise<
 /** Run a registered root to its first done/suspend and return the status. The
  * root id equals its registered name. */
 async function runRoot(fns: Record<string, AnyFunc>, root: string, args: unknown[] = []): Promise<Status> {
-  const network = new LocalNetwork({ pid: PID, group: "default" });
+  const network = new LocalConnection({ pid: PID, group: "default" });
   try {
     const core = newCore(registryOf(fns), network);
     const { task, promise, preload } = await seedRoot(network, root, root, args);
@@ -167,12 +167,12 @@ describe("async engine lifecycle trace", () => {
 
     // run main -> main.0
     const run = t.find((e) => e.kind === "run");
-    expect(run).toEqual({ kind: "run", id: "main", callee: "main.0" });
+    expect(run).toEqual({ kind: "run", id: "main", callee: "main:0" });
 
     // Child spawns once and returns 7.
     expect(counts(t).spawn.filter((e) => e.id !== "main").length).toBe(1);
-    const childReturn = t.find((e) => e.kind === "return" && e.id === "main.0");
-    expect(childReturn).toEqual({ kind: "return", id: "main.0", state: "resolved", value: 7 });
+    const childReturn = t.find((e) => e.kind === "return" && e.id === "main:0");
+    expect(childReturn).toEqual({ kind: "return", id: "main:0", state: "resolved", value: 7 });
 
     // Root return is last.
     expect(t[t.length - 1]).toEqual({ kind: "return", id: "main", state: "resolved", value: 7 });
@@ -237,7 +237,7 @@ describe("async engine lifecycle trace", () => {
     expect(res.kind).toBe("done");
     if (res.kind === "done") expect(res.state).toBe("rejected");
 
-    const childReturn = res.trace.find((e) => e.kind === "return" && e.id === "main.0");
+    const childReturn = res.trace.find((e) => e.kind === "return" && e.id === "main:0");
     expect(childReturn?.kind === "return" && childReturn.state).toBe("rejected");
     const rootReturn = res.trace[res.trace.length - 1];
     expect(rootReturn.kind === "return" && rootReturn.state).toBe("rejected");
@@ -264,7 +264,7 @@ describe("async engine lifecycle trace", () => {
     expect(res.kind).toBe("done");
     if (res.kind === "done") expect(res.value).toBe("caught:kaboom");
 
-    const childReturn = res.trace.find((e) => e.kind === "return" && e.id === "main.0");
+    const childReturn = res.trace.find((e) => e.kind === "return" && e.id === "main:0");
     expect(childReturn?.kind === "return" && childReturn.state).toBe("rejected");
     const rootReturn = res.trace[res.trace.length - 1];
     expect(rootReturn).toMatchObject({ kind: "return", id: "main", state: "resolved" });
@@ -279,12 +279,12 @@ describe("async engine lifecycle trace", () => {
     const res = await runRoot(fns, "main");
 
     expect(res.kind).toBe("suspended");
-    if (res.kind === "suspended") expect(res.awaited).toEqual(["main.0"]);
+    if (res.kind === "suspended") expect(res.awaited).toEqual(["main:0"]);
     const t = res.trace;
 
     expect(t[0]).toEqual({ kind: "spawn", id: "main" });
-    expect(t.find((e) => e.kind === "rpc")).toEqual({ kind: "rpc", id: "main", callee: "main.0" });
-    expect(t.find((e) => e.kind === "block")).toEqual({ kind: "block", id: "main.0" });
+    expect(t.find((e) => e.kind === "rpc")).toEqual({ kind: "rpc", id: "main", callee: "main:0" });
+    expect(t.find((e) => e.kind === "block")).toEqual({ kind: "block", id: "main:0" });
     expect(t[t.length - 1]).toEqual({ kind: "suspend", id: "main" });
 
     expectLifecycleWellFormed(t);
@@ -315,7 +315,7 @@ describe("async engine lifecycle trace", () => {
   });
 
   test("dedup root: an already-settled boundary promise emits a single dedup", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       const core = newCore(registryOf({ main: async (_ctx: Context): Promise<number> => 42 }), network);
       const { task } = await seedRoot(network, "host", "main", []);
@@ -344,7 +344,7 @@ describe("async engine lifecycle trace", () => {
   });
 
   test("dedup child: a run against an already-settled child emits dedup, not spawn", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       const fns = {
         compute: async (_info: Info): Promise<number> => 1, // not invoked; child is pre-settled
@@ -355,7 +355,7 @@ describe("async engine lifecycle trace", () => {
 
       // Pre-settle the child (main.0) so the engine's create dedups against it.
       const effects = util.buildEffects(network.send, codec, { id: task.id, version: task.version });
-      await presettle(effects, "main.0", 99);
+      await presettle(effects, "main:0", 99);
 
       const res = await core.executeUntilBlocked(task, promise, preload);
 
@@ -363,10 +363,10 @@ describe("async engine lifecycle trace", () => {
       if (res.kind === "done") expect(res.value).toBe(99); // deduped to the stored value
 
       const c = counts(res.trace);
-      expect(c.run).toEqual([{ kind: "run", id: "main", callee: "main.0" }]);
+      expect(c.run).toEqual([{ kind: "run", id: "main", callee: "main:0" }]);
       expect(c.dedup.length).toBe(1);
-      expect(c.dedup[0]).toMatchObject({ kind: "dedup", id: "main.0", state: "resolved" });
-      expect(c.spawn.filter((e) => e.id === "main.0").length).toBe(0); // deduped, never spawned
+      expect(c.dedup[0]).toMatchObject({ kind: "dedup", id: "main:0", state: "resolved" });
+      expect(c.spawn.filter((e) => e.id === "main:0").length).toBe(0); // deduped, never spawned
 
       expectLifecycleWellFormed(res.trace);
     } finally {

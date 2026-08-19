@@ -5,7 +5,7 @@ import {
   Core,
   type Encryptor,
   type Func,
-  HttpNetwork,
+  HttpConnection,
   isExecuteMsg,
   type Logger,
   type LogLevel,
@@ -28,7 +28,6 @@ function isUrl(str: string): boolean {
 export class Resonate {
   private registry: Registry;
   private codec: Codec;
-  private idPrefix: string;
   private logger: Logger;
   private pid: string | undefined;
   private dependencies: Map<string, any>;
@@ -47,15 +46,14 @@ export class Resonate {
    *   (5 minutes). Set this to at least the maximum expected function execution time.
    *   Because serverless functions cannot send async heartbeats, choose a value safely
    *   above your function's configured timeout.
-   * @param options.token - Bearer token for authentication. Passed through to HttpNetwork
+   * @param options.token - Bearer token for authentication. Passed through to HttpConnection
    *   which falls back to `RESONATE_TOKEN` env var.
-   * @param options.timeout - Network request timeout. Passed through to HttpNetwork
+   * @param options.timeout - Network request timeout. Passed through to HttpConnection
    *   which falls back to `RESONATE_TIMEOUT` env var (default: 10s).
    * @param options.verbose - Enables verbose logging (shorthand for `logLevel: "debug"`). Defaults to `false`.
    * @param options.logLevel - Log level for the default ConsoleLogger. Defaults to `"warn"`. Takes precedence over `verbose`.
    * @param options.logger - Custom logger implementation. Defaults to {@link ConsoleLogger}.
    * @param options.encryptor - Payload encryptor. Defaults to {@link NoopEncryptor}.
-   * @param options.prefix - ID prefix applied to generated IDs.
    */
   constructor({
     pid = undefined,
@@ -66,7 +64,6 @@ export class Resonate {
     logLevel = undefined,
     logger = undefined,
     encryptor = undefined,
-    prefix = undefined,
   }: {
     pid?: string;
     ttl?: number;
@@ -76,10 +73,8 @@ export class Resonate {
     logLevel?: LogLevel;
     logger?: Logger;
     encryptor?: Encryptor;
-    prefix?: string;
   } = {}) {
     this.codec = new Codec(encryptor ?? new NoopEncryptor());
-    this.idPrefix = prefix ? `${prefix}:` : "";
     const resolvedLogLevel: LogLevel = logLevel ?? (verbose ? "debug" : "warn");
     this.logger = logger ?? new ConsoleLogger(resolvedLogLevel);
     this.pid = pid;
@@ -163,7 +158,7 @@ export class Resonate {
 
           const resonateServerUrl = body.head.serverUrl;
 
-          const network = new HttpNetwork({
+          const network = new HttpConnection({
             url: resonateServerUrl,
             timeout: this.timeout,
             headers: {},
@@ -188,7 +183,6 @@ export class Resonate {
                 if (isUrl(target)) return target;
                 return functionUrl;
               },
-              idPrefix: this.idPrefix,
             }),
             logger: this.logger,
           });

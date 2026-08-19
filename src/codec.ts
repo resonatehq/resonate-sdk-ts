@@ -1,6 +1,6 @@
+import type { PromiseRecord, Value } from "@resonatehq/base";
 import { type Encryptor, NoopEncryptor } from "./encryptor.js";
 import exceptions from "./exceptions.js";
-import type { PromiseRecord, Value } from "./network/types.js";
 import * as util from "./util.js";
 
 class JsonEncoder {

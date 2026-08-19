@@ -11,7 +11,7 @@
 
 import { Resonate as AsyncResonate } from "../../src/async/resonate.js";
 import { Codec } from "../../src/codec.js";
-import { LocalNetwork } from "../../src/network/local.js";
+import { LocalConnection } from "../../src/connections/local.js";
 import { Resonate } from "../../src/resonate.js";
 import { type CanonSnapshot, canonicalize, captureOutcome, type Outcome, rawSnapshot } from "./oracle.js";
 
@@ -77,7 +77,7 @@ async function resolveWithRetry(fn: () => Promise<unknown>): Promise<void> {
 /** Snapshots once the server has gone quiet: after the root subtree settles
  * there may still be in-flight cleanup messages (dispatched via setTimeout(0)),
  * so we drain until two consecutive canonical snapshots agree. */
-async function stableSnapshot(network: LocalNetwork): Promise<CanonSnapshot> {
+async function stableSnapshot(network: LocalConnection): Promise<CanonSnapshot> {
   await drain(10);
   let prev = canonicalize(await rawSnapshot(network), { mode: "wallclock" });
   for (let i = 0; i < 30; i++) {
@@ -107,7 +107,7 @@ const PID = "eq";
 const TTL = 60 * 60 * 1000;
 
 async function runOne(engine: "gen" | "async", w: MatchedWorkload): Promise<EngineRun> {
-  const network = new LocalNetwork({ pid: PID, group: "default" });
+  const network = new LocalConnection({ pid: PID, group: "default" });
 
   let api: EngineApi;
   let stop: () => Promise<void>;

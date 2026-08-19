@@ -1,9 +1,9 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import type { Network, Source } from "@resonatehq/base";
 import type { Context, Info } from "../../src/async/index.js";
 import { Resonate } from "../../src/async/index.js";
 import { Codec } from "../../src/codec.js";
-import { LocalNetwork } from "../../src/network/local.js";
-import type { Network } from "../../src/network/network.js";
+import { LocalConnection } from "../../src/connections/local.js";
 import { Constant } from "../../src/retries.js";
 
 function newResonate(): Resonate {
@@ -13,10 +13,16 @@ function newResonate(): Resonate {
 // Wraps a network and records every durable promise.create issued — bare
 // (resonate.rpc), embedded in task.create (resonate.run), or embedded in
 // task.fence (the effects path) — used to assert creation ordering and tags.
-class RecordingNetwork implements Network {
+class RecordingNetwork implements Network, Source {
   readonly creates: string[] = [];
   readonly tags = new Map<string, Record<string, string>>();
-  constructor(private inner: Network) {}
+  constructor(private inner: LocalConnection) {}
+  get pid() {
+    return this.inner.pid;
+  }
+  get group() {
+    return this.inner.group;
+  }
   get unicast() {
     return this.inner.unicast;
   }
@@ -26,8 +32,8 @@ class RecordingNetwork implements Network {
   match(target: string) {
     return this.inner.match(target);
   }
-  init() {
-    return this.inner.init();
+  start() {
+    return this.inner.start();
   }
   stop() {
     return this.inner.stop();
@@ -45,7 +51,7 @@ class RecordingNetwork implements Network {
     }
     return this.inner.send(req);
   }) as Network["send"];
-  recv: Network["recv"] = (cb) => this.inner.recv(cb);
+  recv: Source["recv"] = (cb) => this.inner.recv(cb);
 }
 
 describe("Resonate — async/await engine", () => {
@@ -163,7 +169,7 @@ describe("Resonate — async/await engine", () => {
   });
 
   test("creation sequencer: concurrent fan-out creates promises in source order", async () => {
-    const recording = new RecordingNetwork(new LocalNetwork({ pid: "default", group: "default" }));
+    const recording = new RecordingNetwork(new LocalConnection({ pid: "default", group: "default" }));
     resonate = new Resonate({ network: recording, ttl: Number.MAX_SAFE_INTEGER });
     resonate.register("noop", async (_info: Info, n: number): Promise<number> => n);
     const fanout = async (ctx: Context): Promise<number[]> => {
@@ -174,8 +180,8 @@ describe("Resonate — async/await engine", () => {
 
     await (await resonate.run("createorder", fanout)).result();
 
-    const children = recording.creates.filter((id) => id.startsWith("createorder."));
-    expect(children).toEqual(["createorder.0", "createorder.1", "createorder.2", "createorder.3"]);
+    const children = recording.creates.filter((id) => id.startsWith("createorder:"));
+    expect(children).toEqual(["createorder:0", "createorder:1", "createorder:2", "createorder:3"]);
   });
 
   test("hang model: a suspending pass never enters the surrounding try/catch", async () => {
@@ -287,7 +293,7 @@ describe("Resonate — async/await engine", () => {
 
     const handle = await resonate.run("dpc-1", wf);
     await sleep(100); // ensure the latent promise dpc-1.0 has been created
-    await resonate.promises.resolve("dpc-1.0", { data: codec.encode("signal").data });
+    await resonate.promises.resolve("dpc-1:0", { data: codec.encode("signal").data });
 
     expect(await handle.result()).toBe("signal");
   });
@@ -307,8 +313,8 @@ describe("Resonate — async/await engine", () => {
     expect(await (await resonate.get<number>(childId)).result()).toBe(50);
   });
 
-  test("resonate:prefix is set at the root and propagates to every child create", async () => {
-    const recording = new RecordingNetwork(new LocalNetwork({ pid: "default", group: "default" }));
+  test("child ids extend the origin and no resonate:prefix tag is emitted", async () => {
+    const recording = new RecordingNetwork(new LocalConnection({ pid: "default", group: "default" }));
     resonate = new Resonate({ network: recording, ttl: Number.MAX_SAFE_INTEGER });
     resonate.register("pchild", async (_info: Info, n: number): Promise<number> => n);
     resonate.register("pdet", async (_info: Info): Promise<void> => {});
@@ -322,20 +328,28 @@ describe("Resonate — async/await engine", () => {
 
     await (await resonate.run("prefix-1", wf)).result();
 
-    expect(recording.tags.get("prefix-1")?.["resonate:prefix"]).toBe("prefix-1"); // root
-    expect(recording.tags.get("prefix-1.0")?.["resonate:prefix"]).toBe("prefix-1"); // local child
-    expect(recording.tags.get("prefix-1.1")?.["resonate:prefix"]).toBe("prefix-1"); // sleep timer
-    const detachedId = recording.creates.find((id) => id.startsWith("prefix-1.d"));
-    expect(detachedId).toMatch(/^prefix-1\.d[0-9a-f]{14}$/);
-    expect(recording.tags.get(detachedId as string)?.["resonate:prefix"]).toBe("prefix-1");
+    // A bare root joins its first lineage segment with ':' -- deeper segments
+    // would join with '.'.
+    expect(recording.tags.get("prefix-1")?.["resonate:origin"]).toBe("prefix-1"); // root
+    expect(recording.tags.get("prefix-1:0")?.["resonate:origin"]).toBe("prefix-1"); // local child
+    expect(recording.tags.get("prefix-1:1")?.["resonate:origin"]).toBe("prefix-1"); // sleep timer
+    const detachedId = recording.creates.find((id) => id.startsWith("prefix-1:d"));
+    expect(detachedId).toMatch(/^prefix-1:d[0-9a-f]{14}$/);
+    // Detached keeps the parent's origin and declares it as its parent.
+    expect(recording.tags.get(detachedId as string)?.["resonate:origin"]).toBe("prefix-1");
+    expect(recording.tags.get(detachedId as string)?.["resonate:parent"]).toBe("prefix-1");
+    // The resonate:prefix tag is gone.
+    for (const id of recording.creates) {
+      expect(recording.tags.get(id)?.["resonate:prefix"]).toBeUndefined();
+    }
   });
 
-  test("nested detached ids stay bounded via the fixed prefix", async () => {
+  test("nested detached ids stay bounded via the fixed origin", async () => {
     resonate = newResonate();
-    const seen: { id: string; prefixId: string; originId: string }[] = [];
+    const seen: { id: string; originId: string }[] = [];
     const deepest = Promise.withResolvers<void>();
     const nest = async (ctx: Context, depth: number): Promise<void> => {
-      seen.push({ id: ctx.id, prefixId: ctx.prefixId, originId: ctx.originId });
+      seen.push({ id: ctx.id, originId: ctx.originId });
       if (depth >= 3) {
         deepest.resolve();
         return;
@@ -349,13 +363,11 @@ describe("Resonate — async/await engine", () => {
 
     expect(seen).toHaveLength(3);
     expect(seen[0].id).toBe("nest-root");
-    // Every level keeps the top-level root as its id-generation prefix, so each
-    // detached id is exactly one `.d` segment past it — bounded at any depth.
-    for (const s of seen) expect(s.prefixId).toBe("nest-root");
-    expect(seen[1].id).toMatch(/^nest-root\.d[0-9a-f]{14}$/);
-    expect(seen[2].id).toMatch(/^nest-root\.d[0-9a-f]{14}$/);
-    // The detached re-root breaks lineage: origin resets to its own id.
-    expect(seen[1].originId).toBe(seen[1].id);
+    // Every level keeps the top-level root as its lineage origin, so each
+    // detached id is exactly one `:d` segment past it — bounded at any depth.
+    for (const s of seen) expect(s.originId).toBe("nest-root");
+    expect(seen[1].id).toMatch(/^nest-root:d[0-9a-f]{14}$/);
+    expect(seen[2].id).toMatch(/^nest-root:d[0-9a-f]{14}$/);
   });
 
   test("ctx.panic aborts the pass: execution stops and nothing settles", async () => {
@@ -420,7 +432,7 @@ describe("Resonate — async/await engine", () => {
 
     // Neither the root nor the (created) child promise settles.
     expect((await resonate.promises.get("panic-3")).state).toBe("pending");
-    expect((await resonate.promises.get("panic-3.0")).state).toBe("pending");
+    expect((await resonate.promises.get("panic-3:0")).state).toBe("pending");
   });
 
   test("ctx.panic(false) and ctx.assert(true) do not abort", async () => {

@@ -8,13 +8,13 @@
 // AND their observed root outcome matches.
 //
 // This module pulls that state out via the server's `debug.snap` request (which
-// `LocalNetwork.send` routes straight to the server) and projects it into a
+// `LocalConnection.send` routes straight to the server) and projects it into a
 // stable, engine-independent shape: decoded payloads, non-deterministic fields
 // stripped, everything sorted.
 
+import type { Network } from "@resonatehq/base";
+import { type DebugSnapRes, isSuccess } from "@resonatehq/base";
 import { Codec } from "../../src/codec.js";
-import type { Network } from "../../src/network/network.js";
-import { type DebugSnapRes, isSuccess } from "../../src/network/types.js";
 import { VERSION } from "../../src/util.js";
 
 const codec = new Codec();

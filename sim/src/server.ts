@@ -1,5 +1,5 @@
 import type { StepClock } from "../../src/clock.js";
-import { type Change, Server } from "../../src/network/local.js";
+import { type Change, Server } from "../../src/connections/local.js";
 import * as util from "../../src/util.js";
 import { type Address, anycast, Message, Process, unicast } from "./simulator.js";
 

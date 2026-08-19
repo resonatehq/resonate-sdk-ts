@@ -12,12 +12,12 @@
 // ticks → different clock reads); it is asserted per-run instead.
 
 import { randomUUID } from "node:crypto";
+import type { Request } from "@resonatehq/base";
 import { Command } from "commander";
 import { Core } from "../../src/async/core.js";
 import { StepClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
-import type { Server } from "../../src/network/local.js";
-import type { Request } from "../../src/network/types.js";
+import type { Server } from "../../src/connections/local.js";
 import { Registry } from "../../src/registry.js";
 import { VERSION } from "../../src/util.js";
 import { type CanonSnapshot, canonicalize, normalizeErrors } from "../../tests/equivalence/oracle.js";

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
-import { ResonateTimeoutException } from "../../src/exceptions.js";
-import { HttpNetwork } from "../../src/network/http.js";
+import { ResonateTimeoutException } from "@resonatehq/base";
+import { HttpConnection } from "../../src/connections/http.js";
 import { VERSION } from "../../src/util.js";
 
 // Helper: create a local HTTP server that responds on
@@ -44,7 +44,7 @@ function makeRequest(corrId = "corr-1") {
   };
 }
 
-describe("HttpNetwork.send()", () => {
+describe("HttpConnection.send()", () => {
   let server: Server | undefined;
 
   afterEach(async () => {
@@ -81,7 +81,7 @@ describe("HttpNetwork.send()", () => {
     });
     server = result.server;
 
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: `http://127.0.0.1:${result.port}`,
       timeout: 500,
     });
@@ -110,7 +110,7 @@ describe("HttpNetwork.send()", () => {
       });
       server = result.server;
 
-      const network = new HttpNetwork({
+      const network = new HttpConnection({
         url: `http://127.0.0.1:${result.port}`,
         timeout: 500,
       });
@@ -136,7 +136,7 @@ describe("HttpNetwork.send()", () => {
     });
     server = result.server;
 
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: `http://127.0.0.1:${result.port}`,
       timeout: 500,
     });
@@ -156,7 +156,7 @@ describe("HttpNetwork.send()", () => {
     });
     server = result.server;
 
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: `http://127.0.0.1:${result.port}`,
       timeout: 100,
     });
@@ -166,7 +166,7 @@ describe("HttpNetwork.send()", () => {
 
   test("throws ResonateTimeoutException on connection refused", async () => {
     // Use a port that is very likely not in use
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: "http://127.0.0.1:19999",
       timeout: 500,
     });
@@ -181,7 +181,7 @@ describe("HttpNetwork.send()", () => {
     });
     server = result.server;
 
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: `http://127.0.0.1:${result.port}`,
       timeout: 500,
     });
@@ -202,7 +202,7 @@ describe("HttpNetwork.send()", () => {
     });
     server = result.server;
 
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: `http://127.0.0.1:${result.port}`,
       timeout: 500,
     });
@@ -223,7 +223,7 @@ describe("HttpNetwork.send()", () => {
     });
     server = result.server;
 
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: `http://127.0.0.1:${result.port}`,
       timeout: 500,
     });
@@ -232,7 +232,7 @@ describe("HttpNetwork.send()", () => {
   });
 
   test("ResonateTimeoutException message includes cause", async () => {
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: "http://127.0.0.1:19999",
       timeout: 500,
     });
@@ -258,7 +258,7 @@ describe("HttpNetwork.send()", () => {
       });
       server = result.server;
 
-      const network = new HttpNetwork({
+      const network = new HttpConnection({
         url: `http://127.0.0.1:${result.port}`,
         timeout: 500,
       });
@@ -310,7 +310,7 @@ describe("HttpNetwork.send()", () => {
         res.end(responseBody);
       });
 
-      const network = new HttpNetwork({
+      const network = new HttpConnection({
         url: `http://127.0.0.1:${result.port}`,
         timeout: 500,
       });
@@ -324,7 +324,7 @@ describe("HttpNetwork.send()", () => {
 
   test("send throws ResonateTimeoutException on all platform failures", async () => {
     // Connection refused
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: "http://127.0.0.1:19999",
       timeout: 100,
     });
@@ -337,7 +337,7 @@ describe("HttpNetwork.send()", () => {
 // Environment variable configuration
 // =============================================================================
 
-describe("HttpNetwork environment variable configuration", () => {
+describe("HttpConnection environment variable configuration", () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
@@ -380,7 +380,7 @@ describe("HttpNetwork environment variable configuration", () => {
     const port = result.port;
     process.env.RESONATE_URL = `http://127.0.0.1:${port}`;
 
-    const network = new HttpNetwork({ timeout: 500 });
+    const network = new HttpConnection({ timeout: 500 });
     await network.send(makeRequest());
     await closeServer(result.server);
 
@@ -414,7 +414,7 @@ describe("HttpNetwork environment variable configuration", () => {
     const port = result.port;
     process.env.RESONATE_URL = "http://should-not-use:9999";
 
-    const network = new HttpNetwork({ url: `http://127.0.0.1:${port}`, timeout: 500 });
+    const network = new HttpConnection({ url: `http://127.0.0.1:${port}`, timeout: 500 });
     await network.send(makeRequest());
     await closeServer(result.server);
 
@@ -426,7 +426,7 @@ describe("HttpNetwork environment variable configuration", () => {
   test("RESONATE_TIMEOUT used as default when timeout not provided", () => {
     process.env.RESONATE_TIMEOUT = "5000";
 
-    const network = new HttpNetwork({});
+    const network = new HttpConnection({});
     // Access the private timeout field via any cast for testing
     expect((network as any).timeout).toBe(5000);
   });
@@ -434,12 +434,12 @@ describe("HttpNetwork environment variable configuration", () => {
   test("programmatic timeout takes precedence over RESONATE_TIMEOUT", () => {
     process.env.RESONATE_TIMEOUT = "5000";
 
-    const network = new HttpNetwork({ timeout: 2000 });
+    const network = new HttpConnection({ timeout: 2000 });
     expect((network as any).timeout).toBe(2000);
   });
 
   test("default timeout is 10s when neither programmatic nor env var set", () => {
-    const network = new HttpNetwork({});
+    const network = new HttpConnection({});
     expect((network as any).timeout).toBe(10000);
   });
 
@@ -471,7 +471,7 @@ describe("HttpNetwork environment variable configuration", () => {
 
     process.env.RESONATE_TOKEN = "env-token-abc";
 
-    const network = new HttpNetwork({ url: `http://127.0.0.1:${result.port}`, timeout: 500 });
+    const network = new HttpConnection({ url: `http://127.0.0.1:${result.port}`, timeout: 500 });
     await network.send(makeRequest());
     await closeServer(result.server);
 
@@ -504,7 +504,7 @@ describe("HttpNetwork environment variable configuration", () => {
 
     process.env.RESONATE_TOKEN = "env-token-should-not-use";
 
-    const network = new HttpNetwork({
+    const network = new HttpConnection({
       url: `http://127.0.0.1:${result.port}`,
       timeout: 500,
       token: "programmatic-token",

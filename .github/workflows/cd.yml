@@ -82,15 +82,18 @@ jobs:
             console.log('core entry points import cleanly from the packed tarballs');
           ")
 
-      # Root first (shims depend on it), then every packages/* discovered on
-      # disk -- a new shim is covered the day it lands, no name hardcoded.
+      # Dependency order: base first (the root sdk depends on it), then the
+      # root (shims depend on it), then every packages/* discovered on disk --
+      # a new shim is covered the day it lands, no name hardcoded. Re-listing
+      # base in the glob is harmless: the registry check below skips
+      # already-published versions.
       # npm has no skip-existing: check the registry per package. An unchanged
       # package whose version is already on npm rides along without
       # republishing, and a re-run can finish a partial release. Private
       # packages are skipped (npm publish would error on them, not skip).
       - name: publish to npm
         run: |
-          for dir in . packages/*; do
+          for dir in packages/base . packages/*; do
             [ -f "$dir/package.json" ] || continue
             read -r pkg private < <(node -p "const p=require('./$dir/package.json'); p.name+'@'+p.version+' '+!!p.private")
             [ "$private" = true ] && { echo "skip $pkg (private)"; continue; }

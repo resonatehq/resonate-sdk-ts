@@ -52,12 +52,9 @@ export class ResonateError extends Error {
   }
 }
 
-export class ResonateTimeoutException extends Error {
-  constructor(cause: string) {
-    super(`platform failure: ${cause}`);
-    this.name = "ResonateTimeoutException";
-  }
-}
+// Re-exported from @resonatehq/base so core and connectors share one class
+// identity: the SDK's retry paths key off `instanceof ResonateTimeoutException`.
+export { ResonateTimeoutException } from "@resonatehq/base";
 
 export default {
   REGISTRY_VERSION_INVALID: (v: number) => {
@@ -107,6 +104,11 @@ export default {
       next: "Will drop",
       cause: c,
     });
+  },
+  INVALID_ID: (id: string, reason: string) => {
+    // A caller-supplied root id the server's id format cannot carry — see
+    // `ids.validateRootId`.
+    return new ResonateError("10", "InvalidId", `Invalid id '${id}': ${reason}`);
   },
   PANIC: (src: string, msg: string | undefined) => {
     src = src.charAt(0).toUpperCase() + src.slice(1);

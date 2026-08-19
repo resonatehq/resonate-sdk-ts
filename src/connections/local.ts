@@ -1,8 +1,3 @@
-import { CronExpressionParser } from "cron-parser";
-import { randomUUID } from "../platform.js";
-import { assert, VERSION } from "../util.js";
-import type { Network } from "./network.js";
-import { isResponse } from "./types.js";
 import type {
   DebugResetRes,
   DebugSnapRes,
@@ -54,7 +49,11 @@ import type {
   TaskSuspendReq,
   TaskSuspendRes,
   Value,
-} from "./types.ts";
+} from "@resonatehq/base";
+import { isResponse, type Network, type Source } from "@resonatehq/base";
+import { CronExpressionParser } from "cron-parser";
+import { randomUUID } from "../platform.js";
+import { assert, VERSION } from "../util.js";
 
 export interface PTimeout {
   id: string;
@@ -412,10 +411,16 @@ export class Server {
       listeners: new Set(),
     };
     changes.push(this.setPromise(promise));
-    changes.push(this.setPTimeout({ id: req.data.id, timeout: req.data.timeoutAt }));
 
     const address = req.data.tags["resonate:target"];
     if (address) {
+      // Only a promise carrying an address is expired by the tick loop. A
+      // target-less promise (a bare ctx.promise) is never timed out by the
+      // scheduler, so a durable timer has to carry a target to fire at all —
+      // see Context.sleep. Scheduling one here regardless would make this
+      // simulation *more* permissive than the server, which is invisible to
+      // every test that only asserts success.
+      changes.push(this.setPTimeout({ id: req.data.id, timeout: req.data.timeoutAt }));
       const delay = Number(req.data.tags["resonate:delay"]);
       const deferred = Number.isFinite(delay) && now < delay;
 
@@ -677,7 +682,12 @@ export class Server {
       listeners: new Set(),
     };
     changes.push(this.setPromise(promise));
-    changes.push(this.setPTimeout({ id: actionData.id, timeout: actionData.timeoutAt }));
+    // Same scheduler invariant as promise.create: only a promise carrying a
+    // target is expired by the tick loop. A task.create root always carries
+    // one in practice, but the guard keeps the invariant explicit.
+    if (actionData.tags["resonate:target"]) {
+      changes.push(this.setPTimeout({ id: actionData.id, timeout: actionData.timeoutAt }));
+    }
 
     // Step 2: Create task in acquired state
     const task: Task = {
@@ -1606,10 +1616,17 @@ export class Server {
 }
 
 // =============================================================================
-// LOCAL NETWORK
+// LOCAL CONNECTION
 // =============================================================================
 
-export class LocalNetwork implements Network {
+/**
+ * A dual-role connection (`Network` + `Source`) whose server is an in-process
+ * simulation: `send` applies the request to the in-memory {@link Server}, and
+ * push messages produced by the server are delivered to `recv` subscribers.
+ */
+export class LocalConnection implements Network, Source {
+  readonly pid: string;
+  readonly group: string;
   readonly unicast: string;
   readonly anycast: string;
 
@@ -1627,17 +1644,19 @@ export class LocalNetwork implements Network {
   } = {}) {
     this.started = false;
     this.server = new Server();
+    this.pid = pid;
+    this.group = group;
     this.unicast = `local://uni@${group}/${pid}`;
     this.anycast = `local://any@${group}/${pid}`;
   }
 
-  // -- Network ---------------------------------------------------------------
+  // -- Network + Source --------------------------------------------------------
 
   match(target: string): string {
     return `local://any@${target}`;
   }
 
-  async init(): globalThis.Promise<void> {
+  async start(): globalThis.Promise<void> {
     if (this.started) return;
     this.tickInterval = setInterval(() => {
       const now = Date.now();

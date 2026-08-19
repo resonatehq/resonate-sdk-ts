@@ -11,7 +11,7 @@ export type AuthOptions =
 export interface ResolvedAuth {
   /** Extra headers to merge into the outbound request (e.g. Authorization). */
   headers: Record<string, string>;
-  /** Bearer token passed through to HttpNetwork (for `bearer` mode). */
+  /** Bearer token passed through to HttpConnection (for `bearer` mode). */
   token?: string;
 }
 
@@ -49,7 +49,7 @@ async function _mintIdTokenHeaders(audience: string): Promise<Record<string, str
 /**
  * Resolves outbound auth for a call to the Resonate server at `serverUrl`.
  *
- * `serverUrl` may be undefined when the caller omits it (HttpNetwork falls back
+ * `serverUrl` may be undefined when the caller omits it (HttpConnection falls back
  * to the RESONATE_URL env var in that case).  We mirror that fallback for auth
  * resolution so the auto-HTTPS detection still works.
  *
@@ -60,7 +60,7 @@ async function _mintIdTokenHeaders(audience: string): Promise<Record<string, str
  * - `oidcIdToken` — always mint an OIDC ID token for `audience ?? serverUrl`.
  */
 export async function resolveAuth(serverUrl: string | undefined, options: AuthOptions = {}): Promise<ResolvedAuth> {
-  // Mirror HttpNetwork's RESONATE_URL fallback so auto-HTTPS detection works
+  // Mirror HttpConnection's RESONATE_URL fallback so auto-HTTPS detection works
   // even when serverUrl is omitted from the message head.
   const effectiveUrl = serverUrl ?? process.env.RESONATE_URL ?? "";
   const mode = options.mode ?? "auto";
@@ -71,7 +71,7 @@ export async function resolveAuth(serverUrl: string | undefined, options: AuthOp
 
     case "bearer": {
       const tok = (options as { mode: "bearer"; token?: string }).token;
-      // Pass token (possibly undefined) to HttpNetwork; it falls back to
+      // Pass token (possibly undefined) to HttpConnection; it falls back to
       // RESONATE_TOKEN env var internally when token is undefined.
       return { headers: {}, token: tok };
     }
