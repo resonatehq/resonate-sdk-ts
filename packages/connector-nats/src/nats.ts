@@ -1,10 +1,17 @@
-import type { Msg, MsgHdrs, NatsConnection, Subscription } from "@nats-io/transport-node";
-import { ResonateTimeoutException } from "../exceptions.js";
-import { originOf } from "../ids.js";
-import type { Logger } from "../logger.js";
-import { randomUUID } from "../platform.js";
-import type { Network } from "./network.js";
-import { isMessage, isResponse, type Message, type Request, type Response } from "./types.js";
+import { headers, type Msg, type NatsConnection as NatsClient, type Subscription } from "@nats-io/transport-node";
+import {
+  isMessage,
+  isResponse,
+  type Logger,
+  type Message,
+  type Network,
+  originOf,
+  type Request,
+  ResonateTimeoutException,
+  type Response,
+  randomUUID,
+  type Source,
+} from "@resonatehq/base";
 
 // =============================================================================
 // CONSTANTS
@@ -77,14 +84,14 @@ function publishSubject(prefix: string, origin: string): string {
 }
 
 // =============================================================================
-// NatsNetwork
+// NatsConnection
 // =============================================================================
 
-export interface NatsNetworkConfig {
+export interface NatsConnectionConfig {
   // An already-connected NATS client. Its lifecycle lives outside the SDK:
-  // `stop()` tears down only this network's subscriptions and leaves the
-  // connection for the caller to drain/close.
-  conn: NatsConnection;
+  // `stop()` tears down only this connection's subscriptions and leaves the
+  // client for the caller to drain/close.
+  conn: NatsClient;
   pid?: string;
   group?: string;
   // Subject prefix the server subscribes on for requests.
@@ -97,7 +104,8 @@ export interface NatsNetworkConfig {
 }
 
 /**
- * {@link Network} implementation that talks to resonate-on-nats over NATS.
+ * Dual-role connection ({@link Network} + {@link Source}) that talks to
+ * resonate-on-nats over NATS.
  *
  * - Requests are published to `{serverTopic}.{base64url(origin)}` with a
  *   `Resonate-Reply-To` header naming a private inbox; the reply arrives on
@@ -109,14 +117,17 @@ export interface NatsNetworkConfig {
  * - Addresses use the `nats://` scheme so the server's `url.Parse` maps
  *   `nats://{subject}` back to `{subject}`.
  *
- * Requires the optional `@nats-io/transport-node` peer dependency.
+ * `start()` opens the uni/any subscriptions only when a receiver was
+ * registered via `recv`, so a network-only NatsConnection never steals
+ * messages off its group's queue subscription.
  */
-export class NatsNetwork implements Network {
+export class NatsConnection implements Network, Source {
+  readonly pid: string;
+  readonly group: string;
   readonly unicast: string;
   readonly anycast: string;
 
-  private nc: NatsConnection;
-  private group: string;
+  private nc: NatsClient;
   private apiPrefix: string;
   private recvPrefix: string;
   private uniSubject: string;
@@ -127,16 +138,6 @@ export class NatsNetwork implements Network {
   private callbacks: Array<(msg: Message) => void> = [];
   private subs: Subscription[] = [];
   private stopped = false;
-  // Resolves once `init()` has imported the header factory and subscribed;
-  // rejects if init fails or `stop()` runs first. `send()` awaits this so it
-  // tolerates being called before `init()` resolves (the SDK does not await
-  // `init()` before the first send).
-  private ready: Promise<void>;
-  private markReady!: () => void;
-  private failReady!: (reason: unknown) => void;
-  // Resolved lazily in `init()` via a dynamic import so this module can be
-  // loaded without the optional `nats` peer dependency installed.
-  private mkHeaders?: (code?: number, description?: string) => MsgHdrs;
 
   constructor({
     conn,
@@ -146,9 +147,9 @@ export class NatsNetwork implements Network {
     workerTopic = DEFAULT_RECV_PREFIX,
     requestTimeout = DEFAULT_REQUEST_TIMEOUT_MS,
     logger = undefined,
-  }: NatsNetworkConfig) {
+  }: NatsConnectionConfig) {
     this.nc = conn;
-    const resolvedPid = pid ?? randomUUID().replace(/-/g, "");
+    this.pid = pid ?? randomUUID().replace(/-/g, "");
     this.group = group ?? "default";
     this.apiPrefix = serverTopic;
     this.recvPrefix = workerTopic;
@@ -157,53 +158,36 @@ export class NatsNetwork implements Network {
 
     // pid/group land in the NATS subject via the server's url.Parse host, which
     // Go lowercases -- uuid hex pids and lowercase groups round-trip cleanly.
-    this.uniSubject = `${workerTopic}.${this.group}.${resolvedPid}`;
+    this.uniSubject = `${workerTopic}.${this.group}.${this.pid}`;
     this.anySubject = `${workerTopic}.${this.group}`;
     this.unicast = `nats://${this.uniSubject}`;
     this.anycast = `nats://${this.anySubject}`;
-
-    this.ready = new Promise<void>((resolve, reject) => {
-      this.markReady = resolve;
-      this.failReady = reject;
-    });
-    // Swallow the unhandled-rejection warning when `send()` is never called;
-    // real waiters still observe the rejection via their own `await`.
-    void this.ready.catch(() => {});
   }
 
   match(target: string): string {
     return `nats://${this.recvPrefix}.${target}`;
   }
 
-  async init(): Promise<void> {
-    if (this.stopped) return;
-    try {
-      // Dynamic import keeps the optional peer dependency out of the module's
-      // load path: importing NatsNetwork never requires `nats` to be installed,
-      // only constructing and starting one does.
-      const { headers } = await import("@nats-io/transport-node");
-      this.mkHeaders = headers;
-
+  start(): Promise<void> {
+    if (this.stopped) return Promise.resolve();
+    // Subscribe only when a receiver was registered via `recv`: a network-only
+    // NatsConnection must never steal messages off its group's queue
+    // subscription.
+    if (this.callbacks.length > 0) {
       this.subs = [
         this.nc.subscribe(this.uniSubject, { callback: (err, msg) => this.onMsg(err, msg) }),
         this.nc.subscribe(this.anySubject, { queue: this.group, callback: (err, msg) => this.onMsg(err, msg) }),
       ];
-
-      this.markReady();
-      this.logger?.info(
-        { component: "network", adapter_type: "Nats", uni: this.uniSubject, any: this.anySubject },
-        "network initialized",
-      );
-    } catch (err) {
-      this.failReady(err);
-      throw err;
     }
+    this.logger?.info(
+      { component: "network", connection: "nats", uni: this.uniSubject, any: this.anySubject },
+      "connection started",
+    );
+    return Promise.resolve();
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
     this.stopped = true;
-    // Unblock any `send()` parked on readiness so shutdown is never delayed.
-    this.failReady(new Error("network has been stopped"));
     for (const sub of this.subs) {
       try {
         sub.unsubscribe();
@@ -215,6 +199,7 @@ export class NatsNetwork implements Network {
     this.subs = [];
     this.callbacks = [];
     this.logger?.info({ component: "network" }, "network stopped");
+    return Promise.resolve();
   }
 
   send = async <K extends Request["kind"]>(
@@ -224,14 +209,7 @@ export class NatsNetwork implements Network {
     this.logger?.debug({ component: "network", kind: req.kind, corr_id: req.head.corrId }, "request sent");
 
     if (this.stopped) {
-      throw new ResonateTimeoutException("network has been stopped");
-    }
-    // Wait for init() to import the header factory and subscribe. This resolves
-    // immediately once ready, so a send after init costs nothing extra.
-    try {
-      await this.ready;
-    } catch (e) {
-      throw new ResonateTimeoutException(e instanceof Error ? e.message : String(e));
+      throw new ResonateTimeoutException("connection has been stopped");
     }
 
     // The server reads the origin from the head, not the subject; set both.
@@ -252,7 +230,7 @@ export class NatsNetwork implements Network {
           callback: (err, msg) => (err ? reject(err) : resolve(msg.string())),
         });
         try {
-          const hdrs = this.mkHeaders!();
+          const hdrs = headers();
           hdrs.set(REPLY_HEADER, inbox);
           this.nc.publish(subject, payload, { headers: hdrs });
         } catch (e) {

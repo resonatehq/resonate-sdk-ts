@@ -1,6 +1,6 @@
+import { isSuccess, type ScheduleRecord } from "@resonatehq/base";
+import { LocalConnection } from "./connections/local.js";
 import exceptions from "./exceptions.js";
-import { LocalNetwork } from "./network/local.js";
-import { isSuccess, type ScheduleRecord } from "./network/types.js";
 import { randomUUID } from "./platform.js";
 import type { Send } from "./types.js";
 import { VERSION } from "./util.js";
@@ -8,7 +8,7 @@ import { VERSION } from "./util.js";
 export class Schedules {
   private send: Send;
 
-  constructor(send: Send = new LocalNetwork().send) {
+  constructor(send: Send = new LocalConnection().send) {
     this.send = send;
   }
 

@@ -4,7 +4,7 @@ import {
   Core,
   type Encryptor,
   type Func,
-  HttpNetwork,
+  HttpConnection,
   isExecuteMsg,
   type Logger,
   type LogLevel,
@@ -45,9 +45,9 @@ export class Resonate {
    *   (5 minutes). Set this to at least the maximum expected function execution time.
    *   Because serverless functions cannot send async heartbeats, choose a value safely
    *   above your function's configured timeout.
-   * @param options.token - Bearer token for authentication. Passed through to HttpNetwork
+   * @param options.token - Bearer token for authentication. Passed through to HttpConnection
    *   which falls back to `RESONATE_TOKEN` env var.
-   * @param options.timeout - Network request timeout. Passed through to HttpNetwork
+   * @param options.timeout - Network request timeout. Passed through to HttpConnection
    *   which falls back to `RESONATE_TIMEOUT` env var (default: 10s).
    * @param options.verbose - Enables verbose logging (shorthand for `logLevel: "debug"`). Defaults to `false`.
    * @param options.logLevel - Log level for the default ConsoleLogger. Defaults to `"warn"`. Takes precedence over `verbose`.
@@ -154,10 +154,10 @@ export class Resonate {
         }
 
         // The Resonate server URL: prefer the message head, fall back to
-        // RESONATE_URL env var (HttpNetwork handles that fallback internally).
+        // RESONATE_URL env var (HttpConnection handles that fallback internally).
         const resonateServerUrl = body.head.serverUrl;
 
-        const network = new HttpNetwork({
+        const network = new HttpConnection({
           url: resonateServerUrl,
           timeout: this.timeout,
           headers: {},

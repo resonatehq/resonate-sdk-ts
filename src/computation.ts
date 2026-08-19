@@ -1,3 +1,4 @@
+import type { PromiseRecord } from "@resonatehq/base";
 import type { Clock } from "./clock.js";
 import { InnerContext } from "./context.js";
 import { Coroutine } from "./coroutine.js";
@@ -5,7 +6,6 @@ import exceptions from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
 import { originOf } from "./ids.js";
 import type { Logger } from "./logger.js";
-import type { PromiseRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import type { Registry } from "./registry.js";
 import { Exponential, Never, type RetryPolicyConstructor } from "./retries.js";

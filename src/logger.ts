@@ -4,14 +4,9 @@
  * Users can inject any logger that satisfies this interface (e.g., pino, winston)
  * via the Resonate constructor. The default implementation is {@link ConsoleLogger}.
  */
-export interface Logger {
-  debug(fields: Record<string, any>, msg: string): void;
-  info(fields: Record<string, any>, msg: string): void;
-  warn(fields: Record<string, any>, msg: string): void;
-  error(fields: Record<string, any>, msg: string): void;
-}
+export type { Logger, LogLevel } from "@resonatehq/base";
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+import type { Logger, LogLevel } from "@resonatehq/base";
 
 const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
   debug: 0,

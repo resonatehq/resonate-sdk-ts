@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, jest, test } from "@jest/globals";
+import type { PromiseRecord, Request, TaskRecord } from "@resonatehq/base";
+import { isSuccess } from "@resonatehq/base";
 import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import type { Status } from "../src/computation.js";
+import { LocalConnection } from "../src/connections/local.js";
 import { Core } from "../src/core.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { ConsoleLogger } from "../src/logger.js";
-import { LocalNetwork } from "../src/network/local.js";
-import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js";
-import { isSuccess } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import type { Effects, Send } from "../src/types.js";
@@ -49,12 +49,12 @@ function buildCore(opts: {
   onExec?: (effects: Effects) => Promise<void>;
 }): {
   core: Core;
-  network: LocalNetwork;
+  network: LocalConnection;
   sendHolder: { fn: Send };
   codec: Codec;
   ctorSpy: jest.Spied<any>;
 } {
-  const network = new LocalNetwork();
+  const network = new LocalConnection();
   const codec = new Codec();
   const logger = new ConsoleLogger("error");
 
@@ -128,7 +128,7 @@ async function seedPendingTask(
   id: string,
   func: string,
   args: any[],
-  network: LocalNetwork,
+  network: LocalConnection,
 ): Promise<TaskRecord> {
   const { task } = await seedAcquiredTask(send, codec, id, func, args);
   const releaseRes = await send({

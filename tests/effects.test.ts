@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { PromiseRecord, Request, Response } from "@resonatehq/base";
 import { Codec } from "../src/codec.js";
-import type { PromiseRecord, Request, Response } from "../src/network/types.js";
 import type { Send } from "../src/types.js";
 import { buildEffects, VERSION } from "../src/util.js";
 

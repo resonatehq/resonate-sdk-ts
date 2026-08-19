@@ -19,42 +19,12 @@
 
 import exceptions from "./exceptions.js";
 
-/** Separates the origin from the lineage below it. A bare root joins its
- * first lineage segment with this. */
-export const ORIGIN_SEP = ":";
+// `ORIGIN_SEP`/`LINEAGE_SEP`/`joinId`/`originOf` live in @resonatehq/base --
+// connectors need them too (origin-partitioned transports route by lineage
+// origin) -- and are re-exported here for the SDK's own modules.
+export { joinId, LINEAGE_SEP, ORIGIN_SEP, originOf } from "@resonatehq/base";
 
-/** Separates lineage segments below the origin. */
-export const LINEAGE_SEP = ".";
-
-/**
- * Append a lineage `segment` to `ancestor`.
- *
- * A bare root joins its *first* segment with `:`; an ancestor that already
- * carries lineage joins deeper segments with `.`, keeping the whole subtree
- * under one origin:
- *
- *   joinId("root", "1")     -> "root:1"
- *   joinId("root:1", "2")   -> "root:1.2"
- *   joinId("root:1.2", "3") -> "root:1.2.3"
- *
- * This is exactly the separator rule the server's `resonate:branch` /
- * `resonate:parent` validation applies.
- */
-export function joinId(ancestor: string, segment: string): string {
-  const sep = ancestor.includes(ORIGIN_SEP) ? LINEAGE_SEP : ORIGIN_SEP;
-  return `${ancestor}${sep}${segment}`;
-}
-
-/**
- * The lineage origin of `id`: everything before the first `:`.
- *
- * Mirrors the server's `origin()`. An id with no lineage below it (a root) is
- * its own origin.
- */
-export function originOf(id: string): string {
-  const sep = id.indexOf(ORIGIN_SEP);
-  return sep === -1 ? id : id.slice(0, sep);
-}
+import { LINEAGE_SEP, ORIGIN_SEP } from "@resonatehq/base";
 
 /**
  * Validate a caller-supplied root id (`run` / `rpc` / `schedule` / an explicit

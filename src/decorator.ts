@@ -1,6 +1,6 @@
+import type { PromiseCreateReq } from "@resonatehq/base";
 import { DIE, Future, LFC, LFI, RFC, RFI } from "./context.js";
 import type { ResonateError } from "./exceptions.js";
-import type { PromiseCreateReq } from "./network/types.js";
 import type { RetryPolicy } from "./retries.js";
 import type { Func, Result, Yieldable } from "./types.js";
 import * as util from "./util.js";

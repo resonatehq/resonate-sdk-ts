@@ -1,9 +1,9 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import type { Network, Source } from "@resonatehq/base";
 import type { Context, Info } from "../../src/async/index.js";
 import { Resonate } from "../../src/async/index.js";
 import { Codec } from "../../src/codec.js";
-import { LocalNetwork } from "../../src/network/local.js";
-import type { Network } from "../../src/network/network.js";
+import { LocalConnection } from "../../src/connections/local.js";
 import { Constant } from "../../src/retries.js";
 
 function newResonate(): Resonate {
@@ -13,10 +13,16 @@ function newResonate(): Resonate {
 // Wraps a network and records every durable promise.create issued — bare
 // (resonate.rpc), embedded in task.create (resonate.run), or embedded in
 // task.fence (the effects path) — used to assert creation ordering and tags.
-class RecordingNetwork implements Network {
+class RecordingNetwork implements Network, Source {
   readonly creates: string[] = [];
   readonly tags = new Map<string, Record<string, string>>();
-  constructor(private inner: Network) {}
+  constructor(private inner: LocalConnection) {}
+  get pid() {
+    return this.inner.pid;
+  }
+  get group() {
+    return this.inner.group;
+  }
   get unicast() {
     return this.inner.unicast;
   }
@@ -26,8 +32,8 @@ class RecordingNetwork implements Network {
   match(target: string) {
     return this.inner.match(target);
   }
-  init() {
-    return this.inner.init();
+  start() {
+    return this.inner.start();
   }
   stop() {
     return this.inner.stop();
@@ -45,7 +51,7 @@ class RecordingNetwork implements Network {
     }
     return this.inner.send(req);
   }) as Network["send"];
-  recv: Network["recv"] = (cb) => this.inner.recv(cb);
+  recv: Source["recv"] = (cb) => this.inner.recv(cb);
 }
 
 describe("Resonate — async/await engine", () => {
@@ -163,7 +169,7 @@ describe("Resonate — async/await engine", () => {
   });
 
   test("creation sequencer: concurrent fan-out creates promises in source order", async () => {
-    const recording = new RecordingNetwork(new LocalNetwork({ pid: "default", group: "default" }));
+    const recording = new RecordingNetwork(new LocalConnection({ pid: "default", group: "default" }));
     resonate = new Resonate({ network: recording, ttl: Number.MAX_SAFE_INTEGER });
     resonate.register("noop", async (_info: Info, n: number): Promise<number> => n);
     const fanout = async (ctx: Context): Promise<number[]> => {
@@ -308,7 +314,7 @@ describe("Resonate — async/await engine", () => {
   });
 
   test("child ids extend the origin and no resonate:prefix tag is emitted", async () => {
-    const recording = new RecordingNetwork(new LocalNetwork({ pid: "default", group: "default" }));
+    const recording = new RecordingNetwork(new LocalConnection({ pid: "default", group: "default" }));
     resonate = new Resonate({ network: recording, ttl: Number.MAX_SAFE_INTEGER });
     resonate.register("pchild", async (_info: Info, n: number): Promise<number> => n);
     resonate.register("pdet", async (_info: Info): Promise<void> => {});

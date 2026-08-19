@@ -1,7 +1,7 @@
 import { WallClock } from "../src/clock.js";
+import { LocalConnection } from "../src/connections/local.js";
 import { type Context, Future, InnerContext, type LFI } from "../src/context.js";
 import { Decorator } from "../src/decorator.js";
-import { LocalNetwork } from "../src/network/local.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Never } from "../src/retries.js";
@@ -30,7 +30,7 @@ describe("Decorator", () => {
       yield* ctx.beginRun((_ctx: Context) => 42);
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({
@@ -78,7 +78,7 @@ describe("Decorator", () => {
       return v1 + v2;
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({
@@ -153,7 +153,7 @@ describe("Decorator", () => {
       return 30;
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({
@@ -208,7 +208,7 @@ describe("Decorator", () => {
       return 30; // D
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({
@@ -275,7 +275,7 @@ describe("Decorator", () => {
       return 42; // D
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({
@@ -344,7 +344,7 @@ describe("Decorator", () => {
       return "should not reach here";
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({
@@ -378,7 +378,7 @@ describe("Decorator", () => {
       return 42;
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({
@@ -415,7 +415,7 @@ describe("Decorator", () => {
       return v1 + v2;
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({
@@ -481,7 +481,7 @@ describe("Decorator", () => {
       return v + 1;
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({
@@ -539,7 +539,7 @@ describe("Decorator", () => {
       }
     }
 
-    const m = new LocalNetwork();
+    const m = new LocalConnection();
     const d = new Decorator(
       foo(
         new InnerContext({

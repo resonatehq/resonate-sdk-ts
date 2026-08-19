@@ -9,14 +9,14 @@
 
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, jest, test } from "@jest/globals";
+import { isSuccess, type PromiseRecord, type Request, type TaskRecord } from "@resonatehq/base";
 import { Core } from "../../src/async/core.js";
 import type { Context, Info } from "../../src/async/index.js";
 import { WallClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
+import { LocalConnection } from "../../src/connections/local.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import { ConsoleLogger } from "../../src/logger.js";
-import { LocalNetwork } from "../../src/network/local.js";
-import { isSuccess, type PromiseRecord, type Request, type TaskRecord } from "../../src/network/types.js";
 import { OptionsBuilder } from "../../src/options.js";
 import { Registry } from "../../src/registry.js";
 import type { Send } from "../../src/types.js";
@@ -28,7 +28,7 @@ const codec = new Codec();
 
 type AnyFunc = (...args: any[]) => any;
 
-let network: LocalNetwork | undefined;
+let network: LocalConnection | undefined;
 
 afterEach(async () => {
   await network?.stop();
@@ -38,10 +38,10 @@ afterEach(async () => {
 
 function buildCore(fns: Record<string, AnyFunc>): {
   core: Core;
-  network: LocalNetwork;
+  network: LocalConnection;
   sendHolder: { fn: Send };
 } {
-  network = new LocalNetwork({ pid: PID, group: "default" });
+  network = new LocalConnection({ pid: PID, group: "default" });
 
   // Mutable holder so interceptSend can swap the inner function
   const sendHolder = { fn: network.send as Send };
@@ -103,7 +103,7 @@ async function seedPendingTask(
   id: string,
   func: string,
   args: any[],
-  network: LocalNetwork,
+  network: LocalConnection,
 ): Promise<TaskRecord> {
   const { task } = await seedAcquiredTask(send, id, func, args);
   const releaseRes = await send({

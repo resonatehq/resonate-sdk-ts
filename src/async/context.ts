@@ -1,7 +1,7 @@
+import type { PromiseCreateReq, PromiseRecord } from "@resonatehq/base";
 import type { Clock } from "../clock.js";
 import exceptions, { type ResonateError } from "../exceptions.js";
 import { joinId } from "../ids.js";
-import type { PromiseCreateReq, PromiseRecord } from "../network/types.js";
 import type { Options, OptionsBuilder } from "../options.js";
 import { delay, randomUUID } from "../platform.js";
 import type { Registry } from "../registry.js";

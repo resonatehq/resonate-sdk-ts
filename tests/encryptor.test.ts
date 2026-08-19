@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
+import type { Value } from "@resonatehq/base";
 import { type Encryptor, NoopEncryptor } from "../src/encryptor.js";
-import type { Value } from "../src/network/types.js";
 
 export class DummyEncryptor {
   private key: Buffer;

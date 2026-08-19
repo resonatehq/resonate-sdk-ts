@@ -1,7 +1,7 @@
 import { setTimeout } from "node:timers/promises";
+import type { Value } from "@resonatehq/base";
 import { Codec } from "../src/codec.js";
 import type { Context, InnerContext } from "../src/context.js";
-import type { Value } from "../src/network/types.js";
 import { Resonate } from "../src/resonate.js";
 import { Constant, Exponential, Linear, Never, type RetryPolicy } from "../src/retries.js";
 import * as util from "../src/util.js";
@@ -1302,9 +1302,9 @@ describe("Resonate environment variable initialization", () => {
     await resonate.stop();
   });
 
-  test("LocalNetwork used when no url sources are set", async () => {
+  test("LocalConnection used when no url sources are set", async () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation(() => {
-      throw new Error("Fetch should not be called for LocalNetwork");
+      throw new Error("Fetch should not be called for LocalConnection");
     });
 
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
@@ -1320,11 +1320,11 @@ describe("Resonate environment variable initialization", () => {
     await resonate.stop();
   });
 
-  test("Empty RESONATE_URL and no url arg falls back to LocalNetwork", async () => {
+  test("Empty RESONATE_URL and no url arg falls back to LocalConnection", async () => {
     process.env.RESONATE_URL = "";
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation(() => {
-      throw new Error("Fetch should not be called for LocalNetwork");
+      throw new Error("Fetch should not be called for LocalConnection");
     });
 
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });

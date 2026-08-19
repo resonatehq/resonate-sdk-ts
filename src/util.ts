@@ -1,8 +1,3 @@
-import type { Codec } from "./codec.js";
-import type { InnerContext } from "./context.js";
-import exceptions from "./exceptions.js";
-import { joinId } from "./ids.js";
-import type { Logger } from "./logger.js";
 import {
   isSuccess,
   type PromiseCreateReq,
@@ -10,7 +5,12 @@ import {
   type PromiseRecord,
   type PromiseSettleReq,
   type PromiseSettleRes,
-} from "./network/types.js";
+} from "@resonatehq/base";
+import type { Codec } from "./codec.js";
+import type { InnerContext } from "./context.js";
+import exceptions from "./exceptions.js";
+import { joinId } from "./ids.js";
+import type { Logger } from "./logger.js";
 import { type Options, RESONATE_OPTIONS } from "./options.js";
 import { randomUUID } from "./platform.js";
 import type { Effects, Func, Result, Send } from "./types.js";

@@ -14,14 +14,14 @@
 
 import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "@jest/globals";
+import { isSuccess, type PromiseRecord, type TaskRecord } from "@resonatehq/base";
 import { Core } from "../../src/async/core.js";
 import type { Context, Info } from "../../src/async/index.js";
 import { WallClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
+import { LocalConnection } from "../../src/connections/local.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import { ConsoleLogger } from "../../src/logger.js";
-import { LocalNetwork } from "../../src/network/local.js";
-import { isSuccess, type PromiseRecord, type TaskRecord } from "../../src/network/types.js";
 import { OptionsBuilder } from "../../src/options.js";
 import { Registry } from "../../src/registry.js";
 import { Never } from "../../src/retries.js";
@@ -42,7 +42,7 @@ function registryOf(fns: Record<string, AnyFunc>): Registry {
   return r;
 }
 
-function newCore(registry: Registry, network: LocalNetwork): Core {
+function newCore(registry: Registry, network: LocalConnection): Core {
   return new Core({
     pid: PID,
     ttl: TTL,
@@ -60,7 +60,7 @@ function newCore(registry: Registry, network: LocalNetwork): Core {
 /** Seed the root promise + its acquired task in one shot (what the server does
  * when a root is created with a target). Returns the decoded root + the task. */
 async function seedRoot(
-  network: LocalNetwork,
+  network: LocalConnection,
   id: string,
   func: string,
   args: unknown[],
@@ -115,7 +115,7 @@ async function presettle(effects: Effects, id: string, value: unknown): Promise<
 /** Run a registered root to its first done/suspend and return the status. The
  * root id equals its registered name. */
 async function runRoot(fns: Record<string, AnyFunc>, root: string, args: unknown[] = []): Promise<Status> {
-  const network = new LocalNetwork({ pid: PID, group: "default" });
+  const network = new LocalConnection({ pid: PID, group: "default" });
   try {
     const core = newCore(registryOf(fns), network);
     const { task, promise, preload } = await seedRoot(network, root, root, args);
@@ -315,7 +315,7 @@ describe("async engine lifecycle trace", () => {
   });
 
   test("dedup root: an already-settled boundary promise emits a single dedup", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       const core = newCore(registryOf({ main: async (_ctx: Context): Promise<number> => 42 }), network);
       const { task } = await seedRoot(network, "host", "main", []);
@@ -344,7 +344,7 @@ describe("async engine lifecycle trace", () => {
   });
 
   test("dedup child: a run against an already-settled child emits dedup, not spawn", async () => {
-    const network = new LocalNetwork({ pid: PID, group: "default" });
+    const network = new LocalConnection({ pid: PID, group: "default" });
     try {
       const fns = {
         compute: async (_info: Info): Promise<number> => 1, // not invoked; child is pre-settled

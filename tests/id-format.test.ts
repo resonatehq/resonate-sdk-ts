@@ -14,11 +14,11 @@
  * id minting fails locally instead of as a 400 from a real server.
  */
 
+import type { Network, Source } from "@resonatehq/base";
 import type { Context, Info } from "../src/async/context.js";
 import { Resonate } from "../src/async/resonate.js";
+import { LocalConnection, Server } from "../src/connections/local.js";
 import { joinId, originOf, validateRootId } from "../src/ids.js";
-import { LocalNetwork, Server } from "../src/network/local.js";
-import type { Network } from "../src/network/network.js";
 import * as util from "../src/util.js";
 
 // =============================================================================
@@ -65,10 +65,16 @@ function serverValidate(id: string, tags: Record<string, string>): void {
 // =============================================================================
 
 /** Records every promise.create request (direct or nested in task.create). */
-class RecordingNetwork implements Network {
+class RecordingNetwork implements Network, Source {
   readonly creates: string[] = [];
   readonly tags = new Map<string, Record<string, string>>();
-  constructor(private inner: Network) {}
+  constructor(private inner: LocalConnection) {}
+  get pid() {
+    return this.inner.pid;
+  }
+  get group() {
+    return this.inner.group;
+  }
   get unicast() {
     return this.inner.unicast;
   }
@@ -78,8 +84,8 @@ class RecordingNetwork implements Network {
   match(target: string) {
     return this.inner.match(target);
   }
-  init() {
-    return this.inner.init();
+  start() {
+    return this.inner.start();
   }
   stop() {
     return this.inner.stop();
@@ -97,7 +103,7 @@ class RecordingNetwork implements Network {
     }
     return this.inner.send(req);
   }) as Network["send"];
-  recv: Network["recv"] = (cb) => this.inner.recv(cb);
+  recv: Source["recv"] = (cb) => this.inner.recv(cb);
 }
 
 /**
@@ -106,7 +112,7 @@ class RecordingNetwork implements Network {
  * return every (id, tags) pair the SDK created.
  */
 async function runWorkflow(rootId: string): Promise<{ creates: string[]; tags: Map<string, Record<string, string>> }> {
-  const recording = new RecordingNetwork(new LocalNetwork({ pid: "default", group: "default" }));
+  const recording = new RecordingNetwork(new LocalConnection({ pid: "default", group: "default" }));
   const resonate = new Resonate({ network: recording, ttl: Number.MAX_SAFE_INTEGER });
   try {
     const leaf = async (_info: Info, n: number): Promise<number> => n;

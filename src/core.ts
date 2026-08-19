@@ -1,10 +1,10 @@
+import { isRedirect, isSuccess, type Message, type PromiseRecord, type TaskRecord } from "@resonatehq/base";
 import type { Clock } from "./clock.js";
 import type { Codec } from "./codec.js";
 import { Computation, type Done, type Status } from "./computation.js";
 import exceptions, { ResonateError } from "./exceptions.js";
 import type { Heartbeat } from "./heartbeat.js";
 import type { Logger } from "./logger.js";
-import { isRedirect, isSuccess, type Message, type PromiseRecord, type TaskRecord } from "./network/types.js";
 import type { OptionsBuilder } from "./options.js";
 import { randomUUID } from "./platform.js";
 import type { Registry } from "./registry.js";

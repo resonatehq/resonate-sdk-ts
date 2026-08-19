@@ -1,8 +1,3 @@
-import { CronExpressionParser } from "cron-parser";
-import { randomUUID } from "../platform.js";
-import { assert, VERSION } from "../util.js";
-import type { Network } from "./network.js";
-import { isResponse } from "./types.js";
 import type {
   DebugResetRes,
   DebugSnapRes,
@@ -54,7 +49,11 @@ import type {
   TaskSuspendReq,
   TaskSuspendRes,
   Value,
-} from "./types.ts";
+} from "@resonatehq/base";
+import { isResponse, type Network, type Source } from "@resonatehq/base";
+import { CronExpressionParser } from "cron-parser";
+import { randomUUID } from "../platform.js";
+import { assert, VERSION } from "../util.js";
 
 export interface PTimeout {
   id: string;
@@ -1617,10 +1616,17 @@ export class Server {
 }
 
 // =============================================================================
-// LOCAL NETWORK
+// LOCAL CONNECTION
 // =============================================================================
 
-export class LocalNetwork implements Network {
+/**
+ * A dual-role connection (`Network` + `Source`) whose server is an in-process
+ * simulation: `send` applies the request to the in-memory {@link Server}, and
+ * push messages produced by the server are delivered to `recv` subscribers.
+ */
+export class LocalConnection implements Network, Source {
+  readonly pid: string;
+  readonly group: string;
   readonly unicast: string;
   readonly anycast: string;
 
@@ -1638,17 +1644,19 @@ export class LocalNetwork implements Network {
   } = {}) {
     this.started = false;
     this.server = new Server();
+    this.pid = pid;
+    this.group = group;
     this.unicast = `local://uni@${group}/${pid}`;
     this.anycast = `local://any@${group}/${pid}`;
   }
 
-  // -- Network ---------------------------------------------------------------
+  // -- Network + Source --------------------------------------------------------
 
   match(target: string): string {
     return `local://any@${target}`;
   }
 
-  async init(): globalThis.Promise<void> {
+  async start(): globalThis.Promise<void> {
     if (this.started) return;
     this.tickInterval = setInterval(() => {
       const now = Date.now();

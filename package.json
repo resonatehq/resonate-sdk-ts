@@ -25,16 +25,6 @@
       "import": "./dist/src/async/index.js",
       "default": "./dist/src/async/index.js"
     },
-    "./nats": {
-      "types": "./dist/src/network/nats.d.ts",
-      "import": "./dist/src/network/nats.js",
-      "default": "./dist/src/network/nats.js"
-    },
-    "./postgres": {
-      "types": "./dist/src/network/postgres.d.ts",
-      "import": "./dist/src/network/postgres.js",
-      "default": "./dist/src/network/postgres.js"
-    },
     "./package.json": "./package.json"
   },
   "repository": {
@@ -48,7 +38,8 @@
     "dist/src"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run build --workspace @resonatehq/base --workspace @resonatehq/connector-http && tsc -p tsconfig.build.json",
+    "build:packages": "npm run build --workspaces --if-present",
     "check": "biome check ./",
     "check:fix": "biome check ./ --write",
     "check:all": "npm run build && npm run check && npm run type-check && npm test",
@@ -63,20 +54,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "cron-parser": "^5.3.0",
-    "eventsource": "^4.0.0"
-  },
-  "peerDependencies": {
-    "@nats-io/transport-node": "^3.0.0",
-    "pg": "^8.11.0"
-  },
-  "peerDependenciesMeta": {
-    "@nats-io/transport-node": {
-      "optional": true
-    },
-    "pg": {
-      "optional": true
-    }
+    "@resonatehq/base": "^0.1.0",
+    "@resonatehq/connector-http": "^0.1.0",
+    "cron-parser": "^5.3.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.10",

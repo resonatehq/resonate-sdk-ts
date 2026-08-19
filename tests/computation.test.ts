@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "@jest/globals";
+import type { Network } from "@resonatehq/base";
+import { isSuccess, type PromiseRecord } from "@resonatehq/base";
 import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import { Computation } from "../src/computation.js";
+import { LocalConnection } from "../src/connections/local.js";
 import type { Context } from "../src/context.js";
 import type { Heartbeat } from "../src/heartbeat.js";
 import { ConsoleLogger } from "../src/logger.js";
-import { LocalNetwork } from "../src/network/local.js";
-import type { Network } from "../src/network/network.js";
-import { isSuccess, type PromiseRecord } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { Registry } from "../src/registry.js";
 import { Exponential, Never } from "../src/retries.js";
@@ -25,7 +25,7 @@ async function buildComputation(registry: Registry): Promise<{
   network: Network;
   effects: Effects;
 }> {
-  const network = new LocalNetwork();
+  const network = new LocalConnection();
   const codec = new Codec();
   const logger = new ConsoleLogger("error");
 

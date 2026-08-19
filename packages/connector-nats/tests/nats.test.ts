@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
-import { ResonateTimeoutException } from "../../src/exceptions.js";
-import { NatsNetwork } from "../../src/network/nats.js";
-import { isSuccess, type Message, type Request } from "../../src/network/types.js";
-import { VERSION } from "../../src/util.js";
+import { isSuccess, type Message, type Request, ResonateTimeoutException } from "@resonatehq/base";
+import { NatsConnection } from "../src/index.js";
+
+// The protocol version stamped into request heads; the fake server echoes it.
+const VERSION = "2026-04-01";
 
 // =============================================================================
 // In-memory fake NatsConnection
 // =============================================================================
 //
 // Models just enough of `@nats-io/transport-node`'s NatsConnection for the
-// NatsNetwork port: subject-token routing (with `*`/`>` wildcards), queue
+// NatsConnection port: subject-token routing (with `*`/`>` wildcards), queue
 // groups (deliver once per group), publish headers, `max`-auto-unsubscribe,
 // and subscription timeouts firing the callback with an error.
 
@@ -145,24 +146,24 @@ function attachServer(fake: FakeNats, respond: (envelope: any, corrId: string) =
 // Tests
 // =============================================================================
 
-describe("NatsNetwork addresses & match", () => {
+describe("NatsConnection addresses & match", () => {
   test("derives unicast/anycast subjects and match address", () => {
-    const net = new NatsNetwork({ conn: new FakeNats() as any, pid: "p1", group: "g1" });
+    const net = new NatsConnection({ conn: new FakeNats() as any, pid: "p1", group: "g1" });
     expect(net.unicast).toBe("nats://resonate.recv.g1.p1");
     expect(net.anycast).toBe("nats://resonate.recv.g1");
     expect(net.match("workerpool")).toBe("nats://resonate.recv.workerpool");
   });
 
   test("honors custom worker topic", () => {
-    const net = new NatsNetwork({ conn: new FakeNats() as any, pid: "p1", group: "g1", workerTopic: "custom.recv" });
+    const net = new NatsConnection({ conn: new FakeNats() as any, pid: "p1", group: "g1", workerTopic: "custom.recv" });
     expect(net.unicast).toBe("nats://custom.recv.g1.p1");
     expect(net.match("t")).toBe("nats://custom.recv.t");
   });
 });
 
-describe("NatsNetwork.send()", () => {
+describe("NatsConnection.send()", () => {
   let fake: FakeNats;
-  let net: NatsNetwork;
+  let net: NatsConnection;
 
   beforeEach(() => {
     fake = new FakeNats();
@@ -174,8 +175,8 @@ describe("NatsNetwork.send()", () => {
 
   test("round-trips a request and returns the typed response", async () => {
     attachServer(fake, (_env, corrId) => promiseGetOkReply("p1", corrId));
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
+    await net.start();
 
     const res = await net.send(promiseGetReq("p1", "corr-abc"));
     expect(res.kind).toBe("promise.get");
@@ -192,8 +193,8 @@ describe("NatsNetwork.send()", () => {
       seen = env;
       return promiseGetOkReply("foo", corrId);
     });
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
+    await net.start();
 
     // origin is the lineage root: substring before the first colon of the id.
     await net.send(promiseGetReq("foo:bar.baz", "c1"));
@@ -218,8 +219,8 @@ describe("NatsNetwork.send()", () => {
         },
       });
     });
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
+    await net.start();
 
     const req: Extract<Request, { kind: "task.create" }> = {
       kind: "task.create",
@@ -240,47 +241,47 @@ describe("NatsNetwork.send()", () => {
 
   test("times out into a ResonateTimeoutException when no reply arrives", async () => {
     // No server attached — the inbox subscription's timeout fires.
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1", requestTimeout: 20 });
-    await net.init();
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1", requestTimeout: 20 });
+    await net.start();
     await expect(net.send(promiseGetReq("p1"))).rejects.toBeInstanceOf(ResonateTimeoutException);
   });
 
   test("rejects a reply whose corrId does not match the request", async () => {
     attachServer(fake, (_env, _corrId) => promiseGetOkReply("p1", "different-corr"));
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
+    await net.start();
     await expect(net.send(promiseGetReq("p1", "corr-x"))).rejects.toBeInstanceOf(ResonateTimeoutException);
   });
 
   test("rejects a malformed JSON reply", async () => {
     attachServer(fake, () => "not json{");
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
+    await net.start();
     await expect(net.send(promiseGetReq("p1"))).rejects.toBeInstanceOf(ResonateTimeoutException);
   });
 
   test("a send issued before init resolves completes once init runs", async () => {
     attachServer(fake, (_e, corrId) => promiseGetOkReply("p1", corrId));
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
     // Fire the send before init() — it must wait for readiness, not throw.
     const pending = net.send(promiseGetReq("p1", "corr-early"));
-    await net.init();
+    await net.start();
     const res = await pending;
     expect(res.head.corrId).toBe("corr-early");
   });
 
   test("throws when sending after stop", async () => {
     attachServer(fake, (_e, corrId) => promiseGetOkReply("p1", corrId));
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
+    await net.start();
     await net.stop();
     await expect(net.send(promiseGetReq("p1"))).rejects.toBeInstanceOf(ResonateTimeoutException);
   });
 });
 
-describe("NatsNetwork.recv()", () => {
+describe("NatsConnection.recv()", () => {
   let fake: FakeNats;
-  let net: NatsNetwork;
+  let net: NatsConnection;
 
   beforeEach(() => {
     fake = new FakeNats();
@@ -291,11 +292,10 @@ describe("NatsNetwork.recv()", () => {
   });
 
   test("delivers an execute message published on the unicast subject", async () => {
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
-
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
     const received: Message[] = [];
     net.recv((m) => received.push(m));
+    await net.start();
 
     const execute = JSON.stringify({ kind: "execute", head: {}, data: { task: { id: "t1", version: 0 } } });
     fake.publish("resonate.recv.g1.p1", execute);
@@ -308,11 +308,10 @@ describe("NatsNetwork.recv()", () => {
   });
 
   test("delivers an anycast message once across the queue group", async () => {
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
-
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
     const received: Message[] = [];
     net.recv((m) => received.push(m));
+    await net.start();
 
     const unblock = JSON.stringify({
       kind: "unblock",
@@ -328,11 +327,10 @@ describe("NatsNetwork.recv()", () => {
   });
 
   test("drops malformed messages without invoking the callback", async () => {
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
-
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
     const received: Message[] = [];
     net.recv((m) => received.push(m));
+    await net.start();
 
     fake.publish("resonate.recv.g1.p1", "not json{");
     fake.publish("resonate.recv.g1.p1", JSON.stringify({ kind: "bogus" }));
@@ -341,10 +339,10 @@ describe("NatsNetwork.recv()", () => {
   });
 
   test("stops delivering after stop()", async () => {
-    net = new NatsNetwork({ conn: fake as any, pid: "p1", group: "g1" });
-    await net.init();
+    net = new NatsConnection({ conn: fake as any, pid: "p1", group: "g1" });
     const received: Message[] = [];
     net.recv((m) => received.push(m));
+    await net.start();
     await net.stop();
 
     const execute = JSON.stringify({ kind: "execute", head: {}, data: { task: { id: "t1", version: 0 } } });

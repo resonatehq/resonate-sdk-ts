@@ -1,0 +1,44 @@
+{
+  "name": "@resonatehq/connector-nats",
+  "version": "0.1.0",
+  "description": "NATS connection (Network + Source) for the Resonate TypeScript SDK",
+  "author": "Resonate Developers",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/resonatehq/resonate-sdk-ts.git",
+    "directory": "packages/connector-nats"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "resonate",
+    "durable-execution",
+    "connector",
+    "nats"
+  ],
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@nats-io/transport-node": "^3.0.0"
+  },
+  "peerDependencies": {
+    "@resonatehq/base": "^0.1.0"
+  },
+  "devDependencies": {
+    "@resonatehq/base": "^0.1.0"
+  }
+}

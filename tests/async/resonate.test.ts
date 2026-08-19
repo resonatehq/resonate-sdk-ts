@@ -912,9 +912,9 @@ describe("Resonate environment variable initialization", () => {
     await resonate.stop();
   });
 
-  test("LocalNetwork used when no url sources are set", async () => {
+  test("LocalConnection used when no url sources are set", async () => {
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation(() => {
-      throw new Error("Fetch should not be called for LocalNetwork");
+      throw new Error("Fetch should not be called for LocalConnection");
     });
 
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });
@@ -930,11 +930,11 @@ describe("Resonate environment variable initialization", () => {
     await resonate.stop();
   });
 
-  test("Empty RESONATE_URL and no url arg falls back to LocalNetwork", async () => {
+  test("Empty RESONATE_URL and no url arg falls back to LocalConnection", async () => {
     process.env.RESONATE_URL = "";
 
     const mockFetch = jest.spyOn(global, "fetch").mockImplementation(() => {
-      throw new Error("Fetch should not be called for LocalNetwork");
+      throw new Error("Fetch should not be called for LocalConnection");
     });
 
     const resonate = new Resonate({ group: "default", pid: "0", ttl: 60_000 });

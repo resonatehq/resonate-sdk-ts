@@ -1,8 +1,9 @@
 // =============================================================================
-// PostgresNetwork
+// PostgresConnection
 // =============================================================================
-// A `Network` whose server *is* Postgres: the Resonate protocol runs as stored
-// procedures in a `resonate` schema (see github.com/resonatehq/resonate-pg).
+// A dual-role connection (`Network` + `Source`) whose server *is* Postgres:
+// the Resonate protocol runs as stored procedures in a `resonate` schema (see
+// github.com/resonatehq/resonate-pg).
 //
 //   send(req)  -> `SELECT resonate.resonate_rpc($1::jsonb)`, which runs the
 //                 stored procedure for the request kind and returns the exact
@@ -14,15 +15,10 @@
 //                 node's outbox rows, delivering each as an `execute` /
 //                 `unblock` Message. This pump is the runtime: it forwards
 //                 server-pushed messages and advances Postgres's timers.
-//
-// `pg` (node-postgres) is an optional peer dependency, imported dynamically so
-// the SDK carries no hard dependency on it unless PostgresNetwork is used.
-import type { Client, Pool } from "pg";
-import type { Logger } from "../logger.js";
-import type { Network } from "./network.js";
-import type { Message, Request, Response } from "./types.js";
+import type { Logger, Message, Network, Request, Response, Source } from "@resonatehq/base";
+import pg, { type Client, type Pool } from "pg";
 
-export interface PostgresNetworkConfig {
+export interface PostgresConnectionConfig {
   /** Postgres connection string (e.g. postgres://user:pass@host:5432/db). */
   connectionString: string;
   /** Worker group; a task targets the group (anycast). Default "default". */
@@ -34,19 +30,19 @@ export interface PostgresNetworkConfig {
   logger?: Logger;
 }
 
-export class PostgresNetwork implements Network {
+export class PostgresConnection implements Network, Source {
+  readonly pid: string;
+  readonly group: string;
   readonly unicast: string;
   readonly anycast: string;
 
   private readonly connectionString: string;
-  private readonly group: string;
-  private readonly pid: string;
   private readonly tickMs: number;
   private readonly logger?: Logger;
 
-  // `pg` is loaded lazily (optional peer dependency); the pool is memoized so
-  // send() works even before init() resolves (the SDK does not await init()).
-  private poolPromise?: Promise<Pool>;
+  // The pool is memoized so send() works even before start() resolves (the
+  // SDK does not await start()).
+  private pool?: Pool;
   private listenClient?: Client;
 
   private callbacks: Array<(msg: Message) => void> = [];
@@ -55,7 +51,7 @@ export class PostgresNetwork implements Network {
   private redrain = false;
   private stopped = false;
 
-  constructor(cfg: PostgresNetworkConfig) {
+  constructor(cfg: PostgresConnectionConfig) {
     this.connectionString = cfg.connectionString;
     this.group = cfg.group ?? "default";
     this.pid = cfg.pid ?? crypto.randomUUID().replace(/-/g, "");
@@ -72,30 +68,18 @@ export class PostgresNetwork implements Network {
     return `poll://any@${target}`;
   }
 
-  private async pg(): Promise<{ Pool: typeof Pool; Client: typeof Client }> {
-    const m = (await import("pg")) as unknown as {
-      Pool?: typeof Pool;
-      Client?: typeof Client;
-      default?: { Pool: typeof Pool; Client: typeof Client };
-    };
-    const PoolCtor = (m.Pool ?? m.default?.Pool)!;
-    const ClientCtor = (m.Client ?? m.default?.Client)!;
-    return { Pool: PoolCtor, Client: ClientCtor };
-  }
-
-  private getPool(): Promise<Pool> {
-    if (!this.poolPromise) {
-      this.poolPromise = this.pg().then((pg) => new pg.Pool({ connectionString: this.connectionString, max: 8 }));
+  private getPool(): Pool {
+    if (!this.pool) {
+      this.pool = new pg.Pool({ connectionString: this.connectionString, max: 8 });
     }
-    return this.poolPromise;
+    return this.pool;
   }
 
-  async init(): Promise<void> {
-    const pool = await this.getPool();
+  async start(): Promise<void> {
+    const pool = this.getPool();
     // A dedicated connection held open for LISTEN; node-postgres surfaces
     // notifications as 'notification' events. The schema NOTIFYs on a channel
     // derived from each row's address, so listen on this node's addresses.
-    const pg = await this.pg();
     this.listenClient = new pg.Client({ connectionString: this.connectionString });
     await this.listenClient.connect();
     this.listenClient.on("notification", () => void this.drain());
@@ -109,7 +93,7 @@ export class PostgresNetwork implements Network {
 
     this.scheduleNext();
     await this.drain();
-    this.logger?.info({ component: "network", group: this.group, pid: this.pid }, "postgres network initialized");
+    this.logger?.info({ component: "network", group: this.group, pid: this.pid }, "postgres connection started");
   }
 
   async stop(): Promise<void> {
@@ -121,7 +105,7 @@ export class PostgresNetwork implements Network {
       /* already closed */
     }
     try {
-      await (await this.poolPromise)?.end();
+      await this.pool?.end();
     } catch {
       /* already closed */
     }
@@ -130,8 +114,9 @@ export class PostgresNetwork implements Network {
   send = async <K extends Request["kind"]>(
     req: Extract<Request, { kind: K }>,
   ): Promise<Extract<Response, { kind: K }>> => {
-    const pool = await this.getPool();
-    const { rows } = await pool.query("SELECT resonate.resonate_rpc($1::jsonb) AS res", [JSON.stringify(req)]);
+    const { rows } = await this.getPool().query("SELECT resonate.resonate_rpc($1::jsonb) AS res", [
+      JSON.stringify(req),
+    ]);
     return rows[0].res as Extract<Response, { kind: K }>;
   };
 
@@ -153,7 +138,7 @@ export class PostgresNetwork implements Network {
     }
     this.draining = true;
     try {
-      const pool = await this.getPool();
+      const pool = this.getPool();
       // No-arg overload: timers fire on database time (clock_timestamp), so
       // every node shares one time authority regardless of local clock skew,
       // and concurrent calls from multiple nodes are safe (advisory locks,

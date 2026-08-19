@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
+import type { Request } from "@resonatehq/base";
 import { StepClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import type * as context from "../src/context.js";
-import type { Request } from "../src/network/types.js";
 import { Registry } from "../src/registry.js";
 import { VERSION } from "../src/util.js";
 import { ServerProcess } from "./src/server.js";

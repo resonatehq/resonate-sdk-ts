@@ -1,10 +1,10 @@
+import type { Network, Source } from "@resonatehq/base";
+import { isMessage, isResponse, type Message, type Request, type Response } from "@resonatehq/base";
 import type { StepClock } from "../../src/clock.js";
 import { Codec } from "../../src/codec.js";
 import { Core } from "../../src/core.js";
 import { NoopHeartbeat } from "../../src/heartbeat.js";
 import { ConsoleLogger } from "../../src/logger.js";
-import type { Network } from "../../src/network/network.js";
-import { isMessage, isResponse, type Message, type Request, type Response } from "../../src/network/types.js";
 
 import { OptionsBuilder } from "../../src/options.js";
 import type { Registry } from "../../src/registry.js";
@@ -15,7 +15,9 @@ interface DeliveryOptions {
   charFlipProb?: number;
 }
 
-class SimulatedNetwork implements Network {
+class SimulatedNetwork implements Network, Source {
+  readonly pid: string;
+  readonly group: string;
   readonly unicast: string;
   readonly anycast: string;
 
@@ -43,13 +45,15 @@ class SimulatedNetwork implements Network {
     public readonly source: Address,
     public readonly target: Address,
   ) {
+    this.pid = iaddr;
+    this.group = gaddr;
     this.unicast = `sim://uni@${gaddr}/${iaddr}`;
     this.anycast = `sim://any@${gaddr}/${iaddr}`;
     this.prng = prng;
     this.deliveryOptions = { charFlipProb };
   }
 
-  async init(): Promise<void> {}
+  async start(): Promise<void> {}
   async stop(): Promise<void> {}
 
   match(target: string): string {

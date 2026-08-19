@@ -12,10 +12,9 @@
  */
 
 import { afterEach, describe, expect, test } from "@jest/globals";
+import type { Message, Network, PromiseRecord, Request, Response, Send, Source } from "@resonatehq/base";
 import type { Info } from "../../src/async/index.js";
 import { Resonate } from "../../src/async/index.js";
-import type { Network, Send } from "../../src/network/network.js";
-import type { Message, PromiseRecord, Request, Response } from "../../src/network/types.js";
 import * as util from "../../src/util.js";
 
 // ---------------------------------------------------------------------------
@@ -43,7 +42,9 @@ function makePromise(id: string, state: string, value: any, tags: Record<string,
 // Mock Network implementation
 // ---------------------------------------------------------------------------
 
-class MockNetwork implements Network {
+class MockNetwork implements Network, Source {
+  readonly pid = "mock-pid";
+  readonly group = "mock-group";
   readonly unicast: string;
   readonly anycast: string;
 
@@ -68,7 +69,7 @@ class MockNetwork implements Network {
     this.responseFactory = opts.responseFactory ?? MockNetwork.defaultResponseFactory;
   }
 
-  async init(): Promise<void> {}
+  async start(): Promise<void> {}
   async stop(): Promise<void> {}
 
   match(target: string): string {

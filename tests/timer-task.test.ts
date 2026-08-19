@@ -11,14 +11,14 @@
  * spin): it drops it and lets the deadline do the waking.
  */
 
+import type { PromiseRecord, Request, TaskRecord } from "@resonatehq/base";
 import { Core as AsyncCore } from "../src/async/core.js";
 import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
+import { LocalConnection } from "../src/connections/local.js";
 import { Core } from "../src/core.js";
 import { NoopHeartbeat } from "../src/heartbeat.js";
 import { ConsoleLogger } from "../src/logger.js";
-import { LocalNetwork } from "../src/network/local.js";
-import type { PromiseRecord, Request, TaskRecord } from "../src/network/types.js";
 import { OptionsBuilder } from "../src/options.js";
 import { randomUUID } from "../src/platform.js";
 import { Registry } from "../src/registry.js";
@@ -28,7 +28,7 @@ import * as util from "../src/util.js";
 const FAR_FUTURE = 2 ** 50;
 
 function buildHarness() {
-  const network = new LocalNetwork();
+  const network = new LocalConnection();
   const codec = new Codec();
   const logger = new ConsoleLogger("error");
   const sent: Request[] = [];
