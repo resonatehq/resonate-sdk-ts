@@ -14,8 +14,11 @@
 // them back with `originOf`, both of which mirror the server's own rules.
 //
 // A root id is supplied by the caller and becomes the origin of its whole
-// lineage, so `validateRootId` keeps both separators out of it, exactly as the
-// server does for the origin tag itself.
+// lineage, so `validateRootId` keeps `:` out of it, exactly as the server does
+// for the origin tag itself. `.` is *not* reserved there: it only separates
+// segments below the origin, and the origin is recovered by splitting on the
+// first `:`, so a dotted root (`my.app.workflow`) survives the round trip
+// intact.
 
 import exceptions from "./exceptions.js";
 
@@ -60,11 +63,16 @@ export function originOf(id: string): string {
  * Validate a caller-supplied root id (`run` / `rpc` / `schedule` / an explicit
  * `options({ id })`), returning it.
  *
- * Both separators are **reserved**: a root becomes the origin of its whole
- * lineage, and the server rejects an origin containing either one outright
- * (`dot_in_origin` / `colon_in_origin`). `.` because it separates lineage
- * segments; `:` because the origin is everything before an id's *first* `:`,
- * so an origin holding one could never be split back out of any id.
+ * Only `:` is **reserved**: a root becomes the origin of its whole lineage,
+ * and the origin is everything before an id's *first* `:`, so an origin
+ * holding one could never be split back out of any id. The server rejects it
+ * outright (`colon_in_origin`).
+ *
+ * `.` is allowed. It separates lineage segments *below* the origin, which is
+ * only ever read after the origin has been split off, so a dotted root id
+ * (`my.app.workflow`) is unambiguous:
+ *
+ *   my.app.workflow -> my.app.workflow:1 -> my.app.workflow:1.1
  *
  * @throws {ResonateError} here, at the call site that named the workflow,
  *   rather than surfacing later as an opaque 400 from a background create.
@@ -76,13 +84,11 @@ export function validateRootId(id: string): string {
   if (id.includes("\0")) {
     throw exceptions.INVALID_ID(id, "id must not contain null bytes");
   }
-  for (const sep of [LINEAGE_SEP, ORIGIN_SEP]) {
-    if (id.includes(sep)) {
-      throw exceptions.INVALID_ID(
-        id,
-        `id must not contain '${sep}': it is reserved as a lineage separator in the ids the SDK mints below this one`,
-      );
-    }
+  if (id.includes(ORIGIN_SEP)) {
+    throw exceptions.INVALID_ID(
+      id,
+      `id must not contain '${ORIGIN_SEP}': it separates the origin from the lineage in the ids the SDK mints below this one, so an id holding one could never be split back out`,
+    );
   }
   return id;
 }

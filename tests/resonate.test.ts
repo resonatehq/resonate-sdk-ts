@@ -1038,15 +1038,15 @@ describe("Resonate usage tests", () => {
 
   test("run/rpc/schedule reject an invalid root id; get does not validate", async () => {
     // Raised at the call site, before anything reaches the server: a root id
-    // becomes the origin of its whole lineage, so the reserved separators
-    // ('.' and ':') are rejected outright.
+    // becomes the origin of its whole lineage, so ':' is rejected outright
+    // ('.' is only read below the origin).
     const resonate = new Resonate();
     function noop(_ctx: Context) {
       return "ok";
     }
     resonate.register("vnoop", noop);
 
-    for (const bad of ["bad.id", "bad:id", "", "bad\u0000id"]) {
+    for (const bad of ["bad:id", "", "bad\u0000id"]) {
       await expect(resonate.beginRun(bad, "vnoop")).rejects.toThrow(/Invalid id/);
       await expect(resonate.beginRpc(bad, "vnoop")).rejects.toThrow(/Invalid id/);
       await expect(resonate.schedule(bad, "* * * * *", "vnoop")).rejects.toThrow(/Invalid id/);

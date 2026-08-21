@@ -37,7 +37,6 @@ function serverValidate(id: string, tags: Record<string, string>): void {
 
   const origin = tags["resonate:origin"];
   if (origin !== undefined) {
-    if (origin.includes(".")) throw new Error(`dot_in_origin: origin=${origin}`);
     if (origin.includes(":")) throw new Error(`colon_in_origin: origin=${origin}`);
     if (id !== origin && !id.startsWith(`${origin}:`)) {
       throw new Error(`origin_prefix: id=${id} is not prefixed by origin=${origin}`);
@@ -171,10 +170,14 @@ describe("promise id format compliance (async engine)", () => {
     created = await runWorkflow("wf");
   });
 
-  test("every created promise passes server validation", () => {
-    expect(created.creates.length).toBeGreaterThan(1);
-    for (const id of created.creates) {
-      serverValidate(id, created.tags.get(id) ?? {});
+  test.each(["wf", "my.app.workflow"])("every created promise passes server validation (root %s)", async (root) => {
+    // A dotted root is a caller's prerogative: '.' is only read below the
+    // origin, so every id minted under it still validates.
+    const result = await runWorkflow(root);
+    expect(result.creates.length).toBeGreaterThan(1);
+    for (const id of result.creates) {
+      serverValidate(id, result.tags.get(id) ?? {});
+      expect(serverOrigin(id)).toBe(root);
     }
   });
 
@@ -234,20 +237,25 @@ describe("ids module", () => {
     }
   });
 
-  test.each(["a.b", "a:b", "a.b:c", "", "a\0b"])("validateRootId rejects %j", (id) => {
-    // Both separators are reserved in a root id: it becomes the origin of its
-    // whole lineage, and the server rejects an origin containing either one
-    // outright (dot_in_origin / colon_in_origin).
+  test.each(["a:b", "a.b:c", "", "a\0b"])("validateRootId rejects %j", (id) => {
+    // ':' is the one reserved separator in a root id: it becomes the origin of
+    // its whole lineage. See the test below for what it actually breaks.
     expect(() => validateRootId(id)).toThrow(/Invalid id/);
   });
 
-  test.each(["a", "a-b", "a_b", "wf-1786636678653183000"])("validateRootId accepts %j", (id) => {
+  test.each(["a", "a-b", "a_b", "a.b", "wf-1786636678653183000"])("validateRootId accepts %j", (id) => {
     expect(validateRootId(id)).toBe(id);
   });
 
-  test("a dot in a root id is rejected by the server", () => {
-    // '.' cannot even create the root: the origin tag would hold one.
-    expect(() => serverValidate("a.b", { "resonate:origin": "a.b" })).toThrow(/dot_in_origin/);
+  test("a dot in a root id is accepted", () => {
+    // '.' only separates lineage segments *below* the origin, which is read
+    // after the origin has been split off at the first ':'. A dotted root is
+    // therefore unambiguous, and the server takes it.
+    expect(validateRootId("my.app.workflow")).toBe("my.app.workflow");
+    const id = joinId("my.app.workflow", "1");
+    expect(id).toBe("my.app.workflow:1");
+    expect(originOf(id)).toBe("my.app.workflow");
+    serverValidate(id, { "resonate:origin": "my.app.workflow" });
   });
 
   test("a colon in a root id is rejected by the server", () => {

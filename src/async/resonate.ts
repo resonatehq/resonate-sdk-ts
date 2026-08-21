@@ -251,8 +251,8 @@ export class Resonate {
 
     // Validated at the call site that named the workflow, rather than
     // surfacing later as an opaque 400 from the server: the id becomes the
-    // origin of its whole lineage, so the reserved separators ('.' and ':')
-    // are rejected outright.
+    // origin of its whole lineage, so ':' is rejected outright ('.' is only
+    // read below the origin).
     validateRootId(id);
     util.assert(registered.version > 0, "function version must be greater than zero");
 
@@ -379,9 +379,10 @@ export class Resonate {
     // Each firing creates a root promise named from this id, so the schedule
     // name is bound by the same rules as a run/rpc id. The server stamps the
     // *whole* templated id onto the fired promise's resonate:origin tag, so
-    // the template must join with a plain '-': a '.' would make every child
-    // of a scheduled run rejected (dot_in_origin) and a ':' would hide the
-    // timestamp below the origin, collapsing every firing onto one lineage.
+    // the template must join with a plain '-': a ':' would hide the timestamp
+    // below the origin, collapsing every firing onto one lineage. A '.' is
+    // fine now — it is only read below the origin — but '-' keeps the
+    // timestamp clearly distinct from any dots in the schedule name.
     validateRootId(name);
     await this.schedules.create(name, cron, "{{.id}}-{{.timestamp}}", opts.timeout, {
       promiseHeaders: headers,
