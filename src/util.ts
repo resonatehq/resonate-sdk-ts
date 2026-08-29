@@ -26,6 +26,12 @@ export const SEC = 1000;
 export const MIN = 60 * SEC;
 export const HOUR = 60 * MIN;
 
+// timers
+
+export function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // assert
 
 export function assert(cond: boolean, msg?: string): asserts cond {
@@ -169,7 +175,7 @@ export async function executeWithRetry(
         `Retry error details for '${ctx.func}'`,
       );
       ctx.info.attempt++;
-      await new Promise((resolve) => setTimeout(resolve, retryIn));
+      await delay(retryIn);
     }
   }
 }
@@ -200,7 +206,7 @@ export function buildEffects(
   ): Promise<R extends PromiseCreateReq ? PromiseCreateRes : PromiseSettleRes> {
     const outer = await send({
       kind: "task.fence",
-      head: { corrId: randomUUID(), version: VERSION },
+      head: { corrId: crypto.randomUUID(), version: VERSION },
       data: { id: fence.id, version: fence.version, action: inner },
     });
     if (!isSuccess(outer)) {

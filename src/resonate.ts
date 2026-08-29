@@ -207,7 +207,7 @@ export class Resonate {
         try {
           const registerListenerReq: PromiseRegisterListenerReq = {
             kind: "promise.register_listener",
-            head: { corrId: randomUUID(), version: util.VERSION },
+            head: { corrId: crypto.randomUUID(), version: util.VERSION },
             data: {
               awaited: id,
               address: this.network.unicast,
@@ -312,13 +312,13 @@ export class Resonate {
     util.assert(registered.version > 0, "function version must be greater than zero");
     const { promise, task } = await this.taskCreate({
       kind: "task.create",
-      head: { corrId: randomUUID(), version: util.VERSION },
+      head: { corrId: crypto.randomUUID(), version: util.VERSION },
       data: {
         pid: this.pid,
         ttl: this.ttl,
         action: {
           kind: "promise.create",
-          head: { corrId: randomUUID(), version: util.VERSION },
+          head: { corrId: crypto.randomUUID(), version: util.VERSION },
           data: {
             id: id,
             timeoutAt: Date.now() + opts.timeout,
@@ -390,7 +390,7 @@ export class Resonate {
     const version = registered ? registered.version : opts.version || 1;
     const promise = await this.promiseCreate({
       kind: "promise.create",
-      head: { corrId: randomUUID(), version: util.VERSION },
+      head: { corrId: crypto.randomUUID(), version: util.VERSION },
       data: {
         id: id,
         timeoutAt: Date.now() + opts.timeout,
@@ -496,7 +496,7 @@ export class Resonate {
     // (e.g. "wf:1.2"), so it deliberately does NOT validate.
     const promise = await this.promiseGet({
       kind: "promise.get",
-      head: { corrId: randomUUID(), version: util.VERSION },
+      head: { corrId: crypto.randomUUID(), version: util.VERSION },
       data: {
         id,
       },
@@ -570,7 +570,7 @@ export class Resonate {
     if (isConflict(res)) {
       const promise = await this.promiseRegisterListener({
         kind: "promise.register_listener",
-        head: { corrId: randomUUID(), version: util.VERSION },
+        head: { corrId: crypto.randomUUID(), version: util.VERSION },
         data: {
           awaited: req.data.action.data.id,
           address: this.network.unicast,
@@ -604,13 +604,13 @@ export class Resonate {
       try {
         const res = await this.send(req);
         if (!isSuccess(res)) {
-          await delay(retryDelay);
+          await util.delay(retryDelay);
           continue;
         }
         return this.codec.decodePromise(res.data.promise);
       } catch (e) {
         if (e instanceof ResonateTimeoutException) {
-          await delay(retryDelay);
+          await util.delay(retryDelay);
           continue;
         }
         throw e;
@@ -634,7 +634,7 @@ export class Resonate {
   private createHandle(promise: PromiseRecord): ResonateHandle<any> {
     const registerListenerReq: PromiseRegisterListenerReq = {
       kind: "promise.register_listener",
-      head: { corrId: randomUUID(), version: util.VERSION },
+      head: { corrId: crypto.randomUUID(), version: util.VERSION },
       data: {
         awaited: promise.id,
         address: this.network.unicast,

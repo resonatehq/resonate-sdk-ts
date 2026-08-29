@@ -34,7 +34,7 @@ export class AsyncHeartbeat implements Heartbeat {
     this.intervalId = setInterval(() => {
       this.send({
         kind: "task.heartbeat",
-        head: { corrId: randomUUID(), version: VERSION },
+        head: { corrId: crypto.randomUUID(), version: VERSION },
         data: {
           pid: this.pid,
           tasks: [],
