@@ -2,7 +2,6 @@ import type { Clock } from "./clock.js";
 import { InnerContext } from "./context.js";
 import { Coroutine } from "./coroutine.js";
 import exceptions from "./exceptions.js";
-import type { Heartbeat } from "./heartbeat.js";
 import { originOf } from "./ids.js";
 import type { Logger } from "./logger.js";
 import type { PromiseRecord } from "./network/types.js";
@@ -46,7 +45,6 @@ export class Computation {
   private dependencies: Map<string, any>;
   private optsBuilder: OptionsBuilder;
   private logger: Logger;
-  private heartbeat: Heartbeat;
   private processing = false;
 
   constructor(
@@ -55,7 +53,6 @@ export class Computation {
     effects: Effects,
     retries: Map<string, RetryPolicyConstructor>,
     registry: Registry,
-    heartbeat: Heartbeat,
     dependencies: Map<string, any>,
     optsBuilder: OptionsBuilder,
     logger: Logger,
@@ -65,7 +62,6 @@ export class Computation {
     this.effects = effects;
     this.retries = retries;
     this.registry = registry;
-    this.heartbeat = heartbeat;
     this.dependencies = dependencies;
     this.optsBuilder = optsBuilder;
     this.logger = logger;
@@ -97,9 +93,6 @@ export class Computation {
 
     if (version !== 0) util.assert(version === registered.version, "versions must match");
     util.assert(func === registered.name, "names must match");
-
-    // start heartbeat
-    this.heartbeat.start();
 
     const retryCtor = retry ? this.retries.get(retry.type) : undefined;
     const retryPolicy = retryCtor

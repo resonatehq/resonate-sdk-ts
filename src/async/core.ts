@@ -101,6 +101,20 @@ export class Core {
     rootPromise: PromiseRecord,
     preload?: PromiseRecord[],
   ): Promise<Status> {
+    const heartbeatTask = { id: task.id, version: task.version };
+    this.heartbeat.start(heartbeatTask);
+    try {
+      return await this.executeTaskUntilBlocked(task, rootPromise, preload);
+    } finally {
+      this.heartbeat.stop(heartbeatTask);
+    }
+  }
+
+  private async executeTaskUntilBlocked(
+    task: TaskRecord,
+    rootPromise: PromiseRecord,
+    preload?: PromiseRecord[],
+  ): Promise<Status> {
     util.assert(task.state === "acquired", `expected task state to be 'acquired', got '${task.state}'`);
 
     // A resonate:timer promise is a durable sleep. It names no function to
@@ -145,7 +159,7 @@ export class Core {
       if (status.kind === "suspended") {
         const suspendResult = await this.suspendTask(task, rootPromise, status.awaited);
         if (suspendResult.continue) {
-          return this.executeUntilBlocked(task, rootPromise, suspendResult.preload);
+          return this.executeTaskUntilBlocked(task, rootPromise, suspendResult.preload);
         }
       }
       if (status.kind === "done") {
@@ -190,8 +204,6 @@ export class Core {
 
     if (version !== 0) util.assert(version === registered.version, "versions must match");
     util.assert(func === registered.name, "names must match");
-
-    this.heartbeat.start();
 
     // One trace per pass (mirrors Computation.processGenerator); threaded into
     // the root context and propagated to every child via AsyncContext.child.

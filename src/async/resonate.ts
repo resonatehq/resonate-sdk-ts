@@ -472,6 +472,15 @@ export class Resonate {
       try {
         const res = await this.send(req);
         if (!isSuccess(res)) {
+          // A listener can be retried for transient server pressure, but
+          // semantic client errors (for example 422 for a local promise)
+          // cannot become valid by waiting.
+          if (res.head.status !== 429 && res.head.status !== 500) {
+            throw exceptions.SERVER_ERROR(res.data, false, {
+              code: res.head.status,
+              message: res.data,
+            });
+          }
           await delay(retryDelay);
           continue;
         }
@@ -503,8 +512,14 @@ export class Resonate {
 
     return {
       id: promise.id,
-      done: () => this.promiseRegisterListener(registerListenerReq).then((res) => res.state !== "pending"),
-      result: () => this.promiseRegisterListener(registerListenerReq).then((res) => this.subscribe(promise.id, res)),
+      done: () =>
+        promise.state === "pending"
+          ? this.promiseRegisterListener(registerListenerReq).then((res) => res.state !== "pending")
+          : Promise.resolve(true),
+      result: () =>
+        promise.state === "pending"
+          ? this.promiseRegisterListener(registerListenerReq).then((res) => this.subscribe(promise.id, res))
+          : this.subscribe(promise.id, promise),
     };
   }
 
