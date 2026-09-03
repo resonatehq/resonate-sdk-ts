@@ -4,7 +4,6 @@ import { WallClock } from "../src/clock.js";
 import { Codec } from "../src/codec.js";
 import { Computation } from "../src/computation.js";
 import type { Context } from "../src/context.js";
-import type { Heartbeat } from "../src/heartbeat.js";
 import { ConsoleLogger } from "../src/logger.js";
 import { LocalNetwork } from "../src/network/local.js";
 import type { Network } from "../src/network/network.js";
@@ -29,11 +28,6 @@ import {
 } from "../src/trace.js";
 import type { Effects } from "../src/types.js";
 import * as util from "../src/util.js";
-
-class TestHeartbeat implements Heartbeat {
-  start(): void {}
-  stop(): void {}
-}
 
 async function buildComputation(
   registry: Registry,
@@ -82,7 +76,6 @@ async function buildComputation(
       ["never", Never],
     ]),
     registry,
-    new TestHeartbeat(),
     new Map(),
     new OptionsBuilder({ match: (target: string) => target }),
     logger,
