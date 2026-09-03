@@ -93,7 +93,7 @@
     "tsx": "^4.20.5",
     "typedoc": "^0.28.18",
     "typedoc-material-theme": "^1.4.0",
-    "typescript": "^6.0.2"
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">= 22",
