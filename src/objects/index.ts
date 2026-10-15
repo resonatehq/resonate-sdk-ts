@@ -5,6 +5,7 @@ export { attach } from "./attach.js";
 export { CasObjects, type ReducerDef } from "./cas.js";
 export { ChainObjects } from "./chain.js";
 export { LoopObjects } from "./loop.js";
+export { SequencerNetwork } from "./seq.js";
 export { SerialDispatchNetwork, SerialObjects } from "./serial.js";
 export {
   type CtxObjectHandle,

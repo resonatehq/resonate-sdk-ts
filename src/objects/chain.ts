@@ -66,22 +66,29 @@ export class ChainObjects {
   private watermarks = new Map<string, number>();
   private dispatchName: string;
   private alarmName: string;
+  private sequencer: boolean;
 
   constructor({
     resonate,
     network,
     codec,
     namespace = "o",
+    sequencer = false,
   }: {
     resonate: Resonate;
     network: Network;
     codec?: Codec;
     namespace?: string;
+    /** Use the server-assigned-id extension (resonate:seq — see seq.ts): the
+     * network must then be (or wrap) a SequencerNetwork. Enqueue becomes one
+     * idempotent RPC: no head probe, no CAS retries, no adopt window. */
+    sequencer?: boolean;
   }) {
     this.resonate = resonate;
     this.network = network;
     this.codec = codec ?? new Codec();
     this.ns = namespace;
+    this.sequencer = sequencer;
     this.dispatchName = `${namespace}.chain.dispatch`;
     this.alarmName = `${namespace}.chain.alarm`;
     this.resonate.register(this.dispatchName, this.dispatch);
@@ -108,18 +115,40 @@ export class ChainObjects {
     return `${base}:m${n}`;
   }
 
-  // -- append (the CAS at the head) ----------------------------------------
+  // -- append (one RPC under the sequencer; CAS at the head without it) -----
 
   /**
    * Append a message to the object's chain, exactly once per idempotency key.
-   * Probes the head, then CAS-creates; on losing a slot to a concurrent
-   * sender, retries at the next. A retry of a crashed sender re-finds its own
-   * earlier append by ik and adopts it instead of appending twice.
+   *
+   * Sequencer mode (the resonate:seq extension): one idempotent create — the
+   * server assigns the next dense id and dedups by ik. No probe, no retries.
+   *
+   * Userland mode: probe the head, then CAS-create; on losing a slot to a
+   * concurrent sender, retry at the next. A retry of a crashed sender
+   * re-finds its own earlier append by ik (bounded window) and adopts it.
    */
   private async append(env: Envelope, timeout: number): Promise<{ id: string; n: number }> {
     const base = this.baseId(env.o, env.k);
     const idOf = (n: number) => this.slotId(base, n);
     const send = this.network.send;
+
+    if (this.sequencer) {
+      const rec = await createPromise(send, this.codec, {
+        id: "", // assigned by the server (SequencerNetwork)
+        timeoutAt: Date.now() + timeout,
+        data: { func: this.dispatchName, args: [env], version: 1 },
+        tags: {
+          "resonate:target": this.network.anycast,
+          "resonate:scope": "global",
+          "resonate:seq": base,
+          "resonate:seq-ik": env.ik,
+          "resonate:object": `${env.o}/${env.k}`,
+        },
+      });
+      const n = seqOf(rec.id);
+      this.watermarks.set(base, n + 1);
+      return { id: rec.id, n };
+    }
 
     let n = await probeHead(send, this.codec, idOf, this.watermarks.get(base) ?? 0);
 
@@ -171,7 +200,7 @@ export class ChainObjects {
     const def = this.defs.get(env.o);
     if (!def) throw new Error(`object type '${env.o}' is not registered on this worker`);
 
-    const n = env.n ?? 0;
+    const n = env.n ?? seqOf(ctx.id);
     const base = this.baseId(env.o, env.k);
 
     // Hydrate: durably await the predecessor (THE serialization point), take
@@ -416,3 +445,10 @@ export class ChainObjects {
 
 /** How far below the head a crashed sender's append is searched for by ik. */
 const ADOPT_WINDOW = 8;
+
+/** The sequence number carried in a (dense) message id `<base>:m{n}`. */
+function seqOf(id: string): number {
+  const m = /:m(\d+)$/.exec(id);
+  if (!m) throw new Error(`not a message id: ${id}`);
+  return Number(m[1]);
+}
