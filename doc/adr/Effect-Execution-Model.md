@@ -215,7 +215,9 @@ The most transferable lesson is not about the SDK. Across the exercise, eight se
 checker reported "nothing wrong" when it should have reported "I cannot tell": a summary that read only one of two
 available verdicts; a classifier keyed to one implementation's phrasing; a harness that installed its own handler
 and so masked a defect the SDK was reporting about itself; a run whose conformance leg produced an empty log and
-graded clean; a leg that suppressed the wire events half its rules depended on; a driver whose denominator was
-computed from whatever ran rather than from what should have run. Every one of them made the system look better
+graded clean; a leg that suppressed the wire events half its rules depended on; a run-to-run variance mistaken for
+determinism, so an identity that was coincidence was read as evidence; a conformance leg judged purely on the
+legality of its trace, never on whether its programs completed; and a driver whose denominator was computed from
+whatever ran rather than from what should have run. Every one of them made the system look better
 than it was. A checker that cannot distinguish "clean" from "I did not look" is worse than no checker, because it
 is believed.
