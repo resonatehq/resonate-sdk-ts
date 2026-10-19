@@ -1,0 +1,294 @@
+RECOVERED SOURCE — NOT RUNNABLE AS-IS
+
+This is the tree checker (`probe/tree/tree.py`, ~237 lines) recovered from a session transcript after the working
+tree was lost. It is a set of overlapping excerpts, in the order they were read, not a reconstructed file: there
+are small gaps (roughly original lines 70-79 and 97-99 were never read into the transcript), and the later patches
+that added `acted_late`, `parked_at_decision` and the `late_observation_is_inert` rule appear as the patch scripts
+that applied them rather than as final source.
+
+Read tree-checker.md first for what the checker does and why. Use this file to recover wording and exact
+predicates, not as a drop-in.
+
+if n is not None: n.known_on.add(v); n.durable_on.add(v)
+    def settled(s, e):                                      # replay / preload / remote / fulfill-ack, learned by the emitting task
+        n = s.get(e["node"]); v = (e["worker"], (e.get("attempt") or "").split("#")[0] or s.task_root(n, e["worker"]))
+        n.known_on.add(v); n.durable_on.add(v)
+    def new_attempt(s, worker, root):                       # acquire, task.create, or a 300 redirect: a fresh inner run
+        for k in [k for (k, v) in s.open_wire[worker].items() if v[2] == (worker, root)]:
+            del s.open_wire[worker][k]                       # requests of the abandoned attempt are not in flight for the new one
+        key = (worker, root); s.attempt[key] = s.attempt.get(key, 0) + 1
+        s.decided.discard((worker, root, s.attempt[key] - 1)); s.failed.discard((worker, root, s.attempt[key] - 1))
+        s.reset_attempt(worker, root)
+    def acquire(s, e):
+        s.new_attempt(e["worker"], e["id"]); s.get(e["id"]).durable_on.add((e["worker"], e["id"]))
+    def decide(s, e):
+        root = e["attempt"].split("#")[0]; a = (e["worker"], root, s.attempt.get((e["worker"], root), 0))
+        mine = [n for n in s.nodes.values() if n.id != root and n.minted_in and n.minted_in[:2] == a[:2]]   # minted by this task on this worker
+        if e["outcome"] == "platform_error": s.failed.add(a)
+        s.decided.add(a)
+        w = e["worker"]; v = (w, root)
+        open_wire = [k for (k, x) in s.open_wire[w].items() if x[2] == v]
+        if open_wire and e["outcome"] != "platform_error": s.bad("quiet_at_decision", root, f"{len(open_wire)} fenced request(s) still in flight")
+        for n in ([x for x in mine if x.scope == "local"] + [s.nodes[root]] if e["outcome"] != "platform_error" else []):   # this task's local work only
+            if n.state(w, v) == "running":
+                parked = any(s.nodes[x].durable(v) and not s.nodes[x].known(v) for x in n.tr(w)["wait_on"])
+                if not parked: s.bad("quiet_at_decision", n.id, "running and not parked at the decision")
+        if e["outcome"] == "suspended":
+            pend = {n.id for n in mine if n.scope == "remote" and n.durable(v) and not n.known(v)}
+            missing = pend - set(e.get("set") or [])
+            if not e.get("set"): s.bad("suspend_set_complete", root, "empty suspend set")   # over-inclusion of already settled remotes is allowed
+            for m in missing: s.bad("suspend_set_complete", m, "pending remote not in the suspend set")
+        if e["outcome"] == "completed":
+            r = s.nodes[root]
+            if r.state(w, v) not in ("returned", "settled"): s.bad("complete_before_return", root, f"root is {r.state(w, v)}")
+            for n in mine:
+                if n.scope != "detached" and not n.known(v): s.bad("complete_with_unsettled_child", n.id, "not settled at completion")
+    # ---------------------------------------------------------------- state invariants: must hold after every event
+    def valid(s):
+        """Structural invariants of every task tree, evaluated after each event. A transition guard says which step is
+        illegal; an invariant says which state is impossible. Both are needed: a resume-too-early leaves no trace in state."""
+        out = []
+        for n in s.nodes.values():
+            for w, t in n.t.items():
+                v = s.view(w, n)
+                if t["state"] == "running" and not n.durable(v): out.append(("running_implies_durable", n.id))
+                if t["state"] == "running" and n.known(v): out.append(("running_implies_not_settled", n.id))
+                for x in t["wait_on"]:
+                    if x not in s.nodes: out.append(("wait_targets_a_node", n.id))
+                    elif s.nodes[x].scope == "detached": out.append(("never_wait_on_detached", n.id))
+            ords = sorted(c.ordinal for c in n.children)
+            if ords != list(range(1, len(ords) + 1)): out.append(("ordinals_contiguous", n.id))
+            for v in set(n.durable_on) | set(n.known_on):
+                if n.known(v) and not n.durable(v): out.append(("settled_implies_durable", n.id))
+                if n.known(v) and n.scope == "local" or (n.parent is None and n.known(v)):
+                    for c in n.children:
+                        if c.scope != "detached" and not c.known(v): out.append(("settled_parent_implies_settled_children", n.id))
+            if n.children and not n.invoked_ever: out.append(("child_implies_parent_invoked", n.id))   # a child exists only because its parent's body ran
+            for w in {w for (w, _) in n.durable_on}:            # the create chain never skips: durable k+1 implies durable k
+                for c in n.children:
+                    k = s.prev_sibling(c); v = s.view(w, n)
+                    if k is not None and c.durable(v) and not k.durable(v) and not k.known(v): out.append(("creation_monotone", c.id))
+        return out
+    # ---------------------------------------------------------------- driver
+    def feed(s, e):
+        s.seq = e["seq"]; ev = e.get("ev"); w = e.get("worker")
+        if ev == "mint":
+            if e.get("parent") is None or e.get("ordinal") == 0: return   # a task's own root logged as a mint
+            s.run_req(e)
+        elif ev == "send":
+            if "corr" not in e: e = {**e, "corr": f"s{e['seq']}"}     # a trace without correlation ids: key on the event itself
+            n = s.nodes.get(e.get("id")); owner = None
+            if n is not None:
+                if e.get("outer") == "task.fulfill": owner = (w, n.id)
+                elif e["kind"] == "promise.create" and n.parent in s.nodes: owner = s.att(w, s.nodes[n.parent])[:2]
+                else: owner = s.att(w, n)[:2]
+            s.sent[w][e["corr"]] = (e["kind"], e.get("id"), owner)
+            if e.get("fenced"): s.open_wire[w][e["corr"]] = (e["kind"], e.get("id"), owner)
+            if e["kind"] == "promise.create": s.create_req(e, e["corr"])
+            elif e["kind"] == "promise.settle" and e.get("fenced"): s.settle_req(e)
+        elif ev == "recv":
+            if "corr" not in e:                                      # no correlation id: match the newest open send of the same kind+id
+                k = next((k for k in reversed(list(s.open_wire[w])) if s.open_wire[w][k][0] == e.get("kind") and s.open_wire[w][k][1] == e.get("id")), None)
+                e = {**e, "corr": k if k is not None else f"r{e['seq']}"}
+            fenced = s.open_wire[w].pop(e.get("corr"), None) is not None
+            sent = s.sent[w].get(e.get("corr")); owner = sent[2] if sent else None
+            if "id" not in e and sent: e = {**e, "id": sent[1]}
+            if e["kind"] == "promise.create" and e.get("ok") is not False and owner: s.durable({"node": e["id"]}, e.get("state"), owner)
+            elif e["kind"] == "promise.settle" and fenced and e.get("ok") is not False and owner: s.settle_res(e, owner)
+            elif e["kind"] in ("task.acquire", "task.create") and e.get("ok") is not False: s.acquire(e)
+            elif e["kind"] == "task.suspend" and e.get("status") == 300: s.new_attempt(w, e["id"])
+        elif ev == "fail": s.open_wire[w].pop(e.get("corr"), None)
+        elif ev == "created": s.durable(e, e.get("state"), (w, (e.get("attempt") or "").split("#")[0] or s.task_root(s.get(e["node"]), w)))
+        elif ev in ("start", "retry"): s.invoke_req(e)
+
+----------------------------------------------------------------------------------------------------
+
+#!/usr/bin/env python3
+"""Tree checker: replays a seam log into a tree of nodes and asserts, at every event, that the transition is legal.
+States: ephemeral -> durable -> running -> returned -> settled (local); ephemeral -> durable -> settled (remote).
+Durable facts (durable, value known) survive attempts; transient state (running, waits) resets when a task is re-acquired.
+Usage: tree.py LOG...   (reads v1 execlogs; the v2 seam log maps 1:1)"""
+import json, sys, pathlib, collections
+
+class Node:
+    """Knowledge is per task view (worker, task root): a task knows a promise is durable or settled only through its own wire
+    responses, preloads and messages, never through another task on the same worker. Transient state is per worker."""
+    __slots__ = ("id","parent","scope","ordinal","durable_on","known_on","t","children","minted_in","invoked_ever")
+    def __init__(s, id, parent=None, scope=None, ordinal=None):
+        s.id, s.parent, s.scope, s.ordinal = id, parent, scope, ordinal
+        s.durable_on, s.known_on, s.t, s.children, s.minted_in, s.invoked_ever = set(), set(), {}, [], None, False
+    def durable(s, v): return v in s.durable_on
+    def known(s, v): return v in s.known_on
+    def tr(s, w): return s.t.setdefault(w, {"state": None, "wait_on": set(), "invokes": 0})
+    def state(s, w, v=None):                               # the node as seen on worker w (in view v)
+        st = s.t.get(w, {}).get("state")
+        return st or ("settled" if s.known(v) else "durable" if s.durable(v) else "ephemeral")
+
+class Tree:
+    def __init__(s):
+        s.nodes = {}; s.viol = []; s.attempt = {}          # (worker, root) -> attempt no
+        s.failed = set(); s.decided = set()                 # (worker, root, attempt) sets
+        s.open_wire = collections.defaultdict(dict)         # worker -> corr -> (kind, id), fenced sends only
+        s.sent = collections.defaultdict(dict)              # worker -> corr -> (kind, id), every send
+        s.roots = collections.defaultdict(set)              # worker -> ids that run as their own task there
+        s.seen_attempt = {}                                 # (worker, root) -> last attempt id seen, so a change starts a new one
+        s.seq = 0
+    # ---------------------------------------------------------------- helpers
+    def bad(s, rule, node, detail): s.viol.append((rule, s.seq, node, detail))
+    def get(s, id, **kw):
+        n = s.nodes.get(id)
+        if n is None: n = s.nodes[id] = Node(id, **kw)
+        return n
+    def task_root(s, n, worker):                            # nearest ancestor-or-self that runs as its own task on this worker
+        while n.parent is not None and n.id not in s.roots[worker]: n = s.nodes[n.parent]
+        return n.id
+    def att(s, worker, n): r = s.task_root(n, worker); return (worker, r, s.attempt.get((worker, r), 0))
+    def view(s, worker, n): return (worker, s.task_root(n, worker))          # the task whose knowledge applies to n's handling
+    def prev_sibling(s, n):
+        return next((c for c in s.nodes[n.parent].children if c.ordinal == n.ordinal - 1), None) if n.parent in s.nodes else None
+    def reset_attempt(s, worker, root):                     # a new attempt on this worker: its transient state goes, durable facts stay
+        for n in s.nodes.values():
+            if s.task_root(n, worker) == root: n.t.pop(worker, None)
+    # ---------------------------------------------------------------- transitions
+    def run_req(s, e):                                      # mint of a child
+        n = s.get(e["node"], parent=e["parent"], scope=e["scope"], ordinal=e["ordinal"])
+        p = s.get(e["parent"])
+        if n not in p.children: p.children.append(n)
+        w = e["worker"]; n.minted_in = s.att(w, p); v = s.view(w, p)
+        if not n.durable(v) and e["ordinal"] > 1 and s.prev_sibling(n) is None:
+            s.bad("ordered_creation", n.id, "ordinal not contiguous: no sibling %d" % (e["ordinal"] - 1))
+        if p.state(w) != "running": s.bad("child_minted_while_parent_not_running", n.id, f"parent {p.id} is {p.state(w)}")
+    def create_req(s, e, corr):
+        n = s.nodes.get(e["id"])
+        if n is None: return                                # root create (task.create) or an external: not a child of this tree
+        k = s.prev_sibling(n)
+        w = e["worker"]; v = s.view(w, s.nodes[n.parent])
+
+----------------------------------------------------------------------------------------------------
+
+cd /home/user/probe/tree && cp tree.py /tmp/claude-0/-home-user/a88e0956-bdf7-50da-9f59-abb3a879ac6e/scratchpad/tree.py.bak && python3 <<'PYEOF'
+import pathlib
+p = pathlib.Path("tree.py"); src = p.read_text()
+
+old = '''    def wait_res(s, e):
+        n = s.get(e["node"]); t = n.tr(e["worker"])
+        w = e["worker"]; v = s.view(w, n); pending = [x for x in t["wait_on"] if not s.nodes[x].known(v)]
+        if t["wait_on"] and len(pending) == len(t["wait_on"]): s.bad("resume_after_durable", n.id, f"resumed while {sorted(pending)} not known settled")'''
+new = '''    def wait_res(s, e):
+        n = s.get(e["node"]); t = n.tr(e["worker"])
+        w = e["worker"]; v = s.view(w, n); pending = [x for x in t["wait_on"] if not s.nodes[x].known(v)]
+        # A response to a request issued before the decision may still arrive, and learning from it is legitimate
+        # (see durable/settle_res/settled, which record it unconditionally). Acting on it is not: once the attempt has
+        # decided, the task is going back to the server, and a waiter woken here runs inside an attempt that already
+        # announced it stopped. This is the one forbidden act that leaves no trace on the wire.
+        if s.att(w, n) in s.decided: s.bad("late_observation_is_inert", n.id, "waiter resumed after the decision")
+        if t["wait_on"] and len(pending) == len(t["wait_on"]): s.bad("resume_after_durable", n.id, f"resumed while {sorted(pending)} not known settled")'''
+assert src.count(old) == 1
+src = src.replace(old, new)
+
+# document the permission at the observation handlers, so the asymmetry is readable where it is implemented
+old2 = '''    def durable(s, e, state, v):                            # create-res or preload/cache record, learned by view v'''
+new2 = '''    def durable(s, e, state, v):                            # create-res or preload/cache record, learned by view v
+        # Recorded whatever the attempt has decided: the server's state is what it is, and learning it late does not
+        # make it less true. What must not follow is an action (see late_observation_is_inert in wait_res).'''
+assert src.count(old2) == 1
+src = src.replace(old2, new2)
+p.write_text(src)
+print("patched")
+PYEOF
+python3 -c "import ast;ast.parse(open('tree.py').read());print('parses')"
+
+----------------------------------------------------------------------------------------------------
+
+elif ev in ("start", "retry"): s.invoke_req(e)
+        elif ev in ("await", "park"): s.wait_req(e)
+        elif ev == "resume": s.wait_res(e)
+        elif ev == "return": s.invoke_res(e)
+        elif ev == "settled": s.settled(e)
+        elif ev == "decide": s.decide(e)
+
+def check(path, invariants=True):
+    t = Tree(); seen = set()
+    for line in open(path):
+        if not line.strip(): continue
+        t.feed(json.loads(line))
+        if invariants:
+            for inv in t.valid():
+                if inv not in seen: seen.add(inv); t.viol.append((inv[0], t.seq, inv[1], "state invariant broken"))
+    return t
+
+if __name__ == "__main__":
+    for p in sys.argv[1:]:
+        t = check(p); by = collections.Counter(v[0] for v in t.viol)
+        print(f"{pathlib.Path(p).name:28s} nodes={len(t.nodes):4d} {'clean' if not t.viol else dict(by)}")
+        for v in t.viol[:4]: print("   ", v)
+=== wait_res / resume handlers ===
+68:    def invoke_req(s, e):
+85:    def wait_req(s, e):
+89:    def wait_res(s, e):
+92:        if t["wait_on"] and len(pending) == len(t["wait_on"]): s.bad("resume_after_durable", n.id, f"resumed while {sorted(pending)} not known settled")
+98:    def settle_req(s, e):
+147:        illegal; an invariant says which state is impossible. Both are needed: a resume-too-early leaves no trace in state."""
+202:        elif ev == "resume": s.wait_res(e)
+203:        elif ev == "return": s.invoke_res(e)
+
+----------------------------------------------------------------------------------------------------
+
+def wait_req(s, e):
+        n = s.get(e["node"]); on = s.nodes.get(e["on"])
+        if on is None: s.bad("wait_on_unknown", n.id, f"awaits {e['on']} which was never minted"); return
+        n.tr(e["worker"])["wait_on"].add(on.id)
+    def wait_res(s, e):
+        n = s.get(e["node"]); t = n.tr(e["worker"])
+        w = e["worker"]; v = s.view(w, n); pending = [x for x in t["wait_on"] if not s.nodes[x].known(v)]
+        if t["wait_on"] and len(pending) == len(t["wait_on"]): s.bad("resume_after_durable", n.id, f"resumed while {sorted(pending)} not known settled")
+        t["wait_on"] = set(pending)                          # waits whose target settled are over; the rest stay open
+    def invoke_res(s, e):
+        n = s.get(e["node"]); t = n.tr(e["worker"])
+        if t["state"] != "running": s.bad("return_without_running", n.id, f"returned from state {n.state(e['worker'])}")
+        t["state"] = "returned"; t["wait_on"] = set()
+
+----------------------------------------------------------------------------------------------------
+
+SP=/tmp/claude-0/-home-user/a88e0956-bdf7-50da-9f59-abb3a879ac6e/scratchpad; mkdir -p $SP; python3 -I - <<'PY'
+import json,re,pathlib
+T="/root/.claude/projects/-home-user/a88e0956-bdf7-50da-9f59-abb3a879ac6e.jsonl"
+out=pathlib.Path("/tmp/claude-0/-home-user/a88e0956-bdf7-50da-9f59-abb3a879ac6e/scratchpad/tree-fragments.txt")
+hits=[]
+def walk(o):
+    if isinstance(o,str): return [o]
+    if isinstance(o,dict): return [s for v in o.values() for s in walk(v)]
+    if isinstance(o,list): return [s for v in o for s in walk(v)]
+    return []
+for line in open(T,errors="replace"):
+    try: e=json.loads(line)
+    except: continue
+    for s in walk(e):
+        if ("class Tree" in s) or ("def wait_res" in s) or ("def valid(s)" in s):
+            hits.append(s)
+out.write_text("\n\n
+
+----------------------------------------------------------------------------------------------------
+
+T=/root/.claude/projects/-home-user/a88e0956-bdf7-50da-9f59-abb3a879ac6e.jsonl; ls -la $T 2>/dev/null | awk '{print "transcript:",$5,"bytes"}'; for pat in "def wait_res" "def valid" "def nothing_after_decision" "def settle_after_children" "ordered_creation" "class Tree" "MIN_NODES" "GATE ABORTED"; do printf "%-28s %s\n" "$pat" "$(grep -c "$pat" $T 2>/dev/null)"; done
+
+----------------------------------------------------------------------------------------------------
+
+transcript: 3790537 bytes
+def wait_res                 4
+def valid                    2
+def nothing_after_decision   2
+def settle_after_children    2
+ordered_creation             6
+class Tree                   2
+MIN_NODES                    4
+GATE ABORTED                 2
+
+----------------------------------------------------------------------------------------------------
+
+\n\n".join(hits))
+print("fragments:",len(hits),"bytes:",out.stat().st_size)
+# how many distinct tree.py def lines did we capture?
+defs=sorted(set(re.findall(r"def (\w+)\(s", out.read_text())))
+print("methods captured:",len(defs)); print(defs)
+PY
